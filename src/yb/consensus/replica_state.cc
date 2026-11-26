@@ -43,7 +43,6 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/casts.h"
 
 #include "yb/tserver/tserver_error.h"
@@ -79,7 +78,6 @@ DEFINE_test_flag(bool, follower_fail_retryable_register, false,
 namespace yb::consensus {
 
 using std::string;
-using strings::Substitute;
 
 //////////////////////////////////////////////////
 // ReplicaState
@@ -291,7 +289,7 @@ Status ReplicaState::LockForConfigChange(UniqueLock* lock) const {
   // Can only change the config on running replicas.
   if (PREDICT_FALSE(state_ != kRunning)) {
     return STATUS(IllegalState, "Unable to lock ReplicaState for config change",
-                                Substitute("State = $0", state_));
+                                Format("State = $0", state_));
   }
   lock->swap(l);
   return Status::OK();
@@ -353,10 +351,10 @@ Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
   DCHECK(IsLocked());
   if (IsConfigChangePendingUnlocked()) {
     return STATUS(IllegalState,
-        Substitute("RaftConfig change currently pending. Only one is allowed at a time.\n"
-                   "  Committed config: $0.\n  Pending config: $1",
-                   GetCommittedConfigUnlocked().ShortDebugString(),
-                   GetPendingConfigUnlocked().ShortDebugString()));
+        Format("RaftConfig change currently pending. Only one is allowed at a time.\n"
+               "  Committed config: $0.\n  Pending config: $1",
+               GetCommittedConfigUnlocked().ShortDebugString(),
+               GetPendingConfigUnlocked().ShortDebugString()));
   }
   return Status::OK();
 }
@@ -501,20 +499,20 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
   return true;
 }
 
-Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
+Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term, FlushConsensusMeta flush) {
   TRACE_EVENT1("consensus", "ReplicaState::SetCurrentTermUnlocked",
                "term", new_term);
   DCHECK(IsLocked());
   if (PREDICT_FALSE(new_term <= GetCurrentTermUnlocked())) {
     return STATUS(IllegalState,
-        Substitute("Cannot change term to a term that is lower than or equal to the current one. "
-                   "Current: $0, Proposed: $1", GetCurrentTermUnlocked(), new_term));
+        Format("Cannot change term to a term that is lower than or equal to the current one. "
+               "Current: $0, Proposed: $1", GetCurrentTermUnlocked(), new_term));
   }
   cmeta_->set_current_term(new_term);
   cmeta_->clear_voted_for();
   ClearLeaderUnlocked();
   last_received_op_id_current_leader_ = yb::OpId();
-  return cmeta_->Flush();
+  return flush ? cmeta_->Flush() : Status::OK();
 }
 
 const int64_t ReplicaState::GetCurrentTermUnlocked() const {
@@ -859,6 +857,7 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
   DCHECK(IsLocked());
   CHECK_GE(last_received_op_id_.index, committed_op_id.index);
   last_committed_op_id_ = committed_op_id;
+  last_committed_op_id_copy_.store(committed_op_id, std::memory_order_release);
   const auto pending_config_op_id_from_rbs = cmeta_->pending_config_op_id_from_rbs();
   if (pending_config_op_id_from_rbs.is_valid_not_empty() &&
       last_committed_op_id_ >= pending_config_op_id_from_rbs) {
@@ -982,6 +981,8 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
             << prev_id << " of " << committed_op_id;
         break;
       }
+    } else if (could_stop && PostponeApplyUnlocked(*round)) {
+      break;
     } else if (current_id.index > max_allowed_op_id.index ||
                current_id.term > max_allowed_op_id.term) {
       max_allowed_op_id = safe_op_id_waiter_->WaitForSafeOpIdToApply(current_id);
@@ -1025,6 +1026,21 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
   applied_ops_tracker_(applied_op_ids);
 
   return status;
+}
+
+bool ReplicaState::PostponeApplyUnlocked(const ConsensusRound& round) {
+  const auto op_id = round.id();
+  auto postponed = op_id == postponed_op_id_ ? std::move(postponed_apply_) : nullptr;
+  postponed_apply_ = context_->PostponeApply(*round.replicate_msg(), std::move(postponed));
+  if (!postponed_apply_) {
+    return false;
+  }
+  if (op_id != postponed_op_id_) {
+    postponed_op_id_ = op_id;
+    LOG_WITH_PREFIX(INFO) << "Postpone applying "
+                          << OperationType_Name(round.replicate_msg()->op_type()) << " " << op_id;
+  }
+  return true;
 }
 
 void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
@@ -1117,6 +1133,18 @@ void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const 
   }
 }
 
+void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(const OpId& op_id) {
+  // Reporting the deduplicated preceding op id is sound: dedup only strips ops already present,
+  // and runs after the log-matching check, so this replica holds it and the current leader sent
+  // it. Updates at least as often as the IfEmpty variant, so it does not reintroduce GH #15629.
+  if (last_received_op_id_current_leader_.empty() ||
+      op_id > last_received_op_id_current_leader_) {
+    VLOG_WITH_PREFIX(1) << __func__ << " Advancing last_received_current_leader from "
+      << last_received_op_id_current_leader_.ToString() << " to " << op_id.ToString();
+    last_received_op_id_current_leader_ = op_id;
+  }
+}
+
 const yb::OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {
   DCHECK(IsLocked());
   return last_received_op_id_;
@@ -1174,11 +1202,11 @@ void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
 
 string ReplicaState::LogPrefix() const {
   auto role_and_term = cmeta_->GetRoleAndTerm();
-  return Substitute("T $0 P $1 [term $2 $3]: ",
-                    options_.tablet_id,
-                    peer_uuid_,
-                    role_and_term.second,
-                    PeerRole_Name(role_and_term.first));
+  return Format("T $0 P $1 [term $2 $3]: ",
+                options_.tablet_id,
+                peer_uuid_,
+                role_and_term.second,
+                PeerRole_Name(role_and_term.first));
 }
 
 ReplicaState::State ReplicaState::state() const {

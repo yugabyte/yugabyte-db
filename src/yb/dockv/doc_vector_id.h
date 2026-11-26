@@ -86,11 +86,12 @@ class DocVectorValue final : public PackableValue {
 
   static Slice SanitizeValue(Slice encoded);
 
+  // Returns the value entry type byte that prefixes a V1 vector value of the given format.
+  static char ValueTypePrefix(VectorValueFormat format);
+
   std::string ToString() const override;
 
  private:
-  static char ValueTypePrefix(VectorValueFormat format);
-
   template <class Buffer>
   void AppendEncodedVectorValue(Buffer* buffer) const;
 
@@ -131,5 +132,27 @@ Result<std::string> DocVectorMetaValueToString(Slice value);
 
 // Encodes vector reverse entry value in V1 format (table_key_prefix + ybctid + column_id).
 KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId column_id);
+
+// Encodes the payload attached to a vector in the vector index chunks. The first byte holds flags
+// for the fields that follow, in this order:
+//   0x01, always set: ybctid size (varint), ybctid.
+//   0x02: size of the ybctid prefix that identifies the tenant of the vector (varint).
+// The ybctid goes first, so it is extractable whatever fields follow. Older releases read only
+// payloads with the ybctid flag alone, which tenant_prefix_size 0 produces.
+ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size);
+
+struct DocVectorIndexPayloadContent {
+  Slice ybctid;
+  // Prefix of ybctid that identifies the tenant of the vector, empty when it has no tenant.
+  Slice tenant;
+};
+
+// Decodes the payload attached to a vector, see DocVectorIndexPayload.
+Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload);
+
+// Extracts ybctid from the payload attached to a vector, see DocVectorIndexPayload.
+// Ignores the fields after the ybctid, including ones this release does not know.
+Result<Slice> DocVectorIndexPayloadYbctid(Slice payload);
+
 
 } // namespace yb::dockv

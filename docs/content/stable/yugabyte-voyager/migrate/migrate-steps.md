@@ -77,9 +77,9 @@ Create a new database user, and assign the necessary user permissions.
   </div>
   <div id="mysql" class="tab-pane fade" role="tabpanel" aria-labelledby="mysql-tab">
 
-{{< warning title="MySQL offline migration deprecated" >}}
+{{< warning title="MySQL offline migration no longer supported" >}}
 
-MySQL offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+MySQL offline migration using YugabyteDB Voyager is no longer supported as of October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 {{< /warning >}}
 
@@ -87,9 +87,9 @@ MySQL offline migration using YugabyteDB Voyager is deprecated and will no longe
   </div>
   <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
 
-{{< warning title="Oracle offline migration deprecated" >}}
+{{< warning title="Oracle offline migration no longer supported" >}}
 
-Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+Oracle offline migration using YugabyteDB Voyager is no longer supported as of October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 {{< /warning >}}
 
@@ -613,7 +613,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 {{< /tabpane >}}
 
-By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Techniques to improve performance](../../reference/performance/#techniques-to-improve-performance) for more details on tuning performance.
+By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Improve import snapshot performance](../../reference/performance/#improve-import-snapshot-performance) for more details on tuning performance.
 
 Refer to [import data](../../reference/data-migration/import-data/) for more information.
 
@@ -713,6 +713,8 @@ The `import schema --post-snapshot-import` command is deprecated. Use [finalize-
 ### Verify migration
 
 After the schema and data import is complete, manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. For example, you can validate the databases by running queries to check the row count of each table.
+
+If the source schema may have changed while data was exported, [schema detect-drift](../../reference/schema-migration/detect-drift/) lists those changes.
 
 {{< warning title = "Caveat associated with rows reported by import data status" >}}
 

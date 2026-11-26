@@ -465,20 +465,6 @@ func IsOutputType(t string) bool {
 	return viper.GetString("output") == t
 }
 
-// RemoveComponentFromSlice removes the component from the slice
-func RemoveComponentFromSlice(sliceInterface interface{}, index int) interface{} {
-	slice := sliceInterface.([]interface{})
-	length := len(slice)
-	for i := range slice {
-		if i == index && i != length-1 {
-			return append(slice[:i], slice[i+1:]...)
-		} else if i == length-1 {
-			return slice[:i]
-		}
-	}
-	return slice
-}
-
 // ConvertMsToUnit converts time from milliseconds to unit
 func ConvertMsToUnit(value int64, unit string) float64 {
 	var v float64
@@ -639,6 +625,21 @@ func MaybeGetFlagString(cmd *cobra.Command, name string) string {
 			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
 	}
 	return value
+}
+
+// MaybeSetFlagString assigns the string flag with the given name to target, for
+// building a request from flags on both create and update. The flag wins when it
+// was passed; otherwise a value already in target is kept, so an update leaves
+// unmentioned fields as they are. An explicitly empty flag value is ignored
+// rather than clearing the field.
+func MaybeSetFlagString(cmd *cobra.Command, name string, target *string) {
+	if !cmd.Flags().Changed(name) && *target != "" {
+		return
+	}
+	value := MaybeGetFlagString(cmd, name)
+	if value != "" {
+		*target = value
+	}
 }
 
 // MaybeGetFlagStringSlice returns the value of the string slice flag with the given name

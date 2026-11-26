@@ -18,23 +18,27 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/casts.h"
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
@@ -76,6 +80,27 @@ DEFINE_NON_RUNTIME_uint64(object_lock_cleanup_interval_ms, 5000,
                           "The interval between runs of the background cleanup task for "
                           "table-level locks held by unresponsive TServers.");
 
+DEFINE_RUNTIME_uint64(object_lock_release_retry_timeout_ms, 10000,
+    "Deadline for each retry of a release request that the cleanup poller relaunches after an "
+    "earlier attempt failed. Kept short so that a tserver which keeps failing releases is "
+    "observed often enough to be fenced.");
+TAG_FLAG(object_lock_release_retry_timeout_ms, advanced);
+
+DEFINE_RUNTIME_uint64(object_lock_release_fence_after_ms, 60 * 1000,
+    "Stop extending the ysql lease of a tserver that still has a live lease but has failed the "
+    "same object lock release for at least this long. 0 disables fencing.");
+TAG_FLAG(object_lock_release_fence_after_ms, advanced);
+
+DEFINE_RUNTIME_uint32(object_lock_release_fence_min_failures, 5,
+    "Minimum number of failed attempts of the same release to a tserver, in addition to "
+    "object_lock_release_fence_after_ms, before the tserver's ysql lease is fenced.");
+TAG_FLAG(object_lock_release_fence_min_failures, advanced);
+
+DEFINE_RUNTIME_uint32(object_lock_release_fence_hold_off_lease_periods, 2,
+    "After a fenced tserver's ysql lease expires, refuse it a new lease for this many multiples "
+    "of master_ysql_operation_lease_ttl_ms.");
+TAG_FLAG(object_lock_release_fence_hold_off_lease_periods, advanced);
+
 DEFINE_test_flag(bool, skip_launch_release_request, false,
     "If true, skip launching the release request after persisting it to in progress requests.");
 
@@ -84,6 +109,23 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 
 DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
     "If true, pause before persisting release request acked from all tservers.");
+
+DEFINE_test_flag(bool, pause_obj_lock_acquire_before_persist, false,
+    "If true, pause after an acquire request is granted by the master leader's local lock manager, "
+    "before persisting it.");
+
+DEFINE_test_flag(bool, pause_obj_lock_acquire_before_relaunch_check, false,
+    "If true, pause after an acquire request is acked by all tservers, before checking whether "
+    "the fanout must be relaunched for lease changes.");
+
+DEFINE_test_flag(bool, fail_populate_db_catalog_info_on_release, false,
+    "If true, fail reading the catalog versions for an object lock release, which defers it.");
+
+DEFINE_test_flag(bool, fail_master_local_release_once, false,
+    "If true, fail the next release in the master leader's local lock manager and reset the flag.");
+
+DEFINE_test_flag(bool, skip_marking_ysql_leases_lost, false,
+    "If true, the object lock cleanup poll doesn't mark expired ysql leases lost.");
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
@@ -96,7 +138,6 @@ namespace master {
 using namespace std::literals;
 using namespace std::placeholders;
 using server::MonitoredTaskState;
-using strings::Substitute;
 using tserver::AcquireObjectLockRequestPB;
 using tserver::AcquireObjectLockResponsePB;
 using tserver::ReleaseObjectLockRequestPB;
@@ -137,6 +178,38 @@ constexpr bool kIsReleaseRequest = false;
 template <>
 constexpr bool kIsReleaseRequest<ReleaseObjectLockRequestPB> = true;
 
+void AddLeaseEpochFloor(
+    const std::string& uuid, const SysObjectLockEntryPB::LeaseInfoPB& lease_info,
+    google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) {
+  if (!lease_info.has_lease_epoch()) {
+    return;
+  }
+  auto ignore_lease_epochs_before = lease_info.lease_epoch();
+  if (!lease_info.live_lease() &&
+      ignore_lease_epochs_before != std::numeric_limits<uint64_t>::max()) {
+    ++ignore_lease_epochs_before;
+  }
+  if (ignore_lease_epochs_before == 0) {
+    return;
+  }
+  auto* floor = floors.Add();
+  floor->set_session_host_uuid(uuid);
+  floor->set_ignore_lease_epochs_before(ignore_lease_epochs_before);
+}
+
+// Lease state of a tserver that a fanout was launched to.
+struct LiveLeaseSnapshotEntry {
+  std::shared_ptr<ObjectLockInfo> object_lock_info;
+  uint64_t lease_epoch;
+};
+
+// Tservers that have not acked a release, with the lease epoch the failed attempt was sent under.
+using UnackedTServers = std::unordered_map<TabletServerId, uint64_t>;
+
+bool IsReleaseAll(const ReleaseObjectLockRequestPB& req) {
+  return !req.subtxn_id() && req.object_locks_size() == 0;
+}
+
 }  // namespace
 
 class ObjectLockInfoManager::Impl {
@@ -145,7 +218,7 @@ class ObjectLockInfoManager::Impl {
       : master_(master),
         catalog_manager_(catalog_manager),
         clock_(master.clock()),
-        poller_(std::bind(&Impl::CleanupExpiredLeaseEpochs, this)) {
+        poller_(std::bind(&Impl::SchedulePoll, this)) {
     CHECK_OK(ThreadPoolBuilder("object_lock_info_manager").Build(&lock_manager_thread_pool_));
     local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
@@ -156,21 +229,19 @@ class ObjectLockInfoManager::Impl {
     poller_.Start(
         &catalog_manager_.Scheduler(),
         MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms));
-    waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
+    auto waiting_txn_registry = std::make_unique<docdb::LocalWaitingTxnRegistry>(
         master_.client_future(), clock_, master_.permanent_uuid(), lock_manager_thread_pool_.get());
     waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
         master_.permanent_uuid(), std::bind(&docdb::LocalWaitingTxnRegistry::SendWaitForGraph,
-        waiting_txn_registry_.get()));
-    tserver::TSLocalLockManagerPtr lock_manager = nullptr;
+        waiting_txn_registry.get()));
     {
+      // Races with Clear() during sys catalog load; each lock manager must be started exactly once.
       LockGuard lock(mutex_);
+      waiting_txn_registry_ = std::move(waiting_txn_registry);
       object_lock_infos_map_.clear();
       if (local_lock_manager_) {
-        lock_manager = local_lock_manager_;
+        local_lock_manager_->Start(waiting_txn_registry_.get());
       }
-    }
-    if (lock_manager) {
-      lock_manager->Start(waiting_txn_registry_.get());
     }
     waiting_txn_registry_poller_->Start(
         &master_.messenger()->scheduler(), FLAGS_send_wait_for_report_interval_ms * 1ms);
@@ -193,20 +264,27 @@ class ObjectLockInfoManager::Impl {
       waiting_txn_registry_poller_->Shutdown();
       waiting_txn_registry_poller_.reset();
     }
-    if (waiting_txn_registry_) {
-      waiting_txn_registry_->StartShutdown();
-      waiting_txn_registry_->CompleteShutdown();
-      waiting_txn_registry_.reset();
+    std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry;
+    {
+      LockGuard lock(mutex_);
+      waiting_txn_registry = std::move(waiting_txn_registry_);
+    }
+    if (waiting_txn_registry) {
+      waiting_txn_registry->StartShutdown();
+      waiting_txn_registry->CompleteShutdown();
     }
   }
 
   void LockObject(
       AcquireObjectLockRequestPB&& req, CoarseTimePoint deadline, StdStatusCallback&& callback);
 
-  void PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req);
+  // A release that carries no catalog versions would let tservers unlock before invalidating
+  // their caches, so an error here defers the release instead of sending it without them.
+  Status PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req);
   Status UnlockObject(
       ReleaseObjectLockRequestPB&& req, std::optional<StdStatusCallback>&& callback = std::nullopt,
-      std::optional<LeaderEpoch> leader_epoch = std::nullopt);
+      std::optional<LeaderEpoch> leader_epoch = std::nullopt,
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
   Status UnlockObjectSync(
       const ReleaseObjectLocksGlobalRequestPB& master_request,
       tserver::ReleaseObjectLockRequestPB&& tserver_request, CoarseTimePoint deadline);
@@ -217,7 +295,6 @@ class ObjectLockInfoManager::Impl {
   Status MaybePopulateHostInfo(ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
   Status PopulateHostInfo(const TransactionId& txn_id, ReleaseObjectLockRequestPB& req)
       EXCLUDES(mutex_);
-  bool IsDdlVerificationInProgress(const TransactionId& txn) const;
 
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req,
                           RefreshYsqlLeaseResponsePB& resp,
@@ -232,6 +309,16 @@ class ObjectLockInfoManager::Impl {
   std::shared_ptr<CountDownLatch> ReleaseLocksHeldByExpiredLeaseEpoch(
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch);
+
+  // Reads each tserver's lease state once, so that the floors, the returned live tservers and
+  // live_leases (if not null) reflect the same view. Fails if the requestor's lease epoch is no
+  // longer live, since the floors would make every tserver reject the request.
+  Result<TSDescriptorVector> PopulateLeaseEpochFloorsAndGetLiveTServers(
+      tserver::AcquireObjectLockRequestPB& req,
+      std::vector<LiveLeaseSnapshotEntry>* live_leases) const EXCLUDES(mutex_);
+  void PopulateLeaseEpochFloorsUnlocked(
+      google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) const
+      REQUIRES(mutex_);
 
   std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const EXCLUDES(mutex_);
 
@@ -267,6 +354,17 @@ class ObjectLockInfoManager::Impl {
   }
 
   bool TabletServerHasLiveLease(const std::string& ts_uuid) const EXCLUDES(mutex_);
+  // Unset if the tserver has no live lease.
+  std::optional<MonoTime> LiveLeaseDeadline(const std::string& ts_uuid) const EXCLUDES(mutex_);
+
+  void RecordReleaseOutcome(
+      const TabletServerId& ts_uuid, uint64_t request_id, const Status& status) EXCLUDES(mutex_);
+  void ReleaseTaskFinished(uint64_t request_id) EXCLUDES(mutex_);
+
+  void SetUnackedReleaseTServers(uint64_t request_id, std::optional<UnackedTServers> tservers)
+      EXCLUDES(mutex_);
+  std::optional<UnackedTServers> GetUnackedReleaseTServers(uint64_t request_id) EXCLUDES(mutex_);
+
   void UpdateTxnHostSessionMap(
       const TransactionId& txn_id, const std::string& host_session_uuid, uint64_t lease_epoch)
       EXCLUDES(mutex_);
@@ -276,6 +374,20 @@ class ObjectLockInfoManager::Impl {
     // No need to acquire the leader lock for testing.
     LockGuard lock(mutex_);
     return local_lock_manager_;
+  }
+
+  Result<SysObjectLockEntryPB> TEST_GetObjectLockInfoPB(const std::string& tserver_uuid)
+      EXCLUDES(mutex_) {
+    LockGuard lock(mutex_);
+    auto it = object_lock_infos_map_.find(tserver_uuid);
+    if (it == object_lock_infos_map_.end()) {
+      return STATUS_FORMAT(NotFound, "No ObjectLockInfo for tserver $0", tserver_uuid);
+    }
+    return it->second->LockForRead()->pb;
+  }
+
+  tserver::DdlLockEntriesPB TEST_ExportObjectLockInfoForMaster() EXCLUDES(mutex_) {
+    return ExportObjectLockInfoForMaster();
   }
 
   /*
@@ -291,7 +403,9 @@ class ObjectLockInfoManager::Impl {
     return local_lock_manager_;
   }
 
-  TSDescriptorVector GetAllTSDescriptorsWithALiveLease() const;
+  // With live_leases, also records each returned tserver's lease epoch from the same read.
+  TSDescriptorVector GetAllTSDescriptorsWithALiveLease(
+      std::vector<LiveLeaseSnapshotEntry>* live_leases = nullptr) const;
 
   std::optional<uint64_t> GetLeaseEpoch(const std::string& ts_uuid) EXCLUDES(mutex_);
 
@@ -303,10 +417,25 @@ class ObjectLockInfoManager::Impl {
     return local_lock_manager_;
   }
 
-  // Called by the poller to mark leases as expired and clean up locks held by expired lease epochs.
-  // This should only be called by the poller as it accesses cleanup task state without
-  // synchronization.
-  void CleanupExpiredLeaseEpochs() EXCLUDES(mutex_);
+  // Called by the poller on the messenger's scheduler thread; only submits Poll to the catalog
+  // manager's background pool.
+  void SchedulePoll();
+  // Runs on the catalog manager's background pool, one at a time (see poll_running_).
+  void Poll() EXCLUDES(mutex_);
+
+  // Marks leases as expired and cleans up locks held by expired lease epochs. Must only be called
+  // from Poll, since it accesses expired_lease_epoch_cleanup_tasks_ without synchronization.
+  void CleanupExpiredLeaseEpochs(const LeaderEpoch& leader_epoch) EXCLUDES(mutex_);
+
+  // Relaunches persisted release requests that have no task in flight, i.e. whose last attempt
+  // failed.
+  void RetryFailedReleases(const LeaderEpoch& leader_epoch) EXCLUDES(mutex_);
+
+  // Starts the lease hold-off of fenced tservers whose lease is no longer live.
+  void StartLeaseHoldOffs() EXCLUDES(mutex_);
+
+  Status CheckLeaseFence(const TabletServerId& ts_uuid, int64_t instance_seqno)
+      EXCLUDES(mutex_);
 
   Master& master_;
   CatalogManager& catalog_manager_;
@@ -328,11 +457,41 @@ class ObjectLockInfoManager::Impl {
   rpc::Poller poller_;
   std::unique_ptr<ThreadPool> lock_manager_thread_pool_;
   std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager_ GUARDED_BY(mutex_);
-  // Only accessed from a single thread for now, so no need for synchronization.
+  // Unsynchronized: must only be accessed from Poll's call tree. Successive polls run on different
+  // threads, and poll_running_ both serializes them and orders their accesses to this map.
   std::unordered_map<TabletServerId, std::shared_ptr<CountDownLatch>>
       expired_lease_epoch_cleanup_tasks_;
-  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_ GUARDED_BY(mutex_);
   std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
+
+  // Set while a Poll is queued or running, so that a slow Poll is skipped rather than overlapped.
+  std::atomic<bool> poll_running_{false};
+
+  // Number of release tasks in flight per request id.
+  std::unordered_map<uint64_t, size_t> in_flight_releases_ GUARDED_BY(mutex_);
+
+  // Tservers that failed to ack the release with the given request id.
+  std::unordered_map<uint64_t, UnackedTServers> unacked_release_tservers_ GUARDED_BY(mutex_);
+
+  struct FailingRelease {
+    MonoTime first_failure;
+    size_t num_failures = 0;
+  };
+  struct ReleaseFailures {
+    uint64_t lease_epoch = 0;
+    std::unordered_map<uint64_t, FailingRelease> by_request_id;
+  };
+  // Releases that a tserver with a live lease has failed and not yet acked.
+  std::unordered_map<TabletServerId, ReleaseFailures> release_failures_ GUARDED_BY(mutex_);
+
+  struct LeaseFence {
+    uint64_t lease_epoch;
+    // A later instance of the tserver clears the fence: it holds no locks of the fenced instance.
+    int64_t instance_seqno;
+    // Unset until the master sees the fenced lease expire.
+    std::optional<MonoTime> hold_off_until;
+  };
+  std::unordered_map<TabletServerId, LeaseFence> fenced_tservers_ GUARDED_BY(mutex_);
 };
 
 template <class Req>
@@ -343,6 +502,7 @@ class UpdateAll {
   virtual const Req& request() const = 0;
   virtual CoarseTimePoint GetClientDeadline() const = 0;
   virtual bool TabletServerHasLiveLease(const std::string& uuid) = 0;
+  virtual std::optional<MonoTime> LiveLeaseDeadline(const std::string& uuid) = 0;
   virtual std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) = 0;
   virtual std::string LogPrefix() const = 0;
   virtual const ash::WaitStateInfoPtr& wait_state() const = 0;
@@ -363,7 +523,8 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   UpdateAllTServers(
       Master& master, CatalogManager& catalog_manager,
       ObjectLockInfoManager::Impl& object_lock_info_manager, Req&& req,
-      std::optional<StdStatusCallback>&& callback, LeaderEpoch leader_epoch, TransactionId txn_id);
+      std::optional<StdStatusCallback>&& callback, LeaderEpoch leader_epoch, TransactionId txn_id,
+      CoarseTimePoint deadline);
 
   Status Launch();
   const Req& request() const override {
@@ -376,6 +537,10 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
 
   bool TabletServerHasLiveLease(const std::string& uuid) override {
     return object_lock_info_manager_.TabletServerHasLiveLease(uuid);
+  }
+
+  std::optional<MonoTime> LiveLeaseDeadline(const std::string& uuid) override {
+    return object_lock_info_manager_.LiveLeaseDeadline(uuid);
   }
 
   std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) override {
@@ -393,11 +558,15 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::string LogPrefix() const override;
 
  private:
-  void LaunchRpcs();
-  void LaunchRpcsFrom(size_t from_idx);
+  // Returns false if there were no tservers to launch for.
+  Result<bool> LaunchRpcs();
+  bool DoLaunchRpcs();
   void Done(size_t i, const Status& s);
   void CheckForDone();
+  // Returns true if relaunched.
+  Result<bool> RelaunchIfNecessary();
   void DoneAll();
+  Status BeforeRpcs();
   Status AfterRpcs();
   void DoCallbackAndRespond(const Status& s);
   Status DoPersistRequestUnlocked(const ScopedLeaderSharedLock& l);
@@ -412,7 +581,13 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   TSDescriptorVector ts_descriptors_;
   std::atomic<size_t> ts_pending_;
   std::vector<Status> statuses_;
-  const Req req_;
+  // Only modified between fanouts, when no UpdateTServer task reads it.
+  Req req_;
+  // Acquire: lease state of the initial fanout's tservers. An entry is removed once a relaunch was
+  // done for its lease change, which bounds the number of relaunches by the initial size.
+  // Release: lease state of this fanout's tservers, parallel to ts_descriptors_.
+  std::vector<LiveLeaseSnapshotEntry> live_leases_;
+  size_t num_relaunches_ = 0;
   const TransactionId txn_id_;
   LeaderEpoch epoch_;
   std::optional<StdStatusCallback> callback_;
@@ -460,10 +635,24 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
 
+  // Returns true if this attempt doesn't send an RPC: once the tserver's lease is marked lost (the
+  // task completes without it), or while its lease deadline has passed but the lease isn't marked
+  // lost yet (the task retries). Either way the rest runs through RpcCallback.
+  bool SkipRequestIfLeaseExpired();
+
+  // The lease is checked only when an attempt starts or finishes, never when the cleanup poll marks
+  // it lost. Without a cap, the task can sleep through the loss for up to
+  // retrying_ts_rpc_max_delay_ms, so wake by the first cleanup poll after the lease deadline.
+  int max_delay_ms() override;
+
   StdStatusCallback callback_;
   Resp resp_;
 
   std::shared_ptr<UpdateAll<Req>> shared_all_tservers_;
+
+  // Set by SendRequest when it skips an attempt to wait for the lease to be marked lost, so that
+  // HandleResponse retries instead of completing the task.
+  bool waiting_for_lease_loss_ = false;
 };
 
 namespace {
@@ -533,6 +722,8 @@ WaitForLockersMultipleRequestPB TserverRequestFor(
   }
   if (master_request.has_background_transaction_id()) {
     req.set_background_transaction_id(master_request.background_transaction_id());
+    req.set_background_transaction_status_tablet(
+        master_request.background_transaction_status_tablet());
   }
   return req;
 }
@@ -540,7 +731,10 @@ WaitForLockersMultipleRequestPB TserverRequestFor(
 template <class Resp>
 void FillErrorIfRequired(const Status& status, Resp& resp) {
   if (!status.ok()) {
-    if (status.IsIllegalState() && status.message().ToBuffer() == kNotTheMasterLeader) {
+    // An epoch change means a new leadership term began while the request was in flight. Have the
+    // client retry against the current leader.
+    if (status.IsIllegalState() && (status.message().ToBuffer() == kNotTheMasterLeader ||
+                                    status.message().ToBuffer() == kEpochChanged)) {
       resp.mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     } else {
       resp.mutable_error()->set_code(MasterErrorPB::UNKNOWN_ERROR);
@@ -555,7 +749,8 @@ std::string ReleaseObjectLockRequestToString(const ReleaseObjectLockRequestPB& p
   ss << "ReleaseObjectLockRequestPB{";
   ss << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
       txn_id, pb.subtxn_id(), pb.session_host_uuid(), pb.lease_epoch(),
-      pb.apply_after_hybrid_time(), pb.propagated_hybrid_time(), pb.request_id());
+      pb.apply_after_hybrid_time(), pb.propagated_hybrid_time(), pb.request_id(),
+      pb.ignore_lease_epochs_before());
   ss << "}";
   return ss.str();
 }
@@ -607,6 +802,9 @@ ReleaseObjectLockRequestPB ReleaseRequestToPersist(const ReleaseObjectLockReques
   DCHECK(!req.has_db_catalog_inval_messages_data());
   req_to_persist.set_populate_db_catalog_info(req.populate_db_catalog_info());
   req_to_persist.mutable_object_locks()->CopyFrom(req.object_locks());
+  if (req.has_ignore_lease_epochs_before()) {
+    req_to_persist.set_ignore_lease_epochs_before(req.ignore_lease_epochs_before());
+  }
 
 #ifndef NDEBUG
   DCHECK(CompareReleaseRequestsIgnoringCatalogFields(req, req_to_persist))
@@ -662,7 +860,7 @@ void ObjectLockInfoManager::UnlockObject(
     rpc::RpcContext rpc) {
   auto request_id = impl_->next_request_id();
   auto tserver_req = TserverRequestFor(req, request_id);
-  // wait_for_completion is only used to manually release locks through yb-admin.
+  // wait_for_completion is set by yb-admin and by pg sessions finishing a txn with exclusive locks.
   auto s =
       (req.wait_for_completion()
            ? impl_->UnlockObjectSync(req, std::move(tserver_req), rpc.GetClientDeadline())
@@ -747,6 +945,15 @@ std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_loca
   return impl_->TEST_ts_local_lock_manager();
 }
 
+Result<SysObjectLockEntryPB> ObjectLockInfoManager::TEST_GetObjectLockInfoPB(
+    const std::string& tserver_uuid) {
+  return impl_->TEST_GetObjectLockInfoPB(tserver_uuid);
+}
+
+tserver::DdlLockEntriesPB ObjectLockInfoManager::TEST_ExportObjectLockInfoForMaster() {
+  return impl_->TEST_ExportObjectLockInfoForMaster();
+}
+
 std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLockInfo(
     const std::string& ts_uuid) {
   LockGuard lock(mutex_);
@@ -760,17 +967,19 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
   }
 }
 
-bool ObjectLockInfoManager::Impl::IsDdlVerificationInProgress(const TransactionId& txn) const {
-  return catalog_manager_.HasDdlVerificationState(txn);
+bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
+  return LiveLeaseDeadline(ts_uuid).has_value();
 }
 
-bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
+std::optional<MonoTime> ObjectLockInfoManager::Impl::LiveLeaseDeadline(
+    const std::string& ts_uuid) const {
   LockGuard lock(mutex_);
   auto it = object_lock_infos_map_.find(ts_uuid);
-  if (it == object_lock_infos_map_.end()) {
-    return false;
+  if (it == object_lock_infos_map_.end() ||
+      !it->second->LockForRead()->pb.lease_info().live_lease()) {
+    return std::nullopt;
   }
-  return it->second->LockForRead()->pb.lease_info().live_lease();
+  return it->second->ysql_lease_deadline();
 }
 
 void ObjectLockInfoManager::Impl::UpdateTxnHostSessionMap(
@@ -784,16 +993,32 @@ void ObjectLockInfoManager::Impl::RemoveTxnFromHostSessionMap(const TransactionI
   txn_host_info_map_.erase(txn_id);
 }
 
-TSDescriptorVector ObjectLockInfoManager::Impl::GetAllTSDescriptorsWithALiveLease() const {
-  auto descriptors = master_.ts_manager()->GetAllDescriptors();
+TSDescriptorVector ObjectLockInfoManager::Impl::GetAllTSDescriptorsWithALiveLease(
+    std::vector<LiveLeaseSnapshotEntry>* live_leases) const {
+  auto all_descriptors = master_.ts_manager()->GetAllDescriptors();
+  if (live_leases) {
+    live_leases->clear();
+  }
+  TSDescriptorVector descriptors;
   LockGuard lock(mutex_);
-  std::erase_if(descriptors, [this](const auto& desc) NO_THREAD_SAFETY_ANALYSIS {
+  for (auto& desc : all_descriptors) {
     auto it = object_lock_infos_map_.find(desc->id());
     if (it == object_lock_infos_map_.end()) {
-      return true;
+      continue;
     }
-    return !it->second->LockForRead()->pb.lease_info().live_lease();
-  });
+    auto l = it->second->LockForRead();
+    const auto& lease_info = l->pb.lease_info();
+    if (!lease_info.live_lease()) {
+      continue;
+    }
+    if (live_leases) {
+      live_leases->push_back(LiveLeaseSnapshotEntry{
+          .object_lock_info = it->second,
+          .lease_epoch = lease_info.lease_epoch(),
+      });
+    }
+    descriptors.push_back(std::move(desc));
+  }
   return descriptors;
 }
 
@@ -857,7 +1082,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   VLOG(3) << __PRETTY_FUNCTION__ << ReleaseObjectLockRequestToString(req);
   const auto& session_host_uuid = req.session_host_uuid();
   const auto lease_epoch = req.lease_epoch();
-  const bool erase_txn = !req.subtxn_id() && req.object_locks_size() == 0;
+  const bool erase_txn = IsReleaseAll(req);
   if (erase_txn) {
     RemoveTxnFromHostSessionMap(txn_id);
   }
@@ -946,6 +1171,7 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
       }
     }
   }
+  PopulateLeaseEpochFloorsUnlocked(*entries.mutable_lease_epoch_floors());
   VLOG(3) << "Exported " << yb::ToString(entries);
   return entries;
 }
@@ -1038,9 +1264,6 @@ void ObjectLockInfoManager::Impl::LockObject(
       *req_shared, deadline,
       [req_shared, epoch, requestor_latest_lease_epoch, deadline, txn_id,
        wait_state_ptr, callback = std::move(callback), this](Status s) mutable {
-        if (s.ok()) {
-          s = PersistRequest(epoch, *req_shared, txn_id);
-        }
         if (!s.ok()) {
           LOG(WARNING) << "Failed to acquire object locks locally: " << s;
           callback(s);
@@ -1056,24 +1279,35 @@ void ObjectLockInfoManager::Impl::LockObject(
       });
 }
 
-void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req) {
+Status ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(
+    ReleaseObjectLockRequestPB& req) {
   if (!req.populate_db_catalog_info()) {
-    return;
+    return Status::OK();
   }
+  // Until initdb creates pg_yb_catalog_version there are no catalog caches to invalidate.
+  if (!VERIFY_RESULT(catalog_manager_.IsYsqlCatalogVersionTableCreated())) {
+    return Status::OK();
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_fail_populate_db_catalog_info_on_release)) {
+    return STATUS(IllegalState, "TEST_fail_populate_db_catalog_info_on_release set");
+  }
+  // Captured before the read below, and handed to Install() at the end:
+  // it is what lets that call notice a leader stepdown that reset the cache in between, and
+  // decline rather than repopulating it with pre-stepdown data.
+  const auto cache_generation = catalog_manager_.pg_catalog_versions_cache().Generation();
+
   // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
   // logic on the tserver side expects a full report. Fix it and then optimize the below to only
   // send the catalog version of the db being operated on by the txn.
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint;
-  auto s =
-      catalog_manager_.GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, &fingerprint);
-  if (!s.ok()) {
-    // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
-    LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
-    return;
-  }
+  HybridTime read_ht;
+  RETURN_NOT_OK_PREPEND(
+      catalog_manager_.GetYsqlAllDBCatalogVersions(
+          false /* use_cache */, &versions, &fingerprint, &read_ht),
+      "Couldn't read catalog versions for an exclusive lock release");
   if (versions.empty()) {
-    return;
+    return Status::OK();
   }
   auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
   // The catalog version data may become out of date by the time these requests are
@@ -1086,19 +1320,45 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
   }
 
-  if (!FLAGS_ysql_yb_enable_invalidation_messages) {
-    return;
+  // update_messages distinguishes "leave the messages cache alone" (feature off) from "replace
+  // it", where a nullopt payload marks the messages unavailable so the next refresh re-reads
+  // them. Leaving a valid-but-older messages cache in place while advancing the versions would be
+  // worse than either: RefreshPgCatalogVersionCache decides whether to re-read
+  // pg_yb_invalidation_messages by comparing fingerprints, so it would conclude nothing changed
+  // and never catch the messages up.
+  bool update_messages = false;
+  std::optional<DbOidVersionToMessageListMap> messages;
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
+    update_messages = true;
+    auto inval_messages = catalog_manager_.GetYsqlCatalogInvalationMessages(false /* use_cache */);
+    if (inval_messages.ok()) {
+      messages = std::move(*inval_messages);
+    } else {
+      LOG(WARNING) << "Couldn't populate invalidation messages in lock release request "
+                   << inval_messages.status();
+    }
   }
 
-  // Populate all known invalidation messages
-  Result<DbOidVersionToMessageListMap> inval_messages =
-    catalog_manager_.GetYsqlCatalogInvalationMessages(false /*use_cache*/);
-  if (!inval_messages.ok()) {
-    LOG(WARNING) << "Couldn't populate invalidation messages in lock release request " << s;
-    return;
+  // Feed the same snapshot into the heartbeat catalog versions cache, before the request above is
+  // sent. That cache is refreshed by a periodic task, which can lag a broadcast by up to one
+  // period, and longer when its sys catalog read is slow. While it lags, the broadcast would push
+  // tservers past any version the heartbeat will ever report -- which the tserver's staleness
+  // check treats as divergence and crashes on. Installing here keeps the cache at least as new as
+  // anything broadcast, independently of that task's timing.
+  //
+  // `messages` is passed by value, i.e. copied, because the loop below moves it into the request.
+  // Installing after that loop instead would cache empty message lists for real versions, which a
+  // tserver merging them against genuine content reports as a message_list mismatch DFATAL.
+  catalog_manager_.pg_catalog_versions_cache().Install(
+      cache_generation, read_ht, std::move(versions), fingerprint, update_messages, messages);
+
+  if (!messages) {
+    // Feature disabled, or the read above failed. Either way there is nothing to send; the
+    // version bump alone makes tservers do a full catalog refresh.
+    return Status::OK();
   }
   auto* const mutable_messages_data = req.mutable_db_catalog_inval_messages_data();
-  for (auto& [db_oid_version, message_list] : *inval_messages) {
+  for (auto& [db_oid_version, message_list] : *messages) {
     auto* const db_inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
     db_inval_messages->set_db_oid(db_oid_version.first);
     db_inval_messages->set_current_version(db_oid_version.second);
@@ -1106,7 +1366,7 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
       db_inval_messages->set_message_list(std::move(*message_list));
     }
   }
-
+  return Status::OK();
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObjectSync(
@@ -1115,24 +1375,32 @@ Status ObjectLockInfoManager::Impl::UnlockObjectSync(
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
   // If the txn is scheduled for ddl verification, UnlockObject will be a no-op.
   // Let us first wait to make sure that it is not queued for ddl verification.
+  const bool release_all = IsReleaseAll(tserver_req);
   RETURN_NOT_OK(Wait(
-      [this, &txn_id] { return !IsDdlVerificationInProgress(txn_id); }, deadline,
-      "Waiting for DDL verification to finish"));
+      [this, &txn_id, release_all] {
+        return !catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, release_all);
+      },
+      deadline, "Waiting for DDL verification to finish"));
+  const auto request_id = tserver_req.request_id();
   auto promise = std::make_shared<std::promise<Status>>();
   WARN_NOT_OK(
       UnlockObject(
         std::move(tserver_req), [promise](const Status& s) { promise->set_value(s); }),
       "Failed to unlock object");
   auto future = promise->get_future();
-  return (
-      future.wait_until(deadline) == std::future_status::ready
-          ? future.get()
-          : STATUS(TimedOut, "Timed out waiting for unlock object to finish"));
+  if (future.wait_until(deadline) == std::future_status::ready) {
+    return future.get();
+  }
+  // Pre-persist failures run the callback inline, so a timeout means the request is persisted.
+  LOG(INFO) << Format(
+      "Release request $0 for txn $1 is persisted but not yet applied by the deadline, the master "
+      "will keep retrying it", request_id, txn_id);
+  return Status::OK();
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObject(
     ReleaseObjectLockRequestPB&& req, std::optional<StdStatusCallback>&& callback,
-    std::optional<LeaderEpoch> leader_epoch) {
+    std::optional<LeaderEpoch> leader_epoch, std::optional<CoarseTimePoint> deadline) {
   VLOG(1) << __PRETTY_FUNCTION__ << ReleaseObjectLockRequestToString(req);
 
   // Helper lambda to call callback and return status
@@ -1160,9 +1428,10 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
   auto txn_id = std::move(*txn_id_result);
 
   // Check if DDL verification is in progress
-  if (IsDdlVerificationInProgress(txn_id)) {
+  if (catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, IsReleaseAll(req))) {
     VLOG(1) << "Transaction " << txn_id << " is already scheduled for ddl verification. "
-            << "Ignoring release request, as it will be released by the ddl verifier.";
+            << "Ignoring release request, as the locks are released once its verification "
+            << "state goes away.";
     return callback_and_return(Status::OK());
   }
 
@@ -1182,6 +1451,13 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
     epoch = l.epoch();
   }
 
+  const auto request_id = req.request_id();
+  {
+    LockGuard lock(mutex_);
+    ++in_flight_releases_[request_id];
+  }
+  CancelableScopeExit finished_guard{[this, request_id] { ReleaseTaskFinished(request_id); }};
+
   // Add to in-progress requests before launching RPCs
   auto add_status = AddToInProgress(epoch, req);
   if (!add_status.ok()) {
@@ -1193,12 +1469,20 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
     return callback_and_return(Status::OK());
   }
 
-  // Populate DB catalog version cache right before creating UpdateAllTServers
-  PopulateDbCatalogVersionCache(req);
+  // The request stays persisted as in progress, so RetryFailedReleases relaunches it. No tserver
+  // was contacted, so this counts no failures toward a fence.
+  if (auto s = PopulateDbCatalogVersionCache(req); !s.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << "Deferring release request " << req.request_id()
+                                     << " for txn " << txn_id << ": " << s;
+    return callback_and_return(Status::OK());
+  }
 
+  // The task calls ReleaseTaskFinished once it completes.
+  finished_guard.Cancel();
+  auto task_deadline = deadline.value_or(CoarseMonoClock::Now() + kTserverRpcsTimeoutDefaultSecs);
   auto unlock_objects = std::make_shared<UpdateAllTServers<ReleaseObjectLockRequestPB>>(
       master_, catalog_manager_, *this, std::move(req), std::move(callback), std::move(epoch),
-      std::move(txn_id));
+      std::move(txn_id), task_deadline);
   return unlock_objects->Launch();
 }
 
@@ -1280,6 +1564,7 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
       req.local_request_send_time_ms() + master_ttl - buffer);
   // Sanity check that the tserver has already registered with the same instance_seqno.
   RETURN_NOT_OK(master_.ts_manager()->LookupTS(req.instance()));
+  RETURN_NOT_OK(CheckLeaseFence(req.instance().permanent_uuid(), req.instance().instance_seqno()));
   auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
   auto lock_variant = VERIFY_RESULT(
       object_lock_info->RefreshYsqlOperationLease(req, MonoDelta::FromMilliseconds(master_ttl)));
@@ -1332,20 +1617,31 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
     const auto& key = tserver_uuid;
     std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
     auto l = object_lock_info->LockForRead();
+    // Txns with a persisted release of all their locks are left to RetryFailedReleases.
+    std::unordered_set<TransactionId> txns_being_released;
+    for (const auto& [_, request] : l->pb.in_progress_release_request()) {
+      if (IsReleaseAll(request)) {
+        txns_being_released.insert(CHECK_RESULT(FullyDecodeTransactionId(request.txn_id())));
+      }
+    }
     for (const auto& [lease_epoch, txns_map] : l->pb.lease_epochs()) {
       if (lease_epoch > max_lease_epoch_to_release) {
         continue;
       }
       requests_per_txn.reserve(requests_per_txn.size() + txns_map.transactions().size());
       for (const auto& [txn_id_str, _] : txns_map.transactions()) {
+        auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+        if (txns_being_released.contains(txn_id)) {
+          continue;
+        }
         requests_per_txn.push_back(ReleaseObjectLockRequestPB());
         auto& request = requests_per_txn.back();
         request.set_session_host_uuid(tserver_uuid);
-        auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
         request.set_txn_id(txn_id.data(), txn_id.size());
-        request.set_lease_epoch(max_lease_epoch_to_release + 1);
+        request.set_lease_epoch(lease_epoch);
         request.set_request_id(next_request_id());
         request.set_populate_db_catalog_info(requests_per_txn.size() == 1);
+        request.set_ignore_lease_epochs_before(max_lease_epoch_to_release + 1);
       }
     }
   }
@@ -1370,10 +1666,76 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   for (const auto& [uuid, object_info] : object_lock_infos_map_) {
     result[uuid] = TServerLeaseInfo{
         .lease_info = object_info->LockForRead()->pb.lease_info(),
-        .lease_expiry = std::max(object_info->ysql_lease_deadline() - now, MonoDelta::kZero),
+        .time_to_lease_deadline = object_info->ysql_lease_deadline() - now,
     };
   }
   return result;
+}
+
+Result<TSDescriptorVector> ObjectLockInfoManager::Impl::PopulateLeaseEpochFloorsAndGetLiveTServers(
+    AcquireObjectLockRequestPB& req, std::vector<LiveLeaseSnapshotEntry>* live_leases) const {
+  std::unordered_map<std::string, TSDescriptorPtr> descriptors_by_uuid;
+  for (auto& desc : master_.ts_manager()->GetAllDescriptors()) {
+    descriptors_by_uuid.emplace(desc->id(), std::move(desc));
+  }
+  auto& floors = *req.mutable_lease_epoch_floors();
+  floors.Clear();
+  if (live_leases) {
+    live_leases->clear();
+  }
+  TSDescriptorVector live_descriptors;
+  bool requestor_lease_live = false;
+  std::vector<std::string> uuids_without_descriptor;
+  {
+    LockGuard lock(mutex_);
+    for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+      auto l = object_info->LockForRead();
+      const auto& lease_info = l->pb.lease_info();
+      AddLeaseEpochFloor(uuid, lease_info, floors);
+      if (!lease_info.live_lease()) {
+        continue;
+      }
+      if (uuid == req.session_host_uuid() && lease_info.lease_epoch() == req.lease_epoch()) {
+        requestor_lease_live = true;
+      }
+      auto it = descriptors_by_uuid.find(uuid);
+      if (it == descriptors_by_uuid.end()) {
+        uuids_without_descriptor.push_back(uuid);
+        continue;
+      }
+      live_descriptors.push_back(it->second);
+      if (live_leases) {
+        live_leases->push_back(LiveLeaseSnapshotEntry{
+            .object_lock_info = object_info,
+            .lease_epoch = lease_info.lease_epoch(),
+        });
+      }
+    }
+  }
+  for (const auto& uuid : uuids_without_descriptor) {
+    // A tserver that registered after the descriptors were read is bootstrapped with the persisted
+    // lock, so it is safe to skip. Otherwise the descriptor is gone, which needs operator
+    // intervention since leases are only granted to registered tservers: disabling the persisted
+    // ts registry, or removing the tserver with a CLI tool. Skipping such a tserver can let its
+    // DMLs run concurrently with a conflicting DDL.
+    if (!master_.ts_manager()->LookupTSByUUID(uuid).ok()) {
+      LOG(DFATAL) << "TServer " << uuid << " has a live YSQL lease but no tserver descriptor, "
+                  << "skipping it in the object lock fanout";
+    }
+  }
+  if (!requestor_lease_live) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Requestor $0 no longer has a live lease with lease epoch $1",
+        req.session_host_uuid(), req.lease_epoch());
+  }
+  return live_descriptors;
+}
+
+void ObjectLockInfoManager::Impl::PopulateLeaseEpochFloorsUnlocked(
+    google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) const {
+  for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+    AddLeaseEpochFloor(uuid, object_info->LockForRead()->pb.lease_info(), floors);
+  }
 }
 
 void ObjectLockInfoManager::Impl::BootstrapLocksPostLoad() {
@@ -1429,15 +1791,27 @@ void ObjectLockInfoManager::Impl::RelaunchInProgressRequests(
 
 void ObjectLockInfoManager::Impl::Clear() {
   catalog_manager_.AssertLeaderLockAcquiredForWriting();
-  LockGuard lock(mutex_);
-  object_lock_infos_map_.clear();
-  if (local_lock_manager_) {
-    local_lock_manager_->Shutdown();
+  tserver::TSLocalLockManagerPtr old_local_lock_manager;
+  {
+    LockGuard lock(mutex_);
+    object_lock_infos_map_.clear();
+    unacked_release_tservers_.clear();
+    release_failures_.clear();
+    fenced_tservers_.clear();
+    old_local_lock_manager = std::exchange(
+        local_lock_manager_,
+        std::make_shared<tserver::TSLocalLockManager>(
+            clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+            master_.metric_entity()));
+    // Otherwise Start() has not run yet and will start it.
+    if (waiting_txn_registry_) {
+      local_lock_manager_->Start(waiting_txn_registry_.get());
+    }
   }
-  local_lock_manager_.reset(new tserver::TSLocalLockManager(
-      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
-      master_.metric_entity()));
-  local_lock_manager_->Start(waiting_txn_registry_.get());
+  // Shutdown waits for in-progress requests to drain, so don't hold mutex_ across it.
+  if (old_local_lock_manager) {
+    old_local_lock_manager->Shutdown();
+  }
 }
 
 std::optional<uint64_t> ObjectLockInfoManager::Impl::GetLeaseEpoch(const std::string& ts_uuid) {
@@ -1449,8 +1823,183 @@ std::optional<uint64_t> ObjectLockInfoManager::Impl::GetLeaseEpoch(const std::st
   return it->second->LockForRead()->pb.lease_info().lease_epoch();
 }
 
-void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs() {
-  auto current_time = MonoTime::Now();
+void ObjectLockInfoManager::Impl::RecordReleaseOutcome(
+    const TabletServerId& ts_uuid, uint64_t request_id, const Status& status) {
+  LockGuard lock(mutex_);
+  if (status.ok()) {
+    auto it = release_failures_.find(ts_uuid);
+    if (it != release_failures_.end()) {
+      it->second.by_request_id.erase(request_id);
+    }
+    return;
+  }
+  auto info_it = object_lock_infos_map_.find(ts_uuid);
+  if (info_it == object_lock_infos_map_.end()) {
+    return;
+  }
+  const auto lease_info = info_it->second->LockForRead()->pb.lease_info();
+  const auto lease_epoch = lease_info.lease_epoch();
+  auto& failures = release_failures_[ts_uuid];
+  if (failures.lease_epoch != lease_epoch) {
+    failures = ReleaseFailures{.lease_epoch = lease_epoch, .by_request_id = {}};
+  }
+  const auto now = MonoTime::Now();
+  auto& failing =
+      failures.by_request_id
+          .try_emplace(request_id, FailingRelease{.first_failure = now, .num_failures = 0})
+          .first->second;
+  ++failing.num_failures;
+
+  const auto fence_after = FLAGS_object_lock_release_fence_after_ms;
+  if (fence_after == 0 || fenced_tservers_.contains(ts_uuid) ||
+      failing.num_failures < FLAGS_object_lock_release_fence_min_failures ||
+      now - failing.first_failure < MonoDelta::FromMilliseconds(fence_after)) {
+    return;
+  }
+  fenced_tservers_.emplace(
+      ts_uuid, LeaseFence{
+                   .lease_epoch = lease_epoch,
+                   .instance_seqno = lease_info.instance_seqno(),
+                   .hold_off_until = std::nullopt});
+  LOG(WARNING) << Format(
+      "Fencing ysql lease epoch $0 of tserver $1: object lock release request $2 has failed $3 "
+      "times over $4 while the tserver kept its lease. Last error: $5",
+      lease_epoch, ts_uuid, request_id, failing.num_failures, now - failing.first_failure,
+      status);
+}
+
+void ObjectLockInfoManager::Impl::ReleaseTaskFinished(uint64_t request_id) {
+  LockGuard lock(mutex_);
+  auto it = in_flight_releases_.find(request_id);
+  if (it == in_flight_releases_.end()) {
+    LOG(DFATAL) << "Release request " << request_id << " finished but was not in flight";
+    return;
+  }
+  if (--it->second == 0) {
+    in_flight_releases_.erase(it);
+  }
+}
+
+void ObjectLockInfoManager::Impl::SetUnackedReleaseTServers(
+    uint64_t request_id, std::optional<UnackedTServers> tservers) {
+  LockGuard lock(mutex_);
+  if (tservers) {
+    unacked_release_tservers_[request_id] = std::move(*tservers);
+  } else {
+    unacked_release_tservers_.erase(request_id);
+  }
+}
+
+std::optional<UnackedTServers> ObjectLockInfoManager::Impl::GetUnackedReleaseTServers(
+    uint64_t request_id) {
+  LockGuard lock(mutex_);
+  auto it = unacked_release_tservers_.find(request_id);
+  if (it == unacked_release_tservers_.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+Status ObjectLockInfoManager::Impl::CheckLeaseFence(
+    const TabletServerId& ts_uuid, int64_t instance_seqno) {
+  LockGuard lock(mutex_);
+  auto it = fenced_tservers_.find(ts_uuid);
+  if (it == fenced_tservers_.end()) {
+    return Status::OK();
+  }
+  const auto& fence = it->second;
+  if (instance_seqno > fence.instance_seqno) {
+    LOG(INFO) << Format(
+        "Lifting the lease fence of tserver $0: it restarted, instance seqno $1 -> $2", ts_uuid,
+        fence.instance_seqno, instance_seqno);
+    fenced_tservers_.erase(it);
+    release_failures_.erase(ts_uuid);
+    return Status::OK();
+  }
+  if (!fence.hold_off_until) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Not extending ysql lease epoch $0 of tserver $1, it has been fenced for failing object "
+        "lock releases", fence.lease_epoch, ts_uuid);
+  }
+  if (MonoTime::Now() < *fence.hold_off_until) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Not granting a ysql lease to tserver $0 until $1, its lease epoch $2 was fenced for "
+        "failing object lock releases",
+        ts_uuid, *fence.hold_off_until - MonoTime::Now(), fence.lease_epoch);
+  }
+  LOG(INFO) << "Lease hold-off ended for tserver " << ts_uuid;
+  fenced_tservers_.erase(it);
+  release_failures_.erase(ts_uuid);
+  return Status::OK();
+}
+
+void ObjectLockInfoManager::Impl::StartLeaseHoldOffs() {
+  LockGuard lock(mutex_);
+  for (auto& [ts_uuid, fence] : fenced_tservers_) {
+    if (fence.hold_off_until) {
+      continue;
+    }
+    auto it = object_lock_infos_map_.find(ts_uuid);
+    if (it != object_lock_infos_map_.end() &&
+        it->second->LockForRead()->pb.lease_info().live_lease()) {
+      continue;
+    }
+    fence.hold_off_until =
+        MonoTime::Now() + MonoDelta::FromMilliseconds(
+                              FLAGS_master_ysql_operation_lease_ttl_ms *
+                              FLAGS_object_lock_release_fence_hold_off_lease_periods);
+    LOG(INFO) << Format(
+        "Fenced ysql lease of tserver $0 has expired, refusing it a new lease until $1", ts_uuid,
+        *fence.hold_off_until);
+  }
+}
+
+void ObjectLockInfoManager::Impl::RetryFailedReleases(const LeaderEpoch& leader_epoch) {
+  if (PREDICT_FALSE(FLAGS_TEST_skip_launch_release_request)) {
+    return;
+  }
+  std::vector<ReleaseObjectLockRequestPB> requests;
+  {
+    LockGuard lock(mutex_);
+    for (const auto& [_, object_info] : object_lock_infos_map_) {
+      auto l = object_info->LockForRead();
+      for (const auto& [request_id, request] : l->pb.in_progress_release_request()) {
+        if (!in_flight_releases_.contains(request_id)) {
+          requests.push_back(request);
+        }
+      }
+    }
+  }
+  for (auto& request : requests) {
+    VLOG(1) << "Retrying release request " << request.request_id();
+    // Per request, so that a backlog of serial relaunches cannot expire it before it is sent.
+    const auto deadline =
+        CoarseMonoClock::Now() + FLAGS_object_lock_release_retry_timeout_ms * 1ms;
+    WARN_NOT_OK(
+        UnlockObject(std::move(request), std::nullopt /* callback */, leader_epoch, deadline),
+        "Failed to retry release request");
+  }
+}
+
+void ObjectLockInfoManager::Impl::SchedulePoll() {
+  if (poll_running_.exchange(true)) {
+    return;
+  }
+  auto s = catalog_manager_.SubmitBackgroundTask([this] {
+    Poll();
+    poll_running_.store(false);
+  });
+  if (!s.ok()) {
+    poll_running_.store(false);
+    LOG(WARNING) << "Failed to schedule the object lock cleanup poll: " << s << ". Expired ysql "
+                 << "leases are not cleaned up and failed releases are not retried, so conflicting "
+                 << "DDLs may stay blocked. Fail over the master leader if this persists.";
+  }
+}
+
+void ObjectLockInfoManager::Impl::Poll() {
   LeaderEpoch leader_epoch;
   {
     SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
@@ -1459,6 +2008,16 @@ void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs() {
     }
     leader_epoch = l.epoch();
   }
+  CleanupExpiredLeaseEpochs(leader_epoch);
+  StartLeaseHoldOffs();
+  RetryFailedReleases(leader_epoch);
+}
+
+void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs(const LeaderEpoch& leader_epoch) {
+  if (PREDICT_FALSE(FLAGS_TEST_skip_marking_ysql_leases_lost)) {
+    return;
+  }
+  auto current_time = MonoTime::Now();
   std::vector<std::shared_ptr<ObjectLockInfo>> expiring_leases;
   std::vector<std::shared_ptr<ObjectLockInfo>>
       infos_with_expired_lease_epochs;
@@ -1567,7 +2126,8 @@ UpdateAllTServers<Req>::UpdateAllTServers(
 template <class Req>
 UpdateAllTServers<Req>::UpdateAllTServers(
     Master& master, CatalogManager& catalog_manager, ObjectLockInfoManager::Impl& olm, Req&& req,
-    std::optional<StdStatusCallback>&& callback, LeaderEpoch leader_epoch, TransactionId txn_id)
+    std::optional<StdStatusCallback>&& callback, LeaderEpoch leader_epoch, TransactionId txn_id,
+    CoarseTimePoint deadline)
     : master_(master),
       catalog_manager_(catalog_manager),
       object_lock_info_manager_(olm),
@@ -1575,7 +2135,7 @@ UpdateAllTServers<Req>::UpdateAllTServers(
       txn_id_(std::move(txn_id)),
       epoch_(std::move(leader_epoch)),
       callback_(std::move(callback)),
-      deadline_(CoarseMonoClock::Now() + kTserverRpcsTimeoutDefaultSecs),
+      deadline_(deadline),
       trace_(Trace::CurrentTrace()),
       wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   VLOG(3) << __PRETTY_FUNCTION__;
@@ -1593,10 +2153,14 @@ void UpdateAllTServers<Req>::Done(size_t i, const Status& s) {
     // If the tablet server does not have a live lease then ignore it.
     statuses_[i] = Status::OK();
   }
+  if constexpr (kIsReleaseRequest<Req>) {
+    object_lock_info_manager_.RecordReleaseOutcome(
+        ts_descriptors_[i]->id(), req_.request_id(), statuses_[i]);
+  }
   TRACE_TO(
       trace(), "Done $0 ($1) : $2", i, ts_descriptors_[i]->permanent_uuid(),
       statuses_[i].ToString());
-  // TODO: There is a potential here for early return if s is not OK.
+  // No early return on an error: release retries and fencing use every tserver's own outcome.
   if (--ts_pending_ == 0) {
     CheckForDone();
   }
@@ -1645,41 +2209,83 @@ std::string UpdateAllTServers<Req>::LogPrefix() const {
 }
 
 template <class Req>
-void UpdateAllTServers<Req>::LaunchRpcs() {
-  // todo(zdrudi): special case for 0 tservers with a live lease. This doesn't work.
-  ts_descriptors_ = object_lock_info_manager_.GetAllTSDescriptorsWithALiveLease();
+Result<bool> UpdateAllTServers<Req>::LaunchRpcs() {
+  ts_descriptors_ = object_lock_info_manager_.GetAllTSDescriptorsWithALiveLease(
+      kIsReleaseRequest<Req> ? &live_leases_ : nullptr);
+  if constexpr (kIsReleaseRequest<Req>) {
+    // A retry goes only to the tservers whose last attempt failed, and only while they keep the
+    // lease that attempt was sent under. A newer lease was bootstrapped after this release was
+    // persisted, which excludes its locks.
+    if (auto unacked = object_lock_info_manager_.GetUnackedReleaseTServers(req_.request_id())) {
+      TSDescriptorVector descriptors;
+      std::vector<LiveLeaseSnapshotEntry> live_leases;
+      for (size_t i = 0; i < ts_descriptors_.size(); ++i) {
+        auto it = unacked->find(ts_descriptors_[i]->id());
+        if (it != unacked->end() && it->second == live_leases_[i].lease_epoch) {
+          descriptors.push_back(std::move(ts_descriptors_[i]));
+          live_leases.push_back(std::move(live_leases_[i]));
+        }
+      }
+      ts_descriptors_ = std::move(descriptors);
+      live_leases_ = std::move(live_leases);
+    }
+  }
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
+  return DoLaunchRpcs();
+}
 
-  LaunchRpcsFrom(0);
+template <>
+Result<bool> UpdateAllTServers<AcquireObjectLockRequestPB>::LaunchRpcs() {
+  ts_descriptors_ =
+      VERIFY_RESULT(object_lock_info_manager_.PopulateLeaseEpochFloorsAndGetLiveTServers(
+          req_, num_relaunches_ == 0 ? &live_leases_ : nullptr));
+  statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
+  return DoLaunchRpcs();
 }
 
 template <class Req>
 Status UpdateAllTServers<Req>::Launch() {
   TRACE_FUNC();
-  LaunchRpcs();
+  if (auto s = BeforeRpcs(); !s.ok()) {
+    DoCallbackAndRespond(s);
+    return Status::OK();
+  }
+  auto launched = LaunchRpcs();
+  if (!launched.ok()) {
+    DoCallbackAndRespond(launched.status());
+  } else if (!*launched) {
+    CheckForDone();
+  }
   return Status::OK();
 }
 
 template <class Req>
-void UpdateAllTServers<Req>::LaunchRpcsFrom(size_t start_idx) {
-  TRACE("Launching for $0 TServers from $1", ts_descriptors_.size(), start_idx);
-  ts_pending_ = ts_descriptors_.size() - start_idx;
-  VLOG(1) << __func__ << " launching for " << ts_pending_ << " tservers.";
-  for (size_t i = start_idx; i < ts_descriptors_.size(); ++i) {
+bool UpdateAllTServers<Req>::DoLaunchRpcs() {
+  // Once the last task is scheduled, its Done may run CheckForDone, which can relaunch and
+  // reassign ts_descriptors_. So ts_descriptors_ must not be read after scheduling the last task.
+  const auto num_tservers = ts_descriptors_.size();
+  TRACE("Launching for $0 TServers", num_tservers);
+  ts_pending_ = num_tservers;
+  if (!ts_pending_) {
+    return false;
+  }
+  VLOG(1) << __func__ << " launching for " << num_tservers << " tservers.";
+  for (size_t i = 0; i < num_tservers; ++i) {
     auto ts_uuid = ts_descriptors_[i]->permanent_uuid();
     VLOG(1) << "Launching for " << ts_uuid;
 
     auto task = TServerTaskFor(
         ts_uuid,
         std::bind(&UpdateAllTServers<Req>::Done, this->shared_from_this(), i, _1));
-    auto s =  catalog_manager_.ScheduleTask(task);
+    auto s = catalog_manager_.ScheduleTask(task);
     if (!s.ok()) {
-      Done(i,
-           s.CloneAndPrepend(Format(
-               "Failed to schedule request to UpdateTServer to $0 for $1", ts_uuid,
-               request().DebugString())));
+      // Calls Done through the task's finisher, unless ScheduleTask already aborted the task (and
+      // so called Done). In that case Done may have relaunched, so req_ must not be read here.
+      task->AbortAndReturnPrevState(s.CloneAndPrepend(Format(
+          "Failed to schedule $0 request to tserver $1", ObjectLockOpName<Req>(), ts_uuid)));
     }
   }
+  return true;
 }
 
 template <class Req>
@@ -1690,10 +2296,25 @@ void UpdateAllTServers<Req>::DoCallbackAndRespond(const Status& s) {
       s, yb::Format(
              "$0Failed.$1", LogPrefix(),
              kIsReleaseRequest<Req>
-                 ? " Release request was persisted, and will be retried upon master failover."
+                 ? " Release request was persisted, and will be retried by the cleanup poller."
                  : ""));
+  if constexpr (kIsReleaseRequest<Req>) {
+    // An empty set on failure means all tservers acked and the retry only redoes AfterRpcs.
+    std::optional<UnackedTServers> unacked;
+    if (!s.ok()) {
+      unacked.emplace();
+      for (size_t i = 0; i < statuses_.size(); ++i) {
+        if (!statuses_[i].ok()) {
+          unacked->emplace(ts_descriptors_[i]->id(), live_leases_[i].lease_epoch);
+        }
+      }
+    }
+    object_lock_info_manager_.SetUnackedReleaseTServers(req_.request_id(), std::move(unacked));
+    object_lock_info_manager_.ReleaseTaskFinished(req_.request_id());
+  }
   if (callback_) {
-    (*callback_)(s);
+    // The release is persisted and the master retries it, so the caller must not.
+    (*callback_)(kIsReleaseRequest<Req> ? Status::OK() : s);
   }
 }
 
@@ -1707,12 +2328,68 @@ void UpdateAllTServers<Req>::CheckForDone() {
                           ts_descriptors_[i]->permanent_uuid(),
                           ObjectLockOpName<Req>())
                    << status;
-      DoCallbackAndRespond(status);
+      // A master that lost leadership has a stale view of the tservers' leases, and its fanout can
+      // fail because of that alone. Report it as not the leader so the client retries on the new
+      // leader.
+      Status leader_status;
+      {
+        SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+        leader_status = CheckLeaderLockStatus(l, epoch_);
+      }
+      DoCallbackAndRespond(
+          leader_status.ok() ? status : STATUS(IllegalState, kNotTheMasterLeader));
       return;
     }
   }
-
+  auto relaunched = RelaunchIfNecessary();
+  if (!relaunched.ok()) {
+    DoCallbackAndRespond(relaunched.status());
+    return;
+  }
+  if (*relaunched) {
+    return;
+  }
   DoneAll();
+}
+
+template <class Req>
+Result<bool> UpdateAllTServers<Req>::RelaunchIfNecessary() {
+  return false;
+}
+
+// A tserver dropped from the fanout for losing its lease never acked, so recipients still hold the
+// floor computed for its old lease and would admit its stale ops. Relaunch to all live tservers
+// with fresh floors, and stop tracking the tservers whose lease change was just covered.
+// Only tservers of the initial fanout are tracked: a tserver that got its lease later was
+// bootstrapped with this persisted lock, so its conflicting ops block on the lock locally.
+template <>
+Result<bool> UpdateAllTServers<AcquireObjectLockRequestPB>::RelaunchIfNecessary() {
+  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_acquire_before_relaunch_check);
+  std::vector<std::string> changed_uuids;
+  {
+    // A master that lost leadership no longer gets lease updates, so it could miss a lease change
+    // and grant the lock without propagating the new floor.
+    SCOPED_LEADER_SHARED_LOCK(leader_lock, &catalog_manager_);
+    RETURN_NOT_OK(CheckLeaderLockStatus(leader_lock, epoch_));
+    std::erase_if(live_leases_, [&changed_uuids](const LiveLeaseSnapshotEntry& entry) {
+      auto l = entry.object_lock_info->LockForRead();
+      const auto& lease_info = l->pb.lease_info();
+      if (lease_info.live_lease() && lease_info.lease_epoch() == entry.lease_epoch) {
+        return false;
+      }
+      changed_uuids.push_back(entry.object_lock_info->id());
+      return true;
+    });
+  }
+  if (changed_uuids.empty()) {
+    return false;
+  }
+  ++num_relaunches_;
+  LOG_WITH_PREFIX(INFO) << "YSQL lease of tservers " << AsString(changed_uuids)
+                        << " changed during the fanout, relaunch " << num_relaunches_
+                        << " with fresh lease epoch floors";
+  TRACE_TO(trace(), "Relaunching");
+  return LaunchRpcs();
 }
 
 template <class Req>
@@ -1733,6 +2410,20 @@ Status UpdateAllTServers<Req>::DoPersistRequest() {
   return DoPersistRequestUnlocked(l);
 }
 
+template <class Req>
+Status UpdateAllTServers<Req>::BeforeRpcs() {
+  return Status::OK();
+}
+
+// Under the leader lock, so that an acquire from an earlier epoch can't write into the in-memory
+// state that the catalog load clears and rebuilds.
+template <>
+Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
+  TRACE_FUNC();
+  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_acquire_before_persist);
+  return DoPersistRequest();
+}
+
 template <>
 Status UpdateAllTServers<AcquireObjectLockRequestPB>::AfterRpcs() {
   TRACE_FUNC();
@@ -1745,15 +2436,37 @@ Status UpdateAllTServers<ReleaseObjectLockRequestPB>::AfterRpcs() {
   VLOG_WITH_FUNC(2);
   TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_release_before_persist);
   SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+  // Persist before releasing locally: otherwise a conflicting acquire could be persisted while this
+  // lock still is, and a new leader's lock manager bootstrap fails on the conflict.
   RETURN_NOT_OK(DoPersistRequestUnlocked(l));
-  // Update Local State.
   auto local_lock_manager = object_lock_info_manager_.ts_local_lock_manager();
-  auto res = local_lock_manager->ReleaseObjectLocks(req_, GetClientDeadline());
-  if (!res.ok()) {
-    LOG(WARNING) << "Failed to release object lock locally." << res.status();
-    return res.status().CloneAndReplaceCode(Status::kRemoteError);
+  Status status;
+  if (PREDICT_FALSE(FLAGS_TEST_fail_master_local_release_once)) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_master_local_release_once) = false;
+    status = STATUS(TimedOut, "TEST_fail_master_local_release_once");
+  } else {
+    status = ResultToStatus(local_lock_manager->ReleaseObjectLocks(req_, GetClientDeadline()));
   }
-  return Status::OK();
+  if (status.ok()) {
+    return Status::OK();
+  }
+  // Mark the request in progress again so that RetryFailedReleases redoes AfterRpcs. The lock is
+  // no longer persisted, so a new leader would also rebuild its lock manager without it.
+  LOG(WARNING) << LogPrefix() << "Lock was released at all tservers and persisted as released, but "
+               << "releasing it in the master leader's local lock manager failed, will retry: "
+               << status;
+  auto req_to_retry = req_;
+  req_to_retry.clear_db_catalog_version_data();
+  req_to_retry.clear_db_catalog_inval_messages_data();
+  auto add_status = object_lock_info_manager_.AddToInProgress(epoch_, req_to_retry);
+  if (!add_status.ok()) {
+    LOG(ERROR) << LogPrefix() << "Failed to mark the release in progress again for a retry: "
+               << add_status << ". Nothing retries the local release, so the stale lock keeps "
+               << "blocking conflicting DDLs. Fail over the master leader: the new leader "
+               << "rebuilds its local lock manager from the persisted state, which no longer has "
+               << "this lock.";
+  }
+  return status.CloneAndReplaceCode(Status::kRemoteError);
 }
 
 template <class Req>
@@ -1786,6 +2499,9 @@ template <>
 bool UpdateTServer<AcquireObjectLockRequestPB, AcquireObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  if (SkipRequestIfLeaseExpired()) {
+    return true;
+  }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->AcquireObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
@@ -1795,6 +2511,9 @@ template <>
 bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  if (SkipRequestIfLeaseExpired()) {
+    return true;
+  }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->ReleaseObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
@@ -1804,15 +2523,64 @@ template <>
 bool UpdateTServer<WaitForLockersMultipleRequestPB, WaitForLockersMultipleResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  if (SkipRequestIfLeaseExpired()) {
+    return true;
+  }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->WaitForLockersMultipleAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
 }
 
 template <class Req, class Resp>
+bool UpdateTServer<Req, Resp>::SkipRequestIfLeaseExpired() {
+  auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_);
+  if (!lease_deadline) {
+    LOG_WITH_PREFIX(WARNING) << "TServer no longer has a live lease. Ignoring this tserver for "
+                             << "object lock " << ObjectLockOpName<Req>() << " request";
+  } else if (MonoTime::Now() > *lease_deadline) {
+    // The tserver is likely gone, and an RPC to a host that drops packets would block until its
+    // timeout. But it can't be dropped yet: until the lease is marked lost, a late refresh still
+    // extends the same lease epoch, and the tserver would keep serving without this lock.
+    LOG_WITH_PREFIX(INFO) << "Lease deadline passed but the lease isn't marked lost yet. Not "
+                          << "sending object lock " << ObjectLockOpName<Req>() << " request";
+    waiting_for_lease_loss_ = true;
+  } else {
+    return false;
+  }
+  // SendRequest runs on a reactor thread for retries. Completing the task can run AfterRpcs, which
+  // writes to the sys catalog, and failing it checks the leader status in CheckForDone. So finish
+  // as if an RPC returned: RpcCallback moves the rest to the callback pool, where HandleResponse
+  // retries or, seeing no error, completes the task.
+  resp_.Clear();
+  RpcCallback();
+  return true;
+}
+
+template <class Req, class Resp>
+int UpdateTServer<Req, Resp>::max_delay_ms() {
+  // Keeps a delay past the lease deadline from failing the task as timed out, and from a burst of
+  // retries while the cleanup poll catches up.
+  constexpr int64_t kMinDelayToLeaseLossMs = 1000;
+  // Without a live lease, the next SendRequest drops the tserver, so retry soon. The lease can be
+  // lost after HandleResponse checked it, or the attempt can fail before reaching SendRequest.
+  int64_t delay_ms = kMinDelayToLeaseLossMs;
+  if (auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_)) {
+    const auto lease_lost_by =
+        *lease_deadline + MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms);
+    delay_ms = std::max(
+        lease_lost_by.GetDeltaSince(MonoTime::Now()).ToMilliseconds(), kMinDelayToLeaseLossMs);
+  }
+  return narrow_cast<int>(std::min<int64_t>(RetrySpecificTSRpcTask::max_delay_ms(), delay_ms));
+}
+
+template <class Req, class Resp>
 void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " response is " << yb::ToString(resp_)
                       << " for tserver: " << permanent_uuid_;
+  if (std::exchange(waiting_for_lease_loss_, false)) {
+    // No RPC was sent. Leave the task running so that DoRpcCallback schedules the next attempt.
+    return;
+  }
   if (!resp_.has_error()) {
     TransitionToCompleteState();
     return;

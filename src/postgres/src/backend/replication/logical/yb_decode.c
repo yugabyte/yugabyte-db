@@ -28,20 +28,38 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
+#include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
+static void YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
+									   XLogReaderState *record);
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static int	YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
+static int	YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
+											 const YbcPgDatumMessage *col);
+static void YbQlValueToDatum(const YbcPgDatumMessage *col, bool after_op,
+							 TupleDesc tupdesc, int attr_idx, Datum *datum,
+							 bool *is_null);
 static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
+static bool YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
+									  uint64_t *read_time,
+									  uint64_t *in_txn_limit,
+									  const char **txn_id);
+static void YbStoreDmlHistoricalReadContext(ReorderBufferChange *change,
+											const YbVirtualWalRecord *yb_record);
 
 static void YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 									  TupleDesc tupdesc);
@@ -78,7 +96,6 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	/* Now delegate to specific handlers depending on the action type. */
 	switch (action)
 	{
-			/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			elog(DEBUG4,
 				 "Received DDL record for table: %d, xid: %d, commit_time_ht: "
@@ -86,6 +103,10 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				 record->yb_virtual_wal_record->table_oid,
 				 record->yb_virtual_wal_record->xid,
 				 record->yb_virtual_wal_record->commit_time_ht);
+			if (yb_enable_replication_slot_transactional_ddl)
+			{
+				YBDecodeDDL(ctx, record);
+			}
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
@@ -100,6 +121,8 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			 */
 			if (am_walsender)
 				StartTransactionCommand();
+
+			ctx->yb_inval_catalog_on_decode_commit = false;
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
@@ -120,9 +143,16 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				break;
 			}
 
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
+			{
+				YBDecodePublicationRefresh(ctx, record);
+				break;
+			}
+
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			{
 				YBDecodeCommit(ctx, record);
+				YBCDropAbortedSubtxnSets(record->yb_virtual_wal_record->commit_time_ht);
 
 				/*
 				 * Abort the transaction that we started upon receiving the
@@ -147,6 +177,61 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 
 	YbWalSndTotalTimeInYBDecodeMicros +=
 		YbCalculateTimeDifferenceInMicros(start_time);
+}
+
+/*
+ * Queue a transactional DDL marker so cache invalidation and schema change
+ * are replayed in order with the transaction's DML changes.
+ */
+static void
+YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record)
+{
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+
+	Assert(yb_enable_replication_slot_transactional_ddl);
+	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
+	Assert(yb_record->record_time_ht != 0);
+	Assert(yb_record->has_docdb_txn_id);
+
+	change->action = YB_REORDER_BUFFER_CHANGE_DDL;
+	change->origin_id = yb_record->xrepl_origin_id;
+	change->data.yb_ddl.table_oid = yb_record->table_oid;
+
+	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
+							ctx->reader->ReadRecPtr);
+	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
+							 ctx->reader->ReadRecPtr, change,
+							 false /* toast_insert */ );
+
+	/* Remember to invalidate caches before reorder-buffer replay. */
+	ctx->yb_inval_catalog_on_decode_commit = true;
+}
+
+/*
+ * Queue a publication invalidation marker, so that replay drops the output
+ * plugin's publication info at this point of the transaction and rebuilds it
+ * from the catalog as of the following changes.
+ */
+static void
+YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
+						   XLogReaderState *record)
+{
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+
+	Assert(yb_enable_replication_slot_transactional_ddl);
+
+	change->action = YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION;
+
+	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
+							ctx->reader->ReadRecPtr);
+	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
+							 ctx->reader->ReadRecPtr, change,
+							 false /* toast_insert */ );
+
+	/* Remember to invalidate caches before reorder-buffer replay. */
+	ctx->yb_inval_catalog_on_decode_commit = true;
 }
 
 /*
@@ -189,8 +274,11 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.newtuple = tuple_buf;
 	change->data.tp.oldtuple = NULL;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
+	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
+
+	Assert(CurrentMemoryContext != YBCGetDecodeRecordContext());
 
 	/*
 	 * YB does not support on-disk TOASTing, so toast_insert will always be
@@ -218,6 +306,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	bool	   *before_op_is_omitted = NULL;
 	bool	   *after_op_is_omitted = NULL;
 	bool		should_handle_omitted_case;
+	bool		needs_before_op;
+	MemoryContext old_context;
 
 	change->action = REORDER_BUFFER_CHANGE_UPDATE;
 	change->lsn = yb_record->lsn;
@@ -255,30 +345,19 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	Datum		before_op_datums[nattrs];
 	bool		before_op_is_nulls[nattrs];
 
+	needs_before_op = relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL;
+
 	memset(after_op_is_nulls, 1, sizeof(after_op_is_nulls));
 	memset(before_op_is_nulls, 1, sizeof(before_op_is_nulls));
+	old_context = MemoryContextSwitchTo(YBCGetDecodeRecordContext());
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		YbcPgDatumMessage *col = &yb_record->cols[col_idx];
+		int			attr_idx = YBFindAttributeIndexInDescriptor(relation, tupdesc,
+																col);
 
-		/*
-		 * Column name is null when both new and old values are omitted. If this
-		 * were to happen here, this would indicate that an empty column value
-		 * was sent from the CDC service which should have been caught in
-		 * ybc_pggate.
-		 */
-		Assert(col->column_name);
-
-		/*
-		 * 'ybrowid' is an internal primary key column added by DocDB for tables
-		 * without a primary key. Skip this column.
-		 */
-		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
-			strcmp(col->column_name, "ybrowid") == 0)
+		if (attr_idx < 0)
 			continue;
-
-		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
-																col->column_name);
 
 		if (should_handle_omitted_case)
 		{
@@ -287,16 +366,16 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		}
 
 		if (!should_handle_omitted_case || !col->after_op_is_omitted)
-		{
-			after_op_datums[attr_idx] = col->after_op_datum;
-			after_op_is_nulls[attr_idx] = col->after_op_is_null;
-		}
-		if (!should_handle_omitted_case || !col->before_op_is_omitted)
-		{
-			before_op_datums[attr_idx] = col->before_op_datum;
-			before_op_is_nulls[attr_idx] = col->before_op_is_null;
-		}
+			YbQlValueToDatum(col, true /* after_op */ , tupdesc, attr_idx,
+							 &after_op_datums[attr_idx],
+							 &after_op_is_nulls[attr_idx]);
+		if (needs_before_op &&
+			(!should_handle_omitted_case || !col->before_op_is_omitted))
+			YbQlValueToDatum(col, false /* after_op */ , tupdesc, attr_idx,
+							 &before_op_datums[attr_idx],
+							 &before_op_is_nulls[attr_idx]);
 	}
+	MemoryContextSwitchTo(old_context);
 
 	/* See the comment in YBDecodeInsert on why we create tuples twice. */
 	after_op_tuple =
@@ -316,7 +395,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 * non-primary key updates non-null old-tuple will be sent only for replica
 	 * identity FULL to match the PG behaviour.
 	 */
-	if (relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
+	if (needs_before_op)
 	{
 		before_op_tuple =
 			heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
@@ -336,6 +415,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		if (should_handle_omitted_case && before_op_is_omitted)
 			pfree(before_op_is_omitted);
 	}
+
+	/* The tuples hold copies of the converted datums. */
+	MemoryContextReset(YBCGetDecodeRecordContext());
 
 	if (log_min_messages <= DEBUG2)
 	{
@@ -370,8 +452,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.newtuple = after_op_tuple_buf;
 	change->data.tp.oldtuple = before_op_tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
+	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
+	Assert(CurrentMemoryContext != YBCGetDecodeRecordContext());
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 
@@ -407,8 +491,10 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.newtuple = NULL;
 	change->data.tp.oldtuple = tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
+	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
+	Assert(CurrentMemoryContext != YBCGetDecodeRecordContext());
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 }
@@ -440,6 +526,14 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 			 "yb_start_decoding_at = %lu.",
 			 yb_record->xid, commit_lsn, ctx->yb_start_decoding_at);
 		ReorderBufferForget(ctx->reorder, yb_record->xid, commit_lsn);
+
+		/*
+		 * The client never sees this transaction, so it will never acknowledge
+		 * it. Hence, remember the filtered commit_lsn and acknowledge it before
+		 * the next GetConsistentChanges call.
+		 */
+		YBCTrackFilteredTransaction(commit_lsn);
+		ctx->yb_inval_catalog_on_decode_commit = false;
 		return;
 	}
 
@@ -448,9 +542,25 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 "end_lsn: %lu",
 		 yb_record->xid, commit_lsn, end_lsn);
 
+	/*
+	 * If this transaction block contains a DDL or a publication refresh, we
+	 * need to invalidate the caches so that the reorderbuffer replay doesn't
+	 * read future catalog entries. Publication refresh reads, for example,
+	 * cache pg_publication rows as of a point later than the changes queued
+	 * before it.
+	 */
+	if (ctx->yb_inval_catalog_on_decode_commit)
+	{
+		Assert(yb_enable_replication_slot_transactional_ddl);
+		YBCInvalidateCachesForHistoricalReadContext();
+		ResetCatalogCaches();
+	}
+
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, yb_record->xrepl_origin_id,
 						origin_lsn);
+
+	ctx->yb_inval_catalog_on_decode_commit = false;
 
 	elog(DEBUG1,
 		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
@@ -465,6 +575,7 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 	TupleDesc	tupdesc;
 	int			nattrs;
 	HeapTuple	tuple;
+	MemoryContext old_context;
 
 	YbcPgRowMessageAction action = yb_record->action;
 
@@ -488,28 +599,24 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 
 	/* Set value to null by default so that we treat dropped columns as null. */
 	memset(is_nulls, true, sizeof(is_nulls));
+	old_context = MemoryContextSwitchTo(YBCGetDecodeRecordContext());
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
-		/*
-		 * 'ybrowid' is an internal primary key column added by DocDB for tables
-		 * without a primary key. Skip this column.
-		 */
-		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
-			strcmp(col->column_name, "ybrowid") == 0)
-			continue;
-		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
-																col->column_name);
+		int			attr_idx = YBFindAttributeIndexInDescriptor(relation, tupdesc,
+																col);
 
-		datums[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
-							col->after_op_datum :
-							col->before_op_datum);
-		is_nulls[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
-							  col->after_op_is_null :
-							  col->before_op_is_null);
+		if (attr_idx < 0)
+			continue;
+
+		YbQlValueToDatum(col, action == YB_PG_ROW_MESSAGE_ACTION_INSERT,
+						 tupdesc, attr_idx, &datums[attr_idx],
+						 &is_nulls[attr_idx]);
 	}
+	MemoryContextSwitchTo(old_context);
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
+	MemoryContextReset(YBCGetDecodeRecordContext());
 	if (log_min_messages <= DEBUG2)
 	{
 		const char *tuple_string = YbHeapTupleToStringWithIsOmitted(tuple,
@@ -530,15 +637,49 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 }
 
 /*
- * TODO(#20726): Optimize this lookup via a cache. We do not need to iterate
- * through all attributes everytime this function is called. This should be done
- * after we have landed support for schema evolution as this logic is highly
- * likely to change before that.
+ * Returns the index of the column in the descriptor, or -1 if the caller should
+ * skip it.
+ *
+ * TODO(#20726): Optimize the lookup by name via a cache. We do not need to
+ * iterate through all attributes everytime this function is called. This
+ * should be done after we have landed support for schema evolution as this
+ * logic is highly likely to change before that.
  */
 static int
-YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
+YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
+								 const YbcPgDatumMessage *col)
 {
+	const char *column_name = col->column_name;
 	int			attr_idx = 0;
+
+	/*
+	 * With transactional DDL, we use attr num to find column in the tuple
+	 * descriptor.
+	 */
+	if (yb_enable_replication_slot_transactional_ddl)
+	{
+		int			attr_num = col->column_attr_num;
+
+		if (attr_num <= 0 || attr_num > tupdesc->natts ||
+			TupleDescAttr(tupdesc, attr_num - 1)->attisdropped)
+			return -1;
+		return attr_num - 1;
+	}
+
+	/*
+	 * Column name is null when both new and old values are omitted. If this
+	 * were to happen here, this would indicate that an empty column value was
+	 * sent from the CDC service which should have been caught in ybc_pggate.
+	 */
+	Assert(column_name);
+
+	/*
+	 * 'ybrowid' is an internal primary key column added by DocDB for tables
+	 * without a primary key. Skip this column.
+	 */
+	if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+		strcmp(column_name, "ybrowid") == 0)
+		return -1;
 
 	for (attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 	{
@@ -556,6 +697,37 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 	return -1;					/* keep compiler quiet */
 }
 
+/*
+ * Converts the column's after or before value to a datum, allocated in the
+ * decode record context, which the caller must have made current.
+ */
+static void
+YbQlValueToDatum(const YbcPgDatumMessage *col, bool after_op,
+				 TupleDesc tupdesc, int attr_idx, Datum *datum, bool *is_null)
+{
+	const void *ql_value = (after_op ?
+							col->after_op_ql_value :
+							col->before_op_ql_value);
+	const YbcPgTypeEntity *type_entity = col->type_entity;
+	uint64_t	value = 0;
+
+	Assert(CurrentMemoryContext == YBCGetDecodeRecordContext());
+
+	*datum = (Datum) 0;
+	*is_null = after_op ? col->after_op_is_null : col->before_op_is_null;
+	if (*is_null)
+		return;
+	Assert(ql_value);
+
+	if (!type_entity)
+		type_entity =
+			YbDataTypeFromOidMod(attr_idx + 1,
+								 TupleDescAttr(tupdesc, attr_idx)->atttypid);
+
+	HandleYBStatus(YBCQLValueToDatum(type_entity, ql_value, &value, is_null));
+	*datum = (Datum) value;
+}
+
 static void
 YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
@@ -565,14 +737,19 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			{
-				bool		found;
+				if (yb_enable_replication_slot_transactional_ddl)
+					YBCInvalidateCachesForHistoricalReadContext();
+				else
+				{
+					bool		found;
 
-				/*
-				 * Mark for relcache invalidation to be done on first DML by just
-				 * inserting an entry for the table_oid.
-				 */
-				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-							HASH_ENTER, &found);
+					/*
+					 * Mark for relcache invalidation to be done on first DML by
+					 * inserting an entry for the table_oid.
+					 */
+					hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+								HASH_ENTER, &found);
+				}
 				break;
 			}
 
@@ -582,7 +759,25 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 			{
+				uint64_t	read_time;
+				uint64_t	in_txn_limit;
+				const char *txn_id;
 				bool		needs_invalidation = false;
+
+				if (YbDmlHistoricalReadParams(record->yb_virtual_wal_record,
+											  &read_time, &in_txn_limit,
+											  &txn_id))
+				{
+					const uint32_t *aborted_subtxn_set;
+					int			aborted_subtxn_set_size;
+
+					aborted_subtxn_set =
+						YBCGetAbortedSubtxnSet(txn_id, &aborted_subtxn_set_size);
+					YBCSetHistoricalReadContext(read_time, in_txn_limit, txn_id,
+												aborted_subtxn_set,
+												aborted_subtxn_set_size);
+					break;
+				}
 
 				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
 							HASH_FIND, &needs_invalidation);
@@ -621,8 +816,53 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+			yb_switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
 			return;
 	}
+}
+
+static bool
+YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
+						  uint64_t *read_time, uint64_t *in_txn_limit,
+						  const char **txn_id)
+{
+	if (!yb_enable_replication_slot_transactional_ddl)
+		return false;
+
+	if (yb_record->has_docdb_txn_id)
+	{
+		Assert(yb_record->record_time_ht != 0);
+		*read_time = yb_record->commit_time_ht - 1;
+		*in_txn_limit = yb_record->record_time_ht;
+		*txn_id = yb_record->docdb_txn_id;
+	}
+	else
+	{
+		*read_time = yb_record->commit_time_ht;
+		*in_txn_limit = PG_UINT64_MAX;
+		*txn_id = "";
+	}
+
+	return true;
+}
+
+static void
+YbStoreDmlHistoricalReadContext(ReorderBufferChange *change,
+								const YbVirtualWalRecord *yb_record)
+{
+	uint64_t	read_time;
+	uint64_t	in_txn_limit;
+	const char *txn_id;
+
+	if (!YbDmlHistoricalReadParams(yb_record, &read_time, &in_txn_limit,
+								   &txn_id))
+		return;
+
+	change->data.tp.yb_read_time = read_time;
+	change->data.tp.yb_in_txn_limit = in_txn_limit;
+	strlcpy(change->data.tp.yb_txn_id, txn_id,
+			sizeof(change->data.tp.yb_txn_id));
 }
 
 static void

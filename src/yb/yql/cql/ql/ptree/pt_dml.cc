@@ -30,6 +30,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -50,7 +51,6 @@ DECLARE_bool(use_cassandra_authentication);
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocationPtr loc,
@@ -410,7 +410,7 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
     if (primary_key_cols_only && !where_predicate_spec_pb) {
       std::shared_ptr<client::YBTable> index_table = sem_context->GetTableDesc(index_id);
       if (index_table == nullptr) {
-        return sem_context->Error(this, Substitute("Index table $0 not found", index_id).c_str(),
+        return sem_context->Error(this, Format("Index table $0 not found", index_id).c_str(),
                                   ErrorCode::OBJECT_NOT_FOUND);
       }
       pk_only_indexes_.insert(index_table);

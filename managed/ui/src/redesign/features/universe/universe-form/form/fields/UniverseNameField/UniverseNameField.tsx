@@ -6,7 +6,12 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBInput } from '../../../../../../components';
 import { api } from '../../../../../../helpers/api';
 import { UniverseFormData, CloudType } from '../../../utils/dto';
-import { UNIVERSE_NAME_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
+import {
+  UNIVERSE_NAME_FIELD,
+  PROVIDER_FIELD,
+  LOWERCASE_ONLY_NAME_CLOUDS,
+  LOWERCASE_ONLY_NAME_REGEX
+} from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface UniverseNameFieldProps {
@@ -29,13 +34,12 @@ export const UniverseNameField = ({ disabled }: UniverseNameFieldProps): ReactEl
   const validateUniverseName = async (value_: unknown): Promise<ValidateResult> => {
     const value = value_ as string;
     if (disabled || !value_) return true; // don't validate disabled field or empty
-    if ([CloudType.gcp, CloudType.kubernetes].includes(provider?.code)) {
-      const specialCharsRegex = /^[a-z0-9-]*$/;
+    if (LOWERCASE_ONLY_NAME_CLOUDS.includes(provider?.code)) {
       const displayCode =
         provider?.code === CloudType.gcp
           ? CloudType.gcp.toUpperCase()
           : _.upperFirst(CloudType.kubernetes);
-      if (!specialCharsRegex.test(value))
+      if (!LOWERCASE_ONLY_NAME_REGEX.test(value))
         return t('universeForm.validation.universeNameValidation', {
           cloudType: displayCode
         }) as string;

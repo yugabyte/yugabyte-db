@@ -1,0 +1,1 @@
+SELECT range.range(10, 101);

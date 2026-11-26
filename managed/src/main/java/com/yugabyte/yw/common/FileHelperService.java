@@ -40,4 +40,22 @@ public class FileHelperService {
 
     return tmpFile;
   }
+
+  public Path createTempDirectory(String prefix) {
+    Path tmpDirectoryPath =
+        FileUtils.getOrCreateTmpDirectory(
+            confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+
+    try {
+      return Files.createTempDirectory(tmpDirectoryPath, prefix);
+    } catch (IOException e) {
+      log.info(
+          "Error creating the tmp directory {} in {} - {}",
+          prefix,
+          tmpDirectoryPath,
+          e.getMessage());
+      // Let the caller handle the same.
+      throw new RuntimeException("Could not create directory", e);
+    }
+  }
 }

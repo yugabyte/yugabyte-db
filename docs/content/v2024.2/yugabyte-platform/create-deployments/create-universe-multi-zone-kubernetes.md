@@ -196,7 +196,7 @@ tserver:
 ```yaml
 # Point to the aarch64 image in case multi-arch is not available.
 Image:
-    tag: {{< yb-version version="stable" format="build">}}-aarch64
+    tag: {{< yb-version version="v2024.2" format="build">}}-aarch64
 # Add a nodeSelector to deploy universe to arm64 nodes in the cluster
 nodeSelector:
     kubernetes.io/arch: arm64

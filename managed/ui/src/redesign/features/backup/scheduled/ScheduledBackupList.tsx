@@ -14,14 +14,17 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useToggle } from 'react-use';
 import { Grid, makeStyles } from '@material-ui/core';
+import InfiniteScroll from 'react-infinite-scroll-component';
+
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
 import { YBButton } from '../../../components';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
-import InfiniteScroll from 'react-infinite-scroll-component';
 import CreateScheduledBackupModal from './create/CreateScheduledBackupModal';
 import { BACKUP_REFETCH_INTERVAL } from '../../../../components/backupv2/common/BackupUtils';
 import { ScheduledCard } from './list/ScheduledCard';
 import { ScheduledBackupEmpty } from './ScheduledBackupEmpty';
 import { AllowedTasks } from '../../../helpers/dtos';
+import { api, runtimeConfigQueryKey } from '../../../helpers/api';
 import { getScheduledBackupList } from '../../../../components/backupv2/common/BackupScheduleAPI';
 import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
@@ -68,6 +71,9 @@ const ScheduledBackupList: FC<ScheduledBackupListProps> = ({ universeUUID }) => 
 
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+  const runtimeConfigsQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
+  );
 
   const storageConfigsMap = useMemo(() => keyBy(storageConfigs?.data ?? [], 'configUUID'), [
     storageConfigs
@@ -150,6 +156,7 @@ const ScheduledBackupList: FC<ScheduledBackupListProps> = ({ universeUUID }) => 
             schedule={schedule}
             universeUUID={universeUUID}
             storageConfig={storageConfigsMap[schedule.backupInfo.storageConfigUUID]}
+            runtimeConfigEntries={runtimeConfigsQuery.data?.configEntries}
           />
         ))}
         <CreateScheduledBackupModal

@@ -101,7 +101,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
 
           waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
         } while ((!podReady) && (iters < MAX_ITERS));
-        if (iters > MAX_ITERS) {
+        if (!podReady) {
           throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
         }
         break;

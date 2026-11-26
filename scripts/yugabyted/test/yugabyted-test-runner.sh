@@ -26,7 +26,7 @@ if [[ $OSTYPE == linux* ]]; then
 fi
 
 if [[ $OSTYPE == darwin* ]]; then
-  package="https://downloads.yugabyte.com/releases/${yb_latest_version:2:-1}/yugabyte-${yb_full_version//[v\"]/}-darwin-x86_64.tar.gz"
+  package="https://downloads.yugabyte.com/releases/${yb_latest_version:2:-1}/yugabyte-${yb_full_version//[v\"]/}-darwin-arm64.tar.gz"
 fi
 
 # -------------------------------------------------------------------------------------------------

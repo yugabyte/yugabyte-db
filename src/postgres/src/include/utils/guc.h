@@ -246,8 +246,11 @@ typedef enum
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
-#define GUC_YB_CUSTOM_STICKY	0x40000000	/* YB: stickiness for custom
-											 * string variables */
+#define GUC_YB_CONN_MGR_STICKY	0x40000000	/* YB: SET or a startup-packet
+												 * value makes the Connection
+												 * Manager connection sticky */
+#define GUC_YB_NO_CONN_MGR_REPORT	0x20000000	/* YB: never report to
+												 * Connection Manager */
 
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
@@ -309,6 +312,9 @@ extern PGDLLIMPORT bool yb_bnl_enable_hashing;
 extern PGDLLIMPORT int yb_explicit_row_locking_batch_size;
 extern PGDLLIMPORT bool yb_lock_pk_single_rpc;
 extern PGDLLIMPORT int yb_toast_catcache_threshold;
+extern PGDLLIMPORT bool yb_allow_prehashed_passwords;
+extern PGDLLIMPORT int yb_password_reuse_history;
+extern PGDLLIMPORT int yb_password_reuse_interval;
 extern PGDLLIMPORT bool yb_enable_fkey_catcache;
 extern PGDLLIMPORT bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern PGDLLIMPORT bool yb_index_checker;
@@ -320,10 +326,13 @@ extern PGDLLIMPORT char *yb_hinted_uids;
 extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
 extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
+extern PGDLLIMPORT bool yb_test_notifs_poller_error_holding_queue_lock;
+extern PGDLLIMPORT bool yb_test_notifs_poller_error_before_init;
+extern PGDLLIMPORT int yb_test_notifs_poller_init_delay_ms;
 extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
-extern PGDLLIMPORT bool yb_conn_mgr_selective_deallocate;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
+extern PGDLLIMPORT int yb_notifications_poller_no_progress_timeout_ms;
 extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
 extern PGDLLIMPORT bool yb_enable_mage;
 
@@ -422,8 +431,6 @@ extern void InitializeGUCOptions(void);
 extern void InitializeWalConsistencyChecking(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions();
-extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
-extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void AtStart_GUC(void);
 extern int	NewGUCNestLevel(void);
 extern void AtEOXact_GUC(bool isCommit, int nestLevel);
@@ -467,8 +474,6 @@ extern ArrayType *GUCArrayReset(ArrayType *array);
 extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
 #endif
-
-extern void YbSetParallelWorker();
 
 /* GUC serialization */
 extern Size EstimateGUCStateSpace(void);
@@ -518,5 +523,14 @@ extern void assign_xlog_sync_method(int new_sync_method, void *extra);
 /* in access/transam/xlogprefetcher.c */
 extern bool check_recovery_prefetch(int *new_value, void **extra, GucSource source);
 extern void assign_recovery_prefetch(int new_value, void *extra);
+
+/* YB declarations */
+extern void YbValidateConfigFile(const char *config_file);
+extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
+extern void YbResetYsqlConnMgrGucDefaults(void);
+extern void YbSetParallelWorker();
+extern char *YbResolveGucValue(const char *name, const char *value);
+extern bool YbIsValidConfigFileName(const char *name);
+extern bool YbDbAdminCanSetRoleSetting(const char *name);
 
 #endif							/* GUC_H */

@@ -27,10 +27,10 @@
 #include <string>
 #include <vector>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
@@ -47,7 +47,6 @@ namespace {
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 class RandomAccessFileImpl : public RandomAccessFile {
  public:
@@ -214,7 +213,7 @@ class InMemoryEnv : public EnvWrapper {
                                        name_template);
       }
       uint32_t num = random() % 999999; // Ensure it's <= 6 digits long.
-      string path = StringPrintf("%s%06u", stripped.c_str(), num);
+      string path = stripped + ZeroPadded(num, 6);
 
       MutexLock lock(mutex_);
       if (!ContainsKey(file_map_, path)) {
@@ -404,8 +403,8 @@ class InMemoryEnv : public EnvWrapper {
           result->reset(new Type(file_map_[fname]));
           return Status::OK();
         default:
-          return STATUS(NotSupported, Substitute("Unknown create mode $0",
-                                                 mode));
+          return STATUS(NotSupported, Format("Unknown create mode $0",
+                                             mode));
       }
     } else if (mode == OPEN_EXISTING) {
       return STATUS(IOError, fname, "File not found");

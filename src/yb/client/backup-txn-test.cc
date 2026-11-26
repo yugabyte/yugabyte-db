@@ -28,27 +28,37 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 using yb::master::SysSnapshotEntryPB;
 
+DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(enable_history_cutoff_propagation);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(TEST_inject_load_transaction_delay_ms);
 DECLARE_int32(TEST_inject_status_resolver_complete_delay_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
+DECLARE_int64(max_concurrent_snapshot_rpcs);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(allow_encryption_at_rest);
 
 namespace yb {
@@ -56,6 +66,9 @@ namespace client {
 
 using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
     master::ImportSnapshotMetaResponsePB::TableMetaPB>;
+
+YB_STRONGLY_TYPED_BOOL(ShutdownFollower);
+YB_STRONGLY_TYPED_BOOL(UsePitr);
 
 class BackupTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
@@ -110,6 +123,8 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
 
   void TestDeleteTable(bool restart_masters);
   void TestDeleteSnapshot(bool compact_and_restart);
+  void TestLargeTransactionApplyingOnFollower(ShutdownFollower shutdown_follower);
+  void TestCommittedTransactionNotLoadedAfterRestart(UsePitr use_pitr);
 
   std::unique_ptr<SnapshotTestUtil> snapshot_util_;
 };
@@ -530,6 +545,161 @@ TEST_F(BackupTxnTest, Consistency) {
   }
 
   LOG(INFO) << "Value: " << restored_value;
+}
+
+// A follower creates its snapshot checkpoint when it applies the snapshot operation. Intents of a
+// large transaction committed before the snapshot hybrid time could still be written to its
+// regular DB by ApplyIntentsTask at that point, and restore drops intents.
+void BackupTxnTest::TestLargeTransactionApplyingOnFollower(ShutdownFollower shutdown_follower) {
+  constexpr int kNumKeys = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 1;
+
+  ASSERT_OK(WaitForTableLeaders(cluster_.get(), table_->id(), kWaitTimeout * kTimeMultiplier));
+  auto followers = ListTableTabletPeers(cluster_.get(), table_->id(), ListPeersFilter::kNonLeaders);
+  ASSERT_FALSE(followers.empty());
+  for (const auto& peer : followers) {
+    ASSERT_RESULT(peer->shared_tablet())->TEST_SleepBeforeApplyIntents(500ms * kTimeMultiplier);
+  }
+
+  auto session = CreateSession();
+  auto txn = CreateTransaction();
+  session->SetTransaction(txn);
+  for (int key = 0; key != kNumKeys; ++key) {
+    ASSERT_OK(WriteRow(session, key, key, WriteOpType::INSERT, Flush::kFalse));
+  }
+  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(txn->CommitFuture().get());
+
+  RegexWaiterLogSink postponed(Format(
+      ".*P $0 .*Postpone applying SNAPSHOT_OP.*", followers.front()->permanent_uuid()));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_GT(CountRunningTransactions(), 0) << "Transaction applied before snapshot";
+  ASSERT_OK(postponed.WaitFor(kWaitTimeout * kTimeMultiplier));
+
+  if (shutdown_follower) {
+    auto uuid = followers.front()->permanent_uuid();
+    auto* ts = cluster_->find_tablet_server(uuid);
+    auto start = MonoTime::Now();
+    ts->Shutdown();
+    // Shutdown waits for one delayed batch per tablet, while the rest of the transaction takes a
+    // delayed batch per record on each tablet.
+    ASSERT_LT(MonoTime::Now() - start, MonoDelta(10s * kTimeMultiplier));
+    std::erase_if(followers, [&uuid](const auto& peer) { return peer->permanent_uuid() == uuid; });
+    ASSERT_OK(ts->Start());
+  }
+
+  for (const auto& peer : followers) {
+    ASSERT_RESULT(peer->shared_tablet())->TEST_SleepBeforeApplyIntents(MonoDelta());
+  }
+  ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_->id()));
+
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), kWaitTimeout * kTimeMultiplier, RequireLeaderIsReady::kFalse));
+
+  // Each replica restores its own checkpoint.
+  std::map<TabletId, std::vector<std::pair<std::string, std::vector<std::string>>>> dumps;
+  for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_->id())) {
+    std::vector<std::string> dump;
+    ASSERT_RESULT(peer->shared_tablet())->TEST_DocDBDumpToContainer(
+        dump, docdb::IncludeIntents::kFalse);
+    dumps[peer->tablet_id()].emplace_back(peer->permanent_uuid(), std::move(dump));
+  }
+  for (const auto& [tablet_id, replicas] : dumps) {
+    const auto& [first_uuid, first_dump] = replicas.front();
+    for (const auto& [uuid, dump] : replicas) {
+      ASSERT_TRUE(dump == first_dump)
+          << "T " << tablet_id << ": " << dump.size() << " records on " << uuid << " vs "
+          << first_dump.size() << " on " << first_uuid;
+    }
+  }
+}
+
+TEST_F(BackupTxnTest, LargeTransactionApplyingOnFollower) {
+  TestLargeTransactionApplyingOnFollower(ShutdownFollower::kFalse);
+}
+
+// The follower postpones the snapshot operation, so its shutdown does not wait for the apply.
+TEST_F(BackupTxnTest, ShutdownFollowerPostponingSnapshot) {
+  TestLargeTransactionApplyingOnFollower(ShutdownFollower::kTrue);
+}
+
+// After a restart, the transaction loader adds the transactions from the intents DB in the
+// background, and a participant learns that one committed only from its APPLY. The leader must not
+// submit the snapshot operation before the APPLY of a transaction committed at or before the
+// snapshot hybrid time, even if that transaction is not loaded yet, because restore drops intents.
+void BackupTxnTest::TestCommittedTransactionNotLoadedAfterRestart(UsePitr use_pitr) {
+  const auto kLoadDelay = 12s * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 1000000;
+  // A retry of the snapshot RPC would add another snapshot operation, which could follow the APPLY.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) =
+      narrow_cast<int32_t>(ToMilliseconds(kLoadDelay * 3));
+  // So that every leader gets the snapshot request before the APPLY.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_concurrent_snapshot_rpcs) = 0;
+
+  auto schedule_id = SnapshotScheduleId::Nil();
+  if (use_pitr) {
+    // With this interval, the restore has to create a snapshot.
+    schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+        table_, kTableName.namespace_type(), kTableName.namespace_name(), WaitSnapshot::kTrue,
+        1h, 20h));
+  }
+
+  // The transaction commits, but its participants do not get APPLY.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = true;
+  ASSERT_NO_FATALS(WriteData());
+  ASSERT_GT(CountRunningTransactions(), 0);
+  // So that participants get the transaction from the loader, not from WAL replay.
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) =
+      narrow_cast<int32_t>(ToMilliseconds(kLoadDelay));
+  ShutdownAllTServers(cluster_.get());
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
+  }
+  ASSERT_OK(WaitForTableLeaders(cluster_.get(), table_->id(), kWaitTimeout * kTimeMultiplier));
+  size_t loading_leaders = 0;
+  for (const auto& peer :
+       ListTableTabletPeers(cluster_.get(), table_->id(), ListPeersFilter::kLeaders)) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (!tablet->transaction_participant()->AllTransactionsLoaded()) {
+      ++loading_leaders;
+    }
+  }
+  ASSERT_GT(loading_leaders, 0) << "Transactions loaded before the snapshot";
+
+  // The coordinator resends APPLY within a second after the leader gets the snapshot request, so
+  // without the fix the leader submits the snapshot operation first.
+  SyncPointScope sync_point;
+  sync_point->SetCallBack("TabletServiceBackupImpl::TabletSnapshotOp:ResolveIntents", [](void*) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = false;
+  });
+  sync_point->EnableProcessing();
+
+  if (use_pitr) {
+    ASSERT_OK(snapshot_util_->RestoreSnapshotSchedule(
+        schedule_id, cluster_->mini_tablet_server(0)->server()->Clock()->Now()));
+  } else {
+    auto snapshot_id = ASSERT_RESULT(snapshot_util_->StartSnapshot(table_));
+    ASSERT_OK(snapshot_util_->WaitSnapshotDone(snapshot_id, kLoadDelay * 3));
+    // So that the APPLY cannot follow the restore and write the transaction again.
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_->id(), kLoadDelay * 3));
+    ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id));
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = 0;
+
+  ASSERT_NO_FATALS(VerifyData());
+}
+
+TEST_F(BackupTxnTest, CommittedTransactionNotLoadedAfterRestart) {
+  TestCommittedTransactionNotLoadedAfterRestart(UsePitr::kFalse);
+}
+
+TEST_F(BackupTxnTest, CommittedTransactionNotLoadedAfterRestartPitr) {
+  TestCommittedTransactionNotLoadedAfterRestart(UsePitr::kTrue);
 }
 
 void BackupTxnTest::TestDeleteTable(bool restart_masters) {

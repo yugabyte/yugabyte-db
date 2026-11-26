@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -51,11 +52,13 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
@@ -69,6 +72,7 @@ namespace yb::master {
 class RetryingRpcTask;
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
+YB_STRONGLY_TYPED_BOOL(SkipFreedTablets);
 
 // Per table structure for external cluster snapshot importing to this cluster.
 // Old IDs mean IDs on external/source cluster, new IDs - IDs on this cluster.
@@ -186,6 +190,14 @@ struct TabletReplica {
 
   std::string fs_data_dir;
 
+  // Tiered storage, from the tablet report (ReportedTabletPB): the tier the replica's SSTs are on
+  // (empty while a migration straddles two, or while a replica with a target is not open yet),
+  // its persisted target tier (empty without one) and where it stands relative to that target.
+  // All unset when the tserver runs without --enable_tiered_storage.
+  std::string current_storage_tier;
+  std::string target_storage_tier;
+  tserver::TierMigrationStatusPB::State tier_migration_state = tserver::TierMigrationStatusPB::NONE;
+
   TabletReplicaDriveInfo drive_info;
 
   TabletLeaderLeaseInfo leader_lease_info;
@@ -197,6 +209,10 @@ struct TabletReplica {
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
+
+  // The tiered-storage fields from source, or unset when source is null. A tablet report
+  // describes them for the sender's own replica only.
+  void UpdateStorageTierInfo(const TabletReplica* source);
 
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
@@ -324,6 +340,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
+  // count. Called when the tablet is deleted or replaced.
+  void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
@@ -424,6 +443,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
       std::make_shared<TabletReplicaMap>();
 
+  // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
+  bool counts_replica_load_ GUARDED_BY(lock_) = true;
+
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
 
@@ -472,7 +494,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const { return is_running() && !is_hidden(); }
+  // A HIDING table is already dropped or removed by PITR. Exposing it would let a client with a
+  // stale cache write to a colocated table whose parent tablet still accepts writes.
+  bool visible_to_client() const { return is_running() && !started_hiding(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;
@@ -769,6 +793,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add a tablet to this table.
   Status AddTablet(const TabletInfoPtr& tablet);
 
+  Status AddTablet(const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state);
+
   // Finds a tablet whose partition can be shrunk.
   // This is only used for transaction status tables.
   Result<TabletWithSplitPartitions> FindSplittableHashPartitionForStatusTable() const;
@@ -792,13 +818,20 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // If deactivate_only is set to true then it only
   // deactivates the tablet (i.e. removes it only from partitions_ and not from tablets_).
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
+  // REQUIRES: the caller holds a write lock on the tablet, since the tablet's partition is read
+  // from its dirty state. Use RemoveInactiveTablet below to drop an already deactivated tablet.
   Result<bool> RemoveTablet(
       const TabletId& tablet_id, DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // Remove multiple tablets from this table.
   // Return true if all given tablets were removed from 'partitions_'.
+  // REQUIRES: the caller holds a write lock on each tablet. See RemoveTablet above.
   Result<bool> RemoveTablets(
       const TabletInfos& tablets, DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
+
+  // Removes the tablet from 'tablets_' if it is inactive, i.e. no longer in 'partitions_'. Returns
+  // whether it is inactive. Requires no lock on the tablet.
+  bool RemoveInactiveTablet(const TabletInfoPtr& tablet);
 
   // This only returns tablets which are in RUNNING state.
   Result<TabletInfos> GetTabletsInRange(const GetTableLocationsRequestPB* req) const;
@@ -825,7 +858,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   Result<TabletInfos> GetTablets(GetTabletsMode mode = GetTabletsMode::kOrderByPartitions) const;
-  Result<TabletInfos> GetTabletsIncludeInactive() const;
+  // Fails if a tablet is freed, unless `skip_freed` is set. Skipping is required for secondary
+  // tables whose tablets are owned by another table, e.g. vector indexes -- the tablets are
+  // deleted with that table and may be freed first.
+  Result<TabletInfos> GetTabletsIncludeInactive(
+      SkipFreedTablets skip_freed = SkipFreedTablets::kFalse) const;
+
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get info of the specified index.
@@ -946,15 +984,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return LockForRead()->IsXClusterDDLReplicationTable();
   }
 
-  // Provides the ID of the tablespace that will be used to determine
-  // where the tablets for this table should be placed when the table
-  // is first being created.
-  TablespaceId TablespaceIdForTableCreation() const;
-
-  // Set the tablespace to use during table creation. This will determine
-  // where the tablets of the newly created table should reside.
-  void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
-
   void SetMatview();
 
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
@@ -999,7 +1028,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  Status AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
+  Status AddTabletUnlocked(
+      const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) REQUIRES(lock_);
   Result<bool> RemoveTabletUnlocked(
       const TableId& tablet_id,
       DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
@@ -1024,7 +1054,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // with the introduction of DBClone, SELECT AS-OF features.
   // TODO(#24956) If a tablet T1[0,100] splits into T2[0,50] and T3[50,100] and later the table is
   // Hidden, the partitions_ structure may end up with T1 and T3 as start_keys are unique.
-  // TODO(#15043): remove tablets from tablets_ once they have been deleted from all TServers.
+  // DELETED tablets are removed from this map by CatalogManager::RemoveDeletedTabletsFromTables,
+  // except in a table that has started hiding or deleting, or with the cleanup turned off by a
+  // flag, so a DELETED tablet may still be present here.
   std::map<TabletId, std::weak_ptr<TabletInfo>> tablets_ GUARDED_BY(lock_);
 
   // Protects partitions_ and tablets_.
@@ -1051,13 +1083,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
   Status create_table_error_;
-
-  // This field denotes the tablespace id that the user specified while
-  // creating the table. This will be used only to place tablets at the time
-  // of table creation. At all other times, this information needs to be fetched
-  // from PG catalog tables because the user may have used Alter Table to change
-  // the table's tablespace.
-  TablespaceId tablespace_id_for_table_creation_;
 
   // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
   // table from completing. Not needed once D23712 lands.
@@ -1238,6 +1263,34 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
 class ClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentClusterConfigInfo> {};
+
+// This wraps around the proto holding the cluster-wide ysql catalog history retention pin. The
+// master leader publishes it from the pins tservers report to it; every master reads it back so
+// that a follower does not compact catalog history out from under a pinned read time it cannot
+// see.
+struct PersistentHistoryRetentionPinInfo : public Persistent<SysHistoryRetentionPinEntryPB> {};
+
+class HistoryRetentionPinInfo
+    : public SingletonMetadataCowWrapper<PersistentHistoryRetentionPinInfo> {
+ public:
+  HybridTime ysql_pin() const { return HybridTime(ysql_pin_.load(std::memory_order_acquire)); }
+
+  void Load(const SysHistoryRetentionPinEntryPB& metadata) override {
+    SingletonMetadataCowWrapper::Load(metadata);
+    RefreshCachedYsqlPin();
+  }
+
+  void RefreshCachedYsqlPin() {
+    auto l = LockForRead();
+    ysql_pin_.store(
+        l->pb.has_ysql_oldest_pinned_read_time() ? l->pb.ysql_oldest_pinned_read_time()
+                                                 : HybridTime::kInvalid.value(),
+        std::memory_order_release);
+  }
+
+ private:
+  std::atomic<HybridTimeRepr> ysql_pin_{HybridTime::kInvalid.value()};
+};
 
 struct PersistentRedisConfigInfo : public Persistent<SysRedisConfigEntryPB> {};
 
@@ -1444,6 +1497,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
 
+  // Whether the stream's table set is governed by the publication it is bound to.
+  bool IsCdcsdkYsqlPublicationsBoundStream() const;
+
+  // Name of the publication this stream is statically bound to. Non-empty exactly when
+  // IsCdcsdkYsqlPublicationsBoundStream() returns true.
+  const std::string GetCdcsdkYsqlBoundPublicationName() const;
+
+  // Whether a newly created table joins this publications bound stream.
+  bool CdcsdkYsqlIncludesNewTables() const;
+
   bool IsConsistentSnapshotStream() const;
 
   const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
@@ -1477,6 +1540,9 @@ class UniverseReplicationInfoBase {
  public:
   Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
+
+  // Reloads the certificates of the cached XClusterRpcTasks, if there is one.
+  Status ReloadCertificates();
 
  protected:
   explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)

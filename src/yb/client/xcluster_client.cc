@@ -15,6 +15,7 @@
 
 #include "yb/ash/rpc_wait_state.h"
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -25,13 +26,11 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/secure.h"
-#include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 
 #include "yb/server/clock.h"
 
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_string(certs_for_cdc_dir);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_bool(TEST_running_test);
 DECLARE_string(placement_cloud);
@@ -68,15 +67,10 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
 
   rpc::MessengerBuilder messenger_builder("xcluster-remote");
   messenger_builder.UseLocalHostOutboundIpBaseInTests();
-  std::string certs_dir;
-
   if (FLAGS_use_node_to_node_encryption) {
-    if (!FLAGS_certs_for_cdc_dir.empty()) {
-      certs_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id_.ToString());
-    }
-    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
-        certs_dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
-        &messenger_builder));
+    secure_context_ =
+        VERIFY_RESULT(rpc::SetupRemoteUniverseSecureContext(
+            xcluster::GetRemoteUniverseCertsDir(replication_group_id_), &messenger_builder));
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   messenger_->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
@@ -118,13 +112,8 @@ Status XClusterRemoteClientHolder::ReloadCertificates() {
     return Status::OK();
   }
 
-  std::string cert_dir;
-  if (!FLAGS_certs_for_cdc_dir.empty()) {
-    cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id_.ToString());
-  }
-
-  return rpc::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(), cert_dir, "" /* node_name */);
+  return rpc::ReloadRemoteUniverseSecureContext(
+      secure_context_.get(), xcluster::GetRemoteUniverseCertsDir(replication_group_id_));
 }
 
 XClusterClient& XClusterRemoteClientHolder::GetXClusterClient() {
@@ -392,13 +381,13 @@ Status XClusterClient::GetXClusterStreams(
 Status XClusterClient::GetXClusterStreams(
     CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
     const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids,
-    GetXClusterStreamsCallback callback) {
+    bool create_stream_if_missing, GetXClusterStreamsCallback callback) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
   SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
 
   return yb_client_.data_->GetXClusterStreams(
       &yb_client_, deadline, replication_group_id, namespace_id, source_table_ids,
-      std::move(callback));
+      create_stream_if_missing, std::move(callback));
 }
 
 Status XClusterClient::AddNamespaceToOutboundReplicationGroup(
@@ -417,6 +406,35 @@ Status XClusterClient::AddNamespaceToOutboundReplicationGroup(
   }
 
   return Status::OK();
+}
+
+Status XClusterClient::StopPersisting(const std::vector<NamespaceId>& namespace_ids) {
+  master::XClusterStopPersistingRequestPB req;
+  req.mutable_namespace_ids()->Add(namespace_ids.begin(), namespace_ids.end());
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterStopPersisting, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::StartPersisting(const std::vector<NamespaceId>& namespace_ids) {
+  master::XClusterStartPersistingRequestPB req;
+  req.mutable_namespace_ids()->Add(namespace_ids.begin(), namespace_ids.end());
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterStartPersisting, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<master::SysPersistenceBlockMapEntryPB> XClusterClient::GetPersistenceBlockMap() {
+  master::XClusterGetPersistenceBlockMapRequestPB req;
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterGetPersistenceBlockMap, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.persistence_block_map();
 }
 
 Status XClusterClient::AddNamespaceToXClusterReplication(
@@ -503,6 +521,43 @@ Status XClusterClient::RepairOutboundXClusterReplicationGroupRemoveTable(
   req.set_table_id(table_id);
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(RepairOutboundXClusterReplicationGroupRemoveTable, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::DeleteXClusterWalAnchorStreams(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& source_table_ids) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
+  SCHECK(!source_table_ids.empty(), InvalidArgument, "No source table ids provided");
+
+  master::DeleteXClusterWalAnchorStreamsRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& table_id : source_table_ids) {
+    req.add_source_table_ids(table_id);
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(DeleteXClusterWalAnchorStreams, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::RecordXClusterStreamBootstrapInfo(
+    const std::map<xrepl::StreamId, std::vector<TabletId>>& stream_tablets) {
+  master::RecordXClusterStreamBootstrapInfoRequestPB req;
+  for (const auto& [stream_id, tablet_ids] : stream_tablets) {
+    auto* stream = req.add_streams();
+    stream->set_stream_id(stream_id.ToString());
+    stream->mutable_checkpointed_tablet_ids()->Add(tablet_ids.begin(), tablet_ids.end());
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(RecordXClusterStreamBootstrapInfo, req);
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -599,7 +654,8 @@ XClusterClient::GetUniverseReplicationInfo(
 
   XClusterClient::XClusterInboundReplicationGroupInfo result;
   result.replication_type = resp.replication_type();
-  result.source_master_addrs = resp.source_master_addresses();
+  result.deprecated_source_master_addresses = resp.deprecated_source_master_addresses();
+  HostPortsFromPBs(resp.source_master_addrs(), &result.source_master_addrs);
 
   for (const auto& pb_table_info : resp.table_infos()) {
     XClusterClient::XClusterInboundReplicationGroupInfo::XClusterInboundReplicationGroupTableInfo
@@ -734,12 +790,13 @@ Status XClusterClient::GetXClusterTableCheckpointInfos(
 
 Status XClusterClient::GetXClusterTableCheckpointInfos(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    const std::vector<TableName>& table_ids, BootstrapProducerCallback user_callback) {
+    const std::vector<TableName>& table_ids, bool create_stream_if_missing,
+    BootstrapProducerCallback user_callback) {
   auto callback = CreateXClusterStreamsCallback(user_callback);
 
   RETURN_NOT_OK(GetXClusterStreams(
       CoarseMonoClock::Now() + yb_client_.default_admin_operation_timeout(), replication_group_id,
-      namespace_id, table_ids, std::move(callback)));
+      namespace_id, table_ids, create_stream_if_missing, std::move(callback)));
 
   return Status::OK();
 }

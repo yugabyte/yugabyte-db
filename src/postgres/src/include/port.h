@@ -58,6 +58,7 @@ extern void make_native_path(char *path);
 extern void cleanup_path(char *path);
 extern bool path_contains_parent_reference(const char *path);
 extern bool path_is_relative_and_below_cwd(const char *path);
+extern bool path_is_safe_for_extraction(const char *path);
 extern bool path_is_prefix_of_path(const char *path1, const char *path2);
 extern char *make_absolute_path(const char *path);
 extern const char *get_progname(const char *argv0);
@@ -523,6 +524,10 @@ extern char *dlerror(void);
 #ifndef WIN32
 extern bool pg_get_user_name(uid_t user_id, char *buffer, size_t buflen);
 extern bool pg_get_user_home_dir(uid_t user_id, char *buffer, size_t buflen);
+#endif
+
+#if !HAVE_DECL_TIMINGSAFE_BCMP
+extern int	timingsafe_bcmp(const void *b1, const void *b2, size_t len);
 #endif
 
 extern void pg_qsort(void *base, size_t nel, size_t elsize,

@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -86,20 +87,16 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudVolumeEncryption;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
-import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
-import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
-import com.yugabyte.yw.models.helpers.telemetry.S3Config;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -162,8 +159,6 @@ public class NodeManager extends DevopsBase {
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
-
-  @Inject TelemetryProviderService telemetryProviderService;
 
   @Inject LocalNodeManager localNodeManager;
 
@@ -627,7 +622,8 @@ public class NodeManager extends DevopsBase {
       AnsibleConfigureServers.Params taskParam,
       String nodeIP,
       String ybHomeDir,
-      Map<String, Integer> subjectAltName) {
+      Map<String, Integer> subjectAltName,
+      Map<String, Integer> loadBalancerNames) {
     return getCertificatePaths(
         config,
         userIntent,
@@ -636,7 +632,24 @@ public class NodeManager extends DevopsBase {
         EncryptionInTransitUtil.isClientRootCARequired(taskParam),
         nodeIP,
         ybHomeDir,
-        subjectAltName);
+        subjectAltName,
+        loadBalancerNames);
+  }
+
+  /**
+   * Client-to-server cert only: clients see no other once client TLS is on. Self-signed CA only: a
+   * Vault role's allowed_domains could reject the names. putIfAbsent keeps the node's own types.
+   */
+  private static Map<String, Integer> addLoadBalancerNames(
+      CertificateInfo caCert,
+      Map<String, Integer> subjectAltName,
+      Map<String, Integer> loadBalancerNames) {
+    if (caCert.getCertType() != CertConfigType.SelfSigned || loadBalancerNames.isEmpty()) {
+      return subjectAltName;
+    }
+    Map<String, Integer> names = new HashMap<>(subjectAltName);
+    loadBalancerNames.forEach(names::putIfAbsent);
+    return names;
   }
 
   // Return the List of Strings which gives the certificate paths for the specific taskParams
@@ -648,7 +661,8 @@ public class NodeManager extends DevopsBase {
       boolean isClientRootCARequired,
       String commonName,
       String ybHomeDir,
-      Map<String, Integer> subjectAltName) {
+      Map<String, Integer> subjectAltName,
+      Map<String, Integer> loadBalancerNames) {
     List<String> subcommandStrings = new ArrayList<>();
 
     String serverCertFile = String.format("node.%s.crt", commonName);
@@ -771,7 +785,11 @@ public class NodeManager extends DevopsBase {
                   null,
                   serverCertFile,
                   serverKeyFile,
-                  subjectAltName);
+                  addLoadBalancerNames(clientRootCert, subjectAltName, loadBalancerNames));
+              if (clientRootCert.getCertType() == CertConfigType.SelfSigned) {
+                taskParam.signedLoadBalancerCertNames =
+                    ManagedLoadBalancerUtil.toCertNameSet(loadBalancerNames);
+              }
               rootCertPath = clientRootCert.getCertificate();
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
@@ -1007,6 +1025,8 @@ public class NodeManager extends DevopsBase {
       commonName = node.cloudInfo.secondary_private_ip;
       alternateNames.put(node.cloudInfo.secondary_private_ip, GeneralName.iPAddress);
     }
+    Map<String, Integer> loadBalancerNames =
+        ManagedLoadBalancerUtil.getCertNames(universe.getUniverseDetails(), node);
 
     switch (taskParam.type) {
       case Everything:
@@ -1051,7 +1071,8 @@ public class NodeManager extends DevopsBase {
                   taskParam,
                   commonName,
                   taskParam.getProvider().getYbHome(),
-                  alternateNames));
+                  alternateNames,
+                  loadBalancerNames));
         }
         break;
       case Software:
@@ -1105,7 +1126,8 @@ public class NodeManager extends DevopsBase {
                       taskParam,
                       commonName,
                       taskParam.getProvider().getYbHome(),
-                      alternateNames));
+                      alternateNames,
+                      loadBalancerNames));
             }
             Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
             processGFlags(config, universe, node, taskParam, gflags, useHostname);
@@ -1159,9 +1181,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = provider.getUuid().toString();
-                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
                 // Append the path to copy the gFlag file from local to remote host
                 subcommand.add("--local_gflag_files_path");
                 subcommand.add(localGflagFilePath.toString());
@@ -1265,7 +1285,8 @@ public class NodeManager extends DevopsBase {
                         taskParam.clientRootCARotationType != CertRotationType.None,
                         commonName,
                         ybHomeDir,
-                        alternateNames));
+                        alternateNames,
+                        loadBalancerNames));
               }
               break;
             case UPDATE_CERT_DIRS:
@@ -1326,7 +1347,13 @@ public class NodeManager extends DevopsBase {
             }
             subcommand.addAll(
                 getCertificatePaths(
-                    config, userIntent, taskParam, commonName, ybHomeDir, alternateNames));
+                    config,
+                    userIntent,
+                    taskParam,
+                    commonName,
+                    ybHomeDir,
+                    alternateNames,
+                    loadBalancerNames));
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
@@ -1418,6 +1445,8 @@ public class NodeManager extends DevopsBase {
   public enum SkipCertValidationType {
     ALL,
     HOSTNAME,
+    // Nothing is skipped, but the hostname check accepts only a matching SAN, not the CN.
+    REQUIRE_SAN,
     NONE
   }
 
@@ -1659,7 +1688,7 @@ public class NodeManager extends DevopsBase {
     Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
-      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", provider.getCloudCode());
       return;
     }
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
@@ -1758,6 +1787,10 @@ public class NodeManager extends DevopsBase {
         ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
+        if (rrvParams.capacityReservation != null) {
+          commandArgs.add("--capacity_reservation");
+          commandArgs.add(rrvParams.capacityReservation);
+        }
         commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, provider, type));
         if (Common.CloudType.aws == provider.getCloudCode()) {
           if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {
@@ -1766,6 +1799,9 @@ public class NodeManager extends DevopsBase {
           } else {
             throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
           }
+        }
+        if (Common.CloudType.oci == provider.getCloudCode() && rrvParams.forceReplacement) {
+          commandArgs.add("--force_replacement");
         }
         if (!bootScript.isEmpty()) {
           bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
@@ -1799,6 +1835,7 @@ public class NodeManager extends DevopsBase {
           Common.CloudType cloudType = provider.getCloudCode();
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+            addOciFlexShapeConfigArgs(commandArgs, provider, taskParam.instanceType);
             if (taskParam.capacityReservation != null) {
               commandArgs.add("--capacity_reservation");
               commandArgs.add(taskParam.capacityReservation);
@@ -1834,10 +1871,20 @@ public class NodeManager extends DevopsBase {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
-            // Instance template feature is currently only implemented for GCP.
+            // Instance template: GCP global template name, or OCI Instance Configuration OCID.
             if (Common.CloudType.gcp == provider.getCloudCode()) {
               GCPRegionCloudInfo g = CloudInfoInterface.get(taskParam.getRegion());
               String instanceTemplate = g.getInstanceTemplate();
+              if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+                commandArgs.add("--instance_template");
+                commandArgs.add(instanceTemplate);
+                if (confGetter.getGlobalConf(GlobalConfKeys.readGcpInstanceTemplate)) {
+                  commandArgs.add("--read_instance_template");
+                }
+              }
+            } else if (Common.CloudType.oci == provider.getCloudCode()) {
+              OCIRegionCloudInfo o = CloudInfoInterface.get(taskParam.getRegion());
+              String instanceTemplate = o.getInstanceTemplate();
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);
@@ -1963,8 +2010,8 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = provider.getCloudCode();
 
-          if (cloudType.equals(Common.CloudType.aws)) {
-            // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.oci)) {
+            // aws / oci use instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
@@ -2231,20 +2278,18 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          if (taskParam.checkVolumesAttached) {
-            UniverseDefinitionTaskParams.Cluster cluster =
-                universe.getCluster(taskParam.placementUuid);
+          if (taskParam.shouldCheckVolumeAttached()) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
+            UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+            DeviceInfo deviceInfo = null;
             if (node != null
                 && cluster != null
-                && cluster.userIntent.getDeviceInfoForNode(node) != null
-                && provider.getCloudCode() != Common.CloudType.onprem) {
+                && provider.getCloudCode() != Common.CloudType.onprem
+                && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
-              commandArgs.add(
-                  String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
+              commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }
-          }
-          if ("stop".equalsIgnoreCase(taskParam.command)) {
+          } else if ("stop".equalsIgnoreCase(taskParam.command)) {
             if (taskParam.deconfigure) {
               commandArgs.add("--deconfigure");
             }
@@ -2342,6 +2387,7 @@ public class NodeManager extends DevopsBase {
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+          addOciFlexShapeConfigArgs(commandArgs, provider, taskParam.instanceType);
 
           if (!taskParam.skipAnsiblePlaybookForCGroup) {
             commandArgs.add("--pg_max_mem_mb");
@@ -2695,6 +2741,33 @@ public class NodeManager extends DevopsBase {
     }
   }
 
+  // OCI Flex shapes require shapeConfig.ocpus on launch and UpdateInstance.
+  // DenseIO/HPC Flex included: those cores and memory come from the YAML min SKU.
+  private void addOciFlexShapeConfigArgs(
+      List<String> commandArgs, Provider provider, String instanceTypeCode) {
+    if (provider.getCloudCode() != Common.CloudType.oci
+        || StringUtils.isBlank(instanceTypeCode)
+        || !instanceTypeCode.contains("Flex")) {
+      return;
+    }
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), instanceTypeCode);
+    if (instanceType == null) {
+      log.warn(
+          "Skipping OCI Flex shapeConfig args; instance type {} not found for provider {}",
+          instanceTypeCode,
+          provider.getUuid());
+      return;
+    }
+    if (instanceType.getNumCores() != null) {
+      commandArgs.add("--ocpus");
+      commandArgs.add(String.valueOf(instanceType.getNumCores()));
+    }
+    if (instanceType.getMemSizeGB() != null) {
+      commandArgs.add("--memory_in_gbs");
+      commandArgs.add(String.valueOf(instanceType.getMemSizeGB()));
+    }
+  }
+
   private boolean isLowMemInstanceType(String instanceType) {
     List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.", "t3.");
     String instanceTypePrefix = instanceType.split("\\.")[0] + ".";
@@ -2887,54 +2960,7 @@ public class NodeManager extends DevopsBase {
                   NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
-
-      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
-        addOtelColArgsForExporters(
-            commandArgs, exporterUUID, taskParams.getUniverseUUID(), taskParams.nodeUuid);
-      }
-    }
-  }
-
-  private void addAwsCredentialsToCommandArgs(
-      String accessKey, String secretKey, List<String> commandArgs) {
-    if (StringUtils.isNotEmpty(accessKey)) {
-      commandArgs.add("--otel_col_aws_access_key");
-      commandArgs.add(accessKey);
-    }
-    if (StringUtils.isNotEmpty(secretKey)) {
-      commandArgs.add("--otel_col_aws_secret_key");
-      commandArgs.add(secretKey);
-    }
-  }
-
-  private void addOtelColArgsForExporters(
-      List<String> commandArgs, UUID exporterUUID, UUID universeUUID, UUID nodeUUID) {
-    TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
-    switch (telemetryProvider.getConfig().getType()) {
-      case AWS_CLOUDWATCH -> {
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        addAwsCredentialsToCommandArgs(
-            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), commandArgs);
-      }
-      case S3 -> {
-        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
-        addAwsCredentialsToCommandArgs(
-            s3Config.getAccessKey(), s3Config.getSecretKey(), commandArgs);
-      }
-      case GCP_CLOUD_MONITORING -> {
-        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
-            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
-          Path path =
-              fileHelperService.createTempFile(
-                  "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
-          String filePath = path.toAbsolutePath().toString();
-          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getGcmCredentials());
-          commandArgs.add("--otel_col_gcp_creds_file");
-          commandArgs.add(filePath);
-        }
-      }
+      // No credentials here: node-agent gets them over RPC, and this command line is logged.
     }
   }
 
@@ -2956,6 +2982,7 @@ public class NodeManager extends DevopsBase {
         || type == NodeCommandType.Create_Root_Volumes
         || type == NodeCommandType.RunHooks
         || type == NodeCommandType.Verify_Certs
-        || type == NodeCommandType.Wait_For_Connection;
+        || type == NodeCommandType.Wait_For_Connection
+        || type == NodeCommandType.Hard_Reboot;
   }
 }

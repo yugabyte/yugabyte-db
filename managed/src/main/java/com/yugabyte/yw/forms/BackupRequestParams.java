@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -43,6 +42,22 @@ public class BackupRequestParams extends UniverseTaskParams {
   @Constraints.Required
   @ApiModelProperty(value = "Storage configuration UUID", required = true)
   public UUID storageConfigUUID;
+
+  // Set by YBA (not the caller) at backup time from the universe's provider, so the backup can be
+  // deleted via cross-cloud federation even after the universe/provider link is gone.
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Cross-cloud federation audience captured at backup time.",
+      hidden = true)
+  public String crossCloudFederationAudience;
+
+  // Set by YBA (not the caller) at backup time; the AWS role ARN for the S3-on-GCP direction, used
+  // to rebuild federated credentials for deletion after the universe/provider link is gone.
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Cross-cloud federation AWS role ARN captured at backup time.",
+      hidden = true)
+  public String crossCloudFederationRoleArn;
 
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
@@ -195,6 +210,8 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
+    this.crossCloudFederationAudience = backupRequestParams.crossCloudFederationAudience;
+    this.crossCloudFederationRoleArn = backupRequestParams.crossCloudFederationRoleArn;
     this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
     this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.backupType = backupRequestParams.backupType;
@@ -271,7 +288,7 @@ public class BackupRequestParams extends UniverseTaskParams {
       UUID customerUUID) {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, this.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as Storage config is queued for deletion");
     }

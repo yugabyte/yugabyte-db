@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -24,13 +25,26 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 @Slf4j
 public class ManageOtelCollector extends NodeTaskBase {
 
-  public static String OtelCollectorVersion = "0.90.0";
+  // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
+  // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
+  // must stay in step with the URLs in support/thirdparty-dependencies.txt.
+  //
+  // The -fips suffix selects the build made with GOFIPS140=v1.0.0, the FIPS 140-3 validated Go
+  // Cryptographic Module (CMVP certificate #5247), which also defaults the binary to
+  // GODEBUG=fips140=on. It is a separate artifact from the bare 0.165.1-1 rather than a
+  // replacement, published from the same collector manifest by the unified-otelcol workflow in
+  // yugabyte-cloud, so the suffix is part of the version string and not a build flag here.
+  // The number after the dash is the YB rebuild count; published artifacts are immutable, so any
+  // rebuild bumps it. 0.165.1-1 carries brotli v1.2.7 (CVE-2026-111497) and Prometheus 0.315.1.
+  public static String OtelCollectorVersion = "0.165.1-1-fips";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
@@ -51,6 +65,8 @@ public class ManageOtelCollector extends NodeTaskBase {
     public TelemetryConfig telemetryConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
+    // Log instead of failing the task. Failover and sync only: can leave the collector stopped.
+    public boolean ignoreErrors = false;
 
     @JsonIgnore
     public AuditLogConfig getAuditLogConfig() {
@@ -106,18 +122,33 @@ public class ManageOtelCollector extends NodeTaskBase {
 
   @Override
   public void run() {
+    try {
+      manageOtelCollector();
+    } catch (RuntimeException e) {
+      // Never swallow an abort, even a wrapped one.
+      if (!taskParams().ignoreErrors
+          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0
+          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0) {
+        throw e;
+      }
+      log.warn(
+          "Ignoring failure to manage the OpenTelemetry collector on {}", taskParams().nodeName, e);
+    }
+  }
+
+  private void manageOtelCollector() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
+    Common.CloudType providerType = nodeCluster.getProviderCloudType(node);
     taskParams().useSudo =
-        isYbServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
+        taskParams().installOtelCollector && isYbServerServiceSystemLevel(universe, node);
 
     log.info(
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",
         taskParams().nodeName,
         taskParams().useSudo);
-    boolean isNodeAgentSupported =
-        NodeAgentClient.isCloudTypeSupported(nodeCluster.userIntent.providerType);
+    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
     if (isNodeAgentSupported) {
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
       log.info("Configuring otel-collector using node-agent");

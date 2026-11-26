@@ -44,7 +44,7 @@ class [[nodiscard]] CancelableScopeExit {
  public:
   explicit CancelableScopeExit(const F& f) : f_(f) {}
   explicit CancelableScopeExit(F&& f) : f_(std::move(f)) {}
-  explicit CancelableScopeExit(CancelableScopeExit<F>&& rhs) : f_(std::move(rhs.f_)) {
+  CancelableScopeExit(CancelableScopeExit&& rhs) : f_(std::move(rhs.f_)) {
     rhs.f_.reset();
   }
 
@@ -69,7 +69,7 @@ class [[nodiscard]] ScopeExit {
  public:
   explicit ScopeExit(const F& f) : impl_(f) {}
   explicit ScopeExit(F&& f) : impl_(std::move(f)) {}
-  explicit ScopeExit(ScopeExit<F>&&) = default;
+  ScopeExit(ScopeExit&&) = default;
 
  private:
   CancelableScopeExit<F> impl_;

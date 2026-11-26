@@ -47,8 +47,16 @@ class PgResponseCache {
  public:
   using KeyGroup = decltype(std::declval<PgPerformOptionsPB::CachingInfoPB>().key_group());
 
+  // Invoked once a connection start's prefetch is wholly cached: the request that carried
+  // completes_connection_prefetch succeeded and no operation in it was still paging. Not invoked
+  // for the rounds before it, for any other caller's fill, or when a cached response is served.
+  // The filter is here rather than in the observer so that a caller may read the callback as this
+  // node now holding a whole prefetch at the version it is given.
+  using FillObserver = std::function<void(KeyGroup, uint64_t)>;
+
   PgResponseCache(
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity);
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity,
+      FillObserver fill_observer = {});
   ~PgResponseCache();
 
   struct Response {
@@ -60,9 +68,37 @@ class PgResponseCache {
 
   using Setter = std::function<void(Response&&)>;
 
+  // One connection's claim on a database, held while it fills. Counting it is what sends
+  // connections to the older version this node holds, the ones sharing this claim included. A
+  // request that fills takes one for the length of that request; a connection start's prefetch
+  // instead keeps one across all of its requests, so the gaps between them -- the backend
+  // building its relcache, with nothing outstanding -- do not read as an idle database.
+  class FillToken;
+  using FillTokenPtr = std::shared_ptr<FillToken>;
+
+  // What the request says about the connection start it belongs to. Both come from the perform
+  // options, not from cache_info, because a connection start reading without the cache sets them
+  // with no caching info to put them in. See PgPerformOptionsPB.
+  struct ConnectionPrefetchInfo {
+    bool part_of_connection_prefetch = false;
+    bool completes_connection_prefetch = false;
+  };
+
+  // token is the caller's slot for a connection start's claim. The claim ends when its last
+  // holder lets go, so a session that goes away cannot leave its database looking busy.
+  // Sharing a slot is all that
+  // ties a caller to another's claim: parallel workers share their leader's, and nothing else
+  // here distinguishes one caller from another.
   Result<Setter> Get(
-      LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter);
+      LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
+      CoarseTimePoint deadline, const PgResponseCacheWaiterPtr& waiter, FillTokenPtr* token);
+
+  // Ends a connection start's claim for a request that does not cache, which gets no setter, so
+  // pg_client_session calls this with the response it is about to send. The response cache does
+  // it itself for a request that caches.
+  // See PgPerformOptionsPB.completes_connection_prefetch.
+  static void EndConnectionPrefetchClaim(
+      const LWPgPerformResponsePB& response, const FillTokenPtr& token);
 
   struct DisablerType;
   using Disabler = std::shared_ptr<DisablerType>;

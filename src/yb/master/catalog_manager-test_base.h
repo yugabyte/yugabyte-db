@@ -17,7 +17,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_util.h"
@@ -25,6 +24,7 @@
 #include "yb/master/ts_descriptor_test_util.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
@@ -64,7 +64,7 @@ Status CreateTable(
   for (size_t i = 0; i <= kNumSplits; i++) {
     const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const std::string& end_key = (i == kNumSplits) ? "" : split_keys[i];
-    std::string tablet_id = strings::Substitute("tablet-$0-$1", start_key, end_key);
+    std::string tablet_id = Format("tablet-$0-$1", start_key, end_key);
 
     tablets->push_back(VERIFY_RESULT(CreateTablet(table, tablet_id, start_key, end_key)));
   }

@@ -1,0 +1,20 @@
+error[E0521]: borrowed data escapes outside of function
+ --> tests/compile-fail/table-iterators-arent-immortal.rs:6:87
+  |
+3 |   #[pg_extern]
+  |   ------------
+  |   |
+  |   lifetime `'fcx` defined here
+  |   in this attribute macro expansion
+...
+6 |   ) -> TableIterator<'static, (name!(a, &'static str), name!(b, Option<&'static str>))> {
+  |  _______________________________________________________________________________________^
+7 | |     TableIterator::once((value, Some(value)))
+8 | | }
+  | | ^
+  | | |
+  | | `fcinfo` is a reference that is only valid in the function body
+  | |_`fcinfo` escapes the function body here
+  |   argument requires that `'fcx` must outlive `'static`
+  |
+  = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

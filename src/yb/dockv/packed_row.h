@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <limits>
 #include <optional>
 #include <unordered_map>
 
@@ -87,17 +88,24 @@ class PackableValue {
   virtual ~PackableValue() = default;
 };
 
+// Passing this as tail_size makes AddValue ignore packed_size_limit, so the value is always packed.
+constexpr ssize_t kUnlimitedTail = std::numeric_limits<ssize_t>::min();
+
 class RowPackerBase {
  public:
   // packed_size_limit - don't pack column if packed row will be over limit after it.
   // is_update - flag to indicate if this packed row is from an UPDATE operation.
+  // vector_value_format - vector value format of the table, used when a vector value has to be
+  // re-encoded from another packed row version.
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      const ValueControlFields& row_control_fields, bool is_update = false);
+      const ValueControlFields& row_control_fields, bool is_update = false,
+      VectorValueFormat vector_value_format = VectorValueFormat::kTyped);
 
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      Slice control_fields, bool is_update = false);
+      Slice control_fields, bool is_update = false,
+      VectorValueFormat vector_value_format = VectorValueFormat::kTyped);
 
   RowPackerBase(const RowPackerBase&) = delete;
   void operator=(const RowPackerBase&) = delete;
@@ -140,6 +148,8 @@ class RowPackerBase {
 
   // Flag indicating whether this packed row is from an UPDATE operation.
   bool is_update_;
+
+  VectorValueFormat vector_value_format_;
 
   // Resulting buffer.
   ValueBuffer result_;

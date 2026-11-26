@@ -11,8 +11,13 @@
 // under the License.
 //
 
+#include <map>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <sstream>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
@@ -20,6 +25,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -32,6 +38,7 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -61,6 +68,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/scope_exit.h"
@@ -75,22 +83,31 @@
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_scan_choices_variable_bloom_filter);
+DECLARE_bool(legacy_ybctid_batch_pagination);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_bool(use_cross_split_key_detection_algorithm);
 DECLARE_bool(ysql_enable_packed_row);
-DECLARE_int32(cleanup_split_tablets_interval_sec);
-DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
-DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_int64(db_block_size_bytes);
-DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_bool(ysql_enable_write_pipelining);
-DECLARE_string(ysql_pg_conf_csv);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(intents_flush_max_delay_ms);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_select_parallelism);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_pause_apply_tablet_split);
 DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(TEST_pause_perform_with_paging_state);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_bool(TEST_skip_post_split_compaction);
@@ -98,15 +115,6 @@ DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
-DECLARE_uint32(ddl_verification_timeout_multiplier);
-DECLARE_bool(TEST_pause_apply_tablet_split);
-DECLARE_bool(TEST_disable_flush_on_shutdown);
-DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cleanup_intents_sst_files);
-DECLARE_bool(delete_intents_sst_files);
-DECLARE_int32(intents_flush_max_delay_ms);
-DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_bool(ysql_enable_write_pipelining);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -241,6 +249,67 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
     return VERIFY_RESULT(client_->LookupTabletByKeyFuture(table, partition_key, deadline).get());
   }
+
+  Result<std::unordered_set<TableId>> ListYsqlTableIds() {
+    std::unordered_set<TableId> ids;
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.namespace_type() == YQL_DATABASE_PGSQL) {
+        ids.insert(table.table_id());
+      }
+    }
+    return ids;
+  }
+
+  // A DDL that populates a new relation does not always leave the new DocDB table under a name a
+  // test can look up: an ALTER rewrite leaves both tables sharing the original's name, and a
+  // matview refresh names its new heap internally. Diffing the catalog around the DDL does not
+  // depend on naming.
+  Result<std::vector<TableId>> TablesCreatedSince(const std::unordered_set<TableId>& before) {
+    std::vector<TableId> created;
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.namespace_type() == YQL_DATABASE_PGSQL && !before.count(table.table_id())) {
+        created.push_back(table.table_id());
+      }
+    }
+    return created;
+  }
+
+  // Runs |ddl| inside an open transaction and checks that every DocDB table it creates is refused
+  // for splitting until that transaction commits, and splittable once it has. A manual split drives
+  // the check directly, which avoids having to grow a table past a size threshold.
+  void AssertSplitHeldBackUntilCommit(PGConn* conn, const std::string& ddl) {
+    SCOPED_TRACE(ddl);
+    const auto before = ASSERT_RESULT(ListYsqlTableIds());
+
+    ASSERT_OK(conn->Execute("BEGIN"));
+    ASSERT_OK(conn->Execute(ddl));
+    ASSERT_OK(cluster_->FlushTablets());
+
+    const auto created = ASSERT_RESULT(TablesCreatedSince(before));
+    ASSERT_FALSE(created.empty()) << "the statement created no DocDB table";
+    for (const auto& table_id : created) {
+      SCOPED_TRACE(table_id);
+      // Split through the master admin RPC, the path yb-admin split_tablet takes. It is the entry
+      // point that runs ValidateSplitCandidate; CatalogManager::SplitTablet(TabletId), which
+      // PgTabletSplitTestBase::SplitTablet calls, schedules the split without validating it.
+      const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
+      ASSERT_NOK_STR_CONTAINS(
+          InvokeSplitTabletRpc(cluster_.get(), tablet_id),
+          "creating transaction has not committed");
+    }
+
+    // Committing clears the DDL verifier state, so the new tables become eligible for splitting.
+    ASSERT_OK(conn->Execute("COMMIT"));
+    // Unless the new-relation fastpath is enabled for transaction blocks the rows sit in the
+    // intents DB until the commit is applied, and the split needs a key from the regular DB.
+    ASSERT_OK(WaitForIntentsAppliedAndFlush());
+    for (const auto& table_id : created) {
+      SCOPED_TRACE(table_id);
+      const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
+      ASSERT_OK(InvokeSplitTabletRpc(cluster_.get(), tablet_id));
+      ASSERT_OK(WaitForSplitCompletion(table_id));
+    }
+  }
 };
 
 TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
@@ -251,7 +320,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   ASSERT_OK(conn.Execute(
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) t2;"));
 
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
 
@@ -275,7 +344,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
 }
 
 // The below test asserts that the intent iterator created during conflict resolution rightly checks
-// conflicts for the empty doc key and that it doesn't get iniaited with the tablet's key bounds.
+// conflicts for the empty doc key and that it doesn't get initialized with the tablet's key bounds.
 //
 // Refer https://github.com/yugabyte/yugabyte-db/issues/22630 for details.
 #ifndef NDEBUG
@@ -376,6 +445,82 @@ TEST_F(PgTabletSplitTest, TestDisableSplitWhenTableIsBeingHidden) {
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
 }
 
+class PgTabletSplitUncommittedDdlTest : public PgTabletSplitTest {
+ protected:
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ false);
+    PgTabletSplitTest::SetUp();
+  }
+};
+
+// A DocDB table created by a transaction that has not committed is still being loaded, so
+// splitting it is refused until that transaction commits. The tests below cover the DDL shapes
+// that populate a brand new DocDB table, all of which the new-relation fastpath writes to directly
+// and so can grow past a split threshold while the statement is still running.
+
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileCtasIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE src(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO src SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "CREATE TABLE clone AS SELECT * FROM src");
+}
+
+// Adding a primary key rewrites the table into a new DocDB table.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileAddPrimaryKeyIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "ALTER TABLE t ADD PRIMARY KEY (k)");
+}
+
+// Dropping the primary key rewrites the table too, into one keyed by ybrowid.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileDropPrimaryKeyIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "ALTER TABLE t DROP CONSTRAINT t_pkey");
+}
+
+// A materialized view is backed by its own DocDB table, populated by the defining query.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileMatviewCreationIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "CREATE MATERIALIZED VIEW mv AS SELECT * FROM t");
+}
+
+// A nonconcurrent refresh is out of place: it builds a new DocDB table through make_new_heap and
+// swaps it in at commit. (An in-place refresh, yb_refresh_matview_in_place, creates no new table
+// and is therefore unaffected by the rule under test.)
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileMatviewRefreshIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "REFRESH MATERIALIZED VIEW NONCONCURRENTLY mv");
+}
+
+// An index is a DocDB table of its own. A nonconcurrent build populates it inline, within the
+// creating transaction, rather than through a separate backfill.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileIndexCreationIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "CREATE INDEX NONCONCURRENTLY idx ON t(v)");
+}
+
 // Trigger a tablet split when a transaction has an outstanding statement in progress.
 // The split will cause ops to be retried at the YBSession level.
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)) {
@@ -392,7 +537,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
   auto num_rows_str = "10000";
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0), 0", num_rows_str));
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   // Reduce max batch size so as to increase chances of encountering a WriteRpc amidst split.
@@ -422,7 +567,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
 
   // Restart the tserver to force a fresh bootstrap of the children. If the async-write
   // race ever leaked an intent past split_op_id into the source's intents flushed_frontier,
-  // CreateSubtablet's checkpoint would propagate it into the children, and the children's
+  // CreateSplitChildTablet's checkpoint would propagate it into the children, and the children's
   // bootstrap would fail the prev_op_id >= committed_op_id SCHECK in
   // TabletBootstrap::PlaySegments. With the fix in RaftConsensus::AppendNewRoundsToQueueUnlocked,
   // no such intent is ever written, so the children inherit a clean frontier and bootstrap
@@ -500,6 +645,280 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
   ASSERT_OK(WaitForSplitCompletion(table_id));
 }
 
+// Runs an index scan over a wide row table and splits the main table's only tablet in the middle.
+// An index scan fetches the main table rows by batched ybctid; wide payloads push a single batch
+// past the response size limit, so the fetch has to paginate mid-batch.
+class PgWideRowIndexScanSplitTest : public PgTabletSplitTest {
+ protected:
+  // k, i, length(payload)
+  using Row = std::tuple<int32_t, int32_t, int32_t>;
+
+  static constexpr int32_t kNumRows = 400;
+  static constexpr int32_t kPayloadSize = 64 * 1024;
+  // Below kNumRows, so the index scan spans several pages. That gives the scan a continuation
+  // request to be parked on, which is how the split is made to land mid-scan.
+  static constexpr int32_t kFetchRowLimit = 100;
+  // Well below kFetchRowLimit * kPayloadSize, so one index page's worth of main table rows does not
+  // fit into a single response and the batched ybctid fetch is forced to paginate.
+  static constexpr size_t kFetchSizeLimit = 1_MB;
+
+  static constexpr std::string_view kQuery {
+      "/*+ IndexScan(t t_i_idx) */ SELECT k, i, length(payload) FROM t ORDER BY i"};
+
+  // Make comma separated list of values from start to end for an IN clause.
+  static std::string MakeInValues(int32_t start, int32_t end) {
+    std::ostringstream values;
+    for (int32_t i = start; i <= end; ++i) {
+      if (i > start) {
+        values << ", ";
+      }
+      values << i;
+    }
+    return values.str();
+  }
+
+  Result<TableId> CreateWideRowTableWithIndex(PGConn* conn) {
+    RETURN_NOT_OK(conn->Execute(
+        "CREATE TABLE t(k INT, i INT, payload TEXT, PRIMARY KEY (k ASC))"));
+    RETURN_NOT_OK(conn->Execute("CREATE INDEX t_i_idx ON t(i ASC)"));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t SELECT i, i * 2 % 201, repeat('x', $0) FROM generate_series(0, $1) i",
+        kPayloadSize, kNumRows - 1));
+
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName("t"));
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 1, IllegalState, "Expected the table to have a single tablet");
+    RETURN_NOT_OK(WaitForIntentsAppliedAndFlush());
+    RETURN_NOT_OK(WaitForAnySstFiles(peers.front()));
+    return table_id;
+  }
+
+  // Returns the outcome of the scan itself; infrastructure failures are returned as their own
+  // statuses, so callers expecting the scan to fail should also check the error message.
+  Result<std::vector<Row>> IndexScanAcrossSplit(
+      PGConn* conn, const TableId& table_id,
+      std::string_view query = kQuery, std::string_view index = "t_i_idx",
+      int32_t fetch_row_limit = kFetchRowLimit, size_t fetch_size_limit = kFetchSizeLimit) {
+    RETURN_NOT_OK(conn->ExecuteFormat("SET yb_fetch_row_limit = $0", fetch_row_limit));
+    RETURN_NOT_OK(conn->ExecuteFormat("SET yb_fetch_size_limit = $0", fetch_size_limit));
+
+    // Also warms up the relcache, so that the request parked below is the scan's own rather than a
+    // catalog read issued by the same backend.
+    const auto plan = VERIFY_RESULT(conn->FetchAllAsString(Format("EXPLAIN $0", query)));
+    SCHECK_FORMAT(
+        plan.find(Format("Index Scan using $0 on t", index)) != std::string::npos, IllegalState,
+        "Query does not use an index scan: $0", plan);
+
+    Result<std::vector<Row>> rows = STATUS(Uninitialized, "");
+    {
+      StringWaiterLogSink pause_waiter("Pausing due to flag TEST_pause_perform_with_paging_state");
+      TestThreadHolder threads;
+      // Declared after `threads` so it runs before they are joined: an early return has to release
+      // the parked request, otherwise joining the scan thread would hang.
+      auto resume_on_exit = ScopeExit([] {
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_perform_with_paging_state) = false;
+      });
+
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_perform_with_paging_state) = true;
+      threads.AddThreadFunctor([conn, &rows, &query] {
+        rows = conn->FetchRows<int32_t, int32_t, int32_t>(static_cast<std::string>(query));
+      });
+
+      // Parks on the continuation request for the second index page. By then the first page's rows
+      // have been fetched from the parent tablet, so the split lands in the middle of the scan
+      // rather than before or after it.
+      RETURN_NOT_OK(pause_waiter.WaitFor(60s * kTimeMultiplier));
+
+      RETURN_NOT_OK(SplitSingleTablet(table_id));
+      RETURN_NOT_OK(WaitForSplitCompletion(table_id));
+    }
+    return rows;
+  }
+
+  static void CheckAllRowsOnce(const std::vector<Row>& rows, int32_t expected_num_rows) {
+    std::map<int32_t, int> counts;
+    for (const auto& [k, i, payload_length] : rows) {
+      ++counts[k];
+    }
+    int duplicates = 0;
+    int missing = 0;
+    for (int32_t n = 0; n < expected_num_rows; ++n) {
+      auto it = counts.find(n);
+      if (it == counts.end()) {
+        ++missing;
+      } else {
+        duplicates += it->second - 1;
+      }
+    }
+    LOG(INFO) << "Rows: " << rows.size() << ", duplicates: " << duplicates
+              << ", missing: " << missing;
+    ASSERT_EQ(duplicates, 0);
+    ASSERT_EQ(missing, 0);
+    ASSERT_EQ(rows.size(), static_cast<size_t>(expected_num_rows));
+  }
+};
+
+// Ordered scan by secondary index.
+
+// New pagination correctly handles scan across a split.
+TEST_F(PgWideRowIndexScanSplitTest, BatchAfterSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Legacy pagination fails if encounters missing keys.
+TEST_F(PgWideRowIndexScanSplitTest, LegacyBatchFailsAfterSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto result = IndexScanAcrossSplit(&conn, table_id);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(
+      result.status().ToString(), "Some keys were not found, it is unsafe to paginate");
+}
+
+// The case when batch splits in the middle of the scan.
+// Higher limit allows to read all the rows from the index, so the scan stops for tablet split in
+// the middle of the base table scan.
+TEST_F(PgWideRowIndexScanSplitTest, MidBatchSplitIndexed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto rows = ASSERT_RESULT(
+      IndexScanAcrossSplit(&conn, table_id, kQuery, "t_i_idx", kNumRows));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Ordered pagination fails in legacy mode.
+TEST_F(PgWideRowIndexScanSplitTest, LegacyMidBatchSplitIndexed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto result = IndexScanAcrossSplit(&conn, table_id, kQuery, "t_i_idx", kNumRows);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(
+      result.status().ToString(), "Some keys were not found, it is unsafe to paginate");
+}
+
+class PgWideRowIndexScanSplitTestP :
+    public PgWideRowIndexScanSplitTest, public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    PgWideRowIndexScanSplitTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = GetParam();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(PgWideRowIndexScanSplit, PgWideRowIndexScanSplitTestP, ::testing::Bool());
+
+// Unordered scan pagination is safe, as the keys are ordered internally. Once scan reaches a key
+// from the sibling, no key will be found and scan will proceed to the end of the keys to be
+// forwarded to the next tablet without popping.
+TEST_P(PgWideRowIndexScanSplitTestP, BatchAfterSplitUnordered) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const std::string query =
+      "/*+ IndexScan(t t_i_idx) */ SELECT k, i, length(payload) FROM t WHERE i >= 0";
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// The IN condition on PK is converted to a list of unordered keys.
+// Scan by PK starts before the split, gets stopped when it paginates, then continues to scan
+// children tablets. Tests make sure there are no gaps and duplicate rows due to overlap.
+
+// Due to low limit scan paginates early and continues with the lower child tablet.
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchLowerSplitIn) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(0, kNumRows - 1));
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query, "t_pkey"));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Higher limits make the scan to paginate when on the upper child tablet.
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchUpperSplitIn) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(0, kNumRows - 1));
+  const size_t fetch_size_limit = (kNumRows - 1) * kPayloadSize;
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(
+      &conn, table_id, query, "t_pkey", kNumRows, fetch_size_limit));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Same as above, with missing keys in the IN clause.
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchLowerSplitInWithMissing) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(-1, kNumRows));
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query, "t_pkey"));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchUpperSplitInWithMissing) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(-1, kNumRows));
+  const size_t fetch_size_limit = (kNumRows - 1) * kPayloadSize;
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(
+      &conn, table_id, query, "t_pkey", kNumRows, fetch_size_limit));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// For some reason BNL sets up forward direction on the inner scan.
+// We skip legacy tests for those cases, since it fails very first pagination attempt.
+// No chance to catch the scan in the middle to split the tablet.
+TEST_F(PgWideRowIndexScanSplitTest, MidBatchLowerSplitOrderedBNL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto query = Format(
+      "/*+ YbBatchedNL(t v) */ SELECT k, i, length(payload) "
+      "FROM t, generate_series(-1, $0) v WHERE k = v", kNumRows);
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query, "t_pkey"));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Same as above, but with fetch size to fit the whole lower child tablet, and a part of the upper
+// child tablet into one page
+TEST_F(PgWideRowIndexScanSplitTest, MidBatchUpperSplitOrderedBNL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto query = Format(
+      "/*+ YbBatchedNL(t v) */ SELECT k, i, length(payload) "
+      "FROM t, generate_series(-1, $0) v WHERE k = v", kNumRows);
+  const size_t fetch_size_limit = (kNumRows - 1) * kPayloadSize;
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(
+      &conn, table_id, query, "t_pkey", kNumRows, fetch_size_limit));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
 #ifndef NDEBUG
 // Repro for https://github.com/yugabyte/yugabyte-db/issues/18387.
 // The test checks that we are getting the expected error if an operation is failing several
@@ -544,6 +963,172 @@ TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 #endif // NDEBUG
+
+// Checks IN-list reads of a split child before post-split compaction, while its SST
+// files still hold the parent's data. The second child gets IN values from the first
+// child's key range in two cases: a connection that cached the partitions before
+// the split, and an ordered scan of a range-partitioned table. The test pauses
+// post-split compaction to keep the children in this state. Covers GH #36918.
+class PgTabletSplitInListTest : public PgTabletSplitTest {
+ protected:
+  void TestInListReadOfSplitChildBeforePostSplitCompaction(bool range_partitioned);
+};
+
+void PgTabletSplitInListTest::TestInListReadOfSplitChildBeforePostSplitCompaction(
+    bool range_partitioned) {
+  // Left keys have a hash below kLeftHashLimit and right keys above kRightHashLimit (1/8 and 7/8
+  // of the hash range), so the split near the middle puts them in different children.
+  constexpr int kLeftHashLimit = 8192;
+  constexpr int kRightHashLimit = 57344;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_scan_choices_variable_bloom_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+  // Unpause compaction even if the test fails early, so the cluster can shut down.
+  auto resume_compaction = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t(h INT, r INT, v INT NOT NULL, s INT, $0",
+      range_partitioned ? "PRIMARY KEY(h ASC, r ASC))"
+                        : "PRIMARY KEY((h) HASH, r ASC)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t(h, r, v) SELECT i, 1, i FROM generate_series(1, 1000) i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+
+  // Keys from both ends of the table, so they go to different children. The split point is
+  // checked below.
+  const auto left = ASSERT_RESULT(conn.FetchRows<int32_t>(range_partitioned
+      ? std::string("SELECT h FROM t ORDER BY h LIMIT 2")
+      : Format("SELECT h FROM t WHERE yb_hash_code(h) < $0 ORDER BY yb_hash_code(h), h LIMIT 2",
+               kLeftHashLimit)));
+  const auto right = ASSERT_RESULT(conn.FetchRows<int32_t>(range_partitioned
+      ? std::string("SELECT h FROM t ORDER BY h DESC LIMIT 5")
+      : Format("SELECT h FROM t WHERE yb_hash_code(h) > $0 ORDER BY yb_hash_code(h), h LIMIT 5",
+               kRightHashLimit)));
+  ASSERT_EQ(left.size(), 2U);
+  ASSERT_EQ(right.size(), 5U);
+  std::string in_list;
+  for (const auto& keys : {left, right}) {
+    for (auto key : keys) {
+      in_list += (in_list.empty() ? "" : ", ") + AsString(key);
+    }
+  }
+
+  // A second SST file with rows only for left[1] and right[0]. The scan skips it for left[0] and
+  // seeks it again at left[1]. Its right[0] row must still be returned.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t(h, r, v) VALUES ($0, 2, 0), ($1, 2, 0)", left[1], right[0]));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  {
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    ASSERT_EQ(peers.size(), 1U);
+    ASSERT_EQ(
+        ASSERT_RESULT(peers.front()->shared_tablet())->regular_db()->GetCurrentVersionNumSSTFiles(),
+        2U);
+  }
+  // 2 left keys, 5 right keys, and the rows with r = 2 for left[1] and right[0].
+  std::vector<int32_t> expected_rows = left;
+  expected_rows.insert(expected_rows.end(), right.begin(), right.end());
+  expected_rows.push_back(left[1]);
+  expected_rows.push_back(right[0]);
+  std::sort(expected_rows.begin(), expected_rows.end());
+  auto sorted = [](std::vector<int32_t> rows) {
+    std::sort(rows.begin(), rows.end());
+    return rows;
+  };
+
+  const auto select = Format("SELECT h FROM t WHERE h IN ($0)", in_list);
+  auto stale_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(sorted(ASSERT_RESULT(stale_conn.FetchRows<int32_t>(select))), expected_rows);
+  // This connection caches the partitions before the split and reads again only after post-split
+  // compaction.
+  auto stale_after_compaction_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(sorted(ASSERT_RESULT(stale_after_compaction_conn.FetchRows<int32_t>(select))),
+            expected_rows);
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.ExecuteFormat("UPDATE t SET s = 1 WHERE h IN ($0)", in_list));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+  std::string split_key;
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+    const auto& meta = *peer->tablet_metadata();
+    ASSERT_FALSE(meta.rocksdb_parent_data_compacted()) << peer->tablet_id();
+    if (!meta.partition()->partition_key_start().empty()) {
+      split_key = meta.partition()->partition_key_start();
+    }
+  }
+  ASSERT_FALSE(split_key.empty());
+  // Check the split point from metadata, without reading the table.
+  if (range_partitioned) {
+    auto encode = [](int32_t h, int32_t r) {
+      return dockv::DocKey(dockv::KeyEntryValues{
+          dockv::KeyEntryValue::Int32(h), dockv::KeyEntryValue::Int32(r)}).Encode();
+    };
+    // The largest left row is (left[1], 2). right is in descending order, so its smallest row is
+    // (right.back(), 1).
+    ASSERT_LT(encode(left.back(), 2).AsSlice().compare(split_key), 0);
+    ASSERT_GE(encode(right.back(), 1).AsSlice().compare(split_key), 0);
+  } else {
+    const auto split_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(split_key);
+    ASSERT_GE(split_hash, kLeftHashLimit);
+    ASSERT_LE(split_hash, kRightHashLimit);
+  }
+
+  // Connects after the split. Usually the tserver has not refreshed its cached partitions yet, so
+  // this connection also gets the parent's partition. If the refresh happens first, this read
+  // passes even without the fix. The stale_conn read below always hits the bug.
+  auto fresh_conn = ASSERT_RESULT(Connect());
+  EXPECT_EQ(sorted(ASSERT_RESULT(fresh_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Loaded the table after the split";
+  EXPECT_EQ(sorted(ASSERT_RESULT(stale_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Stale partitions";
+  // Connects after the reads above refreshed the tserver's partitions. A plain IN read then sends
+  // each child only its own keys, so it passes even without the fix.
+  auto late_conn = ASSERT_RESULT(Connect());
+  EXPECT_EQ(sorted(ASSERT_RESULT(late_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Fresh partitions";
+  if (range_partitioned) {
+    // An ordered scan sends the whole IN list in one read, so the second child gets left keys even
+    // with fresh partitions.
+    EXPECT_EQ(ASSERT_RESULT(late_conn.FetchRows<int32_t>(select + " ORDER BY h")), expected_rows)
+        << "Ordered, fresh partitions";
+  }
+  // Without the fix, the second child finds no rows in the regular DB and builds them from this
+  // transaction's own changes only. Then v is NULL, and the UPDATE fails the NOT NULL constraint.
+  const auto updated = txn_conn.FetchRows<int32_t>(
+      Format("UPDATE t SET s = 2 WHERE h IN ($0) RETURNING h", in_list));
+  if (updated.ok()) {
+    EXPECT_EQ(sorted(*updated), expected_rows) << "Updated in the transaction";
+  } else {
+    ADD_FAILURE() << "Update in the transaction: " << updated.status();
+  }
+  ASSERT_OK(txn_conn.RollbackTransaction());
+
+  // After post-split compaction the child has only its own data, so even stale partitions read
+  // correctly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  std::vector<TabletId> child_ids;
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+    child_ids.push_back(peer->tablet_id());
+  }
+  ASSERT_OK(WaitForPeersPostSplitCompacted(cluster_.get(), child_ids));
+  EXPECT_EQ(sorted(ASSERT_RESULT(stale_after_compaction_conn.FetchRows<int32_t>(select))),
+            expected_rows) << "Stale partitions after compaction";
+}
+
+TEST_F_EX(PgTabletSplitTest, InListReadOfHashSplitChildBeforePostSplitCompaction,
+          PgTabletSplitInListTest) {
+  ASSERT_NO_FATALS(TestInListReadOfSplitChildBeforePostSplitCompaction(
+      /* range_partitioned= */ false));
+}
+
+TEST_F_EX(PgTabletSplitTest, InListReadOfRangeSplitChildBeforePostSplitCompaction,
+          PgTabletSplitInListTest) {
+  ASSERT_NO_FATALS(TestInListReadOfSplitChildBeforePostSplitCompaction(
+      /* range_partitioned= */ true));
+}
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
@@ -643,7 +1228,7 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
       std::numeric_limits<int32>::max();
 
-  // Create custom RocksDB listener to analyse files in a compaction.
+  // Create custom RocksDB listener to analyze files in a compaction.
   struct Listener : public rocksdb::EventListener {
     using CompactedFiles = std::vector<uint64_t>;
     using CompactionJob  = std::vector<CompactedFiles>;
@@ -794,19 +1379,19 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
     expected_rows.emplace_back(k, k);
   }
 
-  // Resume post split compaciton and wait for a completion.
+  // Resume post split compaction and wait for completion.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   ASSERT_OK(WaitForPeersPostSplitCompacted(
       cluster_.get(), { peers.front()->tablet_id(), peers.back()->tablet_id() }));
 
-  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `parent_data_compacted` field,
+  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `rocksdb_parent_data_compacted`,
   // which is updated only when regular db instances are compacted as we are not so interested in
   // intents db compactions. That's why the waiting loop can finish when the latest intents db
   // post split compaction is still running or not yet started. But in this test we are going to
   // track all compaction jobs, that's why let's wait for all expected compactions are done.
   compactions_listener.compactions_done.WaitFor(15s * kTimeMultiplier);
 
-  // Analyse compactions. The order is preserved.
+  // Analyze compactions. The order is preserved.
   // 1) We expected 4 instances (1 regular db and 1 intents db per child).
   auto compactions_per_db = compactions_listener.GetCompactions();
   ASSERT_EQ(4, compactions_per_db.size());
@@ -948,8 +1533,8 @@ class PgPartitioningVersionTest :
     auto tablet = VERIFY_RESULT(peer->shared_tablet());
     auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
     SCHECK_EQ(expected_partitioning_version, partitioning_version, IllegalState,
-              Format("Unexpected paritioning version {0} vs {1}",
-                      expected_partitioning_version, partitioning_version));
+              Format("Unexpected partitioning version {0} vs {1}",
+                     expected_partitioning_version, partitioning_version));
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
@@ -1381,7 +1966,7 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
       [](const uint32_t partitioning_version, PartitionsKeys partitions) -> PartitionsKeys {
     for (auto& part : partitions) {
       if (partitioning_version) {
-        // Starting from paritioning version == 1, a range group of partition, created with
+        // Starting from partitioning version == 1, a range group of partition, created with
         // split at statement, will contain a `-Inf` (a.k.a `kLowest` a.k.a 0x00) value for
         // `ybuniqueidxkeysuffix` or `ybidxbasectid`.
         part.push_back("-Inf");
@@ -1524,7 +2109,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
       const auto tablets = ASSERT_RESULT(GetTabletsByPartitionKey(table));
       ASSERT_EQ(tablets.size(), 3);
 
-      // Exptract middle tablet bounds.
+      // Extract middle tablet bounds.
       const auto parse_partition_key = [](const std::string& key) -> Result<int> {
         dockv::SubDocKey doc_key;
         RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
@@ -1613,7 +2198,7 @@ TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
   // this value.
   ASSERT_EQ(props.num_hash_key_columns, (partitioning == Partitioning::kHash));
   if (partitioning == Partitioning::kRange) {
-    // Additionally we can check split clause for range paritioned table.
+    // Additionally we can check split clause for range partitioned table.
     const auto range_clause = ASSERT_RESULT(FetchRangeSplitClause(&conn, table_name));
 
     // Build expected split clause.
@@ -1879,7 +2464,8 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
   // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
   // which is not retried for a manual split, so the split never completes.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
@@ -2166,7 +2752,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
 
   const auto stored = ASSERT_RESULT(
-      source_tablet->MaxPersistentOpId(/* invalid_if_no_new_data = */ false));
+      source_tablet->GetPersistentState(/* invalid_if_no_new_data = */ false));
   LOG(INFO) << "After race+flush: split_op_id=" << split_op_id
             << " regular_flushed_op_id=" << stored.regular
             << " intents_flushed_op_id=" << stored.intents;
@@ -2180,7 +2766,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       << "Async-write race fired: source intents flushed_frontier (" << stored.intents
       << ") advanced beyond SPLIT_OP (" << split_op_id
       << "). After split apply, this state is propagated into the children via "
-         "Tablet::CreateSubtablet's RocksDB checkpoint, and bootstrap of the children on "
+         "Tablet::CreateSplitChildTablet's RocksDB checkpoint, and bootstrap of the children on "
          "this replica will fail with TabletBootstrap::PlaySegments's SCHECK.";
 
   // Make sure split actually completes, and children bootstrap cleanly.
@@ -2365,6 +2951,147 @@ TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
   }
   LOG(INFO) << "target row k=5001 locally: " << (found ? "YES" : "NO");
   EXPECT_TRUE(found) << "DATA LOSS: target row missing";
+}
+
+// Regression tests for #34580: a hot key with many retained versions is one DocKey too large to
+// split. The split must take the boundary after it when that is closer to the target.
+class PgTabletSplitHotKeyTest : public PgTabletSplitTest {
+ protected:
+  // Sizes only need to span several SST data blocks; the ratios between them are what matter.
+  static constexpr int kNumColdRows = 2000;   // ~1 KB each => ~2 MB spread over the key space.
+  static constexpr int kNumHotUpdates = 300;  // ~8 KB each => ~2.4 MB in a single DocKey.
+  static constexpr int kFlushEvery = 60;      // Several SST files, like the original failure.
+
+  struct HotKeySplitResult {
+    std::string partition_key;  // Split partition key chosen by GetSplitKeys.
+    double heavier_ratio = 0;   // Share of SST data in the larger child after the split.
+  };
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cross_split_key_detection_algorithm) = true;
+    // Keep every version of the hot row (also through the post-split compaction).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 86400;
+    PgTabletSplitTest::SetUp();
+  }
+
+  // Creates a single-tablet table (k INT, v TEXT) with the given primary key, fills it with ~1 KB
+  // cold rows k = 1..kNumColdRows (except hot_k) and one hot row k = hot_k that is updated
+  // kNumHotUpdates times with ~8 KB values. Then checks the 2-way split key and performs the split.
+  Result<HotKeySplitResult> SplitTableWithLargeHotKey(
+      const std::string& table, const std::string& primary_key, const std::string& split_clause,
+      int32_t hot_k) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(k INT, v TEXT, PRIMARY KEY ($1)) $2", table, primary_key, split_clause));
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table));
+
+    // Referencing i re-evaluates the subquery per row; referencing g keeps string_agg in the
+    // subquery rather than the outer query.
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, "
+        "(SELECT string_agg(md5(random()::text || i::text || g::text), '') "
+        "FROM generate_series(1, 32) g) "
+        "FROM generate_series(1, $1) i WHERE i <> $2", table, kNumColdRows, hot_k));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    // Hot row: one key, many 8 KB versions.
+    RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 'init')", table, hot_k));
+    for (int i = 1; i <= kNumHotUpdates; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "UPDATE $0 SET v = "
+          "(SELECT string_agg(md5(random()::text), '') FROM generate_series(1, 256)) "
+          "WHERE k = $1", table, hot_k));
+      if (i % kFlushEvery == 0) {
+        RETURN_NOT_OK(cluster_->FlushTablets());
+      }
+    }
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 1, IllegalState, "Expected a single tablet");
+    const auto parent_id = peers.front()->tablet_id();
+    RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), parent_id));
+    auto parent = VERIFY_RESULT(peers.front()->shared_tablet());
+    LOG(INFO) << "Parent SST size: " << parent->GetCurrentVersionSstFilesSize();
+
+    // Direct check of the chosen split key.
+    const auto split_keys = VERIFY_RESULT(parent->GetSplitKeys(kDefaultNumSplitParts));
+    SCHECK_EQ(split_keys.partition_keys.size(), 1, IllegalState, "Expected one split key");
+    HotKeySplitResult result{.partition_key = split_keys.partition_keys[0]};
+    LOG(INFO) << "Split partition key: " << Slice(result.partition_key).ToDebugHexString();
+
+    // Actually split and measure the children after post-split compaction.
+    RETURN_NOT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_id));
+    peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 2, IllegalState, "Expected two child tablets");
+    uint64_t total = 0, heavier = 0;
+    for (const auto& peer : peers) {
+      auto child = VERIFY_RESULT(peer->shared_tablet());
+      const auto size = child->GetCurrentVersionSstFilesSize();
+      const auto partition = child->metadata()->partition();
+      LOG(INFO) << "Child " << peer->tablet_id()
+                << " [" << Slice(partition->partition_key_start()).ToDebugHexString() << ", "
+                << Slice(partition->partition_key_end()).ToDebugHexString() << ")"
+                << " SST size: " << size;
+      total += size;
+      heavier = std::max(heavier, size);
+    }
+    result.heavier_ratio = static_cast<double>(heavier) / total;
+    LOG(INFO) << "Heavier child share: " << result.heavier_ratio;
+    return result;
+  }
+};
+
+// Hash partitioning: the split after the hot key is hash + 1.
+TEST_F(PgTabletSplitHotKeyTest, YB_DISABLE_TEST_IN_SANITIZERS(HashPartitioned)) {
+  // A hash ~10% into the hash space gives [cold ~0.2MB][hot ~2.4MB][cold ~1.8MB]: the midpoint
+  // is inside the hot key and the split after it (~2.6MB) is closer than the split before it
+  // (~0.2MB).
+  int32_t hot_k = kNumColdRows + 1;
+  uint16_t hot_hash = 0;
+  for (;; ++hot_k) {
+    std::string tmp;
+    QLValuePB value;
+    value.set_int32_value(hot_k);
+    AppendToKey(value, &tmp);
+    hot_hash = YBPartition::HashColumnCompoundValue(tmp);
+    if (hot_hash >= 0x1800 && hot_hash < 0x1A00) {
+      break;
+    }
+  }
+  LOG(INFO) << "Hot key k=" << hot_k << " hash=0x" << std::hex << hot_hash << std::dec;
+
+  const auto result = ASSERT_RESULT(SplitTableWithLargeHotKey(
+      "hot_key_hash", "k HASH", "SPLIT INTO 1 TABLETS", hot_k));
+  const auto split_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(result.partition_key);
+
+  // The hot key itself can't be split: splitting before it puts ~95% in one child, splitting
+  // after it (hash + 1) gives ~60%. The closer legal split must win.
+  EXPECT_EQ(split_hash, hot_hash + 1) << "Split was not placed after the hot key";
+  EXPECT_LT(result.heavier_ratio, 0.7) << "Split is lopsided";
+}
+
+// Range partitioning: the split after the hot key is the next existing DocKey, which
+// NextSplitBoundary finds by seeking past every record of the hot DocKey.
+TEST_F(PgTabletSplitHotKeyTest, YB_DISABLE_TEST_IN_SANITIZERS(RangePartitioned)) {
+  // Keys are ordered by value, so a hot key 10% of the way through the cold keys gives the same
+  // layout as the hash test: [cold ~0.2MB][hot ~2.4MB][cold ~1.8MB].
+  constexpr int32_t kHotK = kNumColdRows / 10;
+  LOG(INFO) << "Hot key k=" << kHotK;
+
+  // For range partitioning the partition key is the encoded DocKey.
+  const auto doc_key = [](int32_t k) {
+    return dockv::DocKey(dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(k)})
+        .Encode().ToStringBuffer();
+  };
+  const auto result = ASSERT_RESULT(SplitTableWithLargeHotKey(
+      "hot_key_range", "k ASC", /* split_clause = */ "", kHotK));
+
+  // The DocKey right after the hot key is k = kHotK + 1.
+  EXPECT_EQ(Slice(result.partition_key).ToDebugHexString(),
+            Slice(doc_key(kHotK + 1)).ToDebugHexString())
+      << "Split was not placed after the hot key";
+  EXPECT_LT(result.heavier_ratio, 0.7) << "Split is lopsided";
 }
 
 } // namespace yb::pgwrapper

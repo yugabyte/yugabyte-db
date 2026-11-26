@@ -49,6 +49,8 @@ public interface ClusterMapper {
   @AfterMapping
   default void setProviderSpecs(Cluster v1Cluster, @MappingTarget ClusterSpec clusterSpec) {
     if (v1Cluster.userIntent != null && v1Cluster.userIntent.isMulticloudSupport()) {
+      // Legacy providerSpec is built from userIntent.provider, which is unset in this schema.
+      clusterSpec.setProviderSpec(null);
       clusterSpec.setProviderSpecs(
           UserIntentMapper.INSTANCE.providerSpecificationsToClusterPerProviderSpecs(
               v1Cluster.userIntent.providerSpecifications));
@@ -124,24 +126,19 @@ public interface ClusterMapper {
     return v1Clusters;
   }
 
+  // Used when RR/async clusters inherit unset fields from primary. Placement, partitions, and
+  // nodeSpec (incl. AZ instance-type overrides) stay cluster-specific and must not be copied.
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
   @Mapping(target = "partitionsSpec", ignore = true)
-  ClusterSpec deepCopyClusterSpecWithoutPlacementSpec(
-      ClusterSpec source, @MappingTarget ClusterSpec target);
+  @Mapping(target = "nodeSpec", ignore = true)
+  // These two fields are related to placement.
+  @Mapping(target = "replicationFactor", ignore = true)
+  @Mapping(target = "numNodes", ignore = true)
+  ClusterSpec deepCopyInheritableClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   ClusterSpec deepCopyClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
-
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  @Mapping(target = "placementSpec", ignore = true)
-  @Mapping(target = "partitionsSpec", ignore = true)
-  ClusterEditSpec deepCopyClusterEditSpecWithoutPlacementSpec(
-      ClusterSpec source, @MappingTarget ClusterEditSpec target);
-
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  ClusterEditSpec deepCopyClusterEditSpec(
-      ClusterEditSpec source, @MappingTarget ClusterEditSpec target);
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")

@@ -14,15 +14,29 @@ menu:
 type: docs
 ---
 
-YugabyteDB Aeon uses role-based access control (RBAC) to manage access to your YugabyteDB Aeon account. Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
+YugabyteDB Aeon uses role-based access control (RBAC) to manage access to your YugabyteDB Aeon organization and accounts. Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
 <!--
 <div style="position: relative; padding-bottom: calc(48.5% + 44px); height: 0;"><iframe src="https://app.supademo.com/embed/8qhuZOgCCzczVXY_5pydu" frameborder="0" webkitallowfullscreen="true" mozallowfullscreen="true" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
 -->
 
-YugabyteDB Aeon includes [built-in roles](#built-in-roles), and you can [define custom roles](#create-a-role) for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
+## Organization roles
 
-Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing your account using either the YugabyteDB Aeon API or CLI. You assign roles to API keys when creating the key; refer to [Create an API key](../../managed-automation/managed-apikeys/#create-an-api-key).
+Your organization has two roles: **Super Admin** and **Member**.
+
+Organization Super Admins can switch between all accounts and access organization settings. Super Admins are also added to all accounts as an Admin, and this role can't be changed.
+
+Each user you add to individual accounts is added to your organization as a Member. Members can switch between accounts they have joined.
+
+For information on managing organization roles, see [Manage organization users and authentication](../manage-accounts/#manage-organization-users-and-authentication).
+
+## Account roles
+
+Each account in your organization has its own access and role management. A single user can be a member of multiple accounts simultaneously, with a different role in each account. Each account remains fully isolated.
+
+Accounts include [built-in roles](#built-in-account-roles), and you can [define custom roles](#create-a-role) for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
+
+Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing an account using either the YugabyteDB Aeon API or CLI. You assign roles to API keys when creating the key; refer to [Create an API key](../../managed-automation/managed-apikeys/#create-an-api-key).
 
 {{< tip title="YugabyteDB Aeon account users are not the same as database users" >}}
 
@@ -36,13 +50,15 @@ The **Roles** tab displays a list of roles that are defined for your account, in
 
 To view role details, select the role in the list.
 
-## Built-in roles
+### Built-in account roles
 
-YugabyteDB Aeon includes built-in roles for managing your account:
+YugabyteDB Aeon includes built-in roles for managing accounts:
 
 - **Admin** - The Admin role provides full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Aeon account) is automatically assigned an Admin role.
 
-- **Developer** - The Developer role provides access to all features, with the exception of the following administrative tasks:
+    Organization Super Admin users are automatically granted Admin on every account in your organization.
+
+- **Developer** - The Developer role provides access to all account features, with the exception of the following administrative tasks:
 
   - invite users
   - delete or change the role of other users
@@ -55,9 +71,9 @@ YugabyteDB Aeon includes built-in roles for managing your account:
 
 You can't delete or edit built-in roles.
 
-## Create a role
+### Create a role
 
-To create a custom role, do the following:
+To create a custom role for an account, in the account where you want to change roles, do the following:
 
 1. Navigate to **Security > Access Control > Roles**, then click **Create a Role** to display the **Create a Role** dialog.
 1. Enter a name for the role.
@@ -76,7 +92,7 @@ To create a custom role from an existing role, do the following:
 1. Select the permissions to assign to the role and click **Select** when you are done.
 1. Click **Save**.
 
-## Edit a role
+### Edit a role
 
 You can only edit custom roles. To edit a custom role, do the following:
 
@@ -88,7 +104,7 @@ You can only edit custom roles. To edit a custom role, do the following:
 1. Select the permissions to assign to the role and click **Select** when you are done.
 1. Click **Save**.
 
-## Delete a role
+### Delete a role
 
 You can only delete custom roles, and only if the role is not assigned to any users.
 

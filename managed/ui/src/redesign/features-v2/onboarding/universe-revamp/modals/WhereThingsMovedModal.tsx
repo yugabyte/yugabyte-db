@@ -6,7 +6,7 @@ import NavArrowIcon from '@app/redesign/assets/what-changed/nav-arrow.svg';
 import SortIcon from '@app/redesign/assets/what-changed/sort.svg';
 import {
   ArrowWrap,
-  DEFAULT_RELEASE_NOTES_URL,
+  NEW_EXPERIENCE_DOCS_URL,
   FooterActions,
   HeaderLabel,
   ModalBody,
@@ -18,19 +18,20 @@ import {
 
 const { Box, Typography } = mui;
 
-export const WHERE_THINGS_MOVED_MODAL_DISMISS_KEY = 'yb_where_things_moved_modal_dismissed';
-
-interface WhereThingsMovedModalProps {
-  open: boolean;
-  onClose: () => void;
-  onFindOutMore?: () => void;
-  releaseNotesUrl?: string;
-}
-
-interface RelocationRow {
+export interface RelocationRow {
   thenKey: string;
   nowPathKey: string;
   nowDetailKey?: string;
+}
+
+export interface WhereThingsMovedModalProps {
+  open: boolean;
+  onClose: () => void;
+  onFindOutMore?: () => void;
+  i18nKeyPrefix?: string;
+  rows?: RelocationRow[];
+  nowPrefixKey?: string;
+  showFindOutMore?: boolean;
 }
 
 const RELOCATION_ROWS: RelocationRow[] = [
@@ -43,6 +44,10 @@ const RELOCATION_ROWS: RelocationRow[] = [
     thenKey: 'editUniverseInstance',
     nowPathKey: 'nowHardware',
     nowDetailKey: 'nowHardwareDetail'
+  },
+  {
+    thenKey: 'readReplica',
+    nowPathKey: 'nowPlacement'
   },
   {
     thenKey: 'logs',
@@ -62,18 +67,19 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
   open,
   onClose,
   onFindOutMore,
-  releaseNotesUrl = DEFAULT_RELEASE_NOTES_URL
+  i18nKeyPrefix = 'onBoarding.whereThingsMovedModal',
+  rows = RELOCATION_ROWS,
+  nowPrefixKey = 'settings',
+  showFindOutMore = true
 }) => {
-  const { t } = useTranslation('translation', {
-    keyPrefix: 'onBoarding.whereThingsMovedModal'
-  });
+  const { t } = useTranslation('translation', { keyPrefix: i18nKeyPrefix });
 
   const handleFindOutMore = () => {
     if (onFindOutMore) {
       onFindOutMore();
       return;
     }
-    window.open(releaseNotesUrl, '_blank', 'noopener,noreferrer');
+    window.open(NEW_EXPERIENCE_DOCS_URL, '_blank', 'noopener,noreferrer');
     onClose();
   };
 
@@ -109,14 +115,16 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
           >
             {t('close')}
           </YBButton>
-          <YBButton
-            variant="gradient"
-            size="large"
-            onClick={handleFindOutMore}
-            dataTestId="where-things-moved-modal-find-out-more"
-          >
-            {t('findOutMore')}
-          </YBButton>
+          {showFindOutMore && (
+            <YBButton
+              variant="gradient"
+              size="large"
+              onClick={handleFindOutMore}
+              dataTestId="where-things-moved-modal-find-out-more"
+            >
+              {t('findOutMore')}
+            </YBButton>
+          )}
         </FooterActions>
       }
     >
@@ -145,7 +153,7 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
                 <SortIcon />
               </HeaderLabel>
             </TableHeader>
-            {RELOCATION_ROWS.map((row) => (
+            {rows.map((row) => (
               <TableRow key={`${row.thenKey}-${row.nowPathKey}-${row.nowDetailKey ?? ''}`}>
                 <Typography
                   sx={{
@@ -171,7 +179,7 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
                   }}
                 >
                   <Box component="span" sx={{ color: '#6D7C88' }}>
-                    {t('settings')}
+                    {t(nowPrefixKey)}
                   </Box>
                   {`  /  ${t(row.nowPathKey)}`}
                   {row.nowDetailKey ? (

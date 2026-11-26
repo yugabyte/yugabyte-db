@@ -10,7 +10,8 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     ChangeInstanceTypeMethod, ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
     DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, HardRebootInstancesMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, HardRebootInstancesMethod, \
+    UpdateDiskMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 import logging
 import json
@@ -117,10 +118,27 @@ class AzureCreateRootVolumesMethod(CreateRootVolumesMethod):
             self.create_method.run_create_instance(args)
         except Exception as e:
             logging.error("Could not create Azure master volume. Failed with error {}.".format(e))
-            host_info = self.cloud.get_host_info(args)
-            self.delete_instance(args, host_info["node_uuid"], False)
+            # Best effort cleanup of the temporary VM. The creation error is the one to surface,
+            # so a cleanup failure must not replace it.
+            try:
+                host_info = self.cloud.get_host_info(args)
+                if host_info:
+                    self.delete_instance(args, host_info["node_uuid"], False)
+                else:
+                    # The VM was never created, but its NIC was. Nothing else cleans it up since
+                    # the VM name has a random prefix that no retry will reuse.
+                    self.cloud.get_admin().destroy_orphaned_resources(
+                        args.search_pattern, args.node_uuid)
+            except Exception as cleanup_error:
+                logging.warning("Could not clean up Azure VM {}. Failed with error {}."
+                                .format(args.search_pattern, cleanup_error))
+            raise
 
         host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError(
+                "Could not find Azure VM {} created for the master volume.".format(
+                    args.search_pattern))
         self.delete_instance(args, host_info["node_uuid"], True)
         return host_info["root_volume"]
 
@@ -372,6 +390,21 @@ class AzureChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AzureUpdateDiskMethod(UpdateDiskMethod):
+    def __init__(self, base_command):
+        super(AzureUpdateDiskMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AzureUpdateDiskMethod, self).add_extra_args()
+        # YBA passes these for every disk type with provisioned performance (Premium SSD v2 and
+        # Ultra). Only the size of an Azure disk is updated: YBA rejects a change of IOPS or
+        # throughput before it gets here, so the values always match what the disks already have.
+        self.parser.add_argument("--disk_iops", type=int, default=None,
+                                 help="Provisioned disk IOPS. Accepted but not modified.")
+        self.parser.add_argument("--disk_throughput", type=int, default=None,
+                                 help="Provisioned disk throughput. Accepted but not modified.")
 
 
 class AzureQueryCurrentHostMethod(AbstractMethod):

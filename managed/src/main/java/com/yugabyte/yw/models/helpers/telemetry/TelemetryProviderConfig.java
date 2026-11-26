@@ -8,8 +8,13 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
@@ -63,5 +68,22 @@ public class TelemetryProviderConfig {
    */
   public void validateConnectivity(ApiHelper apiHelper) {
     // Child classes should override as needed.
+  }
+
+  /**
+   * Credential values as configured, so they can be redacted by value wherever they are rendered.
+   * Not a bean property, so it is neither serialized nor documented.
+   */
+  public List<String> secretValues() {
+    return Collections.emptyList();
+  }
+
+  /** Removes line breaks that a paste adds to a single-line credential. */
+  public static String removeLineBreaks(String value) {
+    return StringUtils.replaceChars(value, "\r\n", "");
+  }
+
+  protected static List<String> nonEmpty(String... values) {
+    return Arrays.stream(values).filter(StringUtils::isNotEmpty).collect(Collectors.toList());
   }
 }

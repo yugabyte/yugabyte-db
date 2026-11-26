@@ -60,5 +60,5 @@ yugabyte=# DETAIL:  Data movement is a long running asynchronous process and can
 
 ## See also
 
-- [`CREATE MATERIALZIED VIEW`](../ddl_create_matview)
-- [`DROP MATERIALIZED VIEW`](../ddl_drop_matview)
+- [CREATE MATERIALZIED VIEW](../ddl_create_matview)
+- [DROP MATERIALIZED VIEW](../ddl_drop_matview)

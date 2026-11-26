@@ -67,7 +67,7 @@ Status Decimal::ToPointString(string* string_val, const int max_length) const {
   }
   int64_t exponent = VERIFY_RESULT(exponent_.ToInt64());
   if (exponent > max_length || exponent < -max_length) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Max length $0 too small to encode decimal with exponent $1", max_length, exponent);
   }
   string output;
@@ -82,7 +82,7 @@ Status Decimal::ToPointString(string* string_val, const int max_length) const {
     for (size_t i = 0; i < digits_.size(); i++) {
       output.push_back('0' + digits_[i]);
       if (implicit_cast<int64_t>(output.size()) > max_length) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
+        return STATUS_FORMAT(InvalidArgument,
             "Max length $0 too small to encode Decimal", max_length);
       }
     }
@@ -93,14 +93,14 @@ Status Decimal::ToPointString(string* string_val, const int max_length) const {
       }
       output.push_back('0' + digits_[i]);
       if (implicit_cast<int64_t>(output.size()) > max_length) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
+        return STATUS_FORMAT(InvalidArgument,
             "Max length $0 too small to encode Decimal", max_length);
       }
     }
     for (ssize_t i = digits_.size(); i < exponent; i++) {
       output.push_back('0');
       if (implicit_cast<int64_t>(output.size()) > max_length) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
+        return STATUS_FORMAT(InvalidArgument,
             "Max length $0 too small to encode Decimal", max_length);
       }
     }
@@ -149,7 +149,7 @@ Result<VarInt> Decimal::ToVarInt() const {
   RETURN_NOT_OK(ToPointString(&string_val, kUnlimitedMaxLength));
 
   if (!is_integer()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Cannot convert non-integer Decimal into integer: $0", string_val);
   }
 
@@ -158,7 +158,7 @@ Result<VarInt> Decimal::ToVarInt() const {
 
 Status Decimal::FromString(const Slice &slice) {
   if (slice.empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Cannot decode empty slice to Decimal: $0", slice.ToString());
   }
   is_positive_ = slice[0] != '-';
@@ -178,14 +178,14 @@ Status Decimal::FromString(const Slice &slice) {
     if (PREDICT_TRUE(slice[i] >= '0' && slice[i] <= '9')) {
       digits_.push_back(slice[i]-'0');
     } else {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
           InvalidArgument,
           "Invalid character $0 found at position $1 when parsing Decimal $2",
           slice[i], i, slice.ToString());
     }
   }
   if (PREDICT_FALSE(digits_.empty())) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         InvalidArgument,
         "There are no digits in the decimal $0 before the e / E",
         slice.ToBuffer());
@@ -404,7 +404,7 @@ string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {
 
 Status Decimal::DecodeFromSerializedBigDecimal(Slice slice) {
   if (slice.size() < 5) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption, "Serialized BigDecimal must have at least 5 bytes. Found $0", slice.size());
   }
   // Decode the scale from the first 4 bytes.

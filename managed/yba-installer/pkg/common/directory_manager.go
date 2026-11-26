@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/viper"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -139,6 +140,40 @@ func PrunePastInstalls() {
 
 }
 
+// PruneNodeAgentPackages deletes the node-agent packages in dir of every version except
+// keepVersion. YBA only serves the package matching its own version
+// (NodeAgentManager.getNodeAgentPackagePath), so keepVersion must be the version YBA runs or
+// rolls back to. If no package matches keepVersion, nothing is deleted, so a version string
+// that doesn't match the file names can't empty the directory. Best effort: failures are logged.
+func PruneNodeAgentPackages(dir, keepVersion string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "node_agent-*.tar.gz"))
+	if err != nil {
+		log.Warn(fmt.Sprintf("Not pruning node agent packages in %s: %s", dir, err.Error()))
+		return
+	}
+	keepPrefix := "node_agent-" + keepVersion + "-"
+	var toDelete []string
+	found := false
+	for _, f := range matches {
+		if strings.HasPrefix(filepath.Base(f), keepPrefix) {
+			found = true
+		} else {
+			toDelete = append(toDelete, f)
+		}
+	}
+	if !found {
+		log.Warn(fmt.Sprintf("Not pruning node agent packages in %s: none match version %s",
+			dir, keepVersion))
+		return
+	}
+	for _, f := range toDelete {
+		log.Debug("Deleting node agent package " + f)
+		if err := os.Remove(f); err != nil {
+			log.Warn(fmt.Sprintf("Failed to delete node agent package %s: %s", f, err.Error()))
+		}
+	}
+}
+
 // Default the directory manager to using the install workflow.
 var dm directoryManager = directoryManager{
 	Workflow:          workflowInstall,
@@ -194,6 +229,38 @@ func GetJavaPackagePath() string {
 	return GetFileMatchingGlobOrFatal(javaBinaryGlob)
 }
 
+// javaBinary resolves a JDK tool from the JRE this installer deploys. That JRE is the only
+// acceptable source: the platform is pinned to it by the systemd unit, and the BCFKS keystore has
+// to be built by the same JRE and BouncyCastle provider that later reads it. A keytool picked up
+// from PATH or JAVA_HOME is an unversioned binary the install never chose, so a missing bundled
+// JRE is an error rather than a reason to look elsewhere - setupJDK() extracts it before anything
+// here runs, so its absence means the install is broken.
+func javaBinary(name string) (string, error) {
+	bundled := filepath.Join(GetInstallerSoftwareDir(), "jdk*", "bin", name)
+	matches, err := filepath.Glob(bundled)
+	if err != nil {
+		return "", fmt.Errorf("looking for a bundled %s at %s: %w", name, bundled, err)
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no bundled JRE provides %s: nothing matches %s", name, bundled)
+	}
+	return matches[0], nil
+}
+
+// bcFipsJarPath locates the bc-fips jar in the installed YBA release. keytool needs it on
+// -providerpath to know what BCFKS is.
+func bcFipsJarPath() (string, error) {
+	pattern := filepath.Join(GetSoftwareRoot(), "yb-platform", "yugaware", "lib", "*bc-fips-*.jar")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", fmt.Errorf("searching for bc-fips jar: %w", err)
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no bc-fips jar found matching %s", pattern)
+	}
+	return matches[0], nil
+}
+
 // Returns YBDB package path.
 func GetYbdbPackagePath() string {
 	return GetFileMatchingGlobOrFatal(ybdbPackageGlob)
@@ -220,6 +287,24 @@ func GetPACollectorPackagePath() string {
 		return path
 	}
 	return AbsoluteBundlePath(bundlePACollectorPackagePath())
+}
+
+// bundleYsqlDumpClientPath returns the ysql_dump client bundle path relative to
+// the extracted yba_installer_full bundle, for copyBits.
+func bundleYsqlDumpClientPath() string {
+	return GetFileMatchingGlobOrFatal(YsqlDumpClientBundleGlob)
+}
+
+// GetYsqlDumpClientBundlePath returns an absolute path to the ysql_dump client
+// bundle, preferring the copy stashed under GetInstallerSoftwareDir() the same
+// way GetPACollectorPackagePath does, so a later reconfigure works without the
+// extracted bundle still being present.
+func GetYsqlDumpClientBundlePath() string {
+	installedGlob := filepath.Join(GetInstallerSoftwareDir(), YsqlDumpClientBundleName)
+	if path, matches, err := GetFileMatchingGlob(installedGlob); err == nil && matches == 1 {
+		return path
+	}
+	return AbsoluteBundlePath(bundleYsqlDumpClientPath())
 }
 
 // Gets 0 or 1 matches of YBDB package path.

@@ -51,7 +51,9 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   private static final String TEST_DB_MOVE_DB_FAILS = "test_db_name_move_db_fails";
 
   private static final int NUM_THREADS_DB_CONCURRENCY_TESTING = 30;
-  private static final int NUM_DB_CONCURRENCY_TESTING = 5;
+  // CREATE DATABASE takes over a minute on sanitizer builds; keep the test within its timeout.
+  private static final int NUM_DB_CONCURRENCY_TESTING =
+      BuildTypeUtil.nonSanitizerVsSanitizer(5, 2);
   private static final int NUM_RETRIES = 10;
   private static final int IDLE_CONNECTION_TIME_SECS = 5;
 
@@ -72,6 +74,9 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
         Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
     builder.addCommonTServerFlag(
         "ysql_conn_mgr_idle_time", Integer.toString(IDLE_CONNECTION_TIME_SECS));
+    // The default jitter (120s) dwarfs the idle time and is redrawn on every one second tick, so an
+    // idle backend can defer expiry well past the window testBackendCleanupOnDropDb waits in.
+    builder.addCommonTServerFlag("ysql_conn_mgr_jitter_time", "0");
   }
 
   private void executeDDL(String query, boolean shouldSucceed) {

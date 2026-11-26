@@ -57,7 +57,8 @@ static int yb_forward_fatal_msg(od_client_t *client,
 	if (rc == -1)
 		goto errmsg;
 
-	od_frontend_fatal_forward(client, fatal_pkt.code, fatal_pkt.message);
+	od_frontend_fatal_forward(client, fatal_pkt.code, "%s",
+				  fatal_pkt.message);
 	return 0;
 
 errmsg:
@@ -119,7 +120,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
 		"starting Auth Passthrough, sent 'Auth Passthrough Request' packet");
 
-	const int max_default_args = 16;
+	const int max_default_args = 22;
 	int num_startup_args = client->yb_startup_settings.size;
 	kiwi_var_t *startup_vars = client->yb_startup_settings.vars;
 
@@ -134,14 +135,47 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 
 	/* override the remote host sent to the control backend. */
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_auth_remote_host"));
+			YB_NAME_AND_SIZEOF(YB_YCM_AUTH_REMOTE_HOST));
 	yb_kiwi_set_fe_arg(&argv[argc++], client_address,
-			   strlen(client_address) + 1);
+			strlen(client_address) + 1);
 
 	/* send the connection type to the control backend. */
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
+			YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 	yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
+
+	/* forward the client certificate, so that Postgres can read CN/DN. */
+	int yb_client_cert_len = 0;
+	char *yb_client_cert = yb_encode_client_cert(client, &yb_client_cert_len);
+	if (yb_client_cert != NULL) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_CERT));
+		yb_kiwi_set_fe_arg(&argv[argc++], yb_client_cert,
+				   yb_client_cert_len);
+	}
+
+	/* forward the server certificate hash for SCRAM channel binding. */
+	int yb_server_cert_hash_len = 0;
+	char *yb_server_cert_hash =
+		yb_encode_server_cert_hash(client, &yb_server_cert_hash_len);
+	if (yb_server_cert_hash != NULL) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_SERVER_CERT_HASH));
+		yb_kiwi_set_fe_arg(&argv[argc++], yb_server_cert_hash,
+				   yb_server_cert_hash_len);
+	}
+
+	/* send the logical client's addr/port to the control backend. */
+	if (client->yb_ycm_client_addr[0] != '\0') {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_ADDR));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_ycm_client_addr,
+				   strlen(client->yb_ycm_client_addr) + 1);
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_PORT));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_ycm_client_port,
+				   strlen(client->yb_ycm_client_port) + 1);
+	}
 
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
@@ -153,6 +187,13 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("database"));
 	}
+
+	/*
+	 * Must follow every reserved parameter: Postgres rejects reserved names
+	 * after it, which is where the logical client's settings go.
+	 */
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF(YB_YCM_INTERNAL_END));
+	yb_kiwi_set_fe_arg(&argv[argc++], "", 1);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);
@@ -171,6 +212,10 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 	msg = kiwi_fe_write_startup_message(NULL, argc, argv);
 	free(argv);
 	argv = NULL;
+	if (yb_client_cert != NULL)
+		free(yb_client_cert);
+	if (yb_server_cert_hash != NULL)
+		free(yb_server_cert_hash);
 
 	if (msg == NULL)
 		return -1;
@@ -239,24 +284,24 @@ static void yb_client_exit_mid_passthrough(od_server_t *server,
 }
 
 /*
- * TODO (vikram.damle) (#29176): Merge this function with the copy defined in backend.c
- * This will merge when auth passthrough flow is merged with auth backend.
+ * YB: The reported GUCs are collected into a single buffer and written once
+ * instead of one write per ParameterStatus packet, which saves a trip through
+ * the poller per packet.
  */
-
-static inline int
-yb_send_parameter_status_auth_passthrough(od_io_t *io, char *name, int name_len,
-					  char *value, int value_len)
+static inline int yb_flush_guc_batch(od_client_t *client,
+				     machine_msg_t **batch)
 {
-	machine_msg_t *msg = kiwi_be_write_parameter_status(
-		NULL, name, name_len, value, value_len);
-	if (msg == NULL) {
-		return -1;
+	if (*batch == NULL)
+		return 0;
+	return od_write(&client->io, batch);
+}
+
+static inline void yb_discard_guc_batch(machine_msg_t **batch)
+{
+	if (*batch != NULL) {
+		machine_msg_free(*batch);
+		*batch = NULL;
 	}
-	int rc = od_write(io, &msg);
-	if (rc != 0) {
-		return -1;
-	}
-	return 0;
 }
 
 static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
@@ -272,7 +317,7 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	/* Wait for password response packet from the client. */
 	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, login_timeout_ms);
+		msg = yb_od_read_auth(&client->io, login_timeout_ms);
 
 		/*
 		 * YB: Unconditionally exit if the client has not given a relevant
@@ -409,6 +454,7 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 					&instance->logger,
 					CONTEXT_AUTH_PASSTHROUGH, NULL, server,
 					"failed to parse authentication message");
+				machine_msg_free(msg);
 				yb_control_connection_failed(server, instance);
 				od_frontend_fatal(
 					client, KIWI_PROTOCOL_VIOLATION,
@@ -445,10 +491,16 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 			continue;
 
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
+			machine_msg_free(msg);
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 
 			/* No need to wait for the Auth packet */
 			return YB_CLI_AUTH_FAILED;
+
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
+			machine_msg_free(msg);
+			continue;
 
 		case KIWI_BE_ERROR_RESPONSE:
 		default:
@@ -564,6 +616,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	od_router_t *router = global->router;
 	kiwi_be_type_t type;
 	machine_msg_t *msg;
+	machine_msg_t *guc_batch = NULL;
 	int rc = -1;
 	int rc_auth = -1;
 
@@ -573,12 +626,14 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	rc_auth = rc;
 
 	/*
-	 * Wait till the `READY_FOR_QUERY` packet is received.
-	 * TODO (vikram.damle) (#29176): Need a `reset phase` for control backends in
-	 * authentication. The backend may send extra information that is no longer
-	 * needed if auth fails as part of its internal state reset (eg. GUC reset
-	 * ParameterStatus packets). Need to clear the "buffer" of incoming messages
-	 * before returning the control backend to the pool.
+	 * Drain the control backend's post-auth packets until the
+	 * `READY_FOR_QUERY` packet is received. On a successful auth the backend
+	 * emits a burst of GUC ParameterStatus packets followed by ReadyForQuery.
+	 * If the client disconnects mid-relay we cannot forward the remaining
+	 * ParameterStatus/ReadyForQuery packets, but we must still read them off
+	 * `server->io` so the control backend is left synchronized before it is
+	 * returned to the pool; otherwise the next auth on this backend would read
+	 * the stale packets and desync the physical connection.
 	 */
 	while (true) {
 		msg = od_read(&server->io, UINT32_MAX);
@@ -589,6 +644,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					 server->client, server,
 					 "read error from server: %s",
 					 od_io_error(&server->io));
+				server->offline = 1;
+				yb_discard_guc_batch(&guc_batch);
 				return -1;
 			}
 		}
@@ -606,9 +663,21 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				od_frontend_fatal(
 					client, KIWI_PROTOCOL_VIOLATION,
 					"Unable to allocate the shared memory segment");
+				yb_discard_guc_batch(&guc_batch);
 				return -1;
 			}
 #endif
+			/*
+			 * The control backend is drained at this point, so failing the
+			 * client write here cannot leave it desynced.
+			 */
+			if (rc_auth != 0) {
+				yb_discard_guc_batch(&guc_batch);
+			} else if (yb_flush_guc_batch(client, &guc_batch) != 0) {
+				od_error(&instance->logger, "auth", NULL, server,
+					 "Unable to send ParameterStatus packets to client");
+				rc_auth = -1;
+			}
 			machine_msg_free(msg);
 			return rc_auth;
 
@@ -618,13 +687,23 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			machine_msg_free(msg);
 			continue;
 
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
+			machine_msg_free(msg);
+			continue;
+
 		case KIWI_BE_NOTICE_RESPONSE:
 			if (yb_read_client_id_from_notice_pkt(
 				    client, server, instance, msg) < 0) {
 				/*
 				 * The notice packet does not contains any client id and
 				 * thus it is required to forward this notice packet to the client
+				 * Flush the batch first to keep the packets in
+				 * the order the backend produced them.
 				 */
+				if (rc_auth == 0 &&
+				    yb_flush_guc_batch(client, &guc_batch) != 0)
+					rc_auth = -1;
 				rc = od_write(&client->io, &msg);
 				if (rc < 0)
 					rc_auth = -1;
@@ -646,6 +725,12 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				NULL, server,
 				"Did not expect ParameterStatus 'S' packet from Postgres, refusing to parse");
 			machine_msg_free(msg);
+			/*
+			 * Backend is in an unexpected state and may never send an RFQ.
+			 * Mark it to be discarded.
+			 */
+			server->offline = 1;
+			yb_discard_guc_batch(&guc_batch);
 			return -1;
 		case YB_CONN_MGR_PARAMETER_STATUS: {
 			char *name;
@@ -663,7 +748,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					&instance->logger,
 					CONTEXT_AUTH_PASSTHROUGH, NULL, server,
 					"failed to parse ParameterStatus message");
-				return -1;
+				rc_auth = -1;
+				continue;
 			}
 
 			od_debug(
@@ -684,7 +770,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 						"failed to parse yb_logical_client_version: %.*s",
 						value_len, value);
 					machine_msg_free(msg);
-					return -1;
+					rc_auth = -1;
+					continue;
 				}
 
 				client->yb_logical_client_version = parsed_lcv;
@@ -696,44 +783,58 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			}
 
 			/* Explicitly ignoring these variables. We don't want to replay these */
-			if ((name_len == sizeof("yb_is_client_ysqlconnmgr") &&
-			     strcmp(name, "yb_is_client_ysqlconnmgr") == 0) ||
-			    (name_len == sizeof("yb_use_tserver_key_auth") &&
-			     strcmp(name, "yb_use_tserver_key_auth") == 0)) {
+			if ((name_len == sizeof(YB_YCM_IS_CLIENT_YSQLCONNMGR) &&
+			     strcmp(name, YB_YCM_IS_CLIENT_YSQLCONNMGR) == 0) ||
+			    (name_len == sizeof(YB_YCM_USE_TSERVER_KEY_AUTH) &&
+			     strcmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)) {
 				machine_msg_free(msg);
 				break;
 			}
 
-			if (flags & YB_PARAM_STATUS_REPORT_ENABLED) {
-				/*
-				 * We only care about reported variables when
-				 * auth backend starts
-				 */
-				int rc =
-					yb_send_parameter_status_auth_passthrough(
-						&client->io, name, name_len,
-						value, value_len);
-				if (rc != 0 && rc_auth == 0) {
-					od_error(
-						&instance->logger, "auth", NULL,
-						server,
-						"Unable to send ParameterStatus for GUC %.*s to client",
-						name_len, name);
-					machine_msg_free(msg);
-					return rc;
-				}
-			}
+			if (rc_auth == 0) {
+				if (flags & YB_PARAM_STATUS_REPORT_ENABLED) {
+					/* We only care about forwarding report enabled variables */
+					/*
+					 * Held separately because the append leaves the
+					 * batch untouched when it fails.
+					 */
+					machine_msg_t *appended;
 
-			if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
-				/*
-				 * The parameters here are the ones set by the startup packet in
-				 * the auth backend (here, passthrough). These are the parameters
-				 * that have to be replayed in a transactional backend to get the
-				 * same impact as the client's startup packet.
-				 * See od_frontend_setup_params() for more details.
-				 */
-				kiwi_vars_update(&client->yb_vars_startup, name,
-						 name_len, value, value_len);
+					appended = kiwi_be_write_parameter_status(
+						guc_batch, name, name_len,
+						value, value_len);
+					if (appended == NULL) {
+						od_error(
+							&instance->logger,
+							"auth", NULL, server,
+							"Unable to buffer ParameterStatus for GUC %.*s to client, will drain remaining control backend packets",
+							name_len, name);
+						/*
+						 * Do not abort here: continue receiving msgs to drain
+						 * the remaining ParameterStatus/ReadyForQuery packets
+						 * from the control backend so it stays synchronized
+						 * for the next auth.
+						 */
+						yb_discard_guc_batch(&guc_batch);
+						rc_auth = -1;
+						machine_msg_free(msg);
+						continue;
+					}
+					guc_batch = appended;
+				}
+
+				if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
+					/*
+					 * The parameters here are the ones set by the startup packet in
+					 * the auth backend (here, passthrough). These are the parameters
+					 * that have to be replayed in a transactional backend to get the
+					 * same impact as the client's startup packet.
+					 * See od_frontend_setup_params() for more details.
+					 */
+					kiwi_vars_update(
+						&client->yb_vars_startup, name,
+						name_len, value, value_len);
+				}
 			}
 
 			machine_msg_free(msg);
@@ -744,7 +845,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
 			machine_msg_free(msg);
 			server->offline = 1;
-			break;
+			yb_discard_guc_batch(&guc_batch);
+			return -1;
 		default:
 			od_error(
 				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
@@ -752,6 +854,12 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				"got unhandled packet type %s (0x%x) during auth passthrough",
 				kiwi_be_type_to_string(type), type);
 			machine_msg_free(msg);
+			/*
+			 * Server is in an unknown state. Mark as offline and close auth as
+			 * it may never send an RFQ.
+			 */
+			server->offline = 1;
+			yb_discard_guc_batch(&guc_batch);
 			return -1;
 		}
 	}

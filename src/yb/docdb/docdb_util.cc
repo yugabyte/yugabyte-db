@@ -37,6 +37,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
@@ -44,7 +45,6 @@
 #include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
-using strings::Substitute;
 using std::vector;
 
 namespace yb::docdb {
@@ -54,6 +54,16 @@ using dockv::DocPath;
 const std::string kIntentsDirName = "intents";
 const std::string kSnapshotsDirName = "snapshots";
 const std::string kVectorIndexDirPrefix = "vi-";
+
+namespace {
+
+const std::string kRemovedVectorIndexMarkSuffix = ".removed";
+
+std::string RemovedVectorIndexMarkDir(const std::string& storage_dir) {
+  return storage_dir + kRemovedVectorIndexMarkSuffix;
+}
+
+} // namespace
 
 Status SetValueFromQLBinaryWrapper(
     const QLValuePB& ql_value, int pg_data_type,
@@ -182,7 +192,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       // don't contain the HybridTime.
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.key),
-          Substitute("when decoding key: $0", FormatBytesAsStr(entry.key)));
+          Format("when decoding key: $0", FormatBytesAsStr(entry.key)));
     }
   }
 
@@ -197,7 +207,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
         partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_,
-        /* applier= */ nullptr);
+        /* applier= */ nullptr, skip_prefix_locks_);
     DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
     RETURN_NOT_OK(writer.Apply(handler));
     intra_txn_write_id_ = writer.intra_txn_write_id();
@@ -236,8 +246,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     return Status::OK();
   }
   if (!hybrid_time.is_valid()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Hybrid time is not valid: $0",
-                             hybrid_time.ToString());
+    return STATUS_FORMAT(InvalidArgument, "Hybrid time is not valid: $0",
+                         hybrid_time.ToString());
   }
 
   ConsensusFrontiers frontiers;
@@ -566,10 +576,10 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
   tablet_options.block_cache = block_cache_;
   docdb::InitRocksDBOptions(
       &regular_db_options_, yb::Format("[R] $0", tablet_id), tablet_id,
-      regular_db_options_.statistics, tablet_options);
+      regular_db_options_.statistics, tablet_options, StorageDbType::kRegular);
   docdb::InitRocksDBOptions(
       &intents_db_options_, yb::Format("[I] $0", tablet_id), tablet_id,
-      intents_db_options_.statistics, tablet_options);
+      intents_db_options_.statistics, tablet_options, StorageDbType::kIntents);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
       retention_policy_, &KeyBounds::kNoBounds,
       [this](const std::vector<rocksdb::FileMetaData*>&) {
@@ -577,7 +587,7 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
           .other_min = delete_marker_retention_time_,
         };
       } ,
-      this);
+      this, /* vector_metadata_iterator_provider= */ nullptr, CompactionMetrics{});
   regular_db_options_.compaction_file_filter_factory = compaction_file_filter_factory_;
   regular_db_options_.exclude_from_compaction = exclude_from_compaction_;
   if (!regular_db_) {
@@ -647,16 +657,46 @@ std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
   return kVectorIndexDirPrefix + options.id();
 }
 
+Status MarkRemovedVectorIndexStorage(Env& env, const std::string& storage_dir) {
+  RETURN_NOT_OK(env.CreateDirs(RemovedVectorIndexMarkDir(storage_dir)));
+  return env.SyncDir(DirName(storage_dir));
+}
+
+bool IsVectorIndexStorageMarkedRemoved(Env& env, const std::string& storage_dir) {
+  return env.DirExists(RemovedVectorIndexMarkDir(storage_dir));
+}
+
+std::optional<std::string> StorageOfRemovedVectorIndexMark(const std::string& dir) {
+  if (!dir.ends_with(kRemovedVectorIndexMarkSuffix)) {
+    return std::nullopt;
+  }
+  return dir.substr(0, dir.size() - kRemovedVectorIndexMarkSuffix.size());
+}
+
+Status DeleteVectorIndexStorage(Env& env, const std::string& storage_dir) {
+  if (env.DirExists(storage_dir)) {
+    RETURN_NOT_OK(env.DeleteRecursively(storage_dir));
+  }
+  auto mark_dir = RemovedVectorIndexMarkDir(storage_dir);
+  if (!env.DirExists(mark_dir)) {
+    return Status::OK();
+  }
+  // Makes the deletion of the storage durable first.
+  RETURN_NOT_OK(env.SyncDir(DirName(storage_dir)));
+  return env.DeleteDir(mark_dir);
+}
+
 std::string HnswBackendExtension(HnswBackend backend) {
   switch (backend) {
-    case USEARCH:
-      return "usearch"s;
     case YB_HNSW_USEARCH: [[fallthrough]];
     case YB_HNSW_HNSWLIB:
       // Block based representation does not depend on source index, so could use the same
       // extension because on disk format is compatible.
       return "yb_hnsw"s;
-    case HNSWLIB:
+    // Deprecated backends can still be present in persisted metadata, so keep their extensions.
+    case DEPRECATED_USEARCH:
+      return "usearch"s;
+    case DEPRECATED_HNSWLIB:
       return "hnswlib"s;
   }
   FATAL_INVALID_ENUM_VALUE(HnswBackend, backend);
@@ -681,7 +721,10 @@ Status MoveChild(Env& env, const std::string& data_dir, const std::string& child
   }
   auto dest_dir = GetStorageDir(data_dir, child);
   LOG(INFO) << "Moving " << source_dir << " => " << dest_dir;
-  if (env.FileExists(dest_dir)) {
+  if (child.starts_with(kVectorIndexDirPrefix)) {
+    // With the removal mark, which would make the next add of the index delete this storage.
+    RETURN_NOT_OK(DeleteVectorIndexStorage(env, dest_dir));
+  } else if (env.FileExists(dest_dir)) {
     RETURN_NOT_OK(env.DeleteRecursively(dest_dir));
   }
   return env.RenameFile(source_dir, dest_dir);

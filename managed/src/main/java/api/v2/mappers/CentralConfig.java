@@ -24,11 +24,16 @@ public interface CentralConfig {
    * from UniverseDefinitionTaskParams, like UniverseConfigureTaskParams, GFlagsUpgradeParams, etc.
    */
   @Mapping(target = "existingLBs", ignore = true)
+  // Only tasks write this state, and they read it from the universe.
+  @Mapping(target = "managedLoadBalancerState", ignore = true)
   @Mapping(target = "primaryCluster", ignore = true)
   @Mapping(target = "TServers", ignore = true)
   @Mapping(target = "readOnlyClusters", ignore = true)
   @Mapping(target = "addOnClusters", ignore = true)
   @Mapping(target = "nonPrimaryClusters", ignore = true)
+  // Next two fields are computable, so omitting them in mapper.
+  @Mapping(target = "sourceXClusterConfigs", ignore = true)
+  @Mapping(target = "targetXClusterConfigs", ignore = true)
   @Mapping(target = "allowInsecure", constant = "false")
   @Mapping(target = "capability", constant = "EDITS_ALLOWED")
   @Mapping(

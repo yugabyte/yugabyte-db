@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -50,7 +51,6 @@ class CDCSDKVirtualWAL {
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
       {Status::Code::kNotFound, "Footer for segment"},
-      {Status::Code::kNotFound, "Log index cache entry for op index"},
       {Status::Code::kIllegalState, "LogReader is not initialized"}};
 
   Status InitVirtualWALInternal(
@@ -81,6 +81,7 @@ class CDCSDKVirtualWAL {
   struct GetChangesRequestInfo {
     uint64_t safe_hybrid_time;
     int32_t wal_segment_index;
+    int64_t max_index_in_sort_window;
 
     // The following fields will be used to populate from_cdc_sdk_checkpoint object of the next
     // GetChanges RPC call.
@@ -174,6 +175,8 @@ class CDCSDKVirtualWAL {
 
   Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
 
+  void MoveAbortedSubtxnsToResponse(RowMessage* row_message, GetConsistentChangesResponsePB* resp);
+
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
@@ -211,14 +214,45 @@ class CDCSDKVirtualWAL {
 
   Status CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry);
 
+  // Validates that the tablets in the response jointly cover every partition key the slot is
+  // responsible for (either the whole key space or slot_hash_range_).
+  Status ValidateTabletListCoverage(
+      const TableId& table_id, const GetTabletListToPollForCDCResponsePB& resp) const;
+
   Status ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record);
 
   Status UpdateRestartTimeIfRequired();
 
-  bool DeterminePubRefreshFromMasterRecord(
-      const RecordInfo& record_info, bool* explicit_alter_publication_detected);
+  // The catalog change behind a publication refresh, as detected from a sys catalog record.
+  enum class PubRefreshTrigger {
+    kNone,
+    // A pg_publication_rel row added or removed: ALTER PUBLICATION ADD / DROP / SET TABLE, or a
+    // member table dropped.
+    kPublicationTableChanged,
+    // A pg_publication row updated: ALTER PUBLICATION SET (...), RENAME, OWNER.
+    kPublicationUpdated,
+    // A relation created under a FOR ALL TABLES publication.
+    kTableCreated,
+    kTableRewritten,
+    kTableDropped,
+    kReplicationOriginChanged,
+  };
+
+  PubRefreshTrigger DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
 
   bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
+
+  bool IsDmlOnPgCatalogTableForDetectingDDL(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
+
+  std::optional<TableId> GetPublishedTableIdForOid(uint32_t oid) const;
+
+  Result<std::optional<TableId>> GetPublishedTableIdFromPgCatalogRecord(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
+
+  Status AddSyntheticDDLRecordFromCatalogDML(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record, GetConsistentChangesResponsePB* resp,
+      GetConsistentChangesRespMetadata* metadata, uint64_t* resp_records_size);
 
   bool ShouldPopulateExplicitCheckpoint();
 
@@ -361,15 +395,30 @@ class CDCSDKVirtualWAL {
   // The table ID of pg_class catalog table for the database on which virtual WAL is polling.
   TableId pg_class_table_id_;
 
+  // The table ID of pg_attribute catalog table for the database on which virtual WAL is polling.
+  // Only populated when ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  TableId pg_attribute_table_id_;
+
+  // The table ID of pg_namespace catalog table for the database on which virtual WAL is polling.
+  // Only populated when ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  TableId pg_namespace_table_id_;
+
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
   // polling.
   TableId pg_publication_rel_table_id_;
+
+  // The table ID of pg_publication_rel_prpubid_index. Only populated when transactional DDL is
+  // enabled.
+  TableId pg_publication_rel_prpubid_index_table_id_;
 
   // The table ID of pg_replication_origin catalog.
   TableId pg_replication_origin_table_id_;
 
   // The table ID of pg_publication catalog table for the database on which virtual WAL is polling.
   TableId pg_publication_table_id_;
+
+  // The PG database OID for the namespace on which this virtual WAL is polling.
+  uint32_t pg_database_oid_ = 0;
 
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;
@@ -390,6 +439,11 @@ class CDCSDKVirtualWAL {
   // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
   // tablet for determining changes to the publication.
   bool detect_publication_changes_implicitly_ = false;
+
+  // Set on a pub-refresh slot that is being prepared for conversion to an implicit slot. No change
+  // committed after it is shipped, since it would be shipped again after the conversion with an
+  // LSN computed for an implicit slot.
+  HybridTime implicit_conversion_stop_time_ = HybridTime::kInvalid;
 };
 
 }  // namespace cdc

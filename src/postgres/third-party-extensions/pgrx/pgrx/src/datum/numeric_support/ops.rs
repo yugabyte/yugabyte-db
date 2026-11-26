@@ -12,7 +12,7 @@ use std::ops::{
 };
 
 use super::call_numeric_func;
-use crate::{pg_sys, AnyNumeric, Numeric};
+use crate::{AnyNumeric, Numeric, pg_sys};
 
 impl<const P: u32, const S: u32> Deref for Numeric<P, S> {
     type Target = AnyNumeric;
@@ -206,7 +206,7 @@ macro_rules! anynumeric_assign_op_from_float {
                 }
 
                 // these versions won't, so we use .unwrap_unchecked()
-                #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17"))]
+                #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))]
                 {
                     unsafe {
                         *self = self.clone() $op AnyNumeric::try_from(rhs).unwrap_unchecked();

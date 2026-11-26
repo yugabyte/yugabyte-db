@@ -224,6 +224,8 @@ class RpcAndWebServerBase : public RpcServerBase {
     return false;
   }
 
+  virtual void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {}
+
   static void DisplayIconTile(std::stringstream* output, const std::string icon,
                               const std::string caption, const std::string url);
 
@@ -250,6 +252,9 @@ class RpcAndWebServerBase : public RpcServerBase {
   void GenerateInstanceID();
   std::string GetEasterEggMessage() const;
   std::string FooterHtml() const;
+
+  // Whether this server counts towards the process-wide tracing setup done by Init().
+  bool dist_trace_initialized_ = false;
 
   scoped_refptr<AtomicMillisLag> server_uptime_ms_metric_;
   scoped_refptr<AtomicGauge<int64_t>> server_hard_limit_;

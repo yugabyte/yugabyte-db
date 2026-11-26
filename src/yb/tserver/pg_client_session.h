@@ -57,7 +57,7 @@ class PgSessionGuard;
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
     (AlterTable) \
-    (BackfillIndex) \
+    (StartTableBackfill) \
     (CreateDatabase) \
     (CreateReplicationSlot) \
     (CreateTable) \
@@ -68,6 +68,7 @@ class PgSessionGuard;
     (DropTablegroup) \
     (FetchData) \
     (RollbackToSubTransaction) \
+    (RestartTransactionForRetry) \
     (TruncateTable) \
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
@@ -90,6 +91,7 @@ class PgSessionGuard;
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (BackfillIndex) \
     (FinishTransaction) \
     /**/
 
@@ -108,11 +110,13 @@ struct PgClientSessionMetrics {
   EventStatsPtr vector_index_fetch_us;
   EventStatsPtr vector_index_collect_us;
   EventStatsPtr vector_index_reduce_us;
+  EventStatsPtr vector_index_partitions_queried;
 };
 
 struct PgClientSessionDbHistoryRetentionPin {
   PgOid db_oid = kPgInvalidOid;
   HybridTime read_time;
+  pid_t pid = -1;
 };
 
 struct PgClientSessionContext {
@@ -132,15 +136,19 @@ struct PgClientSessionContext {
 #ifdef __linux__
   TServerCgroupManager* cgroup_manager;
 #endif
+  // Set only when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
 };
 
-using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
+using RequestProcessingPreconditionWaiter =
+    LWFunction<Status(const ::yb::tserver::LWPgRequestSequenceNumPB&, CoarseTimePoint)>;
 
 class PgClientSession final {
  private:
   using SharedThisSource = std::shared_ptr<void>;
 
  public:
+  class Impl;
   using TransactionBuilder = std::function<client::YBTransactionPtr(
       IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
@@ -149,13 +157,18 @@ class PgClientSession final {
       TransactionBuilder&& transaction_builder, client::YBClient& client,
       std::reference_wrapper<const PgClientSessionContext> context,
       uint64_t id, pid_t pid, uint64_t lease_epoch,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager);
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state);
   ~PgClientSession();
 
   uint64_t id() const;
+  pid_t pid() const;
+
+  // The database recorded for the session's backend; kInvalidOid if none yet.
+  PgOid TEST_database_oid() const;
 
   struct SharedDataDescriptor {
-    PgSessionLockOwnerTagShared& object_lock;
+    PgSessionObjectLockData& object_lock;
     std::atomic<uint64_t>& oldest_read_point_serial_no;
   };
 
@@ -226,7 +239,6 @@ BOOST_PP_SEQ_FOR_EACH(
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL
 
  private:
-  class Impl;
   std::unique_ptr<Impl> impl_;
 };
 

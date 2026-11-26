@@ -12,6 +12,7 @@
 //
 
 #include <algorithm>
+#include <numeric>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -318,6 +319,181 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithNondefaultMinNumReplicas)
   ASSERT_EQ(counts_per_ts[1], num_tablets()); // z1
   ASSERT_EQ(counts_per_ts[2], 0);             // z2
   ASSERT_EQ(counts_per_ts[3], num_tablets()); // z0
+}
+
+TEST_F(LoadBalancerPlacementPolicyTest, CreateTableRespectsMaxNumReplicas) {
+  // Give z0 three tservers so that, without the maximum, initial placement could put three
+  // replicas of a tablet in z0 (with only two tservers per zone the two-replica bound would hold
+  // structurally and the test would be vacuous).
+  AddNewTserverToZone("z0", 4);
+  AddNewTserverToZone("z0", 5);
+  AddNewTserverToZone("z1", 6);
+  AddNewTserverToZone("z2", 7);
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0:1:2,c.r.z1:1:2,c.r.z2:1:2", 5, ""));
+
+  const string table_name = "max-replicas-creation-test";
+  const yb::client::YBTableName placement_table(
+      YQL_DATABASE_CQL, this->table_name().namespace_name(), table_name);
+  yb::client::YBSchemaBuilder builder;
+  yb::client::YBSchema schema;
+  builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  ASSERT_OK(builder.Build(&schema));
+  ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
+
+  // Tserver indexes per zone: z0: {0, 3, 4}, z1: {1, 5}, z2: {2, 6}.
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table_name, 7, &counts_per_ts);
+  ASSERT_EQ(std::accumulate(counts_per_ts.begin(), counts_per_ts.end(), 0), 5 * num_tablets());
+  ASSERT_LE(counts_per_ts[0] + counts_per_ts[3] + counts_per_ts[4], 2 * num_tablets());
+  ASSERT_LE(counts_per_ts[1] + counts_per_ts[5], 2 * num_tablets());
+  ASSERT_LE(counts_per_ts[2] + counts_per_ts[6], 2 * num_tablets());
+}
+
+TEST_F(LoadBalancerPlacementPolicyTest, MaxNumReplicasIsAHardCap) {
+  // Policy over z0 (populated) and z3/z4 (empty). z0 alone has enough tservers for a quorum of
+  // three, but its maximum of two makes a quorum infeasible, so table creation must fail: the
+  // maximum is a hard cap even when other placements have no tservers.
+  AddNewTserverToZone("z0", 4);
+  AddNewTserverToZone("z0", 5);
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0:1:2,c.r.z3:1:2,c.r.z4:1:2", 5, ""));
+
+  const string table_name = "max-replicas-hard-cap-test";
+  const yb::client::YBTableName placement_table(
+      YQL_DATABASE_CQL, this->table_name().namespace_name(), table_name);
+  yb::client::YBSchemaBuilder builder;
+  yb::client::YBSchema schema;
+  builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  ASSERT_OK(builder.Build(&schema));
+  // Assert on the distinguishing error text: the raw quorum checks pass here (five live
+  // tservers, three of them in z0), so creation must fail specifically in the cap-aware
+  // feasibility calculation (z0 contributes at most two replicas, z3/z4 contribute none).
+  ASSERT_NOK_STR_CONTAINS(
+      NewTableCreator()->table_name(placement_table).schema(&schema).Create(),
+      "Can only find 2 tablet servers for the replicas but need at least 3");
+
+  // With one tserver in z3, a quorum (two in z0 plus one in z3) becomes feasible and creation
+  // succeeds, initially under-replicated.
+  AddNewTserverToZone("z3", 6);
+  ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
+
+  // Once z3 and z4 are fully populated, the load balancer heals the table to the full
+  // replication factor without exceeding any maximum.
+  AddNewTserverToZone("z3", 7);
+  AddNewTserverToZone("z4", 8);
+  WaitForLoadBalancer();
+
+  // Tserver indexes per zone: z0: {0, 3, 4}, z1: {1}, z2: {2}, z3: {5, 6}, z4: {7}.
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table_name, 8, &counts_per_ts);
+  ASSERT_EQ(std::accumulate(counts_per_ts.begin(), counts_per_ts.end(), 0), 5 * num_tablets());
+  ASSERT_LE(counts_per_ts[0] + counts_per_ts[3] + counts_per_ts[4], 2 * num_tablets());
+  ASSERT_LE(counts_per_ts[5] + counts_per_ts[6], 2 * num_tablets());
+  ASSERT_EQ(counts_per_ts[7], num_tablets());
+  ASSERT_EQ(counts_per_ts[1], 0);  // z1 is not in the placement policy.
+  ASSERT_EQ(counts_per_ts[2], 0);  // z2 is not in the placement policy.
+}
+
+class LoadBalancerUnderReplicatedMaxNumReplicasTest : public LoadBalancerPlacementPolicyTest {
+ protected:
+  static constexpr auto kTableName = "under-replicated-max-replicas-test";
+
+  // RF 5 over z0, z1 and z3, each capped at 2, with z3 left without tservers: tablets have
+  // replicas on ts0, ts3 (z0) and ts1, ts4 (z1), 4 of 5.
+  void CreateUnderReplicatedTable() {
+    AddNewTserverToZone("z0", 4);
+    AddNewTserverToZone("z1", 5);
+
+    ReplicationInfoPB replication_info;
+    replication_info.mutable_live_replicas()->set_num_replicas(5);
+    for (const auto& zone : {"z0", "z1", "z3"}) {
+      auto* block = replication_info.mutable_live_replicas()->add_placement_blocks();
+      block->mutable_cloud_info()->set_placement_cloud("c");
+      block->mutable_cloud_info()->set_placement_region("r");
+      block->mutable_cloud_info()->set_placement_zone(zone);
+      block->set_min_num_replicas(1);
+      block->set_max_num_replicas(2);
+    }
+
+    yb::client::YBSchemaBuilder builder;
+    yb::client::YBSchema schema;
+    builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    ASSERT_OK(builder.Build(&schema));
+    ASSERT_OK(NewTableCreator()
+                  ->table_name(yb::client::YBTableName(
+                      YQL_DATABASE_CQL, table_name().namespace_name(), kTableName))
+                  .schema(&schema)
+                  .replication_info(replication_info)
+                  .Create());
+  }
+
+  Result<vector<int>> GetCappedTableLoad(size_t num_tservers) {
+    vector<int> counts;
+    for (size_t i = 0; i < num_tservers; ++i) {
+      counts.push_back(VERIFY_RESULT(
+          GetLoadOnTserver(external_mini_cluster()->tablet_server(i), kTableName)));
+    }
+    return counts;
+  }
+
+  // Fails if z0 (ts0, ts3, ts5) ever holds more than 2 replicas per tablet during the window.
+  // Tests using this are disabled in sanitizers, where the balancer makes too few passes in it.
+  void AssertZ0WithinMaxFor(MonoDelta window, size_t num_tservers) {
+    const auto deadline = CoarseMonoClock::Now() + window;
+    while (CoarseMonoClock::Now() < deadline) {
+      const auto counts = ASSERT_RESULT(GetCappedTableLoad(num_tservers));
+      ASSERT_LE(counts[0] + counts[3] + counts[5], 2 * num_tablets()) << AsString(counts);
+      SleepFor(500ms);
+    }
+  }
+};
+
+TEST_F(LoadBalancerUnderReplicatedMaxNumReplicasTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(NoLoadBalancingMoveBeyondMax)) {
+  ASSERT_NO_FATALS(CreateUnderReplicatedTable());
+
+  // ts5 in z0 hosts nothing of the capped table, but z0 is at its maximum.
+  AddNewTserverToZone("z0", 6);
+  // The default table spreading onto ts5 shows the balancer has seen it.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(GetLoadOnTserver(
+        external_mini_cluster()->tablet_server(5), table_name().table_name())) > 0;
+  }, kDefaultTimeout, "Default table moved to ts5"));
+
+  ASSERT_NO_FATALS(AssertZ0WithinMaxFor(10s, 6));
+  ASSERT_EQ(ASSERT_RESULT(GetCappedTableLoad(6))[5], 0);
+}
+
+TEST_F(LoadBalancerUnderReplicatedMaxNumReplicasTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(DrainBlockedUntilMissingReplicaPlaced)) {
+  ASSERT_NO_FATALS(CreateUnderReplicatedTable());
+  AddNewTserverToZone("z0", 6);
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+      external_mini_cluster()->GetLeaderMaster(), external_mini_cluster()->tablet_server(0)));
+
+  // The default table draining off ts0 shows the balancer has processed the blacklist. The capped
+  // table's drain stays blocked without exceeding z0's maximum.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(GetLoadOnTserver(
+        external_mini_cluster()->tablet_server(0), table_name().table_name())) == 0;
+  }, kDefaultTimeout, "Default table drained from ts0"));
+  ASSERT_NO_FATALS(AssertZ0WithinMaxFor(10s, 6));
+  ASSERT_EQ(ASSERT_RESULT(GetCappedTableLoad(6))[0], num_tablets());
+  // The blocked drain keeps the balancer from reporting idle.
+  ASSERT_FALSE(ASSERT_RESULT(client_->IsLoadBalancerIdle()));
+
+  // With a tserver in z3, the missing replicas are placed and the drain completes.
+  AddNewTserverToZone("z3", 7);
+  // Tserver indexes per zone: z0: {0, 3, 5}, z1: {1, 4}, z2: {2}, z3: {6}.
+  const vector<int> expected = {
+      0, num_tablets(), 0, num_tablets(), num_tablets(), num_tablets(), num_tablets()};
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(GetCappedTableLoad(7)) == expected;
+  }, kDefaultTimeout * 2, "Capped table drained from ts0"));
+  WaitForLoadBalancerToBeIdle();
+  const auto final_load = ASSERT_RESULT(GetCappedTableLoad(7));
+  ASSERT_VECTORS_EQ(final_load, expected);
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {

@@ -73,6 +73,12 @@ const PROMETHEUS_EXPORT_METHOD_OPTIONS = [
   { value: PROMETHEUS_EXPORT_METHOD.PROMQL, label: 'PromQL' }
 ];
 
+const REMOTE_READ_BATCH_DURATION_MINS = 60;
+const PROMQL_BATCH_DURATION_MINS = 15;
+
+const getDefaultBatchDurationMins = (useRemoteRead) =>
+  useRemoteRead ? REMOTE_READ_BATCH_DURATION_MINS : PROMQL_BATCH_DURATION_MINS;
+
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
   { label: 'Last 3 days', type: 'days', value: '3' },
@@ -81,23 +87,19 @@ const filterTypes = [
   { label: 'Custom', type: CUSTOM, value: CUSTOM }
 ];
 
-const filterTypePromDump = [
+// Prometheus and Perf Advisor dumps offer the same windows. Values must stay unique: the
+// dropdowns look the selection up by value.
+const filterTypeMetricsDump = [
   { label: 'Last 15 mins', type: 'minutes', value: '15' },
   { label: 'Last 1 hour', type: 'hours', value: '1' },
+  { label: 'Last 2 hours', type: 'hours', value: '2' },
   { label: 'Last 3 hours', type: 'hours', value: '3' },
-  { type: 'divider' },
-  { label: 'Custom', type: CUSTOM, value: CUSTOM }
-];
-
-const filterTypePerfAdvisor = [
-  { label: 'Last 1 hour', type: 'hours', value: '1' },
   { label: 'Last 6 hours', type: 'hours', value: '6' },
-  { label: 'Last 24 hrs', type: 'hours', value: '24' },
-  { label: 'Last 2 days', type: 'days', value: '2' },
-  { label: 'Last 7 days', type: 'days', value: '7' },
+  { label: 'Last 1 day', type: 'hours', value: '24' },
   { type: 'divider' },
   { label: 'Custom', type: CUSTOM, value: CUSTOM }
 ];
+const DEFAULT_METRICS_DUMP_FILTER_TYPE = filterTypeMetricsDump[1];
 
 export const selectionOptions = [
   { label: 'All', value: 'All' },
@@ -112,7 +114,9 @@ export const selectionOptions = [
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
   { label: 'Tablet Report', value: 'TabletReport' },
+  { label: 'Cluster Config', value: 'ClusterConfig' },
   { label: 'Node agent logs', value: 'NodeAgent' },
+  { label: 'Node health check logs', value: 'NodeHealthLogs' },
   { label: 'Core Files', value: 'CoreFiles' },
   { label: 'YB-Controller logs', value: 'YbcLogs' },
   { label: 'Kubernetes Info', value: 'K8sInfo' },
@@ -126,7 +130,8 @@ export const prometheusMetricsOptions = [
   { label: 'Prometheus', value: 'PROMETHEUS' },
   { label: 'TServer Export', value: 'TSERVER_EXPORT' },
   { label: 'YCQL Export', value: 'CQL_EXPORT' },
-  { label: 'YSQL Export', value: 'YSQL_EXPORT' }
+  { label: 'YSQL Export', value: 'YSQL_EXPORT' },
+  { label: 'Kubernetes Containers', value: 'KUBERNETES' }
 ];
 
 const ONE_GB_IN_BYTES = 1_07_37_41_824;
@@ -145,14 +150,14 @@ const getBackDateBeforeDate = (amount, type, date) => {
 };
 
 export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
-  promDumpStartDate: getBackDate(15, 'minutes'),
+  promDumpStartDate: getBackDate(1, 'hours'),
   promDumpEndDate: new Date(),
   prometheusMetricsOptionsValue: prometheusMetricsOptions.map(() => true),
   isPromDumpDateTypeCustom: false,
-  promDumpDateType: filterTypePromDump[0],
+  promDumpDateType: DEFAULT_METRICS_DUMP_FILTER_TYPE,
   prometheusQueries: [],
   useRemoteRead: true,
-  promMetricsFormat: PerfAdvisorMetricsFormat.PROMQL_JSON,
+  promMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK,
   promDumpDownSample: true,
   stepPromDumpSecs: null,
   batchDurationPromDumpMins: null
@@ -163,7 +168,7 @@ export const DEFAULT_PERF_ADVISOR_METADATA_PARAMS = {
   paDumpEndDate: new Date(),
   paMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK,
   isPaDateTypeCustom: false,
-  paDateType: filterTypePerfAdvisor[0]
+  paDateType: DEFAULT_METRICS_DUMP_FILTER_TYPE
 };
 
 export const DEFAULT_UNIVERSE_LOGS_PARAMS = {
@@ -394,14 +399,15 @@ export const SecondStep = ({
   isK8sUniverse,
   universeStatus,
   payload,
-  universeUUID
+  universeUUID,
+  useV2Api = false
 }) => {
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0]);
   const [selectedFilterTypePromDump, setSelectedFilterTypePromDump] = useState(
-    filterTypePromDump[0]
+    DEFAULT_METRICS_DUMP_FILTER_TYPE
   );
   const [selectedFilterTypePerfAdvisor, setSelectedFilterTypePerfAdvisor] = useState(
-    filterTypePerfAdvisor[0]
+    DEFAULT_METRICS_DUMP_FILTER_TYPE
   );
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(
     selectionOptions.map(() => true)
@@ -427,7 +433,7 @@ export const SecondStep = ({
   const [startDate, setStartDate] = useState(getBackDate(1, 'days'));
   const [endDate, setEndDate] = useState(new Date());
   const [promDumpStartDate, setPromDumpStartDate] = useState(
-    getBackDateBeforeDate(15, 'minutes', endDate)
+    getBackDateBeforeDate(1, 'hours', endDate)
   );
   const [promDumpEndDate, setPromDumpEndDate] = useState(endDate);
   const [paStartDate, setPaStartDate] = useState(getBackDate(1, 'hours'));
@@ -458,7 +464,7 @@ export const SecondStep = ({
 
   const estimateSupportBundleSizeQuery = useQuery(
     'estimatedSupportBundleSize',
-    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current),
+    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current, useV2Api),
     {
       // We set enabled to false so the only time this query fires is when we
       // explicitly call estimatedSupportBundleSizeQuery.refetch().
@@ -471,7 +477,7 @@ export const SecondStep = ({
       },
       onError: (error) => {
         handleServerError(error, {
-          customErrorLabel: 'Failed fetch estimated support bundle size.'
+          customErrorLabel: 'Failed fetch estimated support bundle size'
         });
       }
     }
@@ -485,7 +491,7 @@ export const SecondStep = ({
     onOptionsChange(changedOptions);
   };
 
-  // Sync "Perf Advisor Metadata" option with isPerfAdvisorRegistered prop: add when true, remove when false.
+  // Sync "Perf Advisor metrics" option with isPerfAdvisorRegistered prop: add when true, remove when false.
   // Keeps selectionOptions (and selectionOptionsValue) in sync and notifies parent via handleOptionsChange.
   useEffect(() => {
     const perfAdvisorIndex = selectionOptions.findIndex((e) => e.value === 'PerfAdvisor');
@@ -493,7 +499,7 @@ export const SecondStep = ({
     if (isPerfAdvisorRegistered) {
       // Add Perf Advisor option only if not already present (avoids duplicates on re-run).
       if (perfAdvisorIndex === -1) {
-        selectionOptions.push({ label: 'Perf Advisor Metadata', value: 'PerfAdvisor' });
+        selectionOptions.push({ label: 'Perf Advisor metrics', value: 'PerfAdvisor' });
         const nextValue = [...currentSelectionValues, true];
         setSelectionOptionsValue(nextValue);
         handleOptionsChange(
@@ -1094,7 +1100,7 @@ export const SecondStep = ({
                           <span className="dropdown-text">
                             <i className="fa fa-calendar" />{' '}
                             {
-                              filterTypePromDump.find(
+                              filterTypeMetricsDump.find(
                                 (type) => type.value === selectedFilterTypePromDump.value
                               ).label
                             }
@@ -1102,7 +1108,7 @@ export const SecondStep = ({
                         }
                         pullRight
                       >
-                        {filterTypePromDump.map((filterType, index) => {
+                        {filterTypeMetricsDump.map((filterType, index) => {
                           if (filterType.type === 'divider') {
                             return <MenuItem divider key={filterType.type} />;
                           }
@@ -1192,11 +1198,17 @@ export const SecondStep = ({
                             onSelect={() => {
                               const useRemoteRead =
                                 option.value === PROMETHEUS_EXPORT_METHOD.REMOTE_READ;
+                              // Deliberately do NOT touch batchDurationPromDumpMins here: it's
+                              // an implicit-default field (null means "use the method's default"
+                              // and the input placeholder recomputes on each render from
+                              // getDefaultBatchDurationMins(useRemoteRead)). Once the operator
+                              // has typed a value we keep it across Remote Read <-> PromQL flips,
+                              // matching the Step (seconds) field's behaviour.
                               const updatedObj = {
                                 ...prometheusMetricsParams,
                                 useRemoteRead,
                                 ...(useRemoteRead && {
-                                  promMetricsFormat: PerfAdvisorMetricsFormat.PROMQL_JSON
+                                  promMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK
                                 })
                               };
                               setPrometheusMetricsParams(updatedObj);
@@ -1221,6 +1233,11 @@ export const SecondStep = ({
                           </MenuItem>
                         ))}
                       </DropdownButton>
+                      &nbsp;&nbsp;
+                      <YBInfoTip
+                        content="Remote Read is faster and allows any batch size and raw metrics export (no downsampling). PromQL allows custom query filtering."
+                        title="Remote Read vs PromQL"
+                      />
                     </Box>
                     {prometheusMetricsParams.useRemoteRead && (
                       <Box display="flex" alignItems="center" mb={1}>
@@ -1231,7 +1248,7 @@ export const SecondStep = ({
                               {
                                 METRIC_FORMAT_OPTIONS.find(
                                   (o) => o.value === prometheusMetricsParams.promMetricsFormat
-                                )?.label ?? 'JSON'
+                                )?.label ?? 'Binary'
                               }
                             </span>
                           }
@@ -1268,6 +1285,11 @@ export const SecondStep = ({
                             </MenuItem>
                           ))}
                         </DropdownButton>
+                        &nbsp;&nbsp;
+                        <YBInfoTip
+                          content="Binary produces a smaller bundle and is faster to export/import than JSON, so it is the recommended default."
+                          title="Metrics format"
+                        />
                       </Box>
                     )}
                     {prometheusMetricsOptions.map((prometheusMetricsOption, i) => (
@@ -1414,7 +1436,9 @@ export const SecondStep = ({
                             <YBInput
                               type="number"
                               min={1}
-                              placeholder="e.g. 15 (default)"
+                              placeholder={`e.g. ${getDefaultBatchDurationMins(
+                                prometheusMetricsParams.useRemoteRead
+                              )} (default)`}
                               value={prometheusMetricsParams.batchDurationPromDumpMins ?? ''}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
@@ -1522,7 +1546,7 @@ export const SecondStep = ({
                           <span className="dropdown-text">
                             <i className="fa fa-calendar" />{' '}
                             {
-                              filterTypePerfAdvisor.find(
+                              filterTypeMetricsDump.find(
                                 (type) => type.value === selectedFilterTypePerfAdvisor.value
                               ).label
                             }
@@ -1530,7 +1554,7 @@ export const SecondStep = ({
                         }
                         pullRight
                       >
-                        {filterTypePerfAdvisor.map((filterType, index) => {
+                        {filterTypeMetricsDump.map((filterType, index) => {
                           if (filterType.type === 'divider') {
                             return <MenuItem divider key={filterType.type} />;
                           }
@@ -1594,7 +1618,7 @@ export const SecondStep = ({
                       </DropdownButton>
                       &nbsp;&nbsp;
                       <YBInfoTip
-                        content="Adjusts the global start and end times of the support bundle specifically for perf advisor metadata dump"
+                        content="Adjusts the global start and end times of the support bundle specifically for perf advisor metrics dump"
                         title="Perf Advisor dump start & end points"
                       />
                     </div>

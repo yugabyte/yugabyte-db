@@ -18,7 +18,7 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
 
 ## Before you begin
 
-- All DDL statements, except ones related to [Temporary table](../../../api/ysql/the-sql-language/creating-and-using-temporary-schema-objects/temporary-tables-views-sequences-and-indexes/) and [Refresh Materialized View](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
+- All DDL statements, except ones related to [Temporary table](../../../api/ysql/the-sql-language/creating-and-using-temporary-schema-objects/temporary-tables-views-sequences-and-indexes/) and [Refresh Materialized View](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) are blocked for the duration of the upgrade (including during monitoring). Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
@@ -27,6 +27,8 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-software/).
 
 - To update Kubernetes universes to v2025.1 or later, you must be running YugabyteDB Anywhere v2025.1.0.1 or later.
+
+- If you use [YSQL login profiles](../../../secure/enable-authentication/ysql-login-profiles/), set `ysql_enable_profile=true` on the YB-Masters and restart them before you start the upgrade. The upgrade restores roles and login profiles on the YB-Master. If the flag is not set there, the upgrade fails with `PROFILE not supported yet`.
 
 ### Precheck
 
@@ -49,6 +51,14 @@ After a successful upgrade precheck, you can proceed with the usual database upg
 {{<tip title="Backup">}}
 Back up your cluster at this time. Refer to [Backup](../../../reference/configuration/yugabyted/#backup).
 {{</tip>}}
+
+## Monitor phase
+
+After all the YB-Master and YB-TServer processes are upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
+
+You can remain in this phase for as long as you need, up to a maximum recommended limit of two days.
+
+DDLs are not allowed even in this phase. New features that require format changes will not be available until the upgrade is finalized.
 
 ## Limitations
 

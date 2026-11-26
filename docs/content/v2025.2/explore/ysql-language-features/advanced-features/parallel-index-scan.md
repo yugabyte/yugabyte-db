@@ -1,7 +1,7 @@
 ---
 title: Parallel index scans for temporal joins
 linkTitle: Parallel index scans
-description: Use native PostgreSQL Parallel Query in YSQL to run parallel index scans for temporal joins, without bucketized indexes or UNION ALL rewrites.
+description: Worked example of a temporal join that uses a parallel index scan, including the schema, query, and EXPLAIN output.
 menu:
   v2025.2:
     identifier: parallel-index-scan-temporal-joins
@@ -10,35 +10,15 @@ menu:
 type: docs
 ---
 
-[YSQL](../../../../api/ysql/) supports native [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html) (PQ) for a common temporal join pattern used in analytics. Starting in v2025.2.2, the planner can choose a parallel index scan on the temporal table and a [batched nested loop join](../../../../reference/configuration/postgresql-compatibility/#batched-nested-loop-join) for primary key lookups into the joined table.
+[YSQL](../../../../api/ysql/) supports native [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html) (PQ) for a common temporal join pattern used in analytics. This example counts rows in a time window on `entity_validity` and joins them to `entity_payload` by primary key. Starting in v2025.2.3, the planner can scan the range-sharded `tt_to` index in parallel and look up that primary key with a batched nested loop.
 
-This removes the need for [earlier workarounds](#previous-workaround) such as:
-
-- bucketized indexes
-- `UNION ALL` views
-- query rewrites designed to force `Parallel Append`
-
-With the current optimizer behavior, you can often keep your original schema and SQL and let YSQL parallelize the range scan directly.
-
-## When to use this
-
-This optimization is most useful for:
-
-- large time-window analytics over range-indexed columns
-- HTAP-style reads against live data
-- temporal joins where one side is filtered by a range predicate and the other side is joined by primary key
-
-It is usually less helpful for:
-
-- very small time ranges
-- point lookups
-- systems already saturated on CPU, where extra workers may add contention
+For more information about when the planner chooses that plan, see [Enable a parallel index scan for a temporal join](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/).
 
 ## Before you begin
 
 This example assumes:
 
-- YugabyteDB v2025.2.2
+- YugabyteDB v2025.2.3, because the parallel scan is of the [range-sharded](../../../../architecture/docdb-sharding/sharding/#range-sharding) index `idx_entity_validity_tt_to_asc_vkey` (`yb_enable_parallel_scan_range_sharded`)
 - YSQL [cost-based optimizer](../../../../best-practices-operations/ysql-yb-enable-cbo/) enabled
 
 ## Enable the required settings
@@ -111,29 +91,6 @@ WHERE v.tt_to > timestamptz '2025-11-17 06:06:09.391+00'
   AND ((p.payload->>'hasNonFlatPosition')::boolean = true);
 ```
 
-## Why this plan can parallelize
-
-For this pattern, parallelization becomes possible when the leading index column matches the range predicate used to drive the scan.
-
-In the example, the index begins with:
-
-```sql
-tt_to ASC
-```
-
-and the query filters on:
-
-```sql
-v.tt_to > ...
-AND v.tt_to <= ...
-```
-
-This allows the planner to consider a plan that includes:
-
-- Gather or Gather Merge
-- launched worker processes
-- Parallel index scan on the temporal index
-
 ## Verify that Parallel Query is being used
 
 Run the following:
@@ -170,36 +127,4 @@ The key indicator is:
 Parallel Index Scan using idx_entity_validity_tt_to_asc_vkey
 ```
 
-If you see this note, the temporal side of the join is using a parallel index scan rather than a serial index scan or parallel sequential scan.
-
-## Expected performance
-
-In testing for this query shape, the parallel index scan path is approximately 50% to 55% faster than the corresponding non-PQ plan. Gains typically improve as the amount of qualifying work increases.
-
-YugabyteDB also provides tablet-level parallelism independently of PostgreSQL PQ, so some workloads may benefit from both:
-
-- PostgreSQL worker-based parallel execution
-- YugabyteDB distributed tablet-level parallelism
-
-## Previous workaround
-
-Before this optimization path was available, a common approach was to:
-
-- create bucketized indexes
-- expose them through UNION ALL views
-- rely on Parallel Append
-
-That approach can still work, but it increases schema and query complexity. For temporal joins that match the pattern shown here, a native parallel index scan lets you use standard PostgreSQL indexes and SQL instead.
-
-## Best practices
-
-To improve the chances of getting a parallel index scan for temporal joins:
-
-- create an index whose leading column matches the temporal range predicate
-- enable the YSQL cost-based optimizer and parallel scan configuration parameters
-- use a sufficiently large time window or result set so parallelism is cost-effective
-- verify the actual plan with EXPLAIN (ANALYZE, DIST)
-
-## Learn more
-
-- [Parallel queries](../../../../additional-features/parallel-query/)
+If you see this note, the temporal side of the join is using a parallel index scan. For when the planner chooses that plan, see [When the planner chooses this plan](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/#when-the-planner-chooses-this-plan).

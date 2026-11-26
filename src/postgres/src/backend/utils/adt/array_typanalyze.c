@@ -22,6 +22,9 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
+/* YB includes */
+#include "commands/yb_analyze.h"
+
 
 /*
  * To avoid consuming too much memory, IO and CPU load during analysis, and/or
@@ -789,3 +792,10 @@ countitem_compare_count(const void *e1, const void *e2, void *arg)
 	else
 		return 1;
 }
+
+/*
+ * YB: let yb_set_width_cap() recognize the array statistics routine and give
+ * it the array width cap.
+ */
+AnalyzeAttrComputeStatsFunc const yb_compute_array_stats = compute_array_stats;
+const int	yb_array_width_cap = ARRAY_WIDTH_THRESHOLD;

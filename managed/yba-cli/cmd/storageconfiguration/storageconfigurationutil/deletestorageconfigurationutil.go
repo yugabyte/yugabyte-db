@@ -7,7 +7,6 @@ package storageconfigurationutil
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -44,7 +43,7 @@ func DeleteStorageConfigurationValidation(cmd *cobra.Command) {
 	}
 }
 
-func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
+func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	storageName, err := cmd.Flags().GetString("name")
@@ -63,27 +62,11 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 		util.FatalHTTPError(response, err, callSite, "Delete - List Customer Configurations")
 	}
 
-	storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
-	for _, s := range r {
-		if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
-			storageConfigs = append(storageConfigs, s)
-		}
-	}
-	storageConfigsName := make([]ybaclient.CustomerConfigUI, 0)
-	for _, s := range storageConfigs {
-		if strings.Compare(s.GetConfigName(), storageName) == 0 {
-			storageConfigsName = append(storageConfigsName, s)
-		}
-	}
-	r = storageConfigsName
+	r = FilterStorageConfigs(r, storageName, storageCode)
 
 	if len(r) < 1 {
-		logrus.Fatalf(
-			formatter.Colorize(
-				fmt.Sprintf("No storage configurations with name: %s found\n",
-					storageName),
-				formatter.RedColor,
-			))
+		logrus.Fatalf(formatter.Colorize(
+			storageConfigNotFoundMessage(storageName, commandCall), formatter.RedColor))
 	}
 
 	var storageUUID string

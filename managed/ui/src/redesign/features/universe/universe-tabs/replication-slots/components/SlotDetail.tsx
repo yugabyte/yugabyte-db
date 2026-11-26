@@ -12,6 +12,7 @@ import { Box, Typography, Grid } from '@material-ui/core';
 import { YBTooltip } from '../../../../../components';
 import { YBWidget } from '../../../../../../components/panels';
 import { YBLoading } from '../../../../../../components/common/indicators';
+import { getPrimaryCluster } from '../../../../../../utils/UniverseUtils';
 import { MetricsPanelOverview } from '../../../../../../components/metrics';
 import { YBButtonLink } from '../../../../../../components/common/forms/fields';
 import { CustomDatePicker } from '../../../../../../components/metrics/CustomDatePicker/CustomDatePicker';
@@ -159,7 +160,7 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
     return (
       <Box className={classes.slotDetailHeader}>
         <Typography className={classes.slotUniverseTitle}>
-          {universeData?.universeDetails?.clusters[0]?.userIntent?.universeName}
+          {getPrimaryCluster(universeData?.universeDetails?.clusters)?.userIntent?.universeName}
         </Typography>
         <Typography className={classes.slotReplicationTitle}>
           <i className="fa fa-chevron-right"></i>

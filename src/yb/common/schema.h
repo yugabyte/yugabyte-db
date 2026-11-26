@@ -368,6 +368,7 @@ class TableProperties {
     // Ignoring retain_delete_markers_.
     // Ignoring partitioning_version_.
     // Ignoring owns_vector_reverse_mapping_.
+    // Ignoring writes_vector_reverse_mapping_.
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -394,6 +395,7 @@ class TableProperties {
     // Ignoring retain_delete_markers_.
     // Ignoring partitioning_version_.
     // Ignoring owns_vector_reverse_mapping_.
+    // Ignoring writes_vector_reverse_mapping_.
     return true;
   }
 
@@ -488,6 +490,10 @@ class TableProperties {
     return owns_vector_reverse_mapping_;
   }
 
+  bool writes_vector_reverse_mapping() const {
+    return writes_vector_reverse_mapping_;
+  }
+
   PgReplicaIdentity replica_identity() const {
     DCHECK(HasReplicaIdentity());
     return *ysql_replica_identity_;
@@ -536,6 +542,12 @@ class TableProperties {
   // Set by master at YSQL table creation; loaded via FromTablePropertiesPB; restored from backup.
   // Alter is intentionally not supported.
   bool owns_vector_reverse_mapping_;
+
+  // Whether writes to this table maintain the vector reverse mapping. When false, all vector
+  // indexes of the table store the ybctid as the vector payload instead.
+  // Set by master at YSQL table creation; loaded via FromTablePropertiesPB; restored from backup.
+  // Alter is intentionally not supported.
+  bool writes_vector_reverse_mapping_;
 
   // This is optional since its a ysql only field
   std::optional<PgReplicaIdentity> ysql_replica_identity_;
@@ -659,6 +671,19 @@ class Schema : public MissingValueProvider {
   size_t num_range_key_columns() const {
     return num_key_columns_ - num_hash_key_columns_;
   }
+
+  // Returns the component index for the given key column. All hash columns form component 0,
+  // followed by one component per range column. Unlike get_dockey_component_idx, hash columns
+  // share a single component. If column_idx is the number of key columns, returns the total
+  // number of components.
+  static size_t HashGroupAndRangeComponentIndex(size_t column_idx, size_t num_hash_key_columns) {
+    return column_idx < num_hash_key_columns
+        ? 0 : column_idx - num_hash_key_columns + (num_hash_key_columns ? 1 : 0);
+  }
+
+  // Returns the number of hash group and range components of the schema, see
+  // HashGroupAndRangeComponentIndex.
+  static size_t NumHashGroupAndRangeComponents(const SchemaPB& schema);
 
   // Return the byte offset within the row for the given column index.
   size_t column_offset(size_t col_idx) const {
@@ -948,28 +973,33 @@ class Schema : public MissingValueProvider {
     return Equals(other, ColumnSchema::CompareByDefault);
   }
 
-  // Return true if this schema is a subset of the source. The set of columns and respective types
-  // should match exactly
-  bool IsSubsetOf(const Schema& source) const {
+  // Return true if this schema is a subset of the source: the source's columns are a prefix of
+  // this schema's columns, with the same ids, and each pair of columns is equal under comp.
+  template <typename ColumnComparator>
+  bool IsSubsetOf(const Schema& source, ColumnComparator comp) const {
     if (this == &source) return true;
     if (this->num_key_columns_ != source.num_key_columns_) return false;
     if (!this->table_properties_.Equivalent(source.table_properties_)) return false;
     if (this->cols_.size() < source.cols_.size()) return false;
 
     for (size_t i = 0; i < source.cols_.size(); i++) {
-      if (!this->cols_[i].Equals(source.cols_[i])) return false;
+      if (!this->cols_[i].Equals(source.cols_[i], comp)) return false;
       if (this->column_id(i) != source.column_id(i)) return false;
     }
 
     return true;
   }
 
-  // Return true if this schema has exactly the same set of columns and respective types, and
-  // equivalent properties as the source.  The source must be an equivalent of this object.
-  // With Packed columns, number of columns of the source and this object also need to match
-  // for equivalency
+  // Return true if this schema has the same columns as the source, with the same ids, each pair of
+  // columns equal under comp, and equivalent properties.  With Packed columns, the number of
+  // columns of the source and this object also need to match for equivalency.
+  template <typename ColumnComparator>
+  bool EquivalentForDataCopy(const Schema& source, ColumnComparator comp) const {
+    return (this->cols_.size() == source.cols_.size()) && IsSubsetOf(source, comp);
+  }
+
   bool EquivalentForDataCopy(const Schema& source) const {
-    return (this->cols_.size() == source.cols_.size()) && IsSubsetOf(source);
+    return EquivalentForDataCopy(source, ColumnSchema::CompareByDefault);
   }
 
   // Return true if the key projection schemas have exactly the same set of
@@ -1289,4 +1319,3 @@ class SchemaBuilder {
 ColumnKind SortingTypeToColumnKind(SortingType sorting_type);
 
 } // namespace yb
-

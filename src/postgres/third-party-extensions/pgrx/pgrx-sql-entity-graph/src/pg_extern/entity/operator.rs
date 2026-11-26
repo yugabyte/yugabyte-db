@@ -18,12 +18,12 @@
 
 /// The output of a [`PgOperator`](crate::PgOperator) from `quote::ToTokens::to_tokens`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PgOperatorEntity {
-    pub opname: Option<&'static str>,
-    pub commutator: Option<&'static str>,
-    pub negator: Option<&'static str>,
-    pub restrict: Option<&'static str>,
-    pub join: Option<&'static str>,
+pub struct PgOperatorEntity<'a> {
+    pub opname: Option<&'a str>,
+    pub commutator: Option<&'a str>,
+    pub negator: Option<&'a str>,
+    pub restrict: Option<&'a str>,
+    pub join: Option<&'a str>,
     pub hashes: bool,
     pub merges: bool,
 }

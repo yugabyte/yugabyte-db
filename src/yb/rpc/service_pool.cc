@@ -45,7 +45,6 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/scheduler.h"

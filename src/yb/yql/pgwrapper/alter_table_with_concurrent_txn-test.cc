@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -25,10 +26,8 @@
 using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 DECLARE_string(allowed_preview_flags_csv);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 
 namespace yb {
 namespace pgwrapper {
@@ -42,9 +41,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
     // in a heartbeat delay on the TServer and thus trigger ProcessTabletReport().
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 5000; // 5 seconds
     // Disabled object locking as DDLs are expected to go through in presence of active DMLs.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     PgMiniTestBase::SetUp();
   }
 
@@ -68,8 +65,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
 class AlterTableWithConcurrentTxnTestTableLocksDisabled : public AlterTableWithConcurrentTxnTest {
  protected:
   virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     AlterTableWithConcurrentTxnTest::OverrideMiniClusterOptions(options);
   }
 };

@@ -8,12 +8,14 @@
 #include <thread>
 
 #include "yb/common/jsonb.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/qlexpr/ql_serialization.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/decimal.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
@@ -29,7 +31,6 @@ using std::shared_ptr;
 using std::numeric_limits;
 using std::vector;
 
-using strings::Substitute;
 using yb::util::Decimal;
 using yb::util::DecimalFromComparable;
 using yb::VarInt;
@@ -129,10 +130,10 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
   float v5_total = 15;
   double v6_total = 16;
   for (int i = 1; i < 20; i++) {
-    string stmt = strings::Substitute(
+    string stmt = Format(
         "INSERT INTO test_aggr_expr(h, r, v1, v2, v3, v4, v5, v6)"
         "  VALUES($0, $1, $2, $3, $4, $5, $6, $7);",
-        i, i + 1, i + 1000, i + 100, i + 10, i, i + 77.77, i + 999.99);
+        i, i + 1, i + 1000, i + 100, i + 10, i, SimpleDtoa(i + 77.77), SimpleDtoa(i + 999.99));
     CHECK_VALID_STMT(stmt);
 
     v1_total += (i + 1000);
@@ -414,10 +415,10 @@ TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
   float v5_total = 15;
   double v6_total = 16;
   for (int i = 1; i < 20; i++) {
-    string stmt = strings::Substitute(
+    string stmt = Format(
         "INSERT INTO test_aggr_expr(h, r, v1, v3, v4, v5, v6)" // v2, v7 = NULL
         " VALUES($0, $1, $2, $3, $4, $5, $6);",
-        i, i + 1, i + 1000, i + 10, i, i + 77.77, i + 999.99);
+        i, i + 1, i + 1000, i + 10, i, SimpleDtoa(i + 77.77), SimpleDtoa(i + 999.99));
     CHECK_VALID_STMT(stmt);
 
     v1_total += (i + 1000);
@@ -774,7 +775,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
   int64_t token1 = row_block->row(0).column(0).int64_value();
 
   // Check the token value matches the row.
-  CHECK_VALID_STMT(Substitute("SELECT h1, h2, h3 FROM test_select_token "
+  CHECK_VALID_STMT(Format("SELECT h1, h2, h3 FROM test_select_token "
       "WHERE token(h1, h2, h3) = $0", token1));
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
@@ -794,7 +795,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
   int64_t token2 = row_block->row(0).column(1).int64_value();
 
   // Check the token value matches the row.
-  CHECK_VALID_STMT(Substitute("SELECT h1, h2, h3 FROM test_select_token "
+  CHECK_VALID_STMT(Format("SELECT h1, h2, h3 FROM test_select_token "
       "WHERE token(h1, h2, h3) = $0", token2));
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
@@ -1525,7 +1526,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -1565,7 +1566,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestReverse) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -1622,7 +1623,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDec) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -1663,7 +1664,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecReverse) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -1719,7 +1720,7 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -1761,7 +1762,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecAcrossHashCols) {
   for (int h = 0; h < max_h; h++) {
     for (int r1 = 0; r1 < 10; r1++) {
       for (int r2 = 0; r2 < 10; r2++) {
-        CHECK_VALID_STMT(strings::Substitute(
+        CHECK_VALID_STMT(Format(
             "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
       }
     }
@@ -1808,7 +1809,7 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
   for (int h = 0; h < max_h; h++) {
     for (int r1 = 0; r1 < 10; r1++) {
       for (int r2 = 0; r2 < 10; r2++) {
-        CHECK_VALID_STMT(strings::Substitute(
+        CHECK_VALID_STMT(Format(
             "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
       }
     }
@@ -2030,7 +2031,7 @@ TEST_F(QLTestSelectedExpr, MultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2063,7 +2064,7 @@ TEST_F(QLTestSelectedExpr, MultiArgumentMultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2102,7 +2103,7 @@ TEST_F(QLTestSelectedExpr, InvalidArgMultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2132,7 +2133,7 @@ TEST_F(QLTestSelectedExpr, EmptyArgMultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2158,7 +2159,7 @@ TEST_F(QLTestSelectedExpr, InvalidColumnOrderMultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, r3) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2191,7 +2192,7 @@ TEST_F(QLTestSelectedExpr, RepeatingColumMultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, r3) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2221,7 +2222,7 @@ TEST_F(QLTestSelectedExpr, NonRangeColMultiColumnInTest) {
   int h = 5;
   for (int r1 = 5; r1 < 8; r1++) {
     for (int r2 = 4; r2 < 9; r2++) {
-      CHECK_VALID_STMT(strings::Substitute(
+      CHECK_VALID_STMT(Format(
           "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, $2, $2);", h, r1, r2));
     }
   }
@@ -2256,7 +2257,7 @@ TEST_F(QLTestSelectedExpr, OrderMultiColumnInTest) {
     for (int r1 = 0; r1 < 10; r1++) {
       for (int r2 = 0; r2 < 10; r2++) {
         int v = h * 100 + r1 * 10 + r2;
-        CHECK_VALID_STMT(strings::Substitute(
+        CHECK_VALID_STMT(Format(
             "INSERT INTO test_range (h, r1, r2, payload) VALUES($0, $1, '$2', $3);", h, r1 * 10,
             r2 * 10, v));
       }
@@ -2397,7 +2398,7 @@ TEST_F(QLTestSelectedExpr, RandomizedMultiColumnInTest) {
     int r1 = rand_r(&seed) % limit;
     int r2 = rand_r(&seed) % limit;
     int r3 = rand_r(&seed) % limit;
-    CHECK_VALID_STMT(strings::Substitute(
+    CHECK_VALID_STMT(Format(
         "INSERT INTO test_range (h, r1, r2, r3) VALUES($0, $1, '$2', $3);", h, r1, r2, r3));
   }
 
@@ -2435,7 +2436,7 @@ TEST_F(QLTestSelectedExpr, RandomizedMultiColumnInTest) {
       params.insert(r1_3 * 100 + r2_3 * 10 + r3_3);
     }
 
-    CHECK_VALID_STMT(strings::Substitute(
+    CHECK_VALID_STMT(Format(
         "SELECT * FROM test_range WHERE h = $0 AND (r1, r2, r3) IN (($1, '$2', $3), ($4, '$5', "
         "$6), ($7, '$8', $9));",
         h, r1_1, r2_1, r3_1, r1_2, r2_2, r3_2, r1_3, r2_3, r3_3));
@@ -2451,7 +2452,7 @@ TEST_F(QLTestSelectedExpr, RandomizedMultiColumnInTest) {
       ins.insert(value);
     }
 
-    CHECK_VALID_STMT(strings::Substitute(
+    CHECK_VALID_STMT(Format(
         "SELECT * FROM test_range WHERE h = $0 AND r1 = $1 AND r2 = '$2' AND r3 = $3;", h, r1_1,
         r2_1, r3_1));
 
@@ -2466,7 +2467,7 @@ TEST_F(QLTestSelectedExpr, RandomizedMultiColumnInTest) {
       ins.erase(value);
     }
 
-    CHECK_VALID_STMT(strings::Substitute(
+    CHECK_VALID_STMT(Format(
         "SELECT * FROM test_range WHERE h = $0 AND r1 = $1 AND r2 = '$2' AND r3 = $3;", h, r1_2,
         r2_2, r3_2));
 
@@ -2481,7 +2482,7 @@ TEST_F(QLTestSelectedExpr, RandomizedMultiColumnInTest) {
       ins.erase(value);
     }
 
-    CHECK_VALID_STMT(strings::Substitute(
+    CHECK_VALID_STMT(Format(
         "SELECT * FROM test_range WHERE h = $0 AND r1 = $1 AND r2 = '$2' AND r3 = $3;", h, r1_3,
         r2_3, r3_3));
 

@@ -14,6 +14,13 @@ services:
       {{ end }}
       Type=forking
       TimeoutSec=300
+      {{ if eq (yamlPath "fips.enabled") "true" }}
+      Environment=OPENSSL_CONF={{ .OpenSSLConf }}
+      Environment=OPENSSL_MODULES={{ .OpenSSLModules }}
+      {{ end }}
+      {{ if .CACertFile }}
+      Environment=SSL_CERT_FILE={{ .CACertFile }}
+      {{ end }}
 
       ExecStart={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
       -w -o "-k {{ .MountPath }}" start

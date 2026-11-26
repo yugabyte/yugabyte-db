@@ -21,6 +21,7 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(yb_enable_read_committed_isolation);
@@ -82,6 +83,12 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    // A transaction's involved tablets are soft state at its status tablet, refreshed only by the
+    // client's periodic heartbeat. While the load balancer moves a status tablet leader, the new
+    // leader reports the transaction with no involved tablets, and pg_locks drops such transactions
+    // altogether, hiding a live waiter. These tests assert on exact pg_locks contents, so keep the
+    // cluster topology stable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = GetNumAdvisoryLockTablets();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) =
         GetExpiredSessionCleanupMs() / 2;

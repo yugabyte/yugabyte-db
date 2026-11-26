@@ -1134,8 +1134,7 @@ static inline int od_console_show_server_prep_stmt_cb(od_server_t *server,
 			}
 
 			//refcount
-			data_len = od_snprintf(data, sizeof(data), "%d",
-					       prep_stmt_desc->data);
+			data_len = od_snprintf(data, sizeof(data), "%d", 0);
 			rc = kiwi_be_write_data_row_add(stream, offset, data,
 							data_len);
 			if (rc == NOT_OK_RESPONSE) {
@@ -1986,7 +1985,7 @@ int od_console_query(od_client_t *client, machine_msg_t *stream,
 	}
 
 	if (instance->config.log_query)
-		od_debug(&instance->logger, "console", client, NULL, "%.*s",
+		yb_od_query(&instance->logger, "console", client, NULL, "%.*s",
 			 query_len, query);
 
 	od_parser_t parser;

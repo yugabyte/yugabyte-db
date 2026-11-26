@@ -17,7 +17,7 @@
 
 #include "yb/common/ysql_operation_lease.h"
 
-#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ysql_lease.proxy.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/server/server_base.proxy.h"
@@ -71,7 +71,7 @@ class YsqlLeasePoller : public MasterLeaderPollerInterface {
   TabletServer& server_;
   YsqlLeaderClientListener listener_;
   MasterLeaderFinder& finder_;
-  std::optional<master::MasterDdlProxy> proxy_;
+  std::optional<master::MasterYsqlLeaseProxy> proxy_;
 };
 
 class YsqlLeaseClient::Impl {
@@ -85,6 +85,7 @@ class YsqlLeaseClient::Impl {
   void Shutdown();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
   void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
+  void TriggerASAP();
 
  private:
   MasterLeaderFinder finder_;
@@ -115,6 +116,10 @@ void YsqlLeaseClient::UpdateMasterAddresses(server::MasterAddressesPtr master_ad
   impl_->UpdateMasterAddresses(std::move(master_addresses));
 }
 
+void YsqlLeaseClient::TriggerASAP() {
+  impl_->TriggerASAP();
+}
+
 YsqlLeaseClient::~YsqlLeaseClient() {
   Shutdown();
 }
@@ -135,7 +140,16 @@ Status YsqlLeaseClient::Impl::Start() {
     cgroup = cm->SystemHighCgroup();
   }
 #endif
-  return poll_scheduler_.Start(cgroup);
+  RETURN_NOT_OK(poll_scheduler_.Start(cgroup));
+  // PostgreSQL is not started before the first lease is acquired, so do not wait a full interval
+  // before asking for it. If the tablet server has not registered with the master yet, the request
+  // fails and TriggerASAP is called again once it registers.
+  TriggerASAP();
+  return Status::OK();
+}
+
+void YsqlLeaseClient::Impl::TriggerASAP() {
+  poll_scheduler_.TriggerASAP();
 }
 
 void YsqlLeaseClient::Impl::Shutdown() {
@@ -162,7 +176,7 @@ Status YsqlLeasePoller::Poll() {
   auto timeout =
       MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms);
   if (!proxy_) {
-    proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterDdlProxy>(timeout));
+    proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterYsqlLeaseProxy>(timeout));
   }
 
   master::RefreshYsqlLeaseRequestPB req;
@@ -208,7 +222,7 @@ std::future<Status> YsqlLeasePoller::RelinquishLease(MonoDelta timeout) const {
     promise.set_value(Status::OK());
     return promise.get_future();
   }
-  auto proxy = master::MasterDdlProxy(&finder_.get_proxy_cache(), current_host_port);
+  auto proxy = master::MasterYsqlLeaseProxy(&finder_.get_proxy_cache(), current_host_port);
   auto rpc = std::make_shared<rpc::RpcController>();
   rpc->set_timeout(timeout);
   master::RelinquishYsqlLeaseRequestPB req;

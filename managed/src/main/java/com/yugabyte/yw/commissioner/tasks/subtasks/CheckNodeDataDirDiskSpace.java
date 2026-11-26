@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -49,24 +50,28 @@ public class CheckNodeDataDirDiskSpace extends NodeTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNode(taskParams().nodeName);
 
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == CloudType.local) {
-      log.info("Skipping disk space check for local provider");
-      return;
-    }
-
     if (node == null) {
       throw new IllegalArgumentException(
           String.format(
               "Node %s not found in universe %s", taskParams().nodeName, universe.getName()));
     }
 
+    Common.CloudType providerType =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(node.placementUuid)
+            .getProviderCloudType(node);
+
+    if (providerType == CloudType.local) {
+      log.info("Skipping disk space check for local provider");
+      return;
+    }
+
     String dataDir = Util.getDataDirectoryPath(universe, node, config);
     long requiredBytes = taskParams().requiredFreeSpaceBytes;
     long availableBytes;
 
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == CloudType.kubernetes) {
+    if (providerType == CloudType.kubernetes) {
       throw new RuntimeException("Kubernetes provider not supported");
     }
     availableBytes = getAvailableSpaceVM(universe, node, dataDir);

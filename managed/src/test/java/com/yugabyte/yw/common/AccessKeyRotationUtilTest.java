@@ -231,7 +231,7 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
 
   public static void setUniverseAccessKey(String accessKeyCode, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().clusters.get(0).userIntent;
-    userIntent.accessKeyCode = accessKeyCode;
+    TestUtils.existingProviderInitializer(userIntent).setAccessCode(accessKeyCode);
     Universe.saveDetails(
         universe.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));

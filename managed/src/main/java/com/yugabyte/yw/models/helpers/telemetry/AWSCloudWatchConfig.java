@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -72,5 +73,10 @@ public class AWSCloudWatchConfig extends TelemetryProviderConfig {
           "Validation failed. Ensure your AWS Access Key and Secret Key are valid: "
               + e.getMessage());
     }
+  }
+
+  @Override
+  public List<String> secretValues() {
+    return nonEmpty(accessKey, secretKey);
   }
 }

@@ -6,9 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Getter;
@@ -34,7 +34,7 @@ public class KubernetesToggleImmutableYbcParams extends UpgradeTaskParams {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Check if universe type is kubernetes.
-    if (userIntent.providerType != CloudType.kubernetes) {
+    if (!Util.isKubernetesBased(userIntent)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "The universe type must be kubernetes to use ToggleImmutableYbc API.");
     }
@@ -45,6 +45,17 @@ public class KubernetesToggleImmutableYbcParams extends UpgradeTaskParams {
           String.format(
               "Universe %s already has useYbdbInbuiltYbc set to %s",
               universe.getUniverseUUID(), this.isUseYbdbInbuiltYbc()));
+    }
+    // In PreFinalize the version check below only sees the new version, but a rollback would
+    // render the previous image with inbuilt YBC on. Disabling stays allowed as the way out.
+    SoftwareUpgradeState softwareUpgradeState = universe.getUniverseDetails().softwareUpgradeState;
+    if (this.isUseYbdbInbuiltYbc() && softwareUpgradeState != SoftwareUpgradeState.Ready) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot enable ybdb inbuilt ybc on universe %s in software upgrade state %s."
+                  + " Finalize or roll back the software upgrade first.",
+              universe.getUniverseUUID(), softwareUpgradeState));
     }
     if (this.isUseYbdbInbuiltYbc()
         && !KubernetesUtil.isUseYbdbInbuiltYbcSupported(userIntent.ybSoftwareVersion)) {

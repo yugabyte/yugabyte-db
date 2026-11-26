@@ -2,26 +2,54 @@
 
 #include <duckdb/common/error_data.hpp>
 
+/* YB includes */
+#include "pgduckdb/pgduckdb_guc.hpp"
+
 extern "C" {
 #include "postgres.h"
 }
 
 namespace pgduckdb {
 
+/*
+ * YB: in lake_io mode no DuckDB extension can be installed or loaded, so DuckDB's advice for a
+ * missing extension (INSTALL/LOAD it, or turn autoinstall on) cannot be followed. For such an
+ * error, returns DuckDB's first line, which names the extension and the reason; otherwise NULL.
+ */
+inline char *
+YbLakeIoMissingExtensionDetail(const duckdb::ErrorData &error) {
+	if (!YbIsLakeIoMode() || error.Type() != duckdb::ExceptionType::MISSING_EXTENSION) {
+		return nullptr;
+	}
+	const std::string &raw = error.RawMessage();
+	return pnstrdup(raw.c_str(), raw.find('\n'));
+}
+
+/* YB: reports a lake_io missing-extension error, see YbLakeIoMissingExtensionDetail. */
+inline void
+YbReportUnsupportedExtension(int elevel, const char *detail) {
+	ereport(elevel, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+	                 errmsg("this query needs a DuckDB extension that is not supported"), errdetail("%s.", detail),
+	                 errhint("Supported extensions are built in and load automatically.")));
+}
+
 template <typename Func, Func func, typename... FuncArgs>
 typename std::invoke_result<Func, FuncArgs &...>::type
 __CPPFunctionGuard__(const char *func_name, const char *file_name, int line, FuncArgs &...args) {
 	const char *error_message = nullptr;
+	char *yb_missing_extension_detail = nullptr;
 	auto pg_es_start = PG_exception_stack;
 	try {
 		return func(args...);
 	} catch (duckdb::Exception &ex) {
 		duckdb::ErrorData edata(ex.what());
+		yb_missing_extension_detail = YbLakeIoMissingExtensionDetail(edata);
 		error_message = pstrdup(edata.Message().c_str());
 	} catch (std::exception &ex) {
 		const auto msg = ex.what();
 		if (msg[0] == '{') {
 			duckdb::ErrorData edata(ex.what());
+			yb_missing_extension_detail = YbLakeIoMissingExtensionDetail(edata);
 			error_message = pstrdup(edata.Message().c_str());
 		} else {
 			error_message = pstrdup(ex.what());
@@ -71,6 +99,10 @@ __CPPFunctionGuard__(const char *func_name, const char *file_name, int line, Fun
 	if (pg_es_start != PG_exception_stack) {
 		elog(WARNING, "WARNING: Unexpected exception stack pointer. This is not expected, please report this.");
 		PG_exception_stack = pg_es_start;
+	}
+
+	if (yb_missing_extension_detail) {
+		YbReportUnsupportedExtension(ERROR, yb_missing_extension_detail);
 	}
 
 	// Simplified version of `elog(ERROR, ...)`, with arguments inlined

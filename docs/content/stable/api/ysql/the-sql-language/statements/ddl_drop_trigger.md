@@ -36,7 +36,7 @@ DROP TRIGGER update_moddatetime ON posts;
 
 ## See also
 
-- [`CREATE TRIGGER`](../ddl_create_trigger)
-- [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update/)
-- [`DELETE`](../dml_delete/)
+- [CREATE TRIGGER](../ddl_create_trigger)
+- [INSERT](../dml_insert)
+- [UPDATE](../dml_update/)
+- [DELETE](../dml_delete/)

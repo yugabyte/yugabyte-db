@@ -19,6 +19,7 @@
 #include "yb/consensus/consensus_meta.h"
 
 #include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_test.proxy.h"
@@ -28,6 +29,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
@@ -42,9 +44,11 @@ DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
 DEFINE_test_flag(string, skip_async_insert_packed_schema_for_tablet_id, "",
     "Tablet ID to skip AsyncInsertPackedSchemaForXClusterTarget requests for.");
 
+DECLARE_bool(enable_tiered_storage);
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
+DECLARE_bool(TEST_hinted_leader_election_for_existing_tablets);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 namespace yb::master {
@@ -55,7 +59,6 @@ using std::string;
 using std::shared_ptr;
 using std::vector;
 
-using strings::Substitute;
 using consensus::RaftPeerPB;
 using server::MonitoredTaskState;
 using server::MonitoredTaskType;
@@ -65,6 +68,42 @@ using tserver::TabletServerErrorPB;
 // ============================================================================
 //  Class AsyncCreateReplica.
 // ============================================================================
+namespace {
+
+// The tier a new replica of this table belongs on: that of the placement its peer type is part
+// of (live replicas for voters, for observers the read replica placement whose uuid is the
+// tserver's, as the balancer's read replica run picks it). Empty when the placement names no
+// tier, and for a transaction status table: its tablets have no regular RocksDB, so there is
+// nothing to place and a target would only make the reconciler complain.
+std::string TargetStorageTierForPeer(
+    Master* master, const TableInfoPtr& table, const consensus::RaftConfigPB& config,
+    const std::string& ts_uuid) {
+  if (table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+    return std::string();
+  }
+  const auto replication_info =
+      master->catalog_manager()->GetTableReplicationInfoWithDefault(table);
+  for (const auto& peer : config.peers()) {
+    if (peer.permanent_uuid() != ts_uuid) {
+      continue;
+    }
+    if (peer.member_type() == consensus::PeerMemberType::OBSERVER ||
+        peer.member_type() == consensus::PeerMemberType::PRE_OBSERVER) {
+      auto ts_desc = master->ts_manager()->LookupTSByUUID(ts_uuid);
+      if (!ts_desc.ok()) {
+        return std::string();
+      }
+      const auto* placement = CatalogManagerUtil::FindReadReplicaPlacement(
+          replication_info, (*ts_desc)->placement_uuid());
+      return placement ? placement->storage_tier() : std::string();
+    }
+    return replication_info.live_replicas().storage_tier();
+  }
+  return std::string();
+}
+
+}  // namespace
+
 AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
@@ -98,6 +137,15 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.mutable_partition_schema()->CopyFrom(table_pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   req_.set_colocated(tablet_pb.colocated());
+  // Tiered storage: a replica of a table in a tiered tablespace is born on that tier, so it never
+  // needs a migration. Absent means the tserver's default tier, not "no preference".
+  if (FLAGS_enable_tiered_storage) {
+    const auto target_tier = TargetStorageTierForPeer(
+        master, tablet->table(), tablet_pb.committed_consensus_state().config(), permanent_uuid);
+    if (!target_tier.empty()) {
+      req_.set_target_storage_tier(target_tier);
+    }
+  }
   if (table_pb.has_index_info()) {
     req_.mutable_index_info()->CopyFrom(table_pb.index_info());
   }
@@ -248,6 +296,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
                                        LeaderEpoch epoch)
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid,
         tablet->table(), std::move(epoch), /* async_task_throttler */ nullptr),
+    tablet_(tablet),
     tablet_id_(tablet->tablet_id()) {
   // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
@@ -278,6 +327,13 @@ std::string AsyncStartElection::description() const {
 }
 
 bool AsyncStartElection::SendRequest(int attempt) {
+  // A tablet leaves CREATING once a leader is reported. Retrying past that would run an
+  // ELECT_EVEN_IF_LEADER_IS_ALIVE election against that leader.
+  if (tablet_->LockForRead()->pb.state() != SysTabletsEntryPB::CREATING &&
+      PREDICT_TRUE(!FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+    AbortTask(STATUS(Aborted, "Tablet is no longer new"));
+    return false;
+  }
   LOG_WITH_PREFIX(INFO) << Format(
       "Hinted Leader start election at $0 for tablet $1, attempt $2",
       permanent_uuid_, tablet_id_, attempt);
@@ -588,6 +644,12 @@ void AsyncAlterTable::Finished(const Status& status) {
   }
 }
 
+void AsyncAlterTable::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kFailed && table_) {
+    master_->catalog_manager()->HandleAlterTableTaskFailed(*table_);
+  }
+}
+
 bool AsyncAlterTable::SendRequest(int attempt) {
   ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
@@ -672,6 +734,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
     req.set_tablet_id(tablet_->tablet_id());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
     req.set_mark_backfill_done(true);
+    req.set_birth_time(birth_time_);
     schema_version_ = l->pb.version();
   }
 
@@ -679,6 +742,34 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1)
       << "Send backfill done request to " << permanent_uuid() << " for " << tablet_->tablet_id()
       << " (attempt " << attempt << "):\n" << req.DebugString();
+  return true;
+}
+
+bool AsyncMarkNonConcurrentIndexDone::SendRequest(int attempt) {
+  VLOG_WITH_PREFIX(1)
+      << "Send mark non-concurrent index done request to " << permanent_uuid() << " for "
+      << tablet_->tablet_id() << " version " << schema_version_ << " waiting for a read lock.";
+
+  tablet::ChangeMetadataRequestPB req;
+  {
+    auto l = table_->LockForRead();
+    VLOG_WITH_PREFIX(1)
+        << "Send mark non-concurrent index done request to " << permanent_uuid() << " for "
+        << tablet_->tablet_id() << " version " << schema_version_ << " obtained the read lock.";
+
+    req.set_backfill_done_table_id(table_id_);
+    req.set_dest_uuid(permanent_uuid());
+    req.set_tablet_id(tablet_->tablet_id());
+    req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+    req.set_mark_non_concurrent_index_done(true);
+    req.set_birth_time(birth_time_);
+    schema_version_ = l->pb.version();
+  }
+
+  ts_admin_proxy_->MarkNonConcurrentIndexDoneAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1)
+      << "Send mark non-concurrent index done request to " << permanent_uuid() << " for "
+      << tablet_->tablet_id() << " (attempt " << attempt << "):\n" << req.DebugString();
   return true;
 }
 
@@ -960,8 +1051,8 @@ std::string AsyncTryStepDown::description() const {
 }
 
 Status AsyncTryStepDown::PrepareRequest(int attempt) {
-  LOG_WITH_PREFIX(INFO) << Substitute("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
-                                      attempt, permanent_uuid(), change_config_ts_uuid_);
+  LOG_WITH_PREFIX(INFO) << Format("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
+                                  attempt, permanent_uuid(), change_config_ts_uuid_);
   if (attempt > 1) {
     return STATUS(RuntimeError, "Retry is not allowed");
   }
@@ -1005,7 +1096,7 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
 void AsyncTryStepDown::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error on stepdown for tablet $0 with leader $1, attempt $2 and error $3",
         tablet_->tablet_id(), permanent_uuid(), attempt, rpc_.status().ToString());
 
@@ -1073,13 +1164,13 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
 }
 
 string AsyncAddTableToTablet::description() const {
-  return Substitute("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncAddTableToTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when adding table $0 to tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
@@ -1109,8 +1200,15 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
     return;
   }
-  LOG_IF(DFATAL, !*tablets_running_result)
-      << "Not all tablets are running while processing AddTableToTablet response";
+  if (!*tablets_running_result) {
+    // A vector index shares the indexed table's tablets, which may include split children the
+    // master has not yet seen RUNNING. Wait for them without resending the RPC: re-adding a
+    // vector index to a tablet is not idempotent.
+    LOG_WITH_PREFIX(INFO) << "Not all tablets are running yet, waiting before promoting table";
+    table_added_ = true;
+    TransitionToWaitingState(MonitoredTaskState::kRunning);
+    return;
+  }
   if (--*task_counter_ == 0) {
     VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
     Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
@@ -1126,9 +1224,19 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
   TransitionToCompleteState();
 }
 
+Status AsyncAddTableToTablet::PickReplica() {
+  // No RPC is sent once the table is added, so the tablet may already be gone (split parent).
+  return table_added_ ? Status::OK() : RetryingTSRpcTaskWithTable::PickReplica();
+}
+
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
   if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
     LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
+    return true;
+  }
+  if (table_added_) {
+    // resp_ still holds the successful response, so HandleResponse only re-checks tablet states.
+    RpcCallback();
     return true;
   }
 
@@ -1162,13 +1270,13 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
 }
 
 string AsyncRemoveTableFromTablet::description() const {
-  return Substitute("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when removing table $0 from tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
@@ -1191,6 +1299,7 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
 }
 
 bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
+  TEST_SYNC_POINT("AsyncRemoveTableFromTablet::SendRequest");
   ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
                       << req_.DebugString();
@@ -1377,6 +1486,124 @@ bool AsyncUpdateTransactionTablesVersion::SendRequest(int attempt) {
 
 void AsyncUpdateTransactionTablesVersion::Finished(const Status& status) {
   callback_(status);
+}
+
+// ============================================================================
+//  Class AsyncApplyXClusterGuardedInfoIfNewer.
+// ============================================================================
+AsyncApplyXClusterGuardedInfoIfNewer::AsyncApplyXClusterGuardedInfoIfNewer(
+    Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+    std::shared_ptr<const XClusterGuardedInfoPB> info, MonoTime deadline,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /*async_task_throttler=*/nullptr),
+      info_(std::move(info)),
+      callback_(std::move(callback)) {
+  deadline_ = deadline;
+}
+
+std::string AsyncApplyXClusterGuardedInfoIfNewer::description() const {
+  return Format(
+      "Apply xCluster-guarded info (version $0) if newer on TServer $1",
+      info_->xcluster_guarded_info_version().ShortDebugString(), permanent_uuid_);
+}
+
+void AsyncApplyXClusterGuardedInfoIfNewer::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    // Leave the task running so the framework retries until the deadline.
+    LOG(WARNING) << description() << " failed: " << StatusFromPB(resp_.error().status());
+    return;
+  }
+  TransitionToCompleteState();
+}
+
+bool AsyncApplyXClusterGuardedInfoIfNewer::SendRequest(int attempt) {
+  tserver::ApplyXClusterGuardedInfoIfNewerRequestPB req;
+  *req.mutable_xcluster_guarded_info() = *info_;
+  ts_admin_proxy_->ApplyXClusterGuardedInfoIfNewerAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent " << description();
+  return true;
+}
+
+void AsyncApplyXClusterGuardedInfoIfNewer::Finished(const Status& status) { callback_(status); }
+
+////////////////////////////////////////////////////////////
+// AsyncAlterTabletTier
+////////////////////////////////////////////////////////////
+AsyncAlterTabletTier::AsyncAlterTabletTier(
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+    const TabletServerId& ts_uuid, std::string target_tier, LeaderEpoch epoch,
+    std::string reason)
+    : RetrySpecificTSRpcTaskWithTable(
+          master, callback_pool, ts_uuid, tablet->table(), std::move(epoch),
+          /* async_task_throttler */ nullptr),
+      tablet_(tablet),
+      target_tier_(std::move(target_tier)),
+      reason_(std::move(reason)) {
+  deadline_ = UnresponsiveDeadline();
+}
+
+TabletId AsyncAlterTabletTier::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+std::string AsyncAlterTabletTier::description() const {
+  return Format(
+      "AlterTabletTier RPC for tablet $0 ($1) on TS=$2 to tier $3: $4", tablet_id(), table_name(),
+      permanent_uuid_, target_tier_, reason_);
+}
+
+bool AsyncAlterTabletTier::SendRequest(int attempt) {
+  tserver::AlterTabletTierRequestPB req;
+  req.set_dest_uuid(permanent_uuid_);
+  req.set_tablet_id(tablet_id());
+  req.set_target_tier(target_tier_);
+  ts_admin_proxy_->AlterTabletTierAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent AlterTabletTier to " << permanent_uuid_ << " (attempt " << attempt
+                      << "): " << req.ShortDebugString();
+  return true;
+}
+
+void AsyncAlterTabletTier::HandleResponse(int attempt) {
+  if (!resp_.has_error()) {
+    LOG_WITH_PREFIX(INFO) << "Tiered storage: replica of tablet " << tablet_id() << " on TS "
+                          << permanent_uuid_ << " now targets tier '" << target_tier_
+                          << "': " << resp_.migration().ShortDebugString();
+    TransitionToCompleteState();
+    return;
+  }
+  const auto status = StatusFromPB(resp_.error().status());
+  switch (resp_.error().code()) {
+    case TabletServerErrorPB::TABLET_NOT_FOUND:
+      // The replica is gone; the balancer re-derives the replica set on its next run.
+      LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                               << permanent_uuid_ << ": tablet not found, not retrying: "
+                               << status;
+      TransitionToCompleteState();
+      return;
+    case TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE:
+      // The node has no disk on that tier: a placement problem, not a migration. Nothing moves
+      // the replica to a node that has the tier yet; the balancer logs and skips it.
+      LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                               << permanent_uuid_ << ": no data directory on tier '"
+                               << target_tier_ << "', not retrying: " << status;
+      TransitionToCompleteState();
+      return;
+    default:
+      break;
+  }
+  if (status.IsNotSupported()) {
+    // Tiered storage is off on that tserver; retrying cannot change that.
+    LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                             << permanent_uuid_ << " refused, not retrying: " << status;
+    TransitionToCompleteState();
+    return;
+  }
+  // IllegalState (still bootstrapping, no regular DB) and any other transient error: the base
+  // class retries with backoff until the unresponsive deadline. A pass already in flight is not
+  // one of them: the tserver reports its progress as success.
+  LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                           << permanent_uuid_ << " failed (attempt " << attempt
+                           << "), will retry: " << status;
 }
 
 // ============================================================================

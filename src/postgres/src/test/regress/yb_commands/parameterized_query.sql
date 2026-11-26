@@ -33,22 +33,28 @@
 -- may override a chain edge for a dependent parameter by setting Pnext/Qnext/
 -- Rnext before \i :run_query (see bitmap_hint_from_P.sql).
 
--- File paths for parameter iteration.
+-- File paths for parameter iteration.  They default to the yb_commands dir
+-- under PG_ABS_SRCDIR; a test outside src/test/regress (e.g. a contrib test)
+-- sets yb_commands_dir to this directory before including this file.
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set _iter_query :abs_srcdir '/yb_commands/_iter_query.sql'
-\set _iter_P2 :abs_srcdir '/yb_commands/_iter_P2.sql'
-\set _iter_P3 :abs_srcdir '/yb_commands/_iter_P3.sql'
-\set _iter_P4 :abs_srcdir '/yb_commands/_iter_P4.sql'
-\set _iter_P5 :abs_srcdir '/yb_commands/_iter_P5.sql'
-\set _iter_Q2 :abs_srcdir '/yb_commands/_iter_Q2.sql'
-\set _iter_Q3 :abs_srcdir '/yb_commands/_iter_Q3.sql'
-\set _iter_Q4 :abs_srcdir '/yb_commands/_iter_Q4.sql'
-\set _iter_Q5 :abs_srcdir '/yb_commands/_iter_Q5.sql'
-\set _iter_R2 :abs_srcdir '/yb_commands/_iter_R2.sql'
-\set _iter_R3 :abs_srcdir '/yb_commands/_iter_R3.sql'
-\set _iter_R4 :abs_srcdir '/yb_commands/_iter_R4.sql'
-\set _iter_R5 :abs_srcdir '/yb_commands/_iter_R5.sql'
-\set run_query :abs_srcdir '/yb_commands/run_query.sql'
+\if :{?yb_commands_dir}
+\else
+\set yb_commands_dir :abs_srcdir '/yb_commands'
+\endif
+\set _iter_query :yb_commands_dir '/_iter_query.sql'
+\set _iter_P2 :yb_commands_dir '/_iter_P2.sql'
+\set _iter_P3 :yb_commands_dir '/_iter_P3.sql'
+\set _iter_P4 :yb_commands_dir '/_iter_P4.sql'
+\set _iter_P5 :yb_commands_dir '/_iter_P5.sql'
+\set _iter_Q2 :yb_commands_dir '/_iter_Q2.sql'
+\set _iter_Q3 :yb_commands_dir '/_iter_Q3.sql'
+\set _iter_Q4 :yb_commands_dir '/_iter_Q4.sql'
+\set _iter_Q5 :yb_commands_dir '/_iter_Q5.sql'
+\set _iter_R2 :yb_commands_dir '/_iter_R2.sql'
+\set _iter_R3 :yb_commands_dir '/_iter_R3.sql'
+\set _iter_R4 :yb_commands_dir '/_iter_R4.sql'
+\set _iter_R5 :yb_commands_dir '/_iter_R5.sql'
+\set run_query :yb_commands_dir '/run_query.sql'
 
 -- Scratch files, written under PG_ABS_BUILDDIR, which should be a private tmp
 -- dir for each Java test invocation.  The fixed filenames assume tests using

@@ -74,6 +74,11 @@ jobs:
       - name: Print sccache stats (before)
         run: sccache --show-stats
 
+      - name: Install rustfmt & clippy
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
+
       - name: Run rustfmt
         run: cargo fmt --all -- --check
 
@@ -107,7 +112,7 @@ jobs:
 
     strategy:
       matrix:
-        postgres: [ 13, 14, 15, 16, 17 ]
+        postgres: [ 13, 14, 15, 16, 17, 18 ]
         include:
           - postgres: 16
             rust: "beta"
@@ -164,7 +169,7 @@ jobs:
           echo ""
 
       - name: Setup release Postgres apt repo
-        if: matrix.postgres != '18'
+        if: matrix.postgres != '19'
         run: |
           sudo apt-get install -y wget gnupg
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
@@ -172,7 +177,7 @@ jobs:
           sudo apt-get update -y -qq --fix-missing
 
       - name: Setup beta Postgres apt repo
-        if: matrix.postgres == '18'
+        if: matrix.postgres == '19'
         run: |
           sudo apt-get install -y wget gnupg
           sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7FCC7D46ACCC4CF8
@@ -204,14 +209,14 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: pgrx-tests-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+          key: pgrx-unit-tests-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
 
       - name: Cache sccache directory
         uses: actions/cache@v4
         continue-on-error: false
         with:
           path: /home/runner/.cache/sccache
-          key: pgrx-tests-sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+          key: pgrx-unit-tests-sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
 
       - name: Start sccache server
         run: sccache --start-server
@@ -219,126 +224,62 @@ jobs:
       - name: Print sccache stats (before run)
         run: sccache --show-stats
 
+      - name: Install rustfmt & clippy
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
+
       - name: Install cargo-pgrx
-        run: cargo install --path cargo-pgrx/ --debug --force
+        run: cargo install --path cargo-pgrx/ --debug --force --locked
 
       - name: Run 'cargo pgrx init' against system-level ${{ matrix.postgres }}
         run: cargo pgrx init --pg$PG_VER /usr/lib/postgresql/$PG_VER/bin/pg_config
 
-      - name: Run base-level tests
+      - name: Run workspace tests
         run: |
-          cargo test \
+          CARGO_TARGET_DIR="$(pwd)/target" cargo test --all \
             --features "pg$PG_VER" \
-            --package cargo-pgrx \
-            --package pgrx \
-            --package pgrx-macros \
-            --package pgrx-pg-sys \
-            --package pgrx-sql-entity-graph
+            --no-default-features
 
-      - name: Check that cross-compiled pgrx-tests can build
+      - name: Check that cross-compiled pgrx-unit-tests can build
         run: |
           cargo build --tests \
             --features "pg$PG_VER" \
-            --package pgrx-tests \
+            --package pgrx-unit-tests \
             --target aarch64-unknown-linux-gnu
 
-      - name: Run pgrx-tests with cshim enabled
+      - name: Run pgrx-unit-tests with cshim enabled
         run: |
           cargo test \
             --features "pg$PG_VER cshim proptest" \
-            --package pgrx-tests --lib
+            --package pgrx-unit-tests --lib
 
-      - name: Run pgrx-tests with cshim disabled
+      - name: Run pgrx-unit-tests with cshim disabled
         run: |
           cargo test \
             --features "pg$PG_VER proptest" \
-            --package pgrx-tests --lib
+            --package pgrx-unit-tests --lib
 
       - name: Run UI tests
         if: ${{ matrix.rust == null }}
         run: |
           cargo test \
             --features "pg$PG_VER proptest" \
-            --package pgrx-tests --test ui
+            --package pgrx-unit-tests --test ui
 
-
-      - name: Run aggregate example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/aggregate/Cargo.toml --features "pg$PG_VER" --no-default-features
-
-      - name: Run arrays example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/arrays/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run bad_ideas example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/bad_ideas/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run bgworker example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/bgworker/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run bytea example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/bytea/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run composite_type example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/composite_type/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run custom_libname example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_libname/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run custom_types example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_types/Cargo.toml  --features "pg$PG_VER" --no-default-features
+      - name: Smoke test cargo pgrx bench against the benching example
+        if: ${{ matrix.postgres == 16 && matrix.rust == null }}
+        run: |
+          CARGO_TARGET_DIR="$(pwd)/target" cargo pgrx bench pg$PG_VER \
+            bench_normalize_phrase \
+            --manifest-path=pgrx-examples/benching/Cargo.toml \
+            --group-name ci_benching_smoke
 
       - name: Run custom_types without schema generation example tests
         run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_types/Cargo.toml  --features "pg$PG_VER no-schema-generation" --no-default-features
 
-      - name: Run custom_sql example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_sql/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run datetime example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/datetime/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run errors example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/errors/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run nostd example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/nostd/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run numeric example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/numeric/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run pgtrybuilder example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/pgtrybuilder/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run operators example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/operators/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run range example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/range/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run schemas example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/schemas/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run shmem example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/shmem/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run spi example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/spi/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run spi_srf example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/spi_srf/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run srf example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/srf/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run strings example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/strings/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run triggers example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/triggers/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run versioned_custom_libname_so example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/versioned_custom_libname_so/Cargo.toml  --features "pg$PG_VER" --no-default-features
-
-      - name: Run versioned_so example tests
-        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/versioned_so/Cargo.toml  --features "pg$PG_VER" --no-default-features
+      - name: Run range example regression tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo pgrx regress pg$PG_VER --manifest-path=pgrx-examples/range/Cargo.toml
 
       - name: Run `cargo pgrx schema` against the versioned_custom_libname_so example
         run: cd pgrx-examples/versioned_custom_libname_so && cargo pgrx schema pg$PG_VER
@@ -360,6 +301,114 @@ jobs:
 
       - name: Stop sccache server
         run: sccache --stop-server || true
+
+  pgrx_tests_arm64:
+    name: Linux arm64 native tests
+    needs: lintck
+    runs-on: ubuntu-24.04-arm
+    if: "!contains(github.event.head_commit.message, 'nogha')"
+    env:
+      PG_VER: ${{ matrix.postgres }}
+      RUST_TOOLCHAIN: 'stable'
+
+    # Regression coverage for the `.pgrxsc` ELF-section retention contract on
+    # aarch64 Linux. The bug this is guarding against: without LTO, `#[used]`
+    # statics in `.pgrxsc` rely on `SHF_GNU_RETAIN` surviving through LLVM →
+    # binutils → `ld --gc-sections`. That chain has broken in the wild on
+    # aarch64 (see pglinter 0.18.0 failure), dropping the whole section and
+    # producing "no embedded pgrx schema section found" at schema-generation
+    # time. Running `cargo pgrx schema --release` against pgrx-unit-tests on
+    # a native aarch64 runner directly exercises the broken path.
+    strategy:
+      matrix:
+        postgres: [ 17 ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up prerequisites and environment
+        run: |
+          sudo apt-get update -y -qq --fix-missing
+
+          echo "----- Remove old postgres / clang / llvm (best effort) -----"
+          # Each regex can legitimately match zero packages on the arm64
+          # runner image (e.g. no pre-installed `mono-llvm*`), so we treat
+          # every removal as best-effort rather than failing the whole job.
+          for pattern in \
+            '^postgres.*' \
+            '^libpq.*' \
+            '^clang.*' \
+            '^llvm.*' \
+            '^libclang.*' \
+            '^libllvm.*' \
+            '^mono-llvm.*'; do
+            sudo apt remove -y "$pattern" || true
+          done
+
+          echo "----- Install system dependencies -----"
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            libclang-dev \
+            llvm-dev \
+            gcc \
+            libssl-dev \
+            libz-dev \
+            make \
+            pkg-config \
+            zlib1g-dev
+
+          "$TOOL_DIR"/rustup.sh
+
+          echo "----- Print env -----"
+          env
+          echo ""
+
+      - name: Setup release Postgres apt repo
+        run: |
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update -y -qq --fix-missing
+
+      - name: Install Postgres
+        run: |
+          sudo apt-get install -y \
+            postgresql-$PG_VER \
+            postgresql-server-dev-$PG_VER
+
+      - name: Set up PostgreSQL permissions
+        run: sudo chmod a+rwx `/usr/lib/postgresql/$PG_VER/bin/pg_config --pkglibdir` `/usr/lib/postgresql/$PG_VER/bin/pg_config --sharedir`/extension /var/run/postgresql/
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: pgrx-arm64-cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Install cargo-pgrx
+        run: cargo install --path cargo-pgrx/ --debug --force --locked
+
+      - name: Run 'cargo pgrx init' against system-level ${{ matrix.postgres }}
+        run: cargo pgrx init --pg$PG_VER /usr/lib/postgresql/$PG_VER/bin/pg_config
+
+      # Reproduces the pglinter 0.18.0 failure mode: release build with LTO
+      # off and many codegen units, where `.pgrxsc` retention depends on
+      # `SHF_GNU_RETAIN` surviving the whole LLVM → binutils → `ld
+      # --gc-sections` chain. The env vars below pin the profile shape so
+      # this regression test keeps exercising the broken path even if
+      # someone later edits `[profile.release]` in the workspace Cargo.toml.
+      # pgrx-unit-tests has a large, diverse set of schema entries, so if
+      # the injected `--no-gc-sections` workaround ever regresses, this step
+      # fails with "no embedded pgrx schema section found".
+      - name: Exercise cargo pgrx schema --release against pgrx-unit-tests
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+        run: cd pgrx-unit-tests && cargo pgrx schema pg$PG_VER --release
 
   cargo_pgrx_init:
     name: cargo pgrx init
@@ -439,8 +488,13 @@ jobs:
       - name: Print sccache stats (before)
         run: sccache --show-stats
 
+      - name: Install rustfmt & clippy
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
+
       - name: Install cargo-pgrx
-        run: cargo install --path cargo-pgrx/ --debug --force
+        run: cargo install --path cargo-pgrx/ --debug --force --locked
 
       - name: Run 'cargo pgrx init'
         run: cargo pgrx init --pg$PG_VER download
@@ -464,6 +518,7 @@ jobs:
       - name: hack Cargo.toml
         run: |
           echo "[patch.crates-io]" >> /tmp/sample/Cargo.toml
+          echo "pgrx-bench  = { path = \"${GITHUB_WORKSPACE}/pgrx-bench\"  }" >> /tmp/sample/Cargo.toml
           echo "pgrx        = { path = \"${GITHUB_WORKSPACE}/pgrx\"        }" >> /tmp/sample/Cargo.toml
           echo "pgrx-macros = { path = \"${GITHUB_WORKSPACE}/pgrx-macros\" }" >> /tmp/sample/Cargo.toml
           echo "pgrx-tests  = { path = \"${GITHUB_WORKSPACE}/pgrx-tests\"  }" >> /tmp/sample/Cargo.toml
@@ -489,7 +544,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ "macos-13", "macos-14" ] # macos-14 is M1
+        os: [ "macos-14" ] # macos-14 is M1
         # Since Postgres 16 on macOS the dynamic library extension is "dylib" (instead of "so" on older versions),
         # so it's important to test against both versions (with "old" and "new" extensions).
         #
@@ -560,8 +615,13 @@ jobs:
       - name: Print sccache stats
         run: sccache --show-stats
 
+      - name: Install rustfmt & clippy
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
+
       - name: Install cargo-pgrx
-        run: cargo install --path cargo-pgrx/ --debug --force
+        run: cargo install --path cargo-pgrx/ --debug --force --locked
 
       - name: Print sccache stats
         run: sccache --show-stats
@@ -638,7 +698,12 @@ jobs:
         run: sccache --show-stats
 
       - name: Install cargo-pgrx
-        run: cargo install --path cargo-pgrx/ --debug --force
+        run: cargo install --path cargo-pgrx/ --debug --force --locked
+
+      - name: Install rustfmt & clippy
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
 
       - name: Print sccache stats
         run: sccache --show-stats

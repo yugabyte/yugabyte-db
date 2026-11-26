@@ -1146,6 +1146,88 @@ NOTICE:  exceeded work_mem, switching to full table scan
                            Index Cond: ((b > 0) AND (c > 15000))
 (14 rows)
 
+-- A bitmap scan does not take a pushed-down LIMIT, so its first page comes
+-- back full.  Exceeding work_mem drops the node to a full table scan, which
+-- does take the bound.  Own table because the fallback has to be predicted by
+-- the planner as well as hit by the executor, and that needs statistics;
+-- "multi" is deliberately never analyzed.  DEBUG needs the
+-- non-deterministic-field guard off, so the helper drops the volatile lines
+-- and leaves the plan shape, the storage counters and the first fetch limit
+-- as the assertion.
+CREATE TABLE bm_limit (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE INDEX ON bm_limit (b ASC);
+INSERT INTO bm_limit SELECT i, i FROM generate_series(1, 10000) i;
+ANALYZE bm_limit;
+CREATE FUNCTION explain_bitmap_first_fetch(query text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    line text;
+BEGIN
+    FOR line IN EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, TIMING OFF) ' || query
+    LOOP
+        CONTINUE WHEN line ~ '^\s*(Metric |Estimated |Average ybctid|Storage \w+ Read Execution Time)';
+        RETURN NEXT line;
+    END LOOP;
+END;
+$$;
+-- yb_enable_cbo rather than yb_enable_base_scans_cost_model, which the rest
+-- of this file uses: RESET on the latter lands on its own built-in default
+-- and drags yb_enable_cbo down to legacy_mode with it, changing later plans.
+SET yb_enable_cbo = on;
+SET yb_explain_hide_non_deterministic_fields = off;
+\set bmlimit '/*+ BitmapScan(bm_limit) */ SELECT * FROM bm_limit WHERE a < 5000 OR b > 9000 LIMIT 10'
+-- exceeds work_mem: the fallback table scan takes the bound, and DocDB
+-- returns only its rows
+SELECT explain_bitmap_first_fetch(:'bmlimit');
+NOTICE:  exceeded work_mem, switching to full table scan
+                          explain_bitmap_first_fetch                           
+-------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on bm_limit (actual rows=10 loops=1)
+         Storage Filter: ((a < 5000) OR (b > 9000))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 10
+         Exceeded work_mem: true
+         First Fetch Limit: 10
+         ->  BitmapOr (actual rows=0 loops=1)
+               ->  Bitmap Index Scan on bm_limit_pkey (actual rows=0 loops=1)
+                     Index Cond: (a < 5000)
+                     Storage Table Read Requests: 6
+                     Storage Table Read Ops: 6
+                     Storage Table Rows Scanned: 4999
+               ->  Bitmap Index Scan on bm_limit_b_idx (actual rows=0 loops=1)
+                     Index Cond: (b > 9000)
+(16 rows)
+
+-- does not exceed work_mem: no bound, the first page comes back full
+SET work_mem TO '4MB';
+SELECT explain_bitmap_first_fetch(:'bmlimit');
+                            explain_bitmap_first_fetch                            
+----------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on bm_limit (actual rows=10 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1024
+         ->  BitmapOr (actual rows=5999 loops=1)
+               ->  Bitmap Index Scan on bm_limit_pkey (actual rows=4999 loops=1)
+                     Index Cond: (a < 5000)
+                     Storage Table Read Requests: 6
+                     Storage Table Read Ops: 6
+                     Storage Table Rows Scanned: 4999
+               ->  Bitmap Index Scan on bm_limit_b_idx (actual rows=1000 loops=1)
+                     Index Cond: (b > 9000)
+                     Storage Index Read Requests: 2
+                     Storage Index Read Ops: 2
+                     Storage Index Rows Scanned: 1000
+(16 rows)
+
+SET work_mem TO '100kB';
+RESET yb_explain_hide_non_deterministic_fields;
+RESET yb_enable_cbo;
+DROP FUNCTION explain_bitmap_first_fetch(text);
+DROP TABLE bm_limit;
 -- check aggregate pushdown
 SET yb_enable_expression_pushdown = true;
 SET yb_enable_index_aggregate_pushdown = true;
@@ -1569,7 +1651,10 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */ SELECT COUNT(*) F
 (1 row)
 
 -- PxQxR: explain/run x expression_pushdown x target
--- test where casting may cause us to require recheck
+-- test where casting may cause us to require recheck.  An out-of-range
+-- inequality leaves its key unbound, so the scan reads and rechecks.  An
+-- out-of-range equality makes the scan unsatisfiable instead, so it reads
+-- nothing.
 \set explain 'EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)'
 \set Q1 '/*+ BitmapScan(t) */'
 \set Q2 '/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */'
@@ -1642,42 +1727,36 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */ SELECT int4_col FR
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: (int4_col = '2147483648'::bigint)
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: (int4_col = '2147483648'::bigint)
-(4 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         Storage Recheck Cond: (int4_col = '2147483648'::bigint)
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: (int4_col = '2147483648'::bigint)
-(6 rows)
+(5 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Recheck Cond: (int4_col = '2147483648'::bigint)
-   Rows Removed by Index Recheck: 9
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: (int4_col = '2147483648'::bigint)
-(5 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         Recheck Cond: (int4_col = '2147483648'::bigint)
-         Rows Removed by Index Recheck: 9
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: (int4_col = '2147483648'::bigint)
-(6 rows)
+(4 rows)
 
 /*+ BitmapScan(t) */ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
  int4_col 
@@ -1701,6 +1780,73 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_express
      0
 (1 row)
 
+\set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col > 2147483648;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */ SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: (int4_col > '2147483648'::bigint)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         Index Cond: (int4_col > '2147483648'::bigint)
+(4 rows)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+         Storage Recheck Cond: (int4_col > '2147483648'::bigint)
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+               Index Cond: (int4_col > '2147483648'::bigint)
+(6 rows)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Recheck Cond: (int4_col > '2147483648'::bigint)
+   Rows Removed by Index Recheck: 9
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         Index Cond: (int4_col > '2147483648'::bigint)
+(5 rows)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+         Recheck Cond: (int4_col > '2147483648'::bigint)
+         Rows Removed by Index Recheck: 9
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+               Index Cond: (int4_col > '2147483648'::bigint)
+(6 rows)
+
+/*+ BitmapScan(t) */ SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+ int4_col 
+----------
+(0 rows)
+
+/*+ BitmapScan(t) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+ int4_col 
+----------
+(0 rows)
+
+/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+ count 
+-------
+     0
+(1 row)
+
 \set Q1 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */'
 \set Q2 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) Set(yb_enable_expression_pushdown false) */'
 \set query ':explain :Q SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;'
@@ -1714,7 +1860,7 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ NestLoop(s t) BitmapScan(t) Set(yb_
    ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
          Storage Recheck Cond: (int4_col = s.bigint_col)
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=9)
                Index Cond: (int4_col = s.bigint_col)
 (6 rows)
 
@@ -1725,10 +1871,9 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ NestLoop(s t) BitmapScan(t) Set(yb_
    ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
          Recheck Cond: (int4_col = s.bigint_col)
-         Rows Removed by Index Recheck: 1
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=9)
                Index Cond: (int4_col = s.bigint_col)
-(7 rows)
+(6 rows)
 
 --
 -- #22622: test local recheck of condition for a column that is not a target

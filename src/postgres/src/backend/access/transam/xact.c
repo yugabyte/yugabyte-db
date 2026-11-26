@@ -73,6 +73,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "tcop/tcopprot.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -230,8 +231,7 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount; /* Count of objects that
 												 * require stickiness within a
 												 * certain transaction (e.g.
-												 * TEMP TABLES/WITH HOLD
-												 * CURSORS) */
+												 * TEMP TABLES) */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -2147,7 +2147,8 @@ YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionDa
 			.enable_tracing = YBEnableTracing(),
 			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
 			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs(),
+			.origination_time = yb_origination_time
 		};
 
 		HandleYBStatus((*Callback) (&data));
@@ -2305,6 +2306,31 @@ StartTransaction(void)
 	pgstat_report_xact_timestamp(xactStartTimestamp);
 	/* Mark xactStopTimestamp as unset. */
 	xactStopTimestamp = 0;
+
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * A statement keeps the object locking mode of its first transaction,
+		 * so that it never builds state in one mode and uses it in the other.
+		 * Upstream gets the same effect for its own settings by applying a
+		 * config reload only between client messages, but a statement's first
+		 * transaction can start in an earlier message (Parse or Bind) than the
+		 * one that runs it (Execute), and a statement can start more
+		 * transactions while it runs (ANALYZE of several tables, CREATE INDEX,
+		 * COMMIT in a procedure).
+		 */
+		if (!YbIsStatementTransactionStarted())
+			YbSetObjectLockingForCurrTxn();
+
+		/*
+		 * A background worker receives no messages, so it takes a fresh
+		 * origination time for each transaction, before AtStart_Cache
+		 * refreshes the catalog cache the transaction uses.  A parallel
+		 * worker keeps its leader's.
+		 */
+		if (IsBackgroundWorker && !IsParallelWorker())
+			YbRefreshOriginationTime();
+	}
 
 	/*
 	 * initialize other subsystems for new transaction
@@ -2635,6 +2661,11 @@ CommitTransaction(void)
 	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
+	if (IsYugaByteEnabled())
+	{
+		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -2935,6 +2966,11 @@ PrepareTransaction(void)
 	AtEOXact_HashTables(true);
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
+	if (IsYugaByteEnabled())
+	{
+		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3164,6 +3200,17 @@ AbortTransaction(void)
 		pgstat_report_xact_timestamp(0);
 	}
 
+	/*
+	 * YB: This is done outside the block above, which is skipped when the
+	 * transaction fails before creating a resource owner.  A stale stamp or
+	 * upgrade OID counter has to be cleared on every exit.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
+
 	YBCAbortTransaction();
 	YB_DIST_TRACE_END_SPAN();
 
@@ -3350,12 +3397,38 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
+/*
+ * YbCommitTransactionCommandIntermediate
+ *
+ * Commits the current transaction and starts a new one in the middle of a
+ * statement that runs in several transactions, such as an ANALYZE of several
+ * tables, and carries the statement's DDL state into the new transaction. The
+ * new transaction takes the database DDL lock like any DDL transaction (see
+ * YbLockDatabaseToBlockDdlConcurrency).
+ */
 void
 YbCommitTransactionCommandIntermediate(void)
+{
+	YbCommitTransactionCommandIntermediateExtended(true /* block_ddl_concurrency_in_db */ );
+}
+
+/*
+ * YbCommitTransactionCommandIntermediateExtended
+ *
+ * With block_ddl_concurrency_in_db false, the new transaction enters DDL state
+ * without the database DDL lock. DETACH PARTITION CONCURRENTLY needs this: it
+ * waits for lockers right after the new transaction starts, and holding the
+ * lock during that wait can block a writer's DDL with no deadlock reported
+ * (see YBAddDdlTxnStateExtended). It takes the lock after the wait.
+ */
+void
+YbCommitTransactionCommandIntermediateExtended(bool block_ddl_concurrency_in_db)
 {
 	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
 	YbDdlMode	ddl_mode;
+
+	bool		ddl_txn_block_enabled = YBIsDdlTransactionBlockEnabled();
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
@@ -3363,7 +3436,7 @@ YbCommitTransactionCommandIntermediate(void)
 	 * Remember DDL state of the statement currently being executed so that we
 	 * can restore it on the next transaction.
 	 */
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
 		YBGetDdlOriginalStmtState(&yb_ddl_stmt_state);
 		ddl_mode = YBGetCurrentDdlMode();
@@ -3375,10 +3448,31 @@ YbCommitTransactionCommandIntermediate(void)
 	CommitTransactionCommand();
 	StartTransactionCommand();
 
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	/*
+	 * YB: A caller that runs inside a client statement kept the object
+	 * locking mode in the new transaction (see StartTransaction). A caller
+	 * outside one reads the flag again here: a pg_cron background worker that
+	 * runs a scheduled ANALYZE of several tables, for example. If the mode
+	 * changed, the rest of the statement would run in the other mode while
+	 * the state it already built belongs to this one, so fail the statement
+	 * instead.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("transactional DDL was %s while the statement was "
+						"running",
+						ddl_txn_block_enabled ? "disabled" : "enabled"),
+				 errhint("Retry the statement.")));
+
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		YBAddDdlTxnState(ddl_mode);
+		/*
+		 * Restore the statement state first: entering DDL state reads it to
+		 * decide whether to take the database DDL lock (ANALYZE does not).
+		 */
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
+		YBAddDdlTxnStateExtended(ddl_mode, block_ddl_concurrency_in_db);
 	}
 }
 
@@ -5128,7 +5222,7 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 }
 
 bool
-YBTransactionContainsNonReadCommittedSavepoint(void)
+YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch)
 {
 	if (!IsTransactionBlock())
 		return false;
@@ -5152,10 +5246,15 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 			 * correctly catch this, but to avoid breaking existing extensions
 			 * (like pg_partman) during upgrades, we skip returning true if
 			 * the backward-compatibility flag is enabled.
+			 *
+			 * That escape hatch exists only to preserve the behavior of the
+			 * buggy DDL code path, so it must not be extended to other callers.
+			 * Those pass skip_backward_compat_escape_hatch to opt out of it.
 			 */
 			if (s->parent)
 			{
-				if (!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
+				if (skip_backward_compat_escape_hatch ||
+					!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
 					return true;
 			}
 		}
@@ -5708,6 +5807,9 @@ AbortSubTransaction(void)
 			 TransStateAsString(s->state));
 
 	s->state = TRANS_ABORT;
+
+	if (IsYugaByteEnabled())
+		YBCPgClearSessionState();
 
 	/*
 	 * Reset user ID which might have been changed transiently.  (See notes in

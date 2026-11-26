@@ -16,6 +16,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
@@ -153,12 +154,19 @@ std::unique_ptr<OptionsDescription> ChangeTimeOptions(const std::string& caption
   return result;
 }
 
+// Tablet DB directories come in pairs: the intents DB lives next to the regular one with the
+// ".intents" suffix, and the two are configured differently (see CreateRocksDBTableFactory).
+StorageDbType StorageDbTypeForDir(const std::string& dir) {
+  return boost::ends_with(dir, kIntentsExtension) ? StorageDbType::kIntents
+                                                  : StorageDbType::kRegular;
+}
+
 class RocksDBHelper {
  public:
-  RocksDBHelper() : immutable_cf_options_(options_) {
+  explicit RocksDBHelper(StorageDbType db_type) : immutable_cf_options_(options_) {
     docdb::InitRocksDBOptions(
         &options_, kLogPrefix, yb::TabletId{}, /* statistics= */ nullptr, tablet_options_,
-        table_options_);
+        db_type, table_options_);
     internal_key_comparator_ = std::make_shared<rocksdb::InternalKeyComparator>(
         options_.comparator);
   }
@@ -330,9 +338,7 @@ Status AddDeltaToSstFile(
   LOG(INFO) << "Patching: " << fname << ", " << static_cast<const void*>(&fname);
 
   constexpr size_t kKeySuffixLen = 8;
-  const auto storage_db_type =
-      boost::ends_with(DirName(fname), kIntentsExtension) ? StorageDbType::kIntents
-                                                          : StorageDbType::kRegular;
+  const auto storage_db_type = StorageDbTypeForDir(DirName(fname));
 
   auto table_reader = VERIFY_RESULT(helper->NewTableReader(fname));
 
@@ -582,7 +588,7 @@ Status ChangeTimeInDataFiles(
   std::shuffle(files_to_process.begin(), files_to_process.end(), ThreadLocalRandom());
   for (const auto& fname : files_to_process) {
     runner->Submit([fname, delta, bound_time, max_num_old_wal_entries, debug]() {
-      RocksDBHelper helper;
+      RocksDBHelper helper(StorageDbTypeForDir(DirName(fname)));
       return AddDeltaToSstFile(fname, delta, bound_time, max_num_old_wal_entries, debug, &helper);
     });
   }
@@ -594,13 +600,17 @@ Status ChangeTimeInWalDir(
     const std::string& dir) {
   auto env = Env::Default();
   auto log_index = VERIFY_RESULT(log::LogIndex::NewLogIndex(dir));
-  std::unique_ptr<log::LogReader> log_reader;
-  RETURN_NOT_OK(log::LogReader::Open(
+  auto log_reader = VERIFY_RESULT(log::LogReader::Open(
       env, log_index, kLogPrefix, dir, /*table_metric_entity=*/nullptr,
       /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &log_reader));
+      /*read_wal_mem_tracker=*/nullptr));
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+  // Bootstrap updates the clock with the quiescent marker's hybrid time, so it is patched as well.
+  std::optional<log::QuiescentMarkerPB> quiescent_marker;
+  if (env->FileExists(log::Log::QuiescentMarkerPath(dir))) {
+    quiescent_marker = VERIFY_RESULT(log::Log::ReadQuiescentMarkerFile(env, dir));
+  }
   auto patched_dir = dir + kPatchedExtension;
   RETURN_NOT_OK(env->CreateDirs(patched_dir));
   auto new_segment_path = JoinPathSegments(patched_dir, FsManager::GetWalSegmentFileName(1));
@@ -635,6 +645,14 @@ Status ChangeTimeInWalDir(
   };
 
   for (int is_final_step = bound_time ? 0 : 1; is_final_step != 2; ++is_final_step) {
+    if (quiescent_marker) {
+      auto marker_ht = HybridTime(quiescent_marker->hybrid_time());
+      if (is_final_step) {
+        quiescent_marker->set_hybrid_time(VERIFY_RESULT(add_delta(marker_ht)));
+      } else {
+        delta_data.AddEarlyTime(marker_ht);
+      }
+    }
     for (const auto& segment : segments) {
       // Read entry batches of a WAL segment, and write as few entry batches as possible, but still
       // make sure that we don't create consecutive entries in the same write batch where the Raft
@@ -758,6 +776,9 @@ Status ChangeTimeInWalDir(
   }
 
   RETURN_NOT_OK(new_segment.WriteIndexWithFooterAndClose(log_index.get(), &footer));
+  if (quiescent_marker) {
+    RETURN_NOT_OK(log::Log::WriteQuiescentMarkerFile(env, patched_dir, *quiescent_marker));
+  }
   return Env::Default()->RenameFile(tmp_segment_path, new_segment_path);
 }
 
@@ -897,10 +918,6 @@ class ApplyPatch {
           std::bind(&ApplyPatch::WalkWalCallback, this, _1, _2, _3)));
     }
 
-    RocksDBHelper helper;
-    auto options = helper.options();
-    options.skip_stats_update_on_db_open = true;
-
     int num_revert_errors = 0;
 
     int num_dirs_handled = 0;
@@ -933,6 +950,9 @@ class ApplyPatch {
         if (dirs == &data_dirs_) {
           if (valid_rocksdb_dirs_.count(dir)) {
             LOG(INFO) << "Patching non-live RocksDB metadata in " << patched_path;
+            RocksDBHelper helper(StorageDbTypeForDir(dir));
+            auto options = helper.options();
+            options.skip_stats_update_on_db_open = true;
             docdb::RocksDBPatcher patcher(patched_path, options);
             RETURN_NOT_OK(patcher.Load());
             RETURN_NOT_OK(patcher.UpdateFileSizes());

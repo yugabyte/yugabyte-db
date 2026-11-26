@@ -26,6 +26,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -40,6 +41,7 @@ DECLARE_int64(time_based_wal_gc_clock_delta_usec);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_force_lazy_superblock_flush);
 DECLARE_bool(enable_log_retention_by_op_idx);
+DECLARE_bool(rbs_skip_stream_incremental_wal);
 DECLARE_bool(TEST_rbs_pause_after_wal_trim);
 
 namespace yb {
@@ -62,7 +64,7 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
   void InsertOneRow(int32_t key) {
     WriteRequestPB req;
     req.set_tablet_id(tablet_peer_->tablet_id());
-    AddTestRowInsert(key, key * 2, Substitute("k$0", key), &req);
+    AddTestRowInsert(key, key * 2, Format("k$0", key), &req);
 
     auto arena = SharedThreadSafeArena();
     auto* resp = arena->NewArenaObject<LWWriteResponsePB>();
@@ -807,6 +809,78 @@ TEST_F(RemoteBootstrapRocksDBTest, InitPinsTimeKeptSegmentsAgainstConcurrentGc) 
   }
 }
 
+TEST_F(RemoteBootstrapRocksDBTest, SessionDoesNotServeWalSegmentsCreatedAfterInit) {
+  session_.reset();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rbs_skip_stream_incremental_wal) = true;
+
+  auto* log = tablet_peer_->log();
+  auto session = make_scoped_refptr<RemoteBootstrapSession>(
+      tablet_peer_, "TestSnapshotBoundedWalSession", "FakeUUID", /*nsessions=*/nullptr);
+  ASSERT_OK(session->InitBootstrapSession());
+  ASSERT_FALSE(session->log_segments().empty());
+  const auto snapshot_tail_seqno =
+      ASSERT_RESULT_REF(session->log_segments().back())->header().sequence_number();
+
+  const auto row_key = 10000;
+  ASSERT_NO_FATALS(InsertOneRow(row_key));
+  ASSERT_OK(log->AllocateSegmentAndRollOver());
+  const auto seqno_after_snapshot = log->active_segment_sequence_number();
+  ASSERT_GT(seqno_after_snapshot, snapshot_tail_seqno)
+      << "Expected a WAL segment to be created after session init.";
+  ASSERT_OK(log->GetSegmentBySequenceNumber(seqno_after_snapshot));
+
+  DataIdPB data_id;
+  data_id.set_type(DataIdPB::LOG_SEGMENT);
+  data_id.set_wal_segment_seqno(seqno_after_snapshot);
+  GetDataPieceInfo info = {
+      .offset = 0,
+      .client_maxlen = 0,
+      .data = std::string(),
+      .data_size = 0,
+      .error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+  };
+  const auto s = session->GetDataPiece(data_id, &info);
+  ASSERT_NOK_STR_CONTAINS(s, "is past snapshot boundary");
+  ASSERT_TRUE(s.IsNotFound())
+      << "Fetching a post-snapshot WAL segment should terminate the destination walk: " << s;
+  ASSERT_EQ(info.error_code, RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND);
+}
+
+TEST_F(RemoteBootstrapRocksDBTest, SessionCanStreamIncrementalWalWhenFlagDisabled) {
+  session_.reset();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rbs_skip_stream_incremental_wal) = false;
+  auto restore_flag = ScopeExit([]() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rbs_skip_stream_incremental_wal) = true;
+  });
+
+  auto* log = tablet_peer_->log();
+  auto session = make_scoped_refptr<RemoteBootstrapSession>(
+      tablet_peer_, "TestIncrementalWalSession", "FakeUUID", /*nsessions=*/nullptr);
+  ASSERT_OK(session->InitBootstrapSession());
+  ASSERT_FALSE(session->log_segments().empty());
+  const auto snapshot_tail_seqno =
+      ASSERT_RESULT_REF(session->log_segments().back())->header().sequence_number();
+
+  ASSERT_NO_FATALS(InsertOneRow(/*key=*/10001));
+  ASSERT_OK(log->AllocateSegmentAndRollOver());
+  const auto seqno_after_snapshot = log->active_segment_sequence_number();
+  ASSERT_GT(seqno_after_snapshot, snapshot_tail_seqno);
+
+  DataIdPB data_id;
+  data_id.set_type(DataIdPB::LOG_SEGMENT);
+  data_id.set_wal_segment_seqno(seqno_after_snapshot);
+  GetDataPieceInfo info = {
+      .offset = 0,
+      .client_maxlen = 0,
+      .data = std::string(),
+      .data_size = 0,
+      .error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+  };
+  const auto fetch_status = session->GetDataPiece(data_id, &info);
+  ASSERT_OK(fetch_status);
+  ASSERT_GT(info.data_size, 0);
+}
+
 // The destination treats NotFound from a WAL segment fetch as its end-of-log terminator: it stops
 // downloading and reports success (RemoteBootstrapClient::DownloadWALs). So a segment that was
 // GC'd out from under a live session must NOT answer NotFound, or the destination silently
@@ -881,6 +955,31 @@ TEST_F(RemoteBootstrapRocksDBTest, FetchOfGcedSegmentIsDistinguishableFromEndOfL
         << "Fetching seqno " << beyond_active_seqno << " past the active segment must stay "
         << "NotFound; it is how the destination knows it has downloaded the whole plan: " << s;
   }
+}
+
+// TabletPeer::EnterQuiescentMode publishes the marker, checks log anchors, then deletes the
+// segments. A session that anchored after that check gets the marker, and must not plan the
+// segments, which may be deleted under it.
+TEST_F(RemoteBootstrapRocksDBTest, InitSkipsSegmentsCoveredByQuiescentMarker) {
+  auto* log = tablet_peer_->log();
+  ASSERT_NO_FATALS(RollSegmentsCoveredBySsts(
+      /* num_rolls= */ 2, /* rows_per_roll= */ 10, /* starting_key= */ 1000));
+  ASSERT_NO_FATALS(InsertOneRow(2000));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+
+  log::QuiescentMarkerPB marker;
+  ASSERT_OK(log->CloseActiveSegment(log->GetLatestEntryOpId(), &marker));
+  ASSERT_OK(log->WriteQuiescentMarker(marker));
+  ASSERT_GT(log->num_segments(), 1);
+
+  auto session = make_scoped_refptr<RemoteBootstrapSession>(
+      tablet_peer_, "TestQuiescentSession", "FakeUUID", /* nsessions= */ nullptr);
+  ASSERT_OK(session->InitBootstrapSession());
+  ASSERT_TRUE(session->quiescent_marker().has_value());
+  ASSERT_TRUE(session->log_segments().empty());
+
+  ASSERT_GT(ASSERT_RESULT(log->DeleteSegmentsCoveredByQuiescentMarker()), 1);
 }
 
 }  // namespace tserver

@@ -21,9 +21,6 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
-/* YB includes */
-#include "pg_yb_utils.h"
-#include "catalog/yb_catalog_version.h"
 
 /* forward declarations */
 static HTAB * CreateCronTaskHash(void);
@@ -84,13 +81,6 @@ CreateCronTaskHash(void)
 void
 RefreshTaskHash(void)
 {
-	/* YB Note: Always read the latest entries in the catalog */
-	if (IsYugaByteEnabled())
-	{
-		YbInvalidateCatalogSnapshot();
-		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
-	}
-
 	List *jobList = NIL;
 	ListCell *jobCell = NULL;
 	CronTask *task = NULL;

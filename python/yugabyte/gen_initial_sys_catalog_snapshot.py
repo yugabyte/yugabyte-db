@@ -58,6 +58,8 @@ def main() -> None:
         ['--initial_sys_catalog_snapshot_dest_path=' + snapshot_dest_path] +
         sys.argv[1:])
     os.environ['YB_CTEST_VERBOSE'] = '1'
+    # A filter inherited from yb_build.sh --gtest_filter would match no tests in this tool.
+    os.environ.pop('YB_GTEST_FILTER', None)
     with WorkDirContext(build_root):
         initdb_result = run_program(
             [

@@ -286,9 +286,9 @@ See examples in [batch docs](../batch#row-status).
 
 ## See also
 
-- [`CREATE TABLE`](../ddl_create_table)
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
-- [`UPDATE`](../dml_update/)
-- [`TRUNCATE`](../dml_truncate)
-- [`Expression`](..#expressions)
+- [CREATE TABLE](../ddl_create_table)
+- [INSERT](../dml_insert)
+- [SELECT](../dml_select/)
+- [UPDATE](../dml_update/)
+- [TRUNCATE](../dml_truncate)
+- [Expression](..#expressions)

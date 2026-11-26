@@ -8,15 +8,24 @@
  */
 
 import { cloneElement } from 'react';
+import { find, isEmpty } from 'lodash';
 import { useDispatch, useSelector } from 'react-redux';
+import type { TaskStatus } from '@app/redesign/helpers/api';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksFailure,
   fetchCustomerTasksSuccess,
   showTaskInDrawer
 } from '../../../actions/tasks';
-import { Task, TaskState, TaskType } from './dtos';
-import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
+import { TargetType, Task, TaskState, TaskType } from './dtos';
+import { AuditLogProps, DiffApiResp, GFlagsDiffProps } from './components/diffComp/dtos';
+import {
+  getTaskDiffValue,
+  withDefaultClusterType,
+  withUnchangedIntentFromPayload,
+  withoutDeletedClusters,
+  withIdentityFromPayload
+} from './components/diffComp/taskDiffUtils';
 import {
   SoftwareUpgradeState,
   SoftwareUpgradeTaskType
@@ -42,14 +51,50 @@ export const isTaskRunning = (task: Task): boolean => {
 export const isTaskFailed = (task: Task): boolean =>
   [TaskState.FAILURE, TaskState.ABORTED].includes(task.status);
 
+/** Same label as the Tasks table Type column: `${typeName} ${target}`. */
+export const getTaskTypeColumnLabel = (task: Pick<Task, 'typeName' | 'target'>): string =>
+  `${task.typeName} ${task.target}`;
+
+/**
+ * Resolve the type-column label for a task UUID from Redux when present, otherwise from
+ * `GET /tasks/{uuid}` plus the drawer task's target type when both tasks share a target.
+ */
+export const getOriginalTaskTypeColumnLabel = (
+  originalTaskUUID: string,
+  customerTaskList: Task[] | undefined | null,
+  taskStatus: TaskStatus | undefined,
+  contextTask: Task
+): string | undefined => {
+  const listTask = find(customerTaskList ?? [], { id: originalTaskUUID });
+  if (listTask) {
+    return getTaskTypeColumnLabel(listTask);
+  }
+  if (!taskStatus) {
+    return undefined;
+  }
+  if (taskStatus.targetUUID === contextTask.targetUUID) {
+    const typeName = taskStatus.type.replace(/([a-z])([A-Z])/g, '$1 $2');
+    return `${typeName} ${contextTask.target}`;
+  }
+  return taskStatus.type.replace(/([a-z])([A-Z])/g, '$1 $2');
+};
+
 /**
  * Checks if a task supports before and after data.
  * @param task - The task object to check.
  * @returns A boolean indicating whether the task supports before/after data or not.
  */
 export const doesTaskSupportsDiffData = (task: Task): boolean => {
+  // A validation (precheck-only) task never freezes the universe, so it records no taskDiff.
+  if (
+    (task.type === TaskType.EDIT || task.type === TaskType.RESIZE_NODE) &&
+    getIsPreCheckTask(task)
+  ) {
+    return false;
+  }
   if (task.type === TaskType.EDIT) {
-    return task.target === 'Universe';
+    // A read replica edit is a Cluster target task.
+    return task.target === 'Universe' || task.target === 'Cluster';
   }
   return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE, TaskType.RESIZE_NODE].includes(
     task.type
@@ -65,13 +110,47 @@ export function useIsTaskNewUIEnabled(): boolean {
   return featureFlags?.test?.newTaskDetailsUI || featureFlags?.release?.newTaskDetailsUI;
 }
 
+const isReadReplicaGFlagsOnly = (auditLog: AuditLogProps): boolean => {
+  const details = auditLog.additionalDetails as any;
+  return !!details?.readonly_cluster_gflags && !details?.gflags;
+};
+
 export const mapAuditLogToTaskDiffApiResp = (
   auditLog: AuditLogProps | undefined
 ): DiffApiResp | undefined => {
   if (!auditLog) return undefined;
+  const gflagsAudit = (auditLog.additionalDetails as Partial<GFlagsDiffProps>)?.gflags;
+  // Without a taskDiff there is nothing to show, except the gflag entries the upgrade wrote itself.
+  if (isEmpty(auditLog.taskDiff)) {
+    return gflagsAudit
+      ? {
+          afterData: {},
+          beforeData: {},
+          gflagsAudit,
+          parentUuid: auditLog.taskUUID,
+          uuid: auditLog.auditID.toString()
+        }
+      : undefined;
+  }
+  const taskDiff = withUnchangedIntentFromPayload(
+    withDefaultClusterType(
+      withIdentityFromPayload(
+        withoutDeletedClusters(auditLog.taskDiff),
+        auditLog.payload,
+        (auditLog.additionalDetails as any)?.clusters ? auditLog.additionalDetails : undefined
+      ),
+      // A read-replica-only gflags change is audited as readonly_cluster_gflags, and the v2 body
+      // has no clusters: the one cluster of the delta is the read replica.
+      isReadReplicaGFlagsOnly(auditLog)
+        ? { clusters: [{ clusterType: 'ASYNC' }] }
+        : auditLog.payload
+    ),
+    auditLog.payload
+  );
   return {
-    afterData: auditLog.payload,
-    beforeData: auditLog.additionalDetails,
+    afterData: getTaskDiffValue(taskDiff, 'new'),
+    beforeData: getTaskDiffValue(taskDiff, 'old'),
+    gflagsAudit,
     parentUuid: auditLog.taskUUID,
     uuid: auditLog.auditID.toString()
   };
@@ -140,6 +219,10 @@ export const getTaskTitle = (task: Task) => {
 
 export const getErrorTaskTitle = (task: Task) => {
   return `${task.typeName} ${task.target} failed: ${task.title.split(':')?.[1]}`;
+};
+
+export const getAbortedTaskTitle = (task: Task) => {
+  return `${task.typeName} ${task.target} aborted: ${task.title.split(':')?.[1]}`;
 };
 
 export const getLatestUniverseTask = (
@@ -229,9 +312,70 @@ export const getIsDbUpgradeRollbackTask = (task: Task): boolean =>
 export const getIsDbUpgradeFinalizeTask = (task: Task): boolean =>
   task.type === TaskType.FINALIZE_UPGRADE;
 
+/**
+ * Targets whose `targetUUID` is a universe UUID. `Cluster` covers read replica and add-on cluster
+ * operations, which the backend still records against `universe.getUniverseUUID()`.
+ *
+ * Also the targets an edit universe task (`EditUniverse` / `EditKubernetesUniverse`) is recorded
+ * against: `Universe` for a primary cluster edit, `Cluster` for a read replica edit.
+ */
+const UNIVERSE_TASK_TARGETS: TargetType[] = [TargetType.UNIVERSE, TargetType.CLUSTER];
+
+/**
+ * Universe this task ran against, or `undefined` when the task targets something else — a backup,
+ * provider, or schedule, whose `targetUUID` is that resource's UUID and not a universe.
+ *
+ * Use this instead of reading `task.targetUUID` directly whenever the UUID is about to be treated
+ * as a universe (universe queries, RBAC `onResource`).
+ */
+export const getTaskUniverseUuid = (task: Task): string | undefined =>
+  UNIVERSE_TASK_TARGETS.includes(task.target) ? task.targetUUID : undefined;
+
+/**
+ * Non-precheck edit universe, on VM or Kubernetes.
+ *
+ * Known overlap: `UniverseCRUDHandler.migrateUniverse` records its customer task as `Update` +
+ * `Universe`, even though the commissioner task type is `MigrateUniverse`, so a failed migrate
+ * also matches this check. Nothing on the customer task payload separates the two today —
+ * `typeName` is the `Update` friendly name for both, `title` is `Updated Universe : <name>` for
+ * both, and `CustomerTaskFormData.taskInfo` (which would carry the commissioner task type) is
+ * never populated by `CustomerTaskHandler.buildCustomerTaskFromData`. Since `MigrateUniverse` is
+ * annotated neither `@Retryable` nor `@CanRollback`, a failed migrate gets the edit universe
+ * banner copy but no retry or rollback action.
+ *
+ * The fix belongs on the backend: record the migrate customer task as
+ * `CustomerTask.TaskType.MigrateUniverse`, which already exists as an enum value and is already
+ * the mapping declared by the `TaskType` registry. This check becomes exact once that lands.
+ */
+export const getIsEditUniverseTask = (task: Task): boolean =>
+  task.type === TaskType.EDIT &&
+  UNIVERSE_TASK_TARGETS.includes(task.target) &&
+  !getIsPreCheckTask(task);
+
+export const getIsEditUniverseRollbackTask = (task: Task): boolean =>
+  task.type === TaskType.ROLLBACK_EDIT_UNIVERSE && UNIVERSE_TASK_TARGETS.includes(task.target);
+
 /** Non-precheck software upgrade, rollback, or finalize — matches DB upgrade cluster banners (excludes precheck-only). */
 export const getIsSoftwareUpgradeLockingTask = (task: Task): boolean =>
   getIsDbUpgradeTask(task) || getIsDbUpgradeRollbackTask(task) || getIsDbUpgradeFinalizeTask(task);
+
+/** How long the post-upgrade success banner stays visible after task completion. */
+export const SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS = 7;
+
+export const isTaskCompletedWithinDays = (
+  task: Pick<Task, 'completionTime'>,
+  days: number
+): boolean => {
+  const completedAtString = task.completionTime?.trim();
+  if (!completedAtString) {
+    return false;
+  }
+  const completedAt = Date.parse(completedAtString);
+  if (Number.isNaN(completedAt)) {
+    return false;
+  }
+  return Date.now() - completedAt <= days * 24 * 60 * 60 * 1000;
+};
 
 /** Latest upgrade / rollback / finalize task for the universe by `createTime` (precheck tasks excluded). */
 export const getLatestSoftwareUpgradeLockingTaskForUniverse = (

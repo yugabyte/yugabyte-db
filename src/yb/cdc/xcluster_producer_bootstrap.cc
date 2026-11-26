@@ -23,12 +23,19 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
+
+DEFINE_test_flag(bool, xcluster_fail_record_stream_bootstrap_info, false,
+    "Fail to record the checkpointed tablets in the master after BootstrapProducer writes the "
+    "checkpoints to cdc_state.");
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
@@ -37,7 +44,7 @@ namespace cdc {
 
 namespace {
 
-Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer) {
+Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer, CoarseTimePoint deadline) {
   // This is done by calling FetchNext on NewRowIterator to see if there is any row is visible
   // (not deleted). For colocated tablets, each table has to be checked.
   //
@@ -53,10 +60,16 @@ Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer) {
   auto table_ids = tablet->metadata()->GetAllColocatedTables();
   const dockv::ReaderProjection empty_projection;
 
+  // Read as of now. The default read time is the follower safe time, which only tracks the last
+  // replicated op, so rows removed by a transaction that has committed but whose APPLY has not been
+  // replicated yet would still be reported as present.
+  const auto read_time = ReadHybridTime::SingleTime(VERIFY_RESULT(
+      tablet->SafeTime(tablet::RequireLease::kTrue, tablet->clock()->Now(), deadline)));
+
   // We will have multiple tables when this is a colocated table.
   for (const auto& table_id : table_ids) {
-    auto iter = VERIFY_RESULT(
-        tablet->NewRowIterator(empty_projection, /* read_hybrid_time */ {}, table_id));
+    auto iter =
+        VERIFY_RESULT(tablet->NewRowIterator(empty_projection, read_time, table_id, deadline));
     if (VERIFY_RESULT(iter->FetchNext(nullptr))) {
       LOG(INFO) << "Tablet " << tablet_peer->tablet_id() << " has rows in table " << table_id
                 << ". Bootstrap is required when setting up xCluster.";
@@ -72,7 +85,7 @@ Result<bool> IsBootstrapRequiredForTablet(
     tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline) {
   if (min_op_id.index < 0) {
     // Bootstrap is needed if there is any data in the tablet.
-    return IsDataPresent(tablet_peer);
+    return IsDataPresent(tablet_peer, deadline);
   }
 
   auto log = tablet_peer->log();
@@ -108,7 +121,11 @@ Result<bool> IsBootstrapRequiredForTablet(
 Status XClusterProducerBootstrap::RunBootstrapProducer() {
   LOG_WITH_FUNC(INFO) << "Initializing xCluster Streams";
   RETURN_NOT_OK(CreateAllBootstrapStreams());
+  TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
   RETURN_NOT_OK(ConstructServerToTabletsMapping());
+
+  TEST_SYNC_POINT_CALLBACK(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", cdc_service_context_);
 
   LOG_WITH_FUNC(INFO) << "Retrieving Latest OpIDs for each tablet.";
   RETURN_NOT_OK(GetLatestOpIdsFromLocalPeers());
@@ -127,6 +144,10 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
     LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
+
+  // Last, so that a recorded checkpoint is never rolled back.
+  WARN_NOT_OK(
+      RecordStreamBootstrapInfo(), "Failed to record the xCluster stream bootstrap tablets");
 
   PrepareResponse();
 
@@ -231,7 +252,16 @@ Status XClusterProducerBootstrap::GetLatestOpIdsFromLocalPeers() {
   OpId op_id = yb::OpId::Invalid();
   for (const auto& [bootstrap_id, tablet_id] : local_tablets_) {
     // Check if this tablet has local information cached.
-    auto tablet_peer = VERIFY_RESULT(cdc_service_context_->GetServingTablet(tablet_id));
+    auto tablet_peer_result = cdc_service_context_->GetServingTablet(tablet_id);
+    if (!tablet_peer_result.ok()) {
+      // The peer may have been tombstoned since the locations were read, or may still be copying.
+      LOG(WARNING) << "Fetching the latest op id of tablet " << tablet_id
+                   << " from its leader, since the local peer cannot serve: "
+                   << tablet_peer_result.status();
+      remote_tablets_to_fetch_opids_for_.emplace(bootstrap_id, tablet_id);
+      continue;
+    }
+    const auto& tablet_peer = *tablet_peer_result;
 
     if (!tablet_peer->log_available()) {
       const std::string err_msg = GetErrMsgForUninitializedLocalPeer(tablet_id, tablet_peer);
@@ -385,8 +415,25 @@ Status XClusterProducerBootstrap::UpdateCdcStateTableWithCheckpoints() {
     entry.checkpoint = op_id;
     entries_to_insert.emplace_back(std::move(entry));
   }
-  RETURN_NOT_OK(cdc_state_table_->UpsertEntries(entries_to_insert));
-  return Status::OK();
+  if (req_.keep_existing_checkpoints()) {
+    return cdc_state_table_->InsertEntries(entries_to_insert);
+  }
+  return cdc_state_table_->UpsertEntries(entries_to_insert);
+}
+
+Status XClusterProducerBootstrap::RecordStreamBootstrapInfo() {
+  SCHECK(
+      !FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info, IllegalState,
+      "Simulated failure to record the xCluster stream bootstrap info");
+
+  std::map<xrepl::StreamId, std::vector<TabletId>> stream_tablets;
+  for (const auto& [bootstrap_id_tablet_id_pair, _] : tablet_op_ids_) {
+    const auto& [bootstrap_id, tablet_id] = bootstrap_id_tablet_id_pair;
+    stream_tablets[bootstrap_id].push_back(tablet_id);
+  }
+
+  return client::XClusterClient(*cdc_service_->client())
+      .RecordXClusterStreamBootstrapInfo(stream_tablets);
 }
 
 void XClusterProducerBootstrap::PrepareResponse() {
@@ -415,7 +462,10 @@ Result<bool> XClusterProducerBootstrap::IsBootstrapRequired() {
         tablet_peer && tablet_peer->IsLeaderAndReady(), LeaderNotReadyToServe,
         "Tablet leader is not ready $0", tablet_id);
 
-    if (VERIFY_RESULT(IsDataPresent(tablet_peer))) {
+    // Per tablet budget, same as the timeout used for the remote tablet RPCs below.
+    const auto deadline =
+        CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+    if (VERIFY_RESULT(IsDataPresent(tablet_peer, deadline))) {
       return true;
     }
   }

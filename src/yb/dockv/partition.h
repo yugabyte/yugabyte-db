@@ -32,6 +32,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,10 +41,12 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/partial_row.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
+#include "yb/util/slice.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/status_format.h"
@@ -297,6 +300,30 @@ class PartitionSchema {
   static Result<std::pair<uint16_t, uint16_t>> DecodePartitionAsHashBoundsInclusive(
       const Partition& partition);
 
+  // This function makes sure that the different representations of a hash partition key are
+  // treated as the same thing. The base representation of a partition key with hash code h is a
+  // three bytes sequence [kUInt16Hash, h], where kUInt16Hash is as defined in value_type.h and h
+  // is a 16-bit unsigned integer. Other representations are [kUInt16Hash, h, kLowest], also
+  // referenced as h+0 is used to represent the lower bound of the partition, and
+  // [kUInt16Hash, h-1, kHighest], also referenced as h-0 is used to represent the upper bound of
+  // the previous partition.
+  // All representations are binary comparable to each other and to the DocKeys. The
+  // representations are not valid DocKeys, and no valid DocKey can be between h-0 and h and h+0.
+  // The h-0 and h+0 can be parsed as special DocKeys.
+  // The function returns the value of h if the bound is h-0 or h or h+0, nullopt otherwise.
+  // The function is important for parallel query where the hash partition keys are used as
+  // parallel range bounds. The value is stored and handled as the base representation, but when it
+  // is sent down to DocDB, it has to be converted to either h-0 or h+0 as DocDB parses the bounds.
+  // While this function makes some functionally equivalent bounds equal, it does not make all
+  // functionally equivalent bounds equal. For example, partition key of the first partition is
+  // empty. Empty key is functionally equivalent to the [kUInt16Hash, 0] key, but they are not
+  // equal, moreover, empty key is not recognized as an encoded hash partition key by this function.
+  static std::optional<uint16_t> DecodeEncodedHashPartitionKeyBound(Slice bound);
+
+  // Returns h+0 if is_lower is true, h+1-0 otherwise, see DecodeEncodedHashPartitionKeyBound. So
+  // the lower bound is below all keys with hash code h, and the upper bound is above them.
+  static KeyBytes HashCodeToDocKeyBound(const Schema& schema, uint16_t hash_code, bool is_lower);
+
   // Returns true if partition_key is a valid hash partition.
   static bool IsValidHashPartitionKeyBound(Slice partition_key);
 
@@ -313,10 +340,7 @@ class PartitionSchema {
   // Get if there is overlap between two key ranges. This can be done without decoding, by just
   // performing string comparisons on keys.
   static bool HasOverlap(
-      const std::string& key_start,
-      const std::string& key_end,
-      const std::string& other_key_start,
-      const std::string& other_key_end);
+      Slice key_start, Slice key_end, Slice other_key_start, Slice other_key_end);
 
   template <class T>
   static void ProcessHashKeyEntry(const T* value_pb, std::string* out) {
@@ -535,5 +559,28 @@ class PartitionSchema {
   RangeSchema range_schema_;
   std::optional<YBHashSchema> hash_schema_;  // Defined only for table that is hash-partitioned.
 };
+
+// DocKey range components for a possibly PARTIAL list of range column values; columns that were
+// not supplied become -Inf (`lower_bound`) or +Inf, so a leading prefix addresses its whole range.
+template <class Col>
+Result<KeyEntryValues> GetRangeComponents(
+    const Schema& schema, const Col& range_cols, bool lower_bound);
+
+// Partition key of the row (or range prefix) named by `range_cols`; the range-sharded counterpart
+// of PartitionSchema::EncodePgsqlHash. Fails for a hash-sharded table.
+template <class Col>
+Result<std::string> GetRangePartitionKey(const Schema& schema, const Col& range_cols);
+
+// Sets request->partition_key (plus hash code bounds when hash-sharded) so the op can be routed,
+// resuming on the tablet the paging state names. Callers must do this themselves: the tserver only
+// reads the field back, and an unset key routes to the first tablet.
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, PgsqlReadRequestPB* request);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, PgsqlWriteRequestPB* request);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlReadRequestPB* request);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
 
 }  // namespace yb::dockv

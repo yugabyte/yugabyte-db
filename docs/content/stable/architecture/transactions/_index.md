@@ -14,7 +14,7 @@ menu:
 type: indexpage
 ---
 
-Transactions and strong consistency are a fundamental requirement for any RDBMS. YugabyteDB's distributed transaction architecture supports fully distributed [ACID](../key-concepts#acid) transactions across rows, multiple tablets, and multiple nodes at any scale, and is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf). Transactions can span across tables in DocDB.
+Transactions and strong consistency are a fundamental requirement for any RDBMS. YugabyteDB's distributed transaction architecture supports fully distributed [ACID](../key-concepts/#acid) transactions across rows, multiple tablets, and multiple nodes at any scale, and is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf). Transactions can span across tables in DocDB.
 
 ## Fundamentals
 
@@ -38,6 +38,22 @@ There are multiple components and stages involved in the execution of a distribu
 
 {{<lead link="transactional-io-path/">}}
 To understand how a transaction is executed, see [Transactional I/O path](transactional-io-path/).
+{{</lead>}}
+
+## Transactional DDL
+
+YugabyteDB can roll back DDL statements that run inside a transaction block. Isolation between concurrent DDL is weaker than in PostgreSQL while object locks are still under development.
+
+{{<lead link="transactional-ddl/">}}
+To learn how to enable transactional DDL and what it can roll back, see [Transactional DDL](transactional-ddl/).
+{{</lead>}}
+
+## Skip intents optimization
+
+When a transaction creates or rebuilds a table and then writes into it, the table is invisible to other sessions until commit. YugabyteDB can skip writing provisional records and write those rows straight to the main store.
+
+{{<lead link="skip-intents/">}}
+To understand when writes skip intents, see [Skip intents optimization](skip-intents/).
 {{</lead>}}
 
 ## Single-row transactions
@@ -68,8 +84,8 @@ To learn how YugabyteDB handles conflicts between concurrent transactions, see [
 
 As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior.
 
-{{<lead link="../../explore/transactions/explicit-locking">}}
-To learn about the different locking mechanism, see [Explicit locking](../../explore/transactions/explicit-locking).
+{{<lead link="concurrency-control/">}}
+To learn about the different locking mechanisms, see [Concurrency control](concurrency-control/).
 {{</lead>}}
 
 ## Transaction priorities

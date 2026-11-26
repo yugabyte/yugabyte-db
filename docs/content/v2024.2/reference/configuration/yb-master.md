@@ -203,6 +203,14 @@ Enables the YSQL API when value is `true`.
 
 Default: `true`
 
+##### --ysql_enable_profile
+
+Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
+
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-Master and every YB-TServer. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use. This flag requires a restart or rolling restart.
+
+Default: `false`
+
 ##### --enable_pg_cron
 
 Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
@@ -369,7 +377,7 @@ Default: `25` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-de
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
 

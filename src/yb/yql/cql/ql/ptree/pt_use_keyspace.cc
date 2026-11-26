@@ -15,11 +15,10 @@
 // Treenode definitions for USE KEYSPACE statements.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 
 #include "yb/common/redis_constants_common.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/status.h"
 
@@ -45,8 +44,8 @@ PTUseKeyspace::~PTUseKeyspace() {
 Status PTUseKeyspace::Analyze(SemContext *sem_context) {
   if (*name_ == common::kRedisKeyspaceName) {
     return sem_context->Error(loc(),
-                              strings::Substitute("$0 is a reserved keyspace name",
-                                                  common::kRedisKeyspaceName).c_str(),
+                              Format("$0 is a reserved keyspace name",
+                                     common::kRedisKeyspaceName).c_str(),
                               ErrorCode::INVALID_ARGUMENTS);
   }
 

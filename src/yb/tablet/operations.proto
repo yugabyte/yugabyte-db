@@ -81,6 +81,11 @@ message TransactionStatePB {
   // Replication origin id associated with the transaction. Used by CDCSDK and
   // xCluster to prevent loops in bidirectional replication.
   optional uint32 xrepl_origin_id = 16;
+
+  // Set on the COMMITTED request of a transaction issued on behalf of a YSQL backend.  The status
+  // tablet's leader clears it once the persistence gate has passed the commit, so it never reaches
+  // the WAL or any follower.
+  optional OriginationInfoPB origination_info = 17;
 }
 
 message TruncatePB {
@@ -110,6 +115,17 @@ message WritePB {
 
   // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
   optional bool xcluster_target_applied = 23;
+
+  // Earliest PgsqlWriteRequestPB.ignore_after_hybrid_time over this batch; 0 means no fence.
+  optional fixed64 ignore_after_hybrid_time = 24;
+
+  // Copied from WriteRequestPB.origination_info for the persistence gate.  Leader-only: cleared
+  // once the gate has passed the write, so it never reaches the WAL or any follower.
+  optional OriginationInfoPB origination_info = 25;
+
+  // Source commit time of the transaction being applied, as a HybridTime, travelling with
+  // xrepl_origin_id.
+  optional fixed64 xrepl_source_write_ht = 26;
 }
 
 message ChangeMetadataRequestPB {
@@ -169,6 +185,18 @@ message ChangeMetadataRequestPB {
   optional int32 first_provisional_column_id = 21;
 
   optional bool only_abort_txns_not_using_table_locks = 22;
+
+  // Index inception / birth hybrid time, sent as part of the BackfillDone and
+  // MarkNonConcurrentIndexDone RPCs.
+  optional fixed64 birth_time = 23;
+
+  // Finalize a nonconcurrently-built index: set its birth_time (carried in the birth_time field
+  // above) and mark IndexInfoPB.birth_time_state final. Sent by AsyncMarkNonConcurrentIndexDone
+  // via the MarkNonConcurrentIndexDone RPC once the CREATE INDEX transaction commits, and only for
+  // indexes in BIRTH_TIME_PENDING_DDL_COMMIT. The master sets that state only while the
+  // enable_ysql_index_birth_time_state AutoFlag is on, i.e. after all tservers are upgraded and
+  // understand this field. The target index table id is carried in backfill_done_table_id.
+  optional bool mark_non_concurrent_index_done = 24;
 }
 
 message SplitTabletRequestPB {
@@ -233,4 +261,7 @@ message CloneTabletRequestPB {
   // 2- The colocated tables on the target can have different schemas than the tables on the source
   // tablet. i.e when cloning to a time before DDl operations happened on the source tablet.
   repeated TableInfoPB colocated_tables = 16;
+
+  // Indexes attached to the target table.
+  repeated IndexInfoPB target_indexes = 18;
 }

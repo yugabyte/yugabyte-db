@@ -27,14 +27,24 @@ namespace tserver {
 // we should not need to hold mutex_ to read available_ in this case because if available_ is
 // false then we are the only thread accessing this entry so reading it is thread-safe. Thus,
 // we annotate this with NO_THREAD_SAFETY_ANALYSIS.
-void PgSequenceCache::Entry::CheckNotAvailable() NO_THREAD_SAFETY_ANALYSIS { DCHECK(!available_); }
+void PgSequenceCache::Entry::CheckNotAvailable() const NO_THREAD_SAFETY_ANALYSIS {
+  DCHECK(!available_);
+}
 
-PgSequenceCache::Entry::Entry() : cv_(&mutex_), available_(true), has_values_(false) {}
+PgSequenceCache::Entry::Entry()
+    : cv_(&mutex_), available_(true), has_values_(false), curr_value_(0), last_value_(0) {}
 
-std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(int64_t inc_by) {
+std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(
+    int64_t inc_by, uint64_t epoch_now) {
   CheckNotAvailable();
 
   if (!has_values_) {
+    return std::nullopt;
+  }
+
+  // Drop the range when it was stored under a different epoch.
+  if (epoch_now != filled_epoch_) {
+    has_values_ = false;
     return std::nullopt;
   }
 
@@ -54,10 +64,12 @@ std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(int64_t inc_by) 
   return value;
 }
 
-void PgSequenceCache::Entry::SetRange(int64_t first_value, int64_t last_value) {
+void PgSequenceCache::Entry::SetRange(
+    int64_t first_value, int64_t last_value, uint64_t epoch_now) {
   CheckNotAvailable();
   curr_value_ = first_value;
   last_value_ = last_value;
+  filled_epoch_ = epoch_now;
   has_values_ = true;
 }
 
@@ -71,16 +83,19 @@ void PgSequenceCache::Entry::NotifyWaiter() {
 }
 
 Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailable(
-    const PgObjectId& sequence_id, const MonoTime& deadline) {
+    const PgObjectId& sequence_id, const MonoTime& deadline, bool create_if_not_exists) {
   std::shared_ptr<Entry> entry;
   {
     std::lock_guard cache_lock_guard(lock_);
-    if (!cache_.contains(sequence_id)) {
+    auto it = cache_.find(sequence_id);
+    if (it == cache_.end()) {
+      if (!create_if_not_exists) {
+        return nullptr;
+      }
       VLOG(3) << "Create cache entry for sequence id " << sequence_id;
-      cache_[sequence_id] = std::make_shared<Entry>();
+      it = cache_.emplace(sequence_id, std::make_shared<Entry>()).first;
     }
-
-    entry = cache_[sequence_id];
+    entry = it->second;
   }
 
   VLOG(3) << "Getting entry for sequence id " << sequence_id
@@ -96,6 +111,26 @@ Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailabl
 
   entry->available_ = false;
   return entry;
+}
+
+Status PgSequenceCache::Invalidate(const PgObjectId& sequence_id, const MonoTime& deadline) {
+  auto entry = VERIFY_RESULT(
+      GetWhenAvailable(sequence_id, deadline, /*create_if_not_exists=*/false));
+  if (entry) {
+    entry->has_values_ = false;
+    entry->NotifyWaiter();
+  }
+  return Status::OK();
+}
+
+void PgSequenceCache::BumpDatabaseEpoch(PgOid db_oid) {
+  std::lock_guard cache_lock_guard(lock_);
+  ++db_epochs_[db_oid];
+}
+
+uint64_t PgSequenceCache::DatabaseEpoch(PgOid db_oid) {
+  std::lock_guard cache_lock_guard(lock_);
+  return db_epochs_[db_oid];
 }
 
 }  // namespace tserver

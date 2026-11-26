@@ -1,0 +1,183 @@
+#!/bin/python3
+
+import argparse
+from types import SimpleNamespace
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from azure.core.exceptions import HttpResponseError
+
+from ybops.cloud.azure.cloud import AzureCloud
+from ybops.cloud.azure.utils import AzureCloudAdmin
+from ybops.common.exceptions import YBOpsRuntimeError
+
+
+class TestAzureCloudAdmin(TestCase):
+    def test_get_yb_data_disk_lun_indexes(self):
+        vm = SimpleNamespace(
+            name="yb-universe-n1",
+            storage_profile=SimpleNamespace(
+                data_disks=[
+                    SimpleNamespace(name="yb-universe-n1-Disk-10", lun=12),
+                    SimpleNamespace(name="unrelated-disk", lun=0),
+                    SimpleNamespace(name="yb-universe-n1-Disk-2", lun=5),
+                    SimpleNamespace(name=None, lun=7),
+                    SimpleNamespace(name="yb-universe-n1-Disk-1", lun=3),
+                ]
+            ),
+        )
+
+        admin = object.__new__(AzureCloudAdmin)
+        self.assertEqual(admin._get_yb_data_disk_lun_indexes(vm), [3, 5, 12])
+
+    @patch("ybops.cloud.azure.utils.RESOURCE_GROUP", "rg")
+    @patch("ybops.cloud.azure.utils.SUBSCRIPTION_ID", "sub")
+    def test_change_instance_type_with_reservation_updates_size_then_group(self):
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+
+        admin.change_instance_type("vm1", "Standard_D4as_v5", "crg1")
+
+        updates = [call.args for call in
+                   admin.compute_client.virtual_machines.begin_update.call_args_list]
+        self.assertEqual(updates, [
+            ("rg", "vm1", {"hardware_profile": {"vm_size": "Standard_D4as_v5"}}),
+            ("rg", "vm1", {"properties": {"capacityReservation": {"capacityReservationGroup": {
+                "id": "/subscriptions/sub/resourceGroups/rg/providers"
+                      "/Microsoft.Compute/capacityReservationGroups/crg1"}}}}),
+        ])
+
+    @patch("ybops.cloud.azure.utils.RESOURCE_GROUP", "rg")
+    def test_change_instance_type_without_reservation_updates_size_only(self):
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+
+        admin.change_instance_type("vm1", "Standard_D4as_v5", None)
+
+        admin.compute_client.virtual_machines.begin_update.assert_called_once_with(
+            "rg", "vm1", {"hardware_profile": {"vm_size": "Standard_D4as_v5"}})
+
+    @patch("ybops.cloud.azure.utils.RESOURCE_GROUP", "rg")
+    def test_update_disk_expands_every_data_disk_on_the_running_vm(self):
+        # Smart resize relies on this for all disk types, Premium SSD v2 and Ultra included: the
+        # size is patched on the attached disks and the VM is never stopped or deallocated.
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+        admin.compute_client.virtual_machines.get.return_value = SimpleNamespace(
+            storage_profile=SimpleNamespace(data_disks=[
+                SimpleNamespace(name="vm1-Disk-1"), SimpleNamespace(name="vm1-Disk-2")]))
+
+        admin.update_disk("vm1", 500)
+
+        updates = [call.args for call in admin.compute_client.disks.begin_update.call_args_list]
+        self.assertEqual(updates, [
+            ("rg", "vm1-Disk-1", {"disk_size_gb": 500}),
+            ("rg", "vm1-Disk-2", {"disk_size_gb": 500}),
+        ])
+        self.assertEqual(admin.compute_client.disks.begin_update.return_value.wait.call_count, 2)
+        admin.compute_client.virtual_machines.begin_deallocate.assert_not_called()
+        admin.compute_client.virtual_machines.begin_power_off.assert_not_called()
+
+    def test_disk_update_accepts_provisioned_iops_and_throughput(self):
+        # YBA passes --disk_iops and --disk_throughput on disk_update for Premium SSD v2 and Ultra
+        # disks. The command line must parse; only the size is applied.
+        parser = argparse.ArgumentParser()
+        AzureCloud().register(parser.add_subparsers().add_parser("azu"))
+
+        args = parser.parse_args([
+            "azu", "instance", "disk_update", "--num_volumes", "1", "--volume_size", "150",
+            "--disk_iops", "5000", "--disk_throughput", "200", "yb-universe-n1"])
+
+        self.assertEqual(args.search_pattern, "yb-universe-n1")
+        self.assertEqual(args.volume_size, 150)
+        self.assertEqual(args.disk_iops, 5000)
+        self.assertEqual(args.disk_throughput, 200)
+
+    @patch("ybops.cloud.azure.cloud.RemoteShell")
+    def test_expand_file_system_supports_nvme(self, remote_shell_class):
+        remote_shell = remote_shell_class.return_value
+        remote_shell.check_exec_command.side_effect = [
+            "/dev/disk/by-uuid/data-disk\n",
+            "/dev/nvme0n2\n",
+            "",
+            "",
+        ]
+        cloud = object.__new__(AzureCloud)
+        args = SimpleNamespace(mount_points="/mnt/d0", volume_size=200)
+
+        cloud.expand_file_system(args, {"ssh_host": "10.0.0.1"})
+
+        commands = [call.args[0] for call in remote_shell.check_exec_command.call_args_list]
+        self.assertIn("findmnt -rn -M /mnt/d0 -o SOURCE", commands[0])
+        # NVMe namespaces have no per-device rescan attribute; the controller is rescanned.
+        self.assertIn("readlink -f /sys/class/block/nvme0n2/device", commands[2])
+        self.assertIn("rescan_controller", commands[2])
+        self.assertNotIn("/sys/class/block/nvme0n2/device/rescan", commands[2])
+        self.assertIn("want=419430400;", commands[2])
+        self.assertIn("$(cat /sys/class/block/nvme0n2/size)", commands[2])
+        self.assertTrue(commands[2].endswith("&& sudo fdisk -l /dev/nvme0n2"))
+        self.assertEqual(commands[3], "sudo xfs_growfs /mnt/d0")
+
+    @patch("ybops.cloud.azure.cloud.RemoteShell")
+    def test_expand_file_system_rescans_scsi_device(self, remote_shell_class):
+        remote_shell = remote_shell_class.return_value
+        remote_shell.check_exec_command.side_effect = [
+            "/dev/sdc\n",
+            "/dev/sdc\n",
+            "",
+            "",
+        ]
+        cloud = object.__new__(AzureCloud)
+        args = SimpleNamespace(mount_points="/mnt/d0", volume_size=200)
+
+        cloud.expand_file_system(args, {"ssh_host": "10.0.0.1"})
+
+        commands = [call.args[0] for call in remote_shell.check_exec_command.call_args_list]
+        self.assertIn("echo 1 > /sys/class/block/sdc/device/rescan;", commands[2])
+        self.assertIn("want=419430400;", commands[2])
+        self.assertIn("$(cat /sys/class/block/sdc/size)", commands[2])
+        self.assertTrue(commands[2].endswith("&& sudo fdisk -l /dev/sdc"))
+        self.assertEqual(commands[3], "sudo xfs_growfs /mnt/d0")
+
+    @patch("ybops.cloud.azure.cloud.RemoteShell")
+    def test_expand_file_system_rejects_unexpected_device(self, remote_shell_class):
+        remote_shell = remote_shell_class.return_value
+        remote_shell.check_exec_command.side_effect = ["/dev/mapper/vg-lv\n", "/dev/dm-0\n"]
+        cloud = object.__new__(AzureCloud)
+        args = SimpleNamespace(mount_points="/mnt/d0", volume_size=200)
+
+        with self.assertRaises(YBOpsRuntimeError):
+            cloud.expand_file_system(args, {"ssh_host": "10.0.0.1"})
+        self.assertEqual(remote_shell.check_exec_command.call_count, 2)
+
+    @staticmethod
+    def _azure_error(code):
+        error = HttpResponseError(message="Resource not found")
+        error.error = SimpleNamespace(code=code)
+        return error
+
+    def _admin_without_resources(self, ip_error):
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+        admin.compute_client.disks.list_by_resource_group.return_value = []
+        admin.network_client = MagicMock()
+        admin.network_client.network_interfaces.get.side_effect = \
+            self._azure_error("ResourceNotFound")
+        admin.network_client.public_ip_addresses.get.side_effect = ip_error
+        return admin
+
+    def test_destroy_orphaned_resources_treats_missing_ip_as_gone(self):
+        # Azure answers NotFound instead of ResourceNotFound for a public IP it has just deleted.
+        for code in ["ResourceNotFound", "NotFound"]:
+            with self.subTest(code=code):
+                admin = self._admin_without_resources(self._azure_error(code))
+
+                admin.destroy_orphaned_resources("yb-universe-n1", "node-uuid")
+
+                admin.network_client.public_ip_addresses.begin_delete.assert_not_called()
+
+    def test_destroy_orphaned_resources_raises_other_ip_errors(self):
+        admin = self._admin_without_resources(self._azure_error("AuthorizationFailed"))
+
+        with self.assertRaises(HttpResponseError):
+            admin.destroy_orphaned_resources("yb-universe-n1", "node-uuid")

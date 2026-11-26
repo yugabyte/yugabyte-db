@@ -32,7 +32,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -48,8 +47,9 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
+
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
@@ -57,16 +57,18 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_ysql_lease_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -74,26 +76,28 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/call_home-test-util.h"
-#include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver_admin.service.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/user.h"
 
-using std::shared_ptr;
 using std::make_shared;
+using std::shared_ptr;
 using std::string;
 using std::vector;
 
@@ -110,16 +114,19 @@ DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(qos_max_db_count);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_uint32(initial_tserver_registration_duration_secs);
+DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
+DECLARE_bool(enable_tiered_storage);
 
-METRIC_DECLARE_counter(block_cache_misses);
-METRIC_DECLARE_counter(block_cache_hits);
+METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
-using strings::Substitute;
 
 class MasterTest : public MasterTestBase {
  protected:
@@ -148,6 +155,13 @@ class MasterTest : public MasterTestBase {
       const std::string& uuid, int64_t instance_seqno,
       const std::map<PgOid, HybridTime>& pins);
 
+  // The history cutoff this master allows for its own sys catalog tablet.
+  docdb::HistoryCutoff SysCatalogAllowedHistoryCutoff();
+
+  // Runs the leader's publish step now, skipping the wait for tserver heartbeats it observes after
+  // an election.
+  Status PublishYsqlHistoryRetentionPin();
+
  private:
   // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
   uint32_t registered_ts_count_ = 0;
@@ -161,6 +175,31 @@ TEST_F(MasterTest, TestPingServer) {
   rpc::ProxyCache proxy_cache(client_messenger_.get());
   server::GenericServiceProxy generic_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
   ASSERT_OK(generic_proxy.Ping(req, &resp, ResetAndGetController()));
+}
+
+// Masters do not take an active table list, and their scrapes are never filtered by one.
+TEST_F(MasterTest, ActiveTableMetricsNotSupported) {
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
+  tserver::TabletServerServiceProxy proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+  tserver::SetActiveTableIdsForMetricsRequestPB req;
+  tserver::SetActiveTableIdsForMetricsResponsePB resp;
+  req.add_table_ids(kSysCatalogTableId);
+  ASSERT_OK(proxy.SetActiveTableIdsForMetrics(req, &resp, ResetAndGetController()));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsNotSupported())
+      << resp.error().DebugString();
+
+  // An opted-in scrape, with an always-export list that matches nothing, still exports the
+  // sys catalog table metrics.
+  EasyCurl curl;
+  faststring buffer;
+  ASSERT_OK(curl.FetchURL(
+      Format(
+          "http://$0/prometheus-metrics?show_help=false&version=v2&apply_table_IDs_filter=true"
+          "&table_always_allowlist=NONE",
+          yb::ToString(mini_master_->bound_http_addr())),
+      &buffer));
+  ASSERT_STR_CONTAINS(buffer.ToString(), Format(R"#(table_id="$0")#", kSysCatalogTableId));
 }
 
 // Test that shutting down a MiniMaster without starting it does not
@@ -746,6 +785,160 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
   ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
 }
 
+// A placement that names a storage tier needs a live tserver that registered the tier for every
+// replica, as replica selection can place them within the placement blocks, and the error names
+// the tier only when the tier is the reason. A placement without a tier is unconstrained, so an
+// all-hdd live placement still accepts it.
+TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
+
+  // Registers a live tserver in cloud1.region1.<zone> that has one storage tier. A placement uuid
+  // puts it outside the live placement, where a read replica is.
+  int next_port = 1000;
+  auto register_ts = [&](const std::string& uuid, const std::string& zone,
+                         const std::string& tier, const std::string& placement_uuid = "")
+      -> Result<TSHeartbeatResponsePB> {
+    TSRegistrationPB reg;
+    *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", next_port);
+    *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", next_port + 1000);
+    ++next_port;
+    auto* cloud_info = reg.mutable_common()->mutable_cloud_info();
+    cloud_info->set_placement_cloud("cloud1");
+    cloud_info->set_placement_region("region1");
+    cloud_info->set_placement_zone(zone);
+    if (!placement_uuid.empty()) {
+      reg.mutable_common()->set_placement_uuid(placement_uuid);
+    }
+    reg.mutable_common()->add_storage_tiers(tier);
+    TSToMasterCommonPB common;
+    common.mutable_ts_instance()->set_permanent_uuid(uuid);
+    common.mutable_ts_instance()->set_instance_seqno(1);
+    return SendHeartbeat(common, reg);
+  };
+
+  auto placement = [](const std::string& storage_tier, int num_replicas) {
+    PlacementInfoPB placement_info;
+    placement_info.set_num_replicas(num_replicas);
+    if (!storage_tier.empty()) {
+      placement_info.set_storage_tier(storage_tier);
+    }
+    return placement_info;
+  };
+  // A block for cloud1.region1.<zone>, or for the whole region when zone is empty.
+  auto add_block = [](PlacementInfoPB* placement_info, const std::string& zone,
+                      int min_num_replicas) {
+    auto* block = placement_info->add_placement_blocks();
+    block->mutable_cloud_info()->set_placement_cloud("cloud1");
+    block->mutable_cloud_info()->set_placement_region("region1");
+    if (!zone.empty()) {
+      block->mutable_cloud_info()->set_placement_zone(zone);
+    }
+    block->set_min_num_replicas(min_num_replicas);
+  };
+  auto validate = [this](const PlacementInfoPB& live_replicas)
+      -> Result<ValidateReplicationInfoResponsePB> {
+    ValidateReplicationInfoRequestPB req;
+    *req.mutable_replication_info()->mutable_live_replicas() = live_replicas;
+    ValidateReplicationInfoResponsePB resp;
+    RETURN_NOT_OK(
+        proxy_replication_->ValidateReplicationInfo(req, &resp, ResetAndGetController()));
+    return resp;
+  };
+
+  // A read replica with the tier does not make it available to the live placement, and while
+  // the live placement has no tserver at all the count message, not the tier one, is the right
+  // one.
+  ASSERT_RESULT(register_ts("ts-read-replica", "zone0", kDefaultStorageTier, "read-replica"));
+  auto resp = ASSERT_RESULT(validate(placement(kDefaultStorageTier, 3)));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(resp.error().status().message(), "whereas 0 are alive");
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_RESULT(register_ts(Format("ts-$0", i), Format("zone$0", i), "hdd"));
+  }
+
+  // Three live hdd tservers: none is on ssd, so the tier is the reason.
+  resp = ASSERT_RESULT(validate(placement(kDefaultStorageTier, 3)));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "No live tablet server has registered a data directory on storage tier ssd");
+
+  resp = ASSERT_RESULT(validate(placement("hdd", 3)));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  resp = ASSERT_RESULT(validate(placement("", 3)));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // A tier needs a qualified tserver for every replica, not only for a quorum: three tservers
+  // accept an untiered 5-replica placement but not an hdd one.
+  resp = ASSERT_RESULT(validate(placement("", 5)));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  resp = ASSERT_RESULT(validate(placement("hdd", 5)));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 5 replicas on storage tier hdd, but only 3 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+
+  // Within placement blocks the count follows replica selection: zone0 has one hdd tserver, so a
+  // block that wants two replicas there leaves the placement one short although it has three hdd
+  // tservers, while the untiered placement with the same blocks is accepted on a quorum.
+  auto blocked = placement("hdd", 3);
+  add_block(&blocked, "zone0", 2);
+  add_block(&blocked, "zone1", 1);
+  resp = ASSERT_RESULT(validate(blocked));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 3 replicas on storage tier hdd, but only 2 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  blocked.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(blocked));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // A tier tserver outside every block takes no replica: with blocks for zone0 and zone1 only,
+  // the hdd tserver in zone2 does not count and the placement is one short. The ssd-only tserver
+  // in zone0 counts for the untiered placement with the same blocks, not for the tiered one.
+  ASSERT_RESULT(register_ts("ts-ssd", "zone0", kDefaultStorageTier));
+  auto outside = placement("hdd", 3);
+  add_block(&outside, "zone0", 1);
+  add_block(&outside, "zone1", 1);
+  resp = ASSERT_RESULT(validate(outside));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 3 replicas on storage tier hdd, but only 2 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  outside.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(outside));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // Blocks that overlap count a tserver once per block, while selection gives it to one block: a
+  // region-wide block of three next to a zone0 block of one would count the zone0 hdd tserver
+  // twice, so the count is capped at the three distinct hdd tservers and the 4-replica placement
+  // is one short, while the untiered placement with the same blocks is accepted.
+  auto overlapping = placement("hdd", 4);
+  add_block(&overlapping, "zone0", 1);
+  add_block(&overlapping, "", 3);
+  resp = ASSERT_RESULT(validate(overlapping));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 4 replicas on storage tier hdd, but only 3 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  overlapping.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(overlapping));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // With tiered storage off the tier is not acted on, so the ssd placement is validated as
+  // untiered and the all-hdd live placement accepts it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  resp = ASSERT_RESULT(validate(placement(kDefaultStorageTier, 3)));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+}
+
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
 
@@ -1058,27 +1251,20 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
   // Check prometheus metrics via webserver to verify block_cache metrics exist
   string addr = AsString(mini_master_->bound_http_addr());
-  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
+  string url = Format("http://$0/prometheus-metrics", AsString(addr));
   EasyCurl curl;
   faststring buf;
 
   ASSERT_OK(curl.FetchURL(url, &buf));
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_misses");
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_hits");
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_usage");
 
-  // Check block cache metrics directly and verify
-  // that the counters are greater than 0
+  // Check block cache usage metric directly and verify usage is greater than 0.
   const auto metric_map = mini_master_->master()->metric_entity()->TEST_UsageMetricsMap();
 
-  scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_misses).get());
-  scoped_refptr<Counter> cache_hits_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_hits).get());
+  auto cache_usage = down_cast<AtomicGauge<uint64_t>*>(
+      FindOrDie(metric_map, &METRIC_block_cache_usage).get());
 
-  ASSERT_GT(cache_misses_counter->value(), 0);
-  ASSERT_GT(cache_hits_counter->value(), 0);
+  ASSERT_GT(cache_usage->value(), 0);
 }
 
 TEST_F(MasterTest, TestTablegroups) {
@@ -1361,7 +1547,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(other_ns_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace '$0' already exists", other_ns_name));
+        Format("Keyspace '$0' already exists", other_ns_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1435,7 +1621,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(default_namespace_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace '$0' already exists", default_namespace_name));
+        Format("Keyspace '$0' already exists", default_namespace_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1706,6 +1892,82 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
         {
             EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES
         }, namespaces);
+  }
+}
+
+// Dropping a YSQL database deletes its base tables, indexes and colocation parents together in
+// CatalogManager::DeleteYsqlDBTables. The other namespace deletion tests only create base tables.
+TEST_F(MasterTest, TestDeletingNamespaceWithIndexesAndTablegroup) {
+  const NamespaceName ns_name = "test_pgsql";
+  CreateNamespaceResponsePB ns_resp;
+  ASSERT_OK(CreateNamespace(ns_name, YQLDatabase::YQL_DATABASE_PGSQL, &ns_resp));
+  const NamespaceId ns_id = ns_resp.id();
+
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64) });
+  const Schema kIndexSchema(
+      {ColumnSchema("v1", DataType::UINT64, ColumnKind::RANGE_ASC_NULL_FIRST)});
+
+  constexpr int kNumTables = 3;
+  for (int i = 0; i < kNumTables; ++i) {
+    const TableName table_name = Format("testtb_pgsql_$0", i);
+    ASSERT_OK(CreatePgsqlTable(ns_id, table_name, kTableSchema));
+
+    ListTablesRequestPB list_req;
+    list_req.set_name_filter(table_name);
+    ListTablesResponsePB tables;
+    DoListTables(list_req, &tables);
+    ASSERT_EQ(1, tables.tables_size());
+    const TableId table_id = tables.tables(0).id();
+
+    CreateTableRequestPB req;
+    req.set_indexed_table_id(table_id);
+    auto* index_info = req.mutable_index_info();
+    index_info->set_indexed_table_id(table_id);
+    index_info->set_hash_column_count(1);
+    index_info->add_indexed_hash_column_ids(10);
+    auto* col = index_info->add_columns();
+    col->set_column_name("v1");
+    col->set_indexed_column_id(10);
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("testin_pgsql_$0", i), kIndexSchema, &req));
+  }
+
+  // The tablegroup contributes a colocation parent table and one colocated user table.
+  const TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = true;
+  ASSERT_OK(CreateTablegroup(kTablegroupId, ns_id, ns_name, "" /* tablespace_id */));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = false;
+  ASSERT_OK(CreateTablegroupTable(
+      ns_id, GetPgsqlTableId(12345, 67891), "testtb_pgsql_colocated", kTablegroupId,
+      kTableSchema));
+
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(2 * kNumTables + 2 + kNumSystemTables, tables.tables_size());
+  }
+
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    req.mutable_namespace_()->set_id(ns_id);
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+
+    IsDeleteNamespaceDoneRequestPB del_req;
+    del_req.mutable_namespace_()->set_id(ns_id);
+    del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(DeleteNamespaceWait(del_req));
+  }
+
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(kNumSystemTables, tables.tables_size());
+    CheckTables({ EXPECTED_SYSTEM_TABLES }, tables);
   }
 }
 
@@ -2046,6 +2308,62 @@ TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   // The by-name map should point to the successfully created namespace.
   auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
   ASSERT_EQ(ns_by_name->id(), success_nsid);
+}
+
+TEST_F(MasterTest, TestCreateNamespaceRetryAfterPgVerificationFailure) {
+  NamespaceName test_name = "test_pgsql";
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId failed_nsid = resp.id();
+
+  // Park async cleanup so the retry cannot wait on it. DeleteYsqlDatabaseAsync pauses on this
+  // flag; ProcessPendingNamespace for the retry also defers until we clear it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
+  ASSERT_OK(mini_master_->catalog_manager_impl().TEST_FailNamespacePgVerification(failed_nsid));
+
+  auto failed_ns = ASSERT_RESULT(mini_master_->catalog_manager().FindNamespaceById(failed_nsid));
+  ASSERT_EQ(failed_ns->state(), SysNamespaceEntryPB::DELETING);
+  ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+
+  // Same-id retry is still rejected; the by-id tombstone stays until restart so copied catalog
+  // tables are not recreated under the same OID. PG already retries with the next OID.
+  CreateNamespaceRequestPB same_id_req;
+  same_id_req.set_name(test_name);
+  same_id_req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  same_id_req.set_namespace_id(failed_nsid);
+  auto same_id_result = CreateNamespaceAsync(same_id_req);
+  ASSERT_NOK(same_id_result);
+  ASSERT_TRUE(same_id_result.status().IsAlreadyPresent()) << same_id_result.status();
+
+  // Same-name retry with a new id must succeed immediately, while cleanup is still hung.
+  CreateNamespaceResponsePB retry_resp;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &retry_resp));
+  ASSERT_NE(retry_resp.id(), failed_nsid);
+  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
+  ASSERT_OK(CreateNamespaceWait(retry_resp.id(), YQLDatabase::YQL_DATABASE_PGSQL));
+
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+        mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
+        bool failure_deleted = false;
+        bool success_running = false;
+        for (const auto& ns : namespace_internal) {
+          if (ns->id() == failed_nsid) {
+            failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
+          } else if (ns->id() == retry_resp.id()) {
+            success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
+          }
+        }
+        return failure_deleted && success_running;
+      },
+      MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
+
+  ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
 }
 
 class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
@@ -2549,8 +2867,8 @@ void GetTableSchema(const char* table_name,
       Schema receivedSchema;
       CHECK_OK(SchemaFromPB(resp.schema(), &receivedSchema));
       CHECK(kSchema->Equals(receivedSchema)) <<
-          strings::Substitute("$0 not equal to $1",
-                              kSchema->ToString(), receivedSchema.ToString());
+          Format("$0 not equal to $1",
+                 kSchema->ToString(), receivedSchema.ToString());
     }
   }
 }
@@ -2844,10 +3162,18 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::GetSafeTimeResponsePB)
   UNUSED_TS_ADMIN_METHOD(BackfillIndex, tserver::BackfillIndexRequestPB,
                          tserver::BackfillIndexResponsePB)
-                         UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
+  UNUSED_TS_ADMIN_METHOD(TableBackfillChunk, tserver::TableBackfillChunkRequestPB,
+                         tserver::TableBackfillChunkResponsePB)
+  UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
+                         tserver::ChangeMetadataResponsePB)
+  UNUSED_TS_ADMIN_METHOD(MarkNonConcurrentIndexDone, tablet::ChangeMetadataRequestPB,
                          tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)
+  UNUSED_TS_ADMIN_METHOD(AlterTabletTier, tserver::AlterTabletTierRequestPB,
+                         tserver::AlterTabletTierResponsePB)
+  UNUSED_TS_ADMIN_METHOD(GetTabletTierInfo, tserver::GetTabletTierInfoRequestPB,
+                         tserver::GetTabletTierInfoResponsePB)
   UNUSED_TS_ADMIN_METHOD(CountIntents, tserver::CountIntentsRequestPB,
                          tserver::CountIntentsResponsePB)
   UNUSED_TS_ADMIN_METHOD(AddTableToTablet, tserver::AddTableToTabletRequestPB,
@@ -2863,6 +3189,9 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
   UNUSED_TS_ADMIN_METHOD(UpdateTransactionTablesVersion,
                          tserver::UpdateTransactionTablesVersionRequestPB,
                          tserver::UpdateTransactionTablesVersionResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ApplyXClusterGuardedInfoIfNewer,
+                         tserver::ApplyXClusterGuardedInfoIfNewerRequestPB,
+                         tserver::ApplyXClusterGuardedInfoIfNewerResponsePB)
   UNUSED_TS_ADMIN_METHOD(CloneTablet, tablet::CloneTabletRequestPB,
                          tserver::CloneTabletResponsePB)
   UNUSED_TS_ADMIN_METHOD(ClonePgSchema, tserver::ClonePgSchemaRequestPB,
@@ -2875,6 +3204,8 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::GetPgSocketDirResponsePB)
   UNUSED_TS_ADMIN_METHOD(GetActiveRbsInfo, tserver::GetActiveRbsInfoRequestPB,
                          tserver::GetActiveRbsInfoResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ClearRocksDBCache, tserver::ClearRocksDBCacheRequestPB,
+                         tserver::ClearRocksDBCacheResponsePB)
 #undef UNUSED_TS_ADMIN_METHOD
 
  private:
@@ -3008,8 +3339,8 @@ TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
 
   const char* kTsUUID = "my-ts-uuid";
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto result = ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto result = lease_client.RefreshYsqlLease(
       kTsUUID, 1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {});
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
@@ -3023,10 +3354,10 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
   auto lease_refresh_send_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
   auto info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
+      ASSERT_RESULT(lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
   ASSERT_GT(
@@ -3037,20 +3368,22 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   // Refresh lease again. Since we omitted current lease epoch, master leader should still say this
   // is a new lease.
   info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
+      ASSERT_RESULT(lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 2);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. We included current lease epoch but it's incorrect.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
+  info = ASSERT_RESULT(
+      lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 3);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
   // bit.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
+  info = ASSERT_RESULT(
+      lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
   ASSERT_FALSE(info.new_lease());
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 }
@@ -3062,13 +3395,13 @@ TEST_F(MasterTest, RelinquishLease) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto info1 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info1.new_lease());
   ASSERT_EQ(info1.lease_epoch(), 1);
 
-  ASSERT_OK(ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
+  ASSERT_OK(lease_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
   auto list_ts = ASSERT_RESULT(cluster_client_->ListTabletServers());
   ASSERT_EQ(list_ts.servers_size(), 1);
   ASSERT_FALSE(list_ts.servers(0).lease_info().is_live());
@@ -3077,7 +3410,7 @@ TEST_F(MasterTest, RelinquishLease) {
   constexpr uint64_t kSeqno2 = 2;
   auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
   ASSERT_FALSE(reg_resp2.needs_reregister());
-  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info2 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info2.new_lease());
   ASSERT_EQ(info2.lease_epoch(), 2);
@@ -3090,8 +3423,8 @@ TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto info1 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info1.new_lease());
   ASSERT_EQ(info1.lease_epoch(), 1);
@@ -3100,13 +3433,13 @@ TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
   constexpr uint64_t kSeqno2 = 2;
   auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
   ASSERT_FALSE(reg_resp2.needs_reregister());
-  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info2 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info2.new_lease());
   ASSERT_EQ(info2.lease_epoch(), 2);
 
   // Send relinquish lease request from the first ts instance.
-  auto status = ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
+  auto status = lease_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(
       status.ToString(), "Relinquish lease request for a replaced tserver instance");
@@ -3176,6 +3509,22 @@ Result<TSHeartbeatResponsePB> MasterTest::SendYsqlDbOldestPinnedReadTimesHeartbe
   return resp;
 }
 
+docdb::HistoryCutoff MasterTest::SysCatalogAllowedHistoryCutoff() {
+  return mini_master_->catalog_manager_impl().AllowedHistoryCutoffProvider(
+      mini_master_->tablet_peer()->tablet_metadata().get());
+}
+
+Status MasterTest::PublishYsqlHistoryRetentionPin() {
+  const auto initial_delay_secs = FLAGS_initial_tserver_registration_duration_secs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
+  auto& catalog_manager = mini_master_->catalog_manager_impl();
+  auto status =
+      catalog_manager.PersistYsqlHistoryRetentionPin(catalog_manager.GetLeaderEpochInternal());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) =
+      initial_delay_secs;
+  return status;
+}
+
 // Pins reported by a single ts are echoed back in the response as the cluster-wide pins.
 TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesHeartbeatRoundTrip) {
   const std::string kTsUUID = "ts-pins-1";
@@ -3226,6 +3575,47 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesIgnoresInvalidHybridTime) {
   ASSERT_EQ(pins.count(1002), 0);
 }
 
+// After a master restart with persist_tserver_registry, cluster pins are not ready until every
+// live tserver has heartbeated at least once.
+TEST_F(MasterTest, YsqlDbPinsWaitForAllLiveTserversAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+
+  // Reload the persisted tserver registry into fresh descriptors. Their per-leader-term pin
+  // heartbeat markers are intentionally not persisted.
+  ASSERT_OK(mini_master_->Restart(true));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_FALSE(resp.cluster_ysql_db_pins_ready());
+
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(50)}}));
+  EXPECT_TRUE(resp.cluster_ysql_db_pins_ready());
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(50).ToPB());
+}
+
+// Without persist_tserver_registry the leader has no list of live tservers to wait for, so cluster
+// pins are not ready until initial_tserver_registration_duration_secs has elapsed since election.
+TEST_F(MasterTest, YsqlDbPinsWaitForRegistrationWindowWithoutPersistence) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 3600;
+  const std::string kTs1 = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_FALSE(resp.cluster_ysql_db_pins_ready());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_TRUE(resp.cluster_ysql_db_pins_ready());
+}
+
 // The response carries the global min per db across all live tservers.
 // When a ts clears its pin via an empty heartbeat, the cluster min rises to the remaining ts.
 TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesGlobalMin) {
@@ -3244,6 +3634,101 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesGlobalMin) {
   resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {}));
   ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
             HybridTime(100).ToPB());
+}
+
+// The pg catalog tables live in the sys catalog tablet's cotables, so they are the part of the
+// tablet held back by a pin. The docdb metadata rows, governed by the primary cutoff, are not.
+TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPin) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  // Older than the static retention window, so the pin is what binds.
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, pin);
+  EXPECT_GT(cutoff.primary_cutoff_ht, pin);
+}
+
+// A pin older than db_history_retention_pin_max_txn_age_sec is clamped up to the hard cap, so one
+// stuck transaction cannot retain catalog history indefinitely.
+TEST_F(MasterTest, SysCatalogHistoryCutoffCapsPinAge) {
+  constexpr int32_t kRetentionSec = 60;
+  constexpr int32_t kHardCapSec = 600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_history_retention_pin_max_txn_age_sec) = kHardCapSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-100 * kHardCapSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(
+      cutoff.cotables_cutoff_ht,
+      cutoff.primary_cutoff_ht.AddSeconds(kRetentionSec - kHardCapSec));
+}
+
+// Only the leader sees the pins tservers report, so every master honors the pin the leader
+// published to the sys catalog. This is what a follower compacts against.
+TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPublishedPin) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+
+  // No live ts reports the pin anymore, so only the published row is holding the catalog back.
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {}));
+  EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
+
+  // Publishing the now empty aggregate releases the catalog again.
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+  auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
+}
+
+// A master must honor the published pin from the moment it can compact, so it is loaded during
+// startup rather than waited for from a heartbeat.
+TEST_F(MasterTest, SysCatalogHistoryCutoffLoadsPublishedPinOnStartup) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+
+  ASSERT_OK(mini_master_->Restart(true));
+
+  EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
+}
+
+TEST_F(MasterTest, SysCatalogHistoryCutoffIgnoresPinsWhenFeatureDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = false;
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
 }
 
 // A ts that has been marked unresponsive no longer contributes to the cluster min.
@@ -3317,5 +3802,4 @@ TEST_F(MasterTest, TestQosMaxDbCount) {
   ASSERT_OK(CreateNamespace("cql_ks", YQLDatabase::YQL_DATABASE_CQL, &resp));
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

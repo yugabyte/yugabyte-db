@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -163,6 +164,12 @@ public class RestoreBackupYbc extends YbcTaskBase {
           }
 
           Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+          // Not behind skipBackupMetadataValidation: a backstop for restores that reach here
+          // without a preflight, such as xCluster/DR bootstrap.
+          BackupUtil.validateRestoreFipsMode(
+              YbcBackupUtil.getFipsEnabledFromSuccessMarker(
+                  taskParams().getSuccessMarker().extendedArgsString),
+              universe);
           if (!confGetter.getConfForScope(
               universe, UniverseConfKeys.skipBackupMetadataValidation)) {
             validateBackupMetadata(universe);

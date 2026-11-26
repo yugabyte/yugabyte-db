@@ -1,13 +1,19 @@
 ---
 name: create-diff
 description: >-
-  Create a YugabyteDB Phorge diff for the current branch's changes.
-  Use when the user wants to publish their changes for review.
+  Create a YugabyteDB Phorge diff (`arc diff`) for the current branch's
+  changes.  Use ONLY when the user explicitly asks for a Phorge diff;
+  otherwise publish changes for review with the create-pr skill.
 ---
 
 # Create Diff
 
 Create a Phorge diff for the current branch using `arc diff --create`.
+
+**GitHub PRs are the default; Phorge is being retired.** It stops
+accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21.
+Use this skill only when the user explicitly asks for a Phorge diff, and
+from 2026-11-23 on use the `create-pr` skill instead.
 
 
 ## Confidentiality -- read before you write anything
@@ -66,6 +72,11 @@ only.
 ask the user.** See `src/AGENTS.md` section on Confidentiality for the
 canonical list.
 
+A security fix or a customer-driven change also has a disclosure tier that
+sets how much the title, summary and test plan may say. See `src/AGENTS.md`,
+"Security and customer-sensitive changes": for these, the motivation goes in
+the JIRA ticket, not the diff.
+
 This rule applies at every step below: Step 1 (commit message), Steps
 3-3.5 (issue body if auto-creating), Step 4 (title), and Step 6 (summary
 / test plan).
@@ -107,11 +118,23 @@ the user.
   ask whether to proceed.
 - If the output is clean, continue to the next step.
 
+### Step 2.5: PG code style pass (only when src/postgres files changed)
+
+If the branch changes anything under `src/postgres`, load the
+`pg-code-style-guide` skill and check the diff against it (yb prefixes,
+YB marker blocks, upstream lines untouched, regress test rules).  Fix
+violations now -- this is the last point where cleanup is free; after
+publishing they come back as review comments.
+
+Commit any resulting fixes on the branch -- amend Step 1's commit or add
+a new one -- before Step 6, and re-run the linter (Step 2).
+
 ### Step 3: Determine tracker reference
 
 You will need a GitHub or JIRA issue describing the issue this diff is
-fixing in order to create the diff.  Normally there is a one-to-one
-relationship between tracking issues and diffs.
+fixing in order to create the diff.  Normally an issue has at most one
+diff, but a diff may fix several issues; it then lists them all in its
+title (see Step 4).
 
 First, check which area the changes touch:
   - If changes are in core DB code (`src/`, `java/`, `cmake_modules/`,
@@ -131,6 +154,8 @@ the candidate.
 When asking the user for a tracking reference, acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
+   - Several of either, all GitHub or all JIRA, for a diff that fixes
+     more than one issue
 Offer to **auto-create** a GitHub issue or JIRA ticket if the user
 doesn't have one yet. If they accept, invoke the **`/create-issue`**
 skill to file it (GitHub issue for core DB code, JIRA ticket for
@@ -157,11 +182,16 @@ Prompt the user for the following, one at a time:
 Construct the title in the format:
 
 ```
-[<#GH issue> or <JIRA>] <Component>: <Title>
+[<issue>,...] <Component>: <Title>
 ```
+
+Each `<issue>` is a GitHub issue (`#NNNN`) or a JIRA key
+(`PROJECT-NNN`).  List every issue the diff fixes, comma-separated with
+no spaces, all GitHub or all JIRA.
 
 Examples:
 - `[#31151] DocDB: Fix SamplingProfilerTest.EstimatedBytesAndCount in release`
+- `[#31151,#31152] DocDB: Fix two flakes in SamplingProfilerTest`
 - `[PLAT-20518] YBA: Fix full move edit universe to populate userIntentOverrides during configure call`
 
 ### Step 5: Determine subscribers
@@ -175,6 +205,22 @@ Based on the files changed on the branch, decide the default subscriber:
 - If changes span both, add both `ybase` and `yugaware`.
 
 Confirm the subscriber list with the user before creating the diff.
+
+### Step 5.5: Cut the prose the branch added
+
+Re-read the **text** the branch adds — comments, `architecture/` docs,
+agent docs — and apply [`AGENTS.md` Prose
+discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+It is a gate here because it is easy to hold at the start of a task and
+gone by the end of one, and this is the last point where cutting is
+free.
+
+```
+git diff <base>...HEAD -- '*.md'   # doc prose; also skim added comments in the code diff
+```
+
+Commit any resulting edits on the branch before Step 6, and re-run the
+linter (Step 2).
 
 ### Step 6: Create the diff with `arc diff --create`
 
@@ -209,8 +255,14 @@ arc diff --create --message-file <path> --reviewers <reviewers> --cc <subscriber
 Pre-fill the message file with:
 
 - **Title**: the constructed title from step 4
-- **Summary**: a short description of the change (derive from branch commits)
-- **Test Plan**: ask the user for one if not obvious from the branch
+- **Summary**: derived from the branch commits.  Say **why**, always —
+  a reviewer who has to reverse-engineer the motivation is the
+  expensive case — then what changed, and whatever the reader must *act*
+  on (new gflags, upgrade/rollback consequences, migration steps).  Not
+  a narration of the diff.  See [`AGENTS.md` Prose
+  discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+- **Test Plan**: ask the user for one if not obvious from the branch.
+  Keep it to what was actually run — it is not a place for prose.
 - **Reviewers**: (as provided)
 - **Subscribers**: `ybase` and/or `yugaware` per Step 4
 
@@ -252,7 +304,7 @@ Output:
   only.
 - Always run `./build-support/lint.sh` first; a failing lint should
   block diff creation.
-- The title format is strict: `[<issue>] <Component>: <Title>`.  Don't
+- The title format is strict: `[<issue>,...] <Component>: <Title>`.  Don't
   deviate.
 - `ybase` for DB, `yugaware` for YBA/platform — add both when changes
   span both.

@@ -28,7 +28,7 @@ If you are using your own certificates, before rotating certificates, ensure tha
 
 If you are using Kubertnetes cert-manager, certificate renewal is handled automatically by cert-manager before expiry. For information on rotating and managing certificates using cert-manager, refer to [Rotate certificates in cert-manager](../add-certificate-kubernetes/#rotate-certificates-in-cert-manager).
 
-Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
+Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../create-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
 
 ## Enable or disable encryption in transit
 
@@ -40,13 +40,13 @@ You can enable or disable:
 
 This requires a simultaneous restart of all nodes, resulting in some downtime.
 
-To enable or disable encryption in transit:
+To enable or disable encryption in transit, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
 
-<!--    ![Enable encryption in transit](/images/yp/encryption-in-transit/enable-eit.png)-->
+    This displays the **Manage encryption in transit** dialog.
 
 1. Set the **Enable encryption in transit for this Universe** option.
 
@@ -91,11 +91,13 @@ For universes with _only_ client-to-node encryption enabled, when rotating certi
 
 ### Rotate server certificates
 
-To rotate server (node) certificates for a universe, do the following:
+To rotate server (node) certificates for a universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
 
 1. On the **Server Certificate** tab, select the **Rotate Node-to-Node Server Certificate** and **Rotate Client-to-Node Server Certificate** options as appropriate.
 
@@ -111,11 +113,13 @@ To rotate server (node) certificates for a universe, do the following:
 
 ### Rotate root certificates
 
-To rotate root certificates for a universe, do the following:
+To rotate root certificates for a universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
 
 1. On the **Certificate Authority** tab, select the new root certificate(s).
 
@@ -134,3 +138,18 @@ To rotate root certificates for a universe, do the following:
     - If available, using a hot certificate reload with no restart (**Apply all changes which do not require a restart immediately**).
 
 1. Click **Apply**.
+
+### Node agent certificates
+
+By default, node agent uses a YugabyteDB Anywhere-generated self-signed root CA certificate to encrypt communication with YugabyteDB Anywhere. Node agent also supports (in v2026.1.3.0 and later) [self-signed](../add-certificate-self/) and, for on-premises providers only, [CA-signed](../add-certificate-ca/) certificates. (cert-manager and Hashicorp vault are not supported for node agent. This does not apply to Kubernetes.)
+
+To keep node agent on a custom certificate across reinstalls (for example, OS image upgrade or reprovision), [enable node-to-node encryption in transit](#enable-or-disable-encryption-in-transit) and set the **Use Universe Certificates in Node Agent Installation** Provider Runtime Configuration option (config key `yb.node_agent.use_universe_certificates_on_install`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). YugabyteDB Anywhere then uses the universe's node-to-node certificate for node agent installs it triggers.
+
+Additionally, for on-premises universes using the provisioning script to provision nodes, set the `certificate_name` option in the provisioning script configuration file to that same node-to-node certificate's name so the initial install matches. Otherwise, the custom certificate is used only until a later reinstall. (If you do not set `certificate_name` (the default), the system uses the self-generated certificate.) For information on provisioning nodes for on-premises providers, refer to [Automatically provision database nodes for on-premises providers](../../../prepare/server-nodes-software/software-on-prem/#modify-the-configuration-file).
+
+For existing universes, to update universe nodes to use the certificate, do the following:
+
+1. Navigate to your universe and select **Actions > More > Update Node Agent Certificate**.
+1. Choose whether to update all nodes or a selected node.
+1. To use a custom certificate instead of the automatically managed one (the default), choose **Use custom certificate** and select the certificate.
+1. Click **Update Node Agent Certificate**.

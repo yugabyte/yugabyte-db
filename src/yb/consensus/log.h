@@ -39,6 +39,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 
 #include <boost/atomic.hpp>
@@ -56,6 +57,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/disk_space_checker.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
@@ -99,11 +101,17 @@ YB_DEFINE_ENUM(SegmentOpIdRelation,
     (kOpIdIsInsideAndNotLast)
     // OpId corresponds to the last operation in the segment
     (kOpIdIsLast)
-    // OpId is after the segment
+    // Segment holds nothing past OpId: copy it whole and continue. OpId can still be the segment's
+    // last entry when this is decided from the footer.
     (kOpIdAfterSegment)
 );
 
 YB_STRONGLY_TYPED_BOOL(SkipWalWrite);
+
+struct WalRetentionDiagnostics {
+  std::string details;
+  int64_t first_retained_segment_age_secs = -1;
+};
 
 using NewSegmentAllocationCallback = std::function<Status(void)>;
 
@@ -121,9 +129,7 @@ struct MinRetainLogIndexInfo {
   // std::numeric_limits<int64_t>::max() means "no xrepl constraint".
   int64_t log_index_needed_by_cdc = std::numeric_limits<int64_t>::max();
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(earliest_needed_log_index, log_index_needed_by_cdc);
-  }
+  std::string ToString() const;
 };
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
@@ -197,6 +203,18 @@ class Log : public RefCountedThreadSafe<Log> {
   // fsync of log entries is enabled).
   Status WaitUntilAllFlushed();
 
+  // Re-evaluates the periodic-sync policy and, if it is overdue, kicks off an fsync on the
+  // log-sync pool. Returns true if a background sync was submitted.
+  //
+  // Used to honor interval_durable_wal_write_ms semantics on a somewhat quiet tablet that
+  // receives writes in intervals > interval_durable_wal_write_ms. Callers are expected to be
+  // something that keeps ticking on an idle tablet - today the follower's UpdateConsensus path,
+  // which a leader heartbeat reaches even with no ops attached.
+  //
+  // This never fsyncs on the calling thread, a kForceFsync is downgraded to a background sync
+  // and hence is safe to call on a consensus thread.
+  bool MaybeSyncInBackground() EXCLUDES(background_sync_token_mutex_);
+
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
 
@@ -215,7 +233,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Returns a reader that is able to read through the previous segments.
   // Returns IllegalState if the log has been closed and the reader is no longer available.
-  Result<LogReader*> GetLogReader() const;
+  Result<LogReaderPtr> GetLogReader() const;
 
   Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 
@@ -243,7 +261,18 @@ class Log : public RefCountedThreadSafe<Log> {
   // returns (0, 0)
   OpId GetLatestEntryOpId() const;
 
+  // Returns the state of the entry with op_id.
+  // Starts a background fsync when it is kAppended and already written.
+  WalEntryState WalState(const OpId& op_id) EXCLUDES(background_sync_token_mutex_);
+
   int64_t GetMinReplicateIndex() const;
+
+  // Returns the index of the earliest op in the log.
+  Result<int64_t> EarliestOpIndex() const EXCLUDES(state_lock_);
+
+  // Returns the lowest index at which a log anchor can be registered: a peer whose last op has
+  // this index can be sent the following ops. It is L for a quiescent log, whose ops start at L+1.
+  Result<int64_t> MinAnchorableIndex() const EXCLUDES(state_lock_);
 
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
@@ -263,7 +292,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
   Status GetGCableDataSize(
-      const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size) const;
+      const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size,
+      WalRetentionDiagnostics* diagnostics = nullptr) const;
 
   // Test-only public wrapper around the private GetSegmentsToGC, used by unit tests that need to
   // compute the GC-eligible prefix Log::GC would pick for a given 'min_op_idx' (with the full
@@ -300,11 +330,13 @@ class Log : public RefCountedThreadSafe<Log> {
   Result<bool>  ReuseAsActiveSegment(
       const scoped_refptr<ReadableLogSegment>& recover_segment) EXCLUDES(active_segment_mutex_);
 
-  // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
-  // either allocating a new segment or reused left in-progress segment that doesn't have footer.
-  Status EnsureSegmentInitialized();
+  // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization.
+  // Reuses the left in-progress segment that doesn't have footer. Otherwise the next segment is
+  // allocated by the first append.
+  Status EnsureSegmentInitialized() EXCLUDES(state_lock_);
 
-  Status EnsureSegmentInitializedUnlocked() REQUIRES(state_lock_);
+  Status EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment)
+      REQUIRES(state_lock_);
 
   // Returns the total size of the current segments, in bytes.
   // Returns 0 if the log is shut down.
@@ -323,7 +355,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // it only reads the passed segment's footer and this Log's atomics, never the live segment
   // state, so callers (e.g. remote bootstrap) can apply the policy to a frozen segment snapshot
   // without racing against concurrent GC.
-  bool SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment) const;
+  bool SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment,
+                                     const uint32_t* cached_wal_retention_secs = nullptr,
+                                     std::string* retention_details = nullptr) const;
 
   // Waits until specified op id is added to log.
   // Returns current op id after waiting, which could be greater than or equal to specified op id.
@@ -355,6 +389,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   Status TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
+  // Number of segments GetSegmentOpIdRelation has read in full.
+  size_t TEST_NumSegmentOpIdRelationReads() const {
+    return num_segment_op_id_relation_reads_.load(std::memory_order_acquire);
+  }
+
   // Returns the number of segments.
   size_t num_segments() const;
 
@@ -377,17 +416,61 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Minimum replicate index that xrepl (CDCSDK + xCluster) still requires the source to retain --
   // the same boundary GetSegmentsToGCUnlocked() applies on top of the caller-supplied min_op_idx
-  // (see the cdc_max_replicated_index argument of LogReader::GetSegmentPrefixNotIncluding). Returns
-  // std::numeric_limits<int64_t>::max() when no xrepl consumer constrains retention.
-  int64_t GetXReplMinReplicatedIndex() const;
+  // (see the cdc_min_replicated_index argument of LogReader::GetSegmentPrefixNotIncluding).
+  // Returns std::numeric_limits<int64_t>::max() when no xrepl consumer constrains retention.
+  // If 'factors_detail' is set, the cdc_min_replicated_index_/xcluster_min_index_to_retain
+  // components it took the min of are written to it.
+  int64_t GetXReplMinReplicatedIndex(std::string* factors_detail = nullptr) const;
 
   // Copies log to a new dir. Expects dest_wal_dir to be absent.
   // If max_included_op_id is specified - only part of the log up to and including
-  // max_included_op_id is copied.
+  // max_included_op_id is copied. max_included_op_id must be committed: GetSegmentOpIdRelation
+  // relies on no later entry having an index <= max_included_op_id.index.
   // Flushes necessary files and uses hard links where it is safe.
-  Status CopyTo(const std::string& dest_wal_dir, OpId max_included_op_id = OpId());
+  // The quiescent marker, if any, is copied with dest_tablet_id.
+  Status CopyTo(
+      const std::string& dest_wal_dir, OpId max_included_op_id = OpId(),
+      const std::string& dest_tablet_id = std::string());
 
-  // Waits until all entries flushed, then reset last received op id to specified one.
+  // Closes the active segment without starting a new one, if the last appended op is
+  // expected_last_op_id. Runs on the appender thread. Fills marker with the values of that op,
+  // except monotonic_counter.
+  // Returns TryAgain if another op was appended.
+  Status CloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarkerPB* marker);
+
+  // Durably writes the quiescent marker to the WAL dir and makes it the marker of this log.
+  Status WriteQuiescentMarker(const QuiescentMarkerPB& marker) EXCLUDES(state_lock_);
+
+  // Deletes segments that contain only ops covered by the marker. Returns the number of deleted
+  // segments.
+  Result<size_t> DeleteSegmentsCoveredByQuiescentMarker() EXCLUDES(state_lock_);
+
+  // Returns true if the segment is closed and the marker covers all its ops. Covered segments
+  // form a prefix of the log.
+  static bool SegmentCoveredByQuiescentMarker(
+      const ReadableLogSegment& segment, const QuiescentMarkerPB& marker);
+
+  // Returns when a REPLICATE message was last appended, or when the log was opened.
+  CoarseTimePoint last_append_time() const {
+    return last_append_time_.load(std::memory_order_acquire);
+  }
+
+  // Returns the op id of the quiescent marker, or an empty op id if the log has no marker.
+  OpId quiescent_marker_op_id() const;
+
+  std::optional<QuiescentMarkerPB> quiescent_marker() const EXCLUDES(state_lock_);
+
+  // Looks up the op id for the given index in the log reader or the quiescent marker.
+  Result<OpId> LookupOpId(int64_t op_index) const EXCLUDES(state_lock_);
+
+  static std::string QuiescentMarkerPath(const std::string& wal_dir);
+
+  static Result<QuiescentMarkerPB> ReadQuiescentMarkerFile(Env* env, const std::string& wal_dir);
+
+  static Status WriteQuiescentMarkerFile(
+      Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker);
+
+  // Waits until all entries flushed, then resets last appended, synced and durable op ids to op_id.
   Status ResetLastSyncedEntryOpId(const OpId& op_id);
 
   Status TEST_WriteCorruptedEntryBatchAndSync();
@@ -416,6 +499,9 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
   FRIEND_TEST(LogTest, TestLogMetrics);
   FRIEND_TEST(LogTest, TestLogMetricsWithSegmentReuse);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetric);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetricUnderDurableWalWrite);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetricWhenIntervalDisabled);
   FRIEND_TEST(LogTest, AsyncRolloverMarker);
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
@@ -447,6 +533,11 @@ class Log : public RefCountedThreadSafe<Log> {
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
       MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
 
+  // Value of the log_wal_sync_overdue_ms gauge: how far past interval_durable_wal_write_ the
+  // oldest unsynced entry is, or 0 if nothing is unsynced or the interval does not apply. Read on
+  // the metrics thread, concurrently with the appender and the background fsync.
+  int64_t WalSyncOverdueMs() const;
+
   Env* get_env() {
     return options_.env;
   }
@@ -460,6 +551,27 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Writes the footer and closes the current segment.
   Status CloseCurrentSegment() EXCLUDES(active_segment_mutex_);
+
+  // Starts a new active segment, when there is none.
+  Status StartActiveSegment() EXCLUDES(active_segment_mutex_);
+
+  // Waits for the segment allocation in progress, if any, and drops the allocated segment.
+  Status DropAllocatedSegment();
+
+  Status DoCloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarkerPB* marker)
+      EXCLUDES(state_lock_, active_segment_mutex_);
+
+  // Loads the quiescent marker from the WAL dir, if there is one, and continues the log after it.
+  // Deletes the temp files of marker writes that a crash interrupted.
+  Status LoadQuiescentMarker(const std::vector<std::string>& wal_dir_files) REQUIRES(state_lock_);
+
+  // Trims from the reader the prefix of segments that contain only ops covered by the quiescent
+  // marker, and returns them. The caller deletes their files.
+  Status TrimSegmentsCoveredByQuiescentMarkerUnlocked(SegmentSequence* segments)
+      REQUIRES(state_lock_);
+
+  // Deletes files of segments that were trimmed from the reader.
+  Status DeleteSegmentFiles(const SegmentSequence& segments, bool update_metrics);
 
   // Sets 'out' to a newly created temporary file (see Env::NewTempWritableFile()) for a placeholder
   // segment. Sets 'result_path' to the fully qualified path to the unique filename created for the
@@ -515,26 +627,41 @@ class Log : public RefCountedThreadSafe<Log> {
   // - time interval/unsynced data exceeds upper limits
   //   time upper limit: interval_durable_wal_write_
   //   data upper limit: bytes_durable_wal_write_mb_ (MB)
-  Status DoSync() EXCLUDES(active_segment_mutex_);
+  // written_op_id must already be written to the log; it is durable once DoSync succeeds.
+  // Without it, the last synced entry op id is read under active_segment_mutex_, so it cannot race
+  // with the reset in DoResetLastSyncedEntryOpId.
+  Status DoSync(std::optional<OpId> written_op_id) EXCLUDES(active_segment_mutex_);
+
+  // Runs on the appender thread, which owns last_appended_entry_op_id_.
+  void DoResetLastSyncedEntryOpId(
+      const OpId& op_id, const StatusCallback& callback, const Status& status)
+      EXCLUDES(active_segment_mutex_);
 
   // Calls ::DoSync and resets fsync_task_in_queue_.
   void DoSyncAndResetTaskInQueue() EXCLUDES(active_segment_mutex_);
 
-  Status Sync() EXCLUDES(active_segment_mutex_);
+  // Submits DoSyncAndResetTaskInQueue() on background_sync_threadpool_token_ unless one is
+  // already queued or running, and returns whether it submitted. Never blocks on the fsync
+  // itself. Shared by the append path (::Sync) and by ::MaybeSyncInBackground.
+  bool SubmitBackgroundSync() EXCLUDES(background_sync_token_mutex_);
+
+  Status Sync() EXCLUDES(active_segment_mutex_, background_sync_token_mutex_);
 
   // Updates the reader on how far it can read the active segment. Called from ::Sync()
   Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
 
   // Helper method to get the segment sequence to GC based on the provided retention floors.
   Status GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_index_info,
-                                 SegmentSequence* segments_to_gc) const
+                                 SegmentSequence* segments_to_gc,
+                                 std::string* retention_details = nullptr) const
       REQUIRES_SHARED(state_lock_);
   Status GetSegmentsToGC(
       const MinRetainLogIndexInfo& min_retain_log_index_info, SegmentSequence* segments_to_gc) const
       EXCLUDES(state_lock_);
 
   // Discards segments from 'segments_to_gc' if they have not yet met the minimim retention time.
-  void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const;
+  void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc,
+                                std::string* retention_details = nullptr) const;
 
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
@@ -546,7 +673,8 @@ class Log : public RefCountedThreadSafe<Log> {
   WritableFileOptions GetNewSegmentWritableFileOptions();
 
   // See SegmentOpIdRelation comments.
-  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty.
+  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty, or if the
+  // footer shows no entry with an index above op_id.index (op_id must be committed).
   // Note: this function can potentially read all entries from WAL segment that might a large amount
   // of data.
   Result<SegmentOpIdRelation> GetSegmentOpIdRelation(
@@ -628,7 +756,9 @@ class Log : public RefCountedThreadSafe<Log> {
   LogState log_state_;
 
   // A reader for the previous segments that were not yet GC'd.
-  std::unique_ptr<LogReader> reader_;
+  // Shared so that a reference handed out by GetLogReader() outlives a concurrent Close()
+  // resetting reader_ mid-read.
+  LogReaderPtr reader_;
 
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
@@ -641,9 +771,26 @@ class Log : public RefCountedThreadSafe<Log> {
   // NOTE: this op is not necessarily durable unless gflag durable_wal_write is true.
   boost::atomic<OpId> last_synced_entry_op_id_{OpId()};
 
+  // The last known OpId for a REPLICATE message that is fsynced, with all entries before it.
+  // Lowered by ResetLastSyncedEntryOpId, since the replacing tail could have an earlier term.
+  std::atomic<OpId> last_durable_entry_op_id_{OpId()};
+
+  // Whether the last fsync failed.
+  std::atomic<bool> sync_failed_{false};
+
   // The last know OpId for a REPLICATE message appended to this log (any segment).
   // This variable is not accessed concurrently.
   OpId last_appended_entry_op_id_;
+
+  // Hybrid time and restart-safe batch time of the last appended REPLICATE message.
+  HybridTime last_appended_entry_hybrid_time_;
+  uint64_t last_appended_entry_time_ = 0;
+
+  std::atomic<CoarseTimePoint> last_append_time_{CoarseMonoClock::Now()};
+
+  // Ops up to the quiescent marker op id are durable outside of the WAL. See QuiescentMarkerPB.
+  std::optional<QuiescentMarkerPB> quiescent_marker_ GUARDED_BY(state_lock_);
+  boost::atomic<OpId> quiescent_marker_op_id_{OpId()};
 
   OpId last_submitted_op_id_;
 
@@ -668,8 +815,13 @@ class Log : public RefCountedThreadSafe<Log> {
   // A thread pool for asynchronously pre-allocating new log segments.
   std::unique_ptr<ThreadPoolToken> allocation_token_;
 
+  // Protects the reset of background_sync_threadpool_token_ (::Close) from its access
+  // (::MaybeSyncInBackground), as they can happen on different threads.
+  mutable rw_spinlock background_sync_token_mutex_;
+
   // A thread pool for performing log fsync operations.
-  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_;
+  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_
+      GUARDED_BY(background_sync_token_mutex_);
 
   // If true, sync on all appends.
   bool durable_wal_write_;
@@ -681,7 +833,7 @@ class Log : public RefCountedThreadSafe<Log> {
   int32_t bytes_durable_wal_write_mb_;
 
   // Keeps track of oldest entry which needs to be synced.
-  MonoTime periodic_sync_earliest_unsync_entry_time_ = MonoTime::kMin;
+  std::atomic<MonoTime> periodic_sync_earliest_unsync_entry_time_{MonoTime::kMin};
 
   // For periodic sync, indicates if there are entries to be sync'ed.
   std::atomic<bool> periodic_sync_needed_ = {false};
@@ -696,7 +848,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // If true, ignore the 'durable_wal_write_' flags above.  This is used to disable fsync during
   // bootstrap.
-  bool sync_disabled_;
+  std::atomic<bool> sync_disabled_;
 
   // The status of the most recent log-allocation action.
   Promise<Status> allocation_status_;
@@ -706,11 +858,16 @@ class Log : public RefCountedThreadSafe<Log> {
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<LogMetrics> metrics_;
+  // Detaches the function gauge in metrics_ from this Log on destruction. Declared after the
+  // members the gauge reads.
+  std::shared_ptr<void> metric_detacher_;
 
   std::shared_ptr<MemTracker> read_wal_mem_tracker_;
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;
+
+  std::atomic<size_t> num_segment_op_id_relation_reads_{0};
 
   // Listener that will be invoked after new entry was appended to the log.
   std::function<void()> post_append_listener_;
@@ -736,6 +893,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
+  // Also serializes quiescent marker writes and deletions of segments covered by it with Close.
   std::mutex log_copy_mutex_;
 
   // Used by GetSegmentsToGCUnlocked() as an anchor.
@@ -753,10 +911,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The callback guarantees that value returned would be a 'valid' Hybrid time.
   MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback_;
 
-  std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
-  std::atomic<bool> has_free_disk_space_{false};
-  std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
-  std::shared_timed_mutex disk_space_mutex_;
+  DiskSpaceChecker disk_space_checker_;
 
   // Protect access to the get_xcluster_min_index_to_retain_.
   mutable PerCpuRwMutex get_xcluster_index_lock_;

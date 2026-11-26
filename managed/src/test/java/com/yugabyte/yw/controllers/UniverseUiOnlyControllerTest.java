@@ -10,6 +10,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -39,11 +40,16 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -54,6 +60,7 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
@@ -71,6 +78,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +98,9 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
 public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBase {
+
+  private static final String LDAP_HBA =
+      "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass";
 
   @Override
   public Result sendCreateRequest(ObjectNode bodyJson) {
@@ -278,8 +289,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     taskParams.nodePrefix = "test_uni";
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(Common.CloudType.onprem)
+        .setInstanceType("type.small");
     userIntent.universeName = "megauniverse";
     taskParams.upsertPrimaryCluster(userIntent, null, null);
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
@@ -370,6 +382,132 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ArrayNode updateOptionsJson = (ArrayNode) json.get("updateOptions");
     assertEquals(1, updateOptionsJson.size());
     assertEquals("FULL_MOVE", updateOptionsJson.get(0).asText());
+  }
+
+  @Test
+  public void testConfigureEditResetRedactsStoredLdapGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    // A reset returns the stored clusters, whatever gflags the request has.
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
+    taskParams.resetAZConfig = true;
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-bind-pass"));
+    assertFalse(body, body.contains("dummy-hba-pass"));
+    JsonNode tserverGFlags =
+        Json.parse(body).at("/clusters/0/userIntent/specificGFlags/perProcessFlags/value/TSERVER");
+    assertEquals(SECRET_REPLACEMENT, tserverGFlags.get("ycql_ldap_bind_passwd").asText());
+    assertEquals(
+        LDAP_HBA.replace("dummy-hba-pass", SECRET_REPLACEMENT),
+        tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+    assertEquals(
+        storedPrimaryIntent(u).specificGFlags,
+        bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testConfigureEditResetRedactsStoredKubernetesOverrides() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithK8sOverrides();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    taskParams.getPrimaryCluster().userIntent.universeOverrides = null;
+    taskParams.getPrimaryCluster().userIntent.azOverrides = null;
+    taskParams.resetAZConfig = true;
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-ovr-pass"));
+    assertFalse(body, body.contains("dummy-az-pass"));
+    UserIntent stored = storedPrimaryIntent(u);
+    UserIntent bound = bindConfigureResponse(body, u).getPrimaryCluster().userIntent;
+    assertEquals(stored.universeOverrides, bound.universeOverrides);
+    assertEquals(stored.azOverrides, bound.azOverrides);
+  }
+
+  @Test
+  public void testConfigureEditReturnsChangedAzOverridesAsSent() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithK8sOverrides();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    String changed = K8S_AZ_OVERRIDES.replace("dummy-az-pass", "dummy-new-pass");
+    taskParams.getPrimaryCluster().userIntent.azOverrides.put("az-2", changed);
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-ovr-pass"));
+    assertFalse(body, body.contains("dummy-az-pass"));
+    assertEquals(changed, Json.parse(body).at("/clusters/0/userIntent/azOverrides/az-2").asText());
+    UserIntent bound = bindConfigureResponse(body, u).getPrimaryCluster().userIntent;
+    assertEquals(Map.of("az-1", K8S_AZ_OVERRIDES, "az-2", changed), bound.azOverrides);
+  }
+
+  @Test
+  public void testConfigureEditReturnsChangedGFlagsAsSent() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    SpecificGFlags requested =
+        SpecificGFlags.construct(
+            Collections.emptyMap(),
+            Map.of(
+                "ycql_ldap_bind_passwd", "dummy-new-pass", GFlagsUtil.YSQL_HBA_CONF_CSV, LDAP_HBA));
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = requested;
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertEquals(
+        requested, bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
+    assertEquals(
+        requested,
+        Json.fromJson(
+            Json.parse(body).at("/clusters/0/userIntent/specificGFlags"), SpecificGFlags.class));
+  }
+
+  @Test
+  public void testConfigureReadReplicaCreateRedactsOnlyTheStoredPrimaryGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    UserIntent readOnlyIntent = taskParams.getPrimaryCluster().userIntent.clone();
+    readOnlyIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", "dummy-rr-pass"));
+    taskParams.upsertCluster(readOnlyIntent, null, null, UUID.randomUUID());
+    Result result = sendAsyncCreateConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-bind-pass"));
+    assertFalse(body, body.contains("dummy-hba-pass"));
+    assertTrue(body, body.contains("dummy-rr-pass"));
+    assertEquals(
+        storedPrimaryIntent(u).specificGFlags,
+        bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testConfigureRejectsAnotherCustomersUniverse() {
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    taskParams.resetAZConfig = true;
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
+    bodyJson.put("currentClusterType", "PRIMARY");
+    bodyJson.put("clusterOperation", "EDIT");
+    Customer otherCustomer = ModelFactory.testCustomer("tc2", "Test Customer 2");
+    String otherAuthToken =
+        ModelFactory.testUser(otherCustomer, "other@customer.com").createAuthToken();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/" + otherCustomer.getUuid() + "/universe_configure",
+                    otherAuthToken,
+                    bodyJson));
+    assertBadRequest(result, "doesn't belong to Customer");
   }
 
   @Test
@@ -979,6 +1117,84 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertAuditEntry(1, customer.getUuid());
   }
 
+  // PLAT-23125: an edit request without otelCollectorEnabled must not turn it off for new nodes.
+  @Test
+  public void testUniverseUpdateCarriesOtelCollectorEnabledFromUniverse() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    PlacementInfo placementInfo = placement(p);
+    Universe u =
+        createUniverse(
+            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, placementInfo);
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", u.getName())
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("accessKeyCode", accessKeyCode)
+            .set("deviceInfo", Json.toJson(ApiUtils.getDummyDeviceInfo(1, 1)));
+
+    ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
+    userIntentJson.set("regionList", regionList);
+
+    ArrayNode nodeDetailsJsonArray = Json.newArray();
+
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              // The request body below omits otelCollectorEnabled, as the CLI does.
+              universeDetails.otelCollectorEnabled = true;
+              Cluster cluster = universeDetails.clusters.get(0);
+              cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
+              for (int idx = 0; idx < 3; idx++) {
+                NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+                node.cloudInfo.instance_type = i.getInstanceTypeCode();
+                node.placementUuid = cluster.uuid;
+                node.azUuid = Arrays.asList(az1, az2, az3).get(idx).getUuid();
+                nodeDetailsJsonArray.add(Json.toJson(node));
+                universeDetails.nodeDetailsSet.add(node);
+              }
+            });
+    UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+    Cluster cluster = universeDetails.clusters.get(0);
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("uuid", Json.toJson(cluster.uuid));
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
+    bodyJson.set("nodeDetailsSet", nodeDetailsJsonArray);
+
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertOk(result);
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), captor.capture());
+    // Nodes added by the edit install the OTEL collector only when this is set.
+    assertTrue(captor.getValue().otelCollectorEnabled);
+  }
+
   @Test
   public void testVMImageUpgradeWithUnsupportedProvider() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
@@ -1008,7 +1224,13 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Universe universe = createUniverse(customer.getId());
     UUID uUUID = universe.getUniverseUUID();
     CloudType providerType =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getAllCloudTypes()
+            .iterator()
+            .next();
     Universe.saveDetails(
         uUUID,
         univ -> {
@@ -1613,8 +1835,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               universeDetails.getPrimaryCluster().userIntent;
-          userIntent.providerType = Common.CloudType.azu;
-          userIntent.provider = p.getUuid().toString();
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(p.getUuid())
+              .setProviderType(CloudType.azu);
           universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(u.getUniverseUUID(), updater);
@@ -1779,7 +2002,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsEditModifyTags() throws IOException {
     testGetAvailableOptions(
-        u -> u.getPrimaryCluster().userIntent.instanceTags.put("aa", "bb"),
+        u ->
+            TestUtils.existingProviderInitializer(u.getPrimaryCluster().userIntent)
+                .setInstanceTags(Map.of("aa", "bb")),
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }
@@ -1800,7 +2025,11 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsEditSmartResizeNonRestart() throws IOException {
     testGetAvailableOptions(
-        x -> x.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50,
+        x ->
+            TestUtils.updateDeviceInfo(
+                x.getPrimaryCluster().userIntent,
+                UniverseTaskBase.ServerType.TSERVER,
+                deviceInfo -> deviceInfo.volumeSize += 50),
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
   }
@@ -1847,8 +2076,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 nodesToAdd.add(newNode);
               });
           u.nodeDetailsSet.addAll(nodesToAdd);
-          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
-          u.getPrimaryCluster().userIntent.instanceType = "c3.large";
+          TestUtils.existingProviderInitializer(u.getPrimaryCluster().userIntent)
+              .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize += 50)
+              .setInstanceType("c3.large");
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE,
@@ -1870,8 +2100,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 nodesToAdd.add(newNode);
               });
           u.nodeDetailsSet.addAll(nodesToAdd);
-          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
-          u.getPrimaryCluster().userIntent.instanceType = "c3.large";
+          TestUtils.existingProviderInitializer(u.getPrimaryCluster().userIntent)
+              .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize += 50)
+              .setInstanceType("c3.large");
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
@@ -1891,7 +2122,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 nodesToAdd.add(newNode);
               });
           u.nodeDetailsSet.addAll(nodesToAdd);
-          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
+          TestUtils.updateDeviceInfo(
+              u.getPrimaryCluster().userIntent,
+              UniverseTaskBase.ServerType.TSERVER,
+              deviceInfo -> deviceInfo.volumeSize += 50);
           // change placement => SR is not available.
           PlacementInfo.PlacementAZ az =
               u.getPrimaryCluster().placementInfo.azStream().findFirst().get();
@@ -1927,17 +2161,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     ObjectNode bodyJson = Json.newObject();
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = i.getInstanceTypeCode();
     userIntent.universeName = "foo";
     userIntent.numNodes = 3;
-    userIntent.provider = p.getUuid().toString();
     userIntent.regionList = Arrays.asList(r.getUuid(), r2.getUuid());
 
     DeviceInfo di = new DeviceInfo();
     di.storageType = PublicCloudConstants.StorageType.GP2;
     di.volumeSize = 100;
     di.numVolumes = 2;
-    userIntent.deviceInfo = di;
+
+    TestUtils.initUserIntent(userIntent, p, i.getInstanceTypeCode(), di, "demo-access");
+
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
@@ -1974,17 +2208,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     ObjectNode bodyJson = Json.newObject();
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = i.getInstanceTypeCode();
     userIntent.universeName = "foo";
     userIntent.numNodes = 3;
-    userIntent.provider = p.getUuid().toString();
     userIntent.regionList = Arrays.asList(r.getUuid());
 
     DeviceInfo di = new DeviceInfo();
     di.storageType = PublicCloudConstants.StorageType.GP2;
     di.volumeSize = 100;
     di.numVolumes = 2;
-    userIntent.deviceInfo = di;
+
+    TestUtils.initUserIntent(userIntent, p, i.getInstanceTypeCode(), di, "demo-access");
+
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
@@ -2026,8 +2260,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testUniverseUpdateChangeInstanceTypeFail() {
     Universe u = setUpUniverse();
-    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType = "newInstanceType";
-    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags = Map.of("foo", "bar");
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .setInstanceType("newInstanceType")
+        .setInstanceTags(Map.of("foo", "bar"));
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result =
         assertPlatformException(
@@ -2040,8 +2275,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testUniverseUpdateChangeVolumeSizeFail() {
     Universe u = setUpUniverse();
-    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
-    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags = Map.of("foo", "bar");
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize++)
+        .setInstanceTags(Map.of("foo", "bar"));
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result =
         assertPlatformException(
@@ -2067,7 +2303,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
               universe.setUniverseDetails(universeDetails);
             });
     u = addNode(u);
-    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize++);
     JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -2078,7 +2315,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   public void testUniverseUpdateChangeNumVolumesFail() {
     Universe u = setUpUniverse();
     u = addNode(u);
-    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.numVolumes++);
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
     Result result =
@@ -2113,6 +2351,68 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
     assertErrorResponse(result, "Cannot change master gflags for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeGFlagsErrorRedactsLdapGFlags() {
+    Universe u = setUpUniverseWithLdapGFlags();
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(),
+            Map.of(
+                "ycql_ldap_bind_passwd", "dummy-new-pass", GFlagsUtil.YSQL_HBA_CONF_CSV, LDAP_HBA));
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertErrorResponse(result, "Cannot change tserver gflags for existing node");
+    String body = contentAsString(result);
+    for (String secret : List.of("dummy-bind-pass", "dummy-new-pass", "dummy-hba-pass")) {
+      assertFalse(body, body.contains(secret));
+    }
+    assertTrue(body, body.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
+  }
+
+  @Test
+  public void testUniverseUpdateFipsGFlagDisabledFail() {
+    Universe u = setUpUniverse();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), univ -> univ.getUniverseDetails().fipsEnabled = true);
+    for (String value : List.of("false", "True", "1")) {
+      u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+          SpecificGFlags.construct(
+              Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, value));
+      String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+      JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+      assertErrorResponse(result, "FIPS enabled universe");
+    }
+  }
+
+  @Test
+  public void testUniverseUpdateKeepsStoredFipsGFlagValue() {
+    Universe u = setUpUniverse();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().fipsEnabled = true;
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+            });
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    // Unchanged gflags pass the FIPS check and reach the next validation.
+    assertErrorResponse(result, "No changes that could be applied by EditUniverse");
   }
 
   @Test
@@ -2159,6 +2459,59 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     return setUpUniverse(CloudType.aws);
   }
 
+  private Universe setUpUniverseWithLdapGFlags() {
+    Universe u = setUpUniverse();
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ ->
+            univ.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                SpecificGFlags.construct(
+                    Collections.emptyMap(),
+                    Map.of(
+                        "ycql_ldap_bind_passwd",
+                        "dummy-bind-pass",
+                        GFlagsUtil.YSQL_HBA_CONF_CSV,
+                        LDAP_HBA)));
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-ovr-pass\n";
+  private static final String K8S_AZ_OVERRIDES =
+      "gflags:\n  master:\n    ycql_ldap_bind_passwd: dummy-az-pass\n";
+
+  private Universe setUpUniverseWithK8sOverrides() {
+    Universe u = setUpUniverse();
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.universeOverrides = K8S_OVERRIDES;
+          intent.azOverrides =
+              new HashMap<>(Map.of("az-1", K8S_AZ_OVERRIDES, "az-2", K8S_AZ_OVERRIDES));
+        });
+  }
+
+  private void enableGFlagsSensitiveDataApiRedaction() {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+  }
+
+  private UserIntent storedPrimaryIntent(Universe u) {
+    return Universe.getOrBadRequest(u.getUniverseUUID())
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent;
+  }
+
+  // Binds a configure response as the edit and read replica create APIs bind their requests.
+  private UniverseConfigureTaskParams bindConfigureResponse(String body, Universe u) {
+    return UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+        Json.fromJson(Json.parse(body), UniverseConfigureTaskParams.class),
+        Universe.getOrBadRequest(u.getUniverseUUID()),
+        UniverseConfigureTaskParams.class);
+  }
+
   private Universe setUpUniverse(CloudType providerType) {
     Provider p =
         Provider.create(
@@ -2184,9 +2537,13 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             universe -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-              userIntent.instanceType = i.getInstanceTypeCode();
               userIntent.regionList = Collections.singletonList(r.getUuid());
-              userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+              TestUtils.existingProviderInitializer(
+                      u.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100))
+                  .setInstanceType(i.getInstanceTypeCode());
+
               PlacementInfoUtil.updateUniverseDefinition(
                   universeDetails,
                   customer.getId(),
@@ -2231,27 +2588,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
-    userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = "c5.large";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+    TestUtils.initUserIntent(
+        userIntent, provider, "c5.large", ApiUtils.getDummyDeviceInfo(1, 100), "demo-access");
+
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, true));
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
     mutator.accept(udtp);
     udtp.setUniverseUUID(u.getUniverseUUID());
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(udtp);
-    if (udtp.getPrimaryCluster().userIntent.instanceTags.size() > 0) {
+    if (udtp.getPrimaryCluster().userIntent.getInstanceTagsForProvider(provider.getUuid()).size()
+        > 0) {
       ArrayNode clusters = (ArrayNode) bodyJson.get("clusters");
       ObjectNode cluster = (ObjectNode) clusters.get(0);
       ArrayNode instanceTags = Json.newArray();
+
       udtp.getPrimaryCluster()
           .userIntent
-          .instanceTags
+          .getInstanceTagsForProvider(provider.getUuid())
           .entrySet()
           .forEach(
               entry -> {
@@ -2263,7 +2621,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     }
     InstanceType.upsert(
         provider.getUuid(),
-        udtp.getPrimaryCluster().userIntent.instanceType,
+        udtp.getPrimaryCluster().userIntent.getBaseInstanceType(provider.getUuid()),
         10,
         5.5,
         new InstanceType.InstanceTypeDetails());
@@ -2298,15 +2656,25 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
-          userIntent.instanceType = instanceType;
-          userIntent.provider =
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
-          userIntent.providerType = storageType.getCloudType();
+
           DeviceInfo di = new DeviceInfo();
           di.volumeSize = diskSize;
           di.numVolumes = 2;
           di.storageType = storageType;
-          userIntent.deviceInfo = di;
+
+          ProviderInitializer providerInitializer =
+              TestUtils.getProviderInitializerForTests(
+                      userIntent,
+                      universe
+                          .getUniverseDetails()
+                          .getPrimaryCluster()
+                          .userIntent
+                          .maybeGetSingleProviderUUID()
+                          .get())
+                  .setProviderType(storageType.getCloudType())
+                  .setInstanceType(instanceType)
+                  .setDeviceInfo(di);
+
           universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };

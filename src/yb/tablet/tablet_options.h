@@ -94,6 +94,7 @@ struct TabletInitData {
   TabletOptions tablet_options;
   MutableTabletOptions mutable_tablet_options;
   std::string log_prefix_suffix;
+  TabletContext* tablet_context = nullptr;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context = nullptr;
@@ -102,6 +103,7 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider;
+  IsTransactionalXClusterTargetProvider is_transactional_xcluster_target_provider = nullptr;
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;
@@ -111,7 +113,12 @@ struct TabletInitData {
   AutoFlagsManagerBase* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;
+  // Backs the tablet's serial token for intent SST file cleanup and for the regular DB flushes
+  // requested by the intents DB flush filter. Required when the tablet has a transaction
+  // participant.
+  ThreadPool* intent_cleanup_pool = nullptr;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
+  std::shared_ptr<TierMigrationHooks> tier_migration_hooks;
   client::YBMetaDataCache* metadata_cache;
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;
@@ -119,6 +126,7 @@ struct TabletInitData {
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
   VectorIndexCompactionTokenProvider vector_index_compaction_token_provider = {};
   hnsw::BlockCachePtr vector_index_block_cache = {};
+  std::function<void(const RaftGroupMetadata&)> schedule_tablet_metadata_validation = nullptr;
 };
 
 } // namespace tablet

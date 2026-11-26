@@ -17,11 +17,17 @@ import org.apache.commons.lang3.ObjectUtils;
 public class ProxyConfigUpdateParams extends UpgradeTaskParams {
 
   @Override
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
+
+  @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
     boolean changed = false;
     for (Cluster cluster : this.clusters) {
-      Util.validateSpecificationsIfPresent(cluster.userIntent.providerSpecifications, true);
+      Util.validateSpecificationsIfPresent(
+          cluster.userIntent.dedicatedNodes, cluster.userIntent.providerSpecifications, true);
       cluster.validateProxyConfig(cluster.userIntent, universe.getNodesInCluster(cluster.uuid));
       UserIntent curIntent = universe.getCluster(cluster.uuid).userIntent;
       UserIntent newIntent = cluster.userIntent;

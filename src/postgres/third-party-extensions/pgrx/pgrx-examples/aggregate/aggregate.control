@@ -1,5 +1,5 @@
 comment = 'aggregate:  Created by pgrx'
 default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/aggregate'
+module_pathname = 'aggregate'
 relocatable = false
 superuser = false

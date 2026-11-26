@@ -10,12 +10,15 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesDeserializer;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume;
@@ -91,8 +94,10 @@ public class UniverseImporter {
   }
 
   public void setTserverVolumeSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo;
+        userIntent.getBaseDeviceInfo(userIntent.maybeGetSingleProviderUUID().get());
     if (clusterDeviceInfo == null) {
       log.debug("No device info found for universe {}", universe.getUniverseUUID());
       return;
@@ -112,7 +117,11 @@ public class UniverseImporter {
 
   public void setReadReplicaTserverVolume(
       ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
-    com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo = cluster.userIntent.deviceInfo;
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo =
+        userIntent.getBaseDeviceInfo(userIntent.maybeGetSingleProviderUUID().get());
+
     if (clusterDeviceInfo == null) {
       log.debug("No device info found for read replica cluster {}", cluster.uuid);
       return;
@@ -185,8 +194,12 @@ public class UniverseImporter {
   }
 
   public void setMasterVolumeSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     com.yugabyte.yw.models.helpers.DeviceInfo deviceInfo =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo;
+        userIntent.getBaseDeviceInfo(
+            userIntent.maybeGetSingleProviderUUID().get(), ServerType.MASTER);
+
     if (deviceInfo == null) {
       log.debug("No master device info found for universe {}", universe.getUniverseUUID());
       return;
@@ -295,6 +308,35 @@ public class UniverseImporter {
                 })
             .collect(Collectors.toList()));
     spec.setPlacementInfo(placementInfo);
+  }
+
+  /**
+   * Mirrors the universe's encryption at rest state onto the CR. {@code kmsConfig} names the
+   * KMSConfig CR of the config the universe's key is held under - derived from the KMS config name
+   * exactly as {@link OperatorUtils#createKMSConfigCr} derives the CR it creates - so that the
+   * reconciler reads the imported universe as already being in the state the spec asks for. When
+   * EAR was turned off but a key remains, {@code enabled} is false and the association is kept so
+   * it can be turned back on.
+   */
+  public void setEncryptionAtRestSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    UUID kmsConfigUUID = OperatorUtils.getUniverseKmsConfigUuid(universe);
+    if (kmsConfigUUID == null) {
+      log.debug("No KMS config found for universe {}", universe.getUniverseUUID());
+      return;
+    }
+    KmsConfig kmsConfig = KmsConfig.get(kmsConfigUUID);
+    if (kmsConfig == null) {
+      log.warn(
+          "KMS config {} of universe {} no longer exists, skipping encryption at rest",
+          kmsConfigUUID,
+          universe.getUniverseUUID());
+      return;
+    }
+    EncryptionAtRestConfig earConfig = universe.getUniverseDetails().encryptionAtRestConfig;
+    EncryptionAtRest ear = new EncryptionAtRest();
+    ear.setKmsConfig(OperatorUtils.kubernetesCompatName(kmsConfig.getName()));
+    ear.setEnabled(earConfig != null && earConfig.encryptionAtRestEnabled);
+    spec.setEncryptionAtRest(ear);
   }
 
   public void setAzDeviceInfoOverridesSpecFromUniverse(YBUniverseSpec spec, Universe universe) {

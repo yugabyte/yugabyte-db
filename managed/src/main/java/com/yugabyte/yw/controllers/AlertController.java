@@ -1277,6 +1277,8 @@ public class AlertController extends AuthenticatedController {
       alert.setLabel(AFFECTED_NODE_NAMES, "node1 node2 node3");
       alert.setLabel(AFFECTED_NODE_ADDRESSES, "1.2.3.1 1.2.3.2 1.2.3.3");
       alert.setLabel(AFFECTED_NODE_IDENTIFIERS, "node1 node2 node3");
+    } else if (alertTemplateDescription.getLabels().containsKey(AFFECTED_NODE_ADDRESSES)) {
+      alert.setLabel(AFFECTED_NODE_ADDRESSES, "1.2.3.1:9070 1.2.3.2:9070");
     }
     if (alertTemplateDescription.getLabels().containsKey(AFFECTED_INSTANCE_ADDRS)) {
       alert.setLabel(AFFECTED_INSTANCE_ADDRS, "https://10.150.0.0,https://10.150.0.1");

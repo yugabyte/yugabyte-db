@@ -39,6 +39,7 @@ import io.ebean.PagedList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
@@ -48,6 +49,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,9 +60,9 @@ import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 import play.libs.Json;
 
 @Entity
@@ -77,8 +79,8 @@ public class CustomerConfig extends Model {
   public static final String PASSWORD_POLICY = "password policy";
   public static final String CALLHOME_PREFERENCES = "callhome level";
 
-  // Maps array field name → the identity key within each element used to match originals on update.
-  public static final Map<String, String> ARRAY_IDENTITY_FIELDS =
+  // Maps array field name → the keys within each element used to match originals on update.
+  public static final Map<String, List<String>> ARRAY_IDENTITY_FIELDS =
       CustomerConfigConsts.STORAGE_CONFIG_ARRAY_MERGE_FIELDS;
 
   public enum ConfigType {
@@ -110,7 +112,13 @@ public class CustomerConfig extends Model {
     Active,
 
     @EnumValue("QueuedForDeletion")
-    QueuedForDeletion
+    QueuedForDeletion,
+
+    // Created through the v2 API and waiting for its storage check (the ValidateStorageConfig
+    // task), which makes it Active or deletes it. Like a config queued for deletion, it can't be
+    // used for backups.
+    @EnumValue("Validating")
+    Validating
   }
 
   @Id
@@ -156,7 +164,8 @@ public class CustomerConfig extends Model {
   private ObjectNode data;
 
   @ApiModelProperty(
-      value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+      value =
+          "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
       accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
@@ -168,6 +177,15 @@ public class CustomerConfig extends Model {
   @ApiModelProperty(hidden = true)
   private boolean isKubernetesOperatorControlled = false;
 
+  // Advanced on every Ebean save/update; bulk updates set it themselves. The revision of a storage
+  // config in the v2 API: its ETag, and what an edit's task checks before applying the edit. Not
+  // part of the v1 config JSON.
+  @WhenModified
+  @Column(nullable = false)
+  @JsonIgnore
+  @ApiModelProperty(hidden = true)
+  private Date updateTime;
+
   public void setIsKubernetesOperatorControlled(boolean isKubernetesOperatorControlled) {
     this.isKubernetesOperatorControlled = isKubernetesOperatorControlled;
     this.save();
@@ -175,10 +193,18 @@ public class CustomerConfig extends Model {
 
   public static final Finder<UUID, CustomerConfig> find = new Finder<>(CustomerConfig.class) {};
 
+  /**
+   * A page of the customer's configs, without those still being checked (Validating): their state
+   * is unknown to older clients, and the config can't be used until its check passes.
+   */
   public static PagedList<CustomerConfig> getPagedList(
       UUID customerUUID, NormalizedPaginationSpec normalized) {
     ExpressionList<CustomerConfig> expr =
-        CustomerConfig.find.query().where().eq("customer_uuid", customerUUID);
+        CustomerConfig.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .ne("state", ConfigState.Validating);
     String order = normalized.order();
     String orderBy = String.format("coalesce(lower(name), '') %s, config_uuid %s", order, order);
     return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
@@ -232,8 +258,18 @@ public class CustomerConfig extends Model {
     return customerConfig;
   }
 
+  /**
+   * The customer's configs, without those still being checked (Validating): their state is unknown
+   * to older v1 clients, which fail to read a list that has one, and the config can't be used until
+   * its check passes.
+   */
   public static List<CustomerConfig> getAll(UUID customerUUID) {
-    return CustomerConfig.find.query().where().eq("customer_uuid", customerUUID).findList();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .ne("state", ConfigState.Validating)
+        .findList();
   }
 
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
@@ -306,6 +342,11 @@ public class CustomerConfig extends Model {
     return getConfigs(customerUUIDs, ConfigType.ALERTS, ALERTS_PREFERENCES);
   }
 
+  /** Returns the alert configs of all customers. */
+  public static List<CustomerConfig> getAllAlertConfigs() {
+    return getConfigs(ConfigType.ALERTS, ALERTS_PREFERENCES);
+  }
+
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
     return getConfig(customerUUID, ConfigType.ALERTS, SMTP_INFO);
   }
@@ -314,14 +355,17 @@ public class CustomerConfig extends Model {
     return getConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY);
   }
 
+  private static ExpressionList<CustomerConfig> configsQuery(ConfigType type, String name) {
+    return CustomerConfig.find.query().where().eq("type", type.toString()).eq("name", name);
+  }
+
   public static CustomerConfig getConfig(UUID customerUUID, ConfigType type, String name) {
-    return CustomerConfig.find
-        .query()
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("type", type.toString())
-        .eq("name", name)
-        .findOne();
+    return configsQuery(type, name).eq("customer_uuid", customerUUID).findOne();
+  }
+
+  /** Returns the configs of the given type and name of all customers. */
+  public static List<CustomerConfig> getConfigs(ConfigType type, String name) {
+    return configsQuery(type, name).findList();
   }
 
   public static List<CustomerConfig> getConfigs(
@@ -329,13 +373,7 @@ public class CustomerConfig extends Model {
     if (CollectionUtils.isEmpty(customerUUIDs)) {
       return Collections.emptyList();
     }
-    return CustomerConfig.find
-        .query()
-        .where()
-        .in("customer_uuid", customerUUIDs)
-        .eq("type", type.toString())
-        .eq("name", name)
-        .findList();
+    return configsQuery(type, name).in("customer_uuid", customerUUIDs).findList();
   }
 
   public static List<CustomerConfig> getAllStorageConfigsQueuedForDeletion(UUID customerUUID) {
@@ -348,6 +386,47 @@ public class CustomerConfig extends Model {
             .eq("state", ConfigState.QueuedForDeletion)
             .findList();
     return configList;
+  }
+
+  /** Returns the storage configs of all customers in the given state. */
+  public static List<CustomerConfig> getAllStorageConfigsInState(ConfigState state) {
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("type", ConfigType.STORAGE)
+        .eq("state", state)
+        .findList();
+  }
+
+  /**
+   * Moves the config from Validating to the given state in one statement, so that a state set
+   * meanwhile by another request (e.g. QueuedForDeletion) is kept. Returns whether it was moved.
+   */
+  public static boolean updateStateIfValidating(UUID configUUID, ConfigState newState) {
+    return CustomerConfig.find
+            .query()
+            .asUpdate()
+            .set("state", newState)
+            .set("updateTime", new Date())
+            .where()
+            .idEq(configUUID)
+            .eq("state", ConfigState.Validating)
+            .update()
+        > 0;
+  }
+
+  /**
+   * Deletes the config if it is still Validating, in one statement, so that a config another
+   * request moved out of that state meanwhile is kept. Returns whether it was deleted.
+   */
+  public static boolean deleteIfValidating(UUID configUUID) {
+    return CustomerConfig.find
+            .query()
+            .where()
+            .idEq(configUUID)
+            .eq("state", ConfigState.Validating)
+            .delete()
+        > 0;
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
@@ -395,6 +474,15 @@ public class CustomerConfig extends Model {
     return callhomeConfig;
   }
 
+  /**
+   * Whether the config can be used: not still being checked (Validating), which may yet be deleted,
+   * nor queued for deletion.
+   */
+  @JsonIgnore
+  public boolean isActive() {
+    return state == ConfigState.Active;
+  }
+
   public void updateState(ConfigState newState) {
     if (this.state == newState) {
       LOG.debug("Invalid State transition as no change requested");
@@ -425,6 +513,22 @@ public class CustomerConfig extends Model {
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  /**
+   * The data as {@link #getDataObject} parses it, but read with the shared mapper, which ignores
+   * unknown properties: data saved by an older YBA may carry a field that was removed since.
+   */
+  @JsonIgnore
+  public CustomerConfigData getDataObjectLenient() {
+    Class<? extends CustomerConfigData> dataClass = getDataClass(getType(), getName());
+    if (dataClass == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Unknown data type in configuration data. Type %s, name %s.", getType(), getName()));
+    }
+    return Json.fromJson(getData(), dataClass);
   }
 
   // TODO: Should be removed later if we remove "ObjectNode data" and use

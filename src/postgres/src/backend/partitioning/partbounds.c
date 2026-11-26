@@ -40,6 +40,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
+
 /*
  * When qsort'ing partition bounds after reading from the catalog, each bound
  * is represented with one of the following structs.
@@ -3272,6 +3276,13 @@ check_default_partition_contents(Relation parent, Relation default_rel,
 	List	   *def_part_constraints;
 	List	   *all_parts;
 	ListCell   *lc;
+
+	/*
+	 * YB: For an xCluster automatic mode target, the source has already done this
+	 * scan, so we can skip it here.
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		return;
 
 	new_part_constraints = (new_spec->strategy == PARTITION_STRATEGY_LIST)
 		? get_qual_for_list(parent, new_spec)

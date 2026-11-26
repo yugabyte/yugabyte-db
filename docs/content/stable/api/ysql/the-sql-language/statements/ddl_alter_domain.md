@@ -57,5 +57,5 @@ yugabyte=# DROP DOMAIN idx_new;
 
 ## See also
 
-- [`CREATE DOMAIN`](../ddl_create_domain)
-- [`DROP DOMAIN`](../ddl_drop_domain)
+- [CREATE DOMAIN](../ddl_create_domain)
+- [DROP DOMAIN](../ddl_drop_domain)

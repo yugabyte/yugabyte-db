@@ -66,8 +66,8 @@ To learn how YugabyteDB handles conflicts between concurrent transactions, see [
 
 As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior.
 
-{{<lead link="../../explore/transactions/explicit-locking">}}
-To learn about the different locking mechanism, see [Explicit locking](../../explore/transactions/explicit-locking).
+{{<lead link="concurrency-control/">}}
+To learn about the different locking mechanisms, see [Concurrency control](concurrency-control/).
 {{</lead>}}
 
 ## Transaction priorities

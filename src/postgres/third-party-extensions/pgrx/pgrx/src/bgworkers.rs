@@ -76,7 +76,8 @@ impl BackgroundWorker {
             feature = "pg14",
             feature = "pg15",
             feature = "pg16",
-            feature = "pg17"
+            feature = "pg17",
+            feature = "pg18"
         ))]
         const LEN: usize = 96;
 
@@ -110,7 +111,10 @@ impl BackgroundWorker {
     #[must_use = "you aren't getting the same bool back if you call this twice"]
     pub fn sighup_received() -> bool {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         // toggle the bool to false, returning whatever it was
         GOT_SIGHUP.swap(false, Ordering::SeqCst)
@@ -122,7 +126,10 @@ impl BackgroundWorker {
     #[must_use = "you aren't getting the same bool back if you call this twice"]
     pub fn sigterm_received() -> bool {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         // toggle the bool to false, returning whatever it was
         GOT_SIGTERM.swap(false, Ordering::SeqCst)
@@ -134,7 +141,10 @@ impl BackgroundWorker {
     #[must_use = "you aren't getting the same bool back if you call this twice"]
     pub fn sigint_received() -> bool {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         // toggle the bool to false, returning whatever it was
         GOT_SIGINT.swap(false, Ordering::SeqCst)
@@ -146,7 +156,10 @@ impl BackgroundWorker {
     #[must_use = "you aren't getting the same bool back if you call this twice"]
     pub fn sigchld_received() -> bool {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         // toggle the bool to false, returning whatever it was
         GOT_SIGCHLD.swap(false, Ordering::SeqCst)
@@ -157,7 +170,10 @@ impl BackgroundWorker {
     /// Returns true if we're still supposed to be alive and haven't received a SIGTERM
     pub fn wait_latch(timeout: Option<Duration>) -> bool {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         let wakeup_flags = match timeout {
             Some(t) => wait_latch(
@@ -174,7 +190,10 @@ impl BackgroundWorker {
     /// Is this `BackgroundWorker` allowed to continue?
     pub fn worker_continue() -> bool {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         pg_sys::WL_POSTMASTER_DEATH as i32 != 0
     }
@@ -183,7 +202,10 @@ impl BackgroundWorker {
     /// connect to via SPI
     pub fn connect_worker_to_spi(dbname: Option<&str>, username: Option<&str>) {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
         }
         let db = dbname.and_then(|rs| CString::new(rs).ok());
         let db: *const c_char = db.as_ref().map_or(std::ptr::null(), |i| i.as_ptr());
@@ -197,9 +219,36 @@ impl BackgroundWorker {
                 feature = "pg14",
                 feature = "pg15",
                 feature = "pg16",
-                feature = "pg17"
+                feature = "pg17",
+                feature = "pg18"
             ))]
             pg_sys::BackgroundWorkerInitializeConnection(db, user, 0);
+        };
+    }
+
+    /// Intended to be called once to indicate the database and user to use to
+    /// connect to via SPI
+    pub fn connect_worker_to_spi_by_oid(dboid: Option<pg_sys::Oid>, useroid: Option<pg_sys::Oid>) {
+        unsafe {
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
+        }
+
+        let dboid = dboid.unwrap_or(pg_sys::InvalidOid);
+        let useroid = useroid.unwrap_or(pg_sys::InvalidOid);
+
+        unsafe {
+            #[cfg(any(
+                feature = "pg13",
+                feature = "pg14",
+                feature = "pg15",
+                feature = "pg16",
+                feature = "pg17",
+                feature = "pg18"
+            ))]
+            pg_sys::BackgroundWorkerInitializeConnectionByOid(dboid, useroid, 0);
         };
     }
 
@@ -214,18 +263,57 @@ impl BackgroundWorker {
     /// ```
     pub fn attach_signal_handlers(wake: SignalWakeFlags) {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
             if wake.contains(SignalWakeFlags::SIGHUP) {
+                #[cfg(any(
+                    feature = "pg13",
+                    feature = "pg14",
+                    feature = "pg15",
+                    feature = "pg16",
+                    feature = "pg17"
+                ))]
                 pg_sys::pqsignal(pg_sys::SIGHUP as i32, Some(worker_spi_sighup));
+                #[cfg(feature = "pg18")]
+                pg_sys::pqsignal_be(pg_sys::SIGHUP as i32, Some(worker_spi_sighup));
             }
             if wake.contains(SignalWakeFlags::SIGTERM) {
+                #[cfg(any(
+                    feature = "pg13",
+                    feature = "pg14",
+                    feature = "pg15",
+                    feature = "pg16",
+                    feature = "pg17"
+                ))]
                 pg_sys::pqsignal(pg_sys::SIGTERM as i32, Some(worker_spi_sigterm));
+                #[cfg(feature = "pg18")]
+                pg_sys::pqsignal_be(pg_sys::SIGTERM as i32, Some(worker_spi_sigterm));
             }
             if wake.contains(SignalWakeFlags::SIGINT) {
+                #[cfg(any(
+                    feature = "pg13",
+                    feature = "pg14",
+                    feature = "pg15",
+                    feature = "pg16",
+                    feature = "pg17"
+                ))]
                 pg_sys::pqsignal(pg_sys::SIGINT as i32, Some(worker_spi_sigint));
+                #[cfg(feature = "pg18")]
+                pg_sys::pqsignal_be(pg_sys::SIGINT as i32, Some(worker_spi_sigint));
             }
             if wake.contains(SignalWakeFlags::SIGCHLD) {
+                #[cfg(any(
+                    feature = "pg13",
+                    feature = "pg14",
+                    feature = "pg15",
+                    feature = "pg16",
+                    feature = "pg17"
+                ))]
                 pg_sys::pqsignal(pg_sys::SIGCHLD as i32, Some(worker_spi_sigchld));
+                #[cfg(feature = "pg18")]
+                pg_sys::pqsignal_be(pg_sys::SIGCHLD as i32, Some(worker_spi_sigchld));
             }
             pg_sys::BackgroundWorkerUnblockSignals();
         }
@@ -237,7 +325,10 @@ impl BackgroundWorker {
         transaction_body: F,
     ) -> R {
         unsafe {
-            assert!(!pg_sys::MyBgworkerEntry.is_null(), "BackgroundWorker associated functions can only be called from a registered background worker");
+            assert!(
+                !pg_sys::MyBgworkerEntry.is_null(),
+                "BackgroundWorker associated functions can only be called from a registered background worker"
+            );
             pg_sys::SetCurrentStatementStartTimestamp();
             pg_sys::StartTransactionCommand();
             pg_sys::PushActiveSnapshot(pg_sys::GetTransactionSnapshot());
@@ -253,12 +344,13 @@ impl BackgroundWorker {
 
 unsafe extern "C-unwind" fn worker_spi_sighup(_signal_args: i32) {
     GOT_SIGHUP.store(true, Ordering::SeqCst);
-    pg_sys::ProcessConfigFile(pg_sys::GucContext::PGC_SIGHUP);
+    (&raw mut pg_sys::ConfigReloadPending).write_volatile(1);
     pg_sys::SetLatch(pg_sys::MyLatch);
 }
 
 unsafe extern "C-unwind" fn worker_spi_sigterm(_signal_args: i32) {
     GOT_SIGTERM.store(true, Ordering::SeqCst);
+    (&raw mut pg_sys::ShutdownRequestPending).write_volatile(1);
     pg_sys::SetLatch(pg_sys::MyLatch);
 }
 
@@ -271,6 +363,11 @@ unsafe extern "C-unwind" fn worker_spi_sigchld(_signal_args: i32) {
     GOT_SIGCHLD.store(true, Ordering::SeqCst);
     pg_sys::SetLatch(pg_sys::MyLatch);
 }
+
+/// Indicates that a [`DynamicBackgroundWorker`] could not be loaded.
+/// There's no reason why.
+#[derive(Debug, Clone, Copy)]
+pub struct DynamicBackgroundWorkerLoadError;
 
 /// Dynamic background worker handle
 pub struct DynamicBackgroundWorker {
@@ -444,7 +541,7 @@ impl BackgroundWorkerBuilder {
         BackgroundWorkerBuilder {
             bgw_name: name.to_string(),
             bgw_type: name.to_string(),
-            bgw_flags: BGWflags::empty(),
+            bgw_flags: BGWflags::BGWORKER_SHMEM_ACCESS, // required since Postgres 15
             bgw_start_time: BgWorkerStartTime::PostmasterStart,
             bgw_restart_time: None,
             bgw_library_name: name.to_string(),
@@ -601,7 +698,7 @@ impl BackgroundWorkerBuilder {
 
     /// Once properly configured, call `load_dynamic()` to get the BackgroundWorker registered and started dynamically.
     /// Start up might fail, e.g. if max_worker_processes is exceeded. In that case an Err is returned.
-    pub fn load_dynamic(self) -> Result<DynamicBackgroundWorker, ()> {
+    pub fn load_dynamic(self) -> Result<DynamicBackgroundWorker, DynamicBackgroundWorkerLoadError> {
         let mut bgw: pg_sys::BackgroundWorker = (&self).into();
         let mut handle: *mut pg_sys::BackgroundWorkerHandle = null_mut();
 
@@ -609,7 +706,7 @@ impl BackgroundWorkerBuilder {
         let success = unsafe { pg_sys::RegisterDynamicBackgroundWorker(&mut bgw, &mut handle) };
 
         if !success {
-            Err(())
+            Err(DynamicBackgroundWorkerLoadError)
         } else {
             Ok(DynamicBackgroundWorker { handle, notify_pid: bgw.bgw_notify_pid })
         }
@@ -621,14 +718,7 @@ impl BackgroundWorkerBuilder {
 /// the builder is useful for building this structure.
 impl<'a> From<&'a BackgroundWorkerBuilder> for pg_sys::BackgroundWorker {
     fn from(builder: &'a BackgroundWorkerBuilder) -> Self {
-        #[cfg(any(
-            feature = "pg13",
-            feature = "pg14",
-            feature = "pg15",
-            feature = "pg16",
-            feature = "pg17"
-        ))]
-        let bgw = pg_sys::BackgroundWorker {
+        pg_sys::BackgroundWorker {
             bgw_name: RpgffiChar::from(&builder.bgw_name[..]).0,
             bgw_type: RpgffiChar::from(&builder.bgw_type[..]).0,
             bgw_flags: builder.bgw_flags.bits(),
@@ -638,12 +728,12 @@ impl<'a> From<&'a BackgroundWorkerBuilder> for pg_sys::BackgroundWorker {
                 Some(d) => d.as_secs() as i32,
             },
             bgw_library_name: {
-                #[cfg(not(feature = "pg17"))]
+                #[cfg(not(any(feature = "pg17", feature = "pg18")))]
                 {
                     RpgffiChar::from(&builder.bgw_library_name[..]).0
                 }
 
-                #[cfg(feature = "pg17")]
+                #[cfg(any(feature = "pg17", feature = "pg18"))]
                 {
                     RpgffiChar1024::from(&builder.bgw_library_name[..]).0
                 }
@@ -653,9 +743,7 @@ impl<'a> From<&'a BackgroundWorkerBuilder> for pg_sys::BackgroundWorker {
             bgw_extra: RpgffiChar128::from(&builder.bgw_extra[..]).0,
             bgw_notify_pid: builder.bgw_notify_pid,
             bgw_oom_score_adj: RpgffiChar::from(&builder.bgw_oom_score_adj[..]).0,
-        };
-
-        bgw
+        }
     }
 }
 
@@ -679,14 +767,15 @@ fn wait_latch(timeout: libc::c_long, wakeup_flags: WLflags) -> i32 {
     feature = "pg14",
     feature = "pg15",
     feature = "pg16",
-    feature = "pg17"
+    feature = "pg17",
+    feature = "pg18"
 ))]
 type RpgffiChar = RpgffiChar96;
 
 #[allow(dead_code)]
 struct RpgffiChar64([c_char; 64]);
 
-impl<'a> From<&'a str> for RpgffiChar64 {
+impl From<&str> for RpgffiChar64 {
     fn from(string: &str) -> Self {
         let mut r = [0; 64];
         for (dest, src) in r.iter_mut().zip(string.as_bytes()) {
@@ -698,7 +787,7 @@ impl<'a> From<&'a str> for RpgffiChar64 {
 
 struct RpgffiChar96([c_char; 96]);
 
-impl<'a> From<&'a str> for RpgffiChar96 {
+impl From<&str> for RpgffiChar96 {
     fn from(string: &str) -> Self {
         let mut r = [0; 96];
         for (dest, src) in r.iter_mut().zip(string.as_bytes()) {
@@ -710,7 +799,7 @@ impl<'a> From<&'a str> for RpgffiChar96 {
 
 struct RpgffiChar128([c_char; 128]);
 
-impl<'a> From<&'a str> for RpgffiChar128 {
+impl From<&str> for RpgffiChar128 {
     fn from(string: &str) -> Self {
         let mut r = [0; 128];
         for (dest, src) in r.iter_mut().zip(string.as_bytes()) {
@@ -723,7 +812,7 @@ impl<'a> From<&'a str> for RpgffiChar128 {
 #[allow(dead_code)]
 struct RpgffiChar1024([c_char; 1024]);
 
-impl<'a> From<&'a str> for RpgffiChar1024 {
+impl From<&str> for RpgffiChar1024 {
     fn from(string: &str) -> Self {
         let mut r = [0; 1024];
         for (dest, src) in r.iter_mut().zip(string.as_bytes()) {

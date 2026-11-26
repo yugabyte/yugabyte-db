@@ -101,6 +101,13 @@ public class TestYsqlDump extends BasePgSQLTest {
    * -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
    */
 
+  /**
+   * Fixed key for the psql restrict/unrestrict meta-commands that ysql_dump now emits
+   * around plain-text dumps. Without it a random key is generated per run and the dump
+   * can never match the expected file.
+   */
+  public static final String RESTRICT_KEY = "test";
+
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
       " version [0-9]+[.][0-9]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
 
@@ -407,6 +414,39 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpAllSkipsYbSystem() throws Exception {
+    // The master creates yb_system once LISTEN/NOTIFY is enabled. A dump that drops or recreates
+    // it would break LISTEN/NOTIFY on the restore target.
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonFlag("ysql_yb_enable_listen_notify", "true");
+    });
+    BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
+    final String userDb = "dumpall_user_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE " + userDb);
+    }
+
+    File ysqlDumpAllExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dumpall");
+    File actual = new File(TestUtils.getClassResourceDir(getClass()),
+        "results/yb.orig.ysql_dumpall_skips_yb_system.out");
+    actual.getParentFile().mkdirs();
+    ProcessUtil.executeSimple(Arrays.asList(
+        ysqlDumpAllExec.toString(),
+        "-h", getPgHost(0),
+        "-p", Integer.toString(getPgPort(0)),
+        "-U", DEFAULT_PG_USER,
+        "--clean",
+        "-f", actual.toString()
+    ), "ysql_dumpall");
+
+    String dump = FileUtils.readFileToString(actual, StandardCharsets.UTF_8);
+    assertFalse("ysql_dumpall output references yb_system", dump.contains("yb_system"));
+    // The skip must not hide user databases from dropDBs() or dumpDatabases().
+    assertTrue("missing DROP of " + userDb, dump.contains("DROP DATABASE " + userDb + ";"));
+    assertTrue("missing CREATE of " + userDb, dump.contains("CREATE DATABASE " + userDb + " "));
+  }
+
+  @Test
   public void ysqlDumpColocatedDB() throws Exception {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
@@ -438,7 +478,6 @@ public class TestYsqlDump extends BasePgSQLTest {
   @Test
   public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
     restartClusterWithClusterBuilder(cb -> {
-      cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
       cb.addCommonTServerFlag("placement_cloud", "testCloud");
       cb.addCommonTServerFlag("placement_region", "testRegion");
       cb.perTServerFlags(Arrays.asList(
@@ -629,6 +668,37 @@ public class TestYsqlDump extends BasePgSQLTest {
         ownerStderr.contains("--rename-owner requires option -C/--create"));
   }
 
+  /**
+   * The guards emitted under --include-yb-metadata are psql meta-commands, and
+   * several are built into a TOC entry rather than written to the script. A
+   * non-plain archive would store those as text that pg_restore replays inside
+   * the restricted-mode region it brackets the script with, where psql rejects
+   * them -- so ysql_dump must refuse the combination.
+   */
+  @Test
+  public void ysqlDumpYbMetadataRequiresPlainFormat() throws Exception {
+    for (String format : Arrays.asList("c", "d", "t")) {
+      String metaStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+          "--include-yb-metadata",
+          "-F", format,
+          "-d", DEFAULT_PG_DATABASE));
+      assertTrue("Expected --include-yb-metadata to require --format=plain for -F" + format
+                 + ". Got: " + metaStderr,
+          metaStderr.contains("--include-yb-metadata can only be used with --format=plain"));
+
+      // --dump-role-checks requires --include-yb-metadata, so the same check
+      // catches it; the message names --include-yb-metadata either way.
+      String rolesStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+          "--include-yb-metadata",
+          "--dump-role-checks",
+          "-F", format,
+          "-d", DEFAULT_PG_DATABASE));
+      assertTrue("Expected --dump-role-checks to require --format=plain for -F" + format
+                 + ". Got: " + rolesStderr,
+          rolesStderr.contains("--include-yb-metadata can only be used with --format=plain"));
+    }
+  }
+
   /** Run ysql_dump expecting failure; return merged stdout+stderr. */
   private String runYsqlDumpExpectingFailure(List<String> extraArgs) throws Exception {
     int tserverIndex = 0;
@@ -761,7 +831,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
-      "-f", actual.toString()
+      "-f", actual.toString(),
+      "--restrict-key=" + RESTRICT_KEY
     ));
     if (includeYbMetadata == IncludeYbMetadata.ON) {
       args.add("--include-yb-metadata");

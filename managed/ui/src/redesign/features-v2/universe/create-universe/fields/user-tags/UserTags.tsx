@@ -49,7 +49,13 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', pt: 1, pb: 1.5 }}>
       <StyledSubText>
         {t('subText')}
-        <StyledLink>{t('learnMore')}</StyledLink>
+        <StyledLink
+          href="https://docs.yugabyte.com/stable/yugabyte-platform/scale-deployments/instance-tags/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t('learnMore')}
+        </StyledLink>
       </StyledSubText>
       <Box
         sx={{
@@ -64,7 +70,13 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
         {fields.map((field, index) => {
           return (
             <Box
-              sx={{ display: 'flex', flexDirection: 'row', gap: '8px', mb: 2, alignItems: 'end' }}
+              sx={{
+                display: 'flex',
+                flexDirection: 'row',
+                gap: '8px',
+                mb: 2,
+                alignItems: 'flex-start'
+              }}
               key={field.id}
             >
               <YBInputField
@@ -85,6 +97,9 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
               />
               <IconButton
                 color="default"
+                // Top-aligned so an inline error under an input doesn't shift the row; the offset
+                // centers the button on the 46px input (plus the 28px label block on the first row).
+                sx={{ mt: index === 0 ? '31px' : '3px' }}
                 data-testid={`UniverseNameField-RemoveButton${index}`}
                 onClick={() => remove(index)}
               >

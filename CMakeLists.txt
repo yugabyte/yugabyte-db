@@ -173,6 +173,10 @@ if("${YB_THIRDPARTY_DIR}" STREQUAL "")
 endif()
 # Remove trailing slash from YB_THIRDPARTY_DIR if it exists.
 string(REGEX REPLACE "/+$" "" YB_THIRDPARTY_DIR "${YB_THIRDPARTY_DIR}")
+# Write the resolved path back to the cache: the fallback above only sets a normal variable,
+# and tools such as build_postgres.py read YB_THIRDPARTY_DIR from CMakeCache.txt.
+set(YB_THIRDPARTY_DIR "${YB_THIRDPARTY_DIR}" CACHE INTERNAL
+    "Top-level directory of yugabyte-db-thirdparty checkout or pre-built location" FORCE)
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
@@ -902,6 +906,7 @@ set(YB_SUBDIR_NAMES
     server
     storage
     tablet
+    thin_client
     tools
     tserver
     util
@@ -928,7 +933,6 @@ if(APPLE)
   # runtime. Hard-linking the backend (libyb_pgbackend) or libpq would be a layering/bloat regression.
   yb_allow_flat_namespace_lookup(yb-cql)
   yb_allow_flat_namespace_lookup(yb_pgwrapper)
-  yb_allow_flat_namespace_lookup(yb_pgresult_util)
   # yb_pggate_util and yb_dockv have a mutual (circular) dependency that cannot be expressed as a
   # link edge between shared libraries, so yb_pggate_util resolves yb_dockv/yb_ash symbols at runtime.
   yb_allow_flat_namespace_lookup(yb_pggate_util)
@@ -956,6 +960,9 @@ yb_add_lto_target(yb-master-dynamic yb-server "yb-master;yb-tserver")
 # minute to link, so these LTO-enabled tests should only be enabled when debugging. An example of an
 # issue that requires debugging a test with LTO is #22191.
 # yb_add_lto_target(date_time-test date_time-test-lto "")
+#
+# Benchmarks get this automatically: ADD_YB_BENCHMARK adds <name>-lto with EXCLUDE_FROM_ALL, built
+# only on request (yb_build.sh --cxx-benchmark).
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph

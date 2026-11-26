@@ -221,6 +221,9 @@ public class XClusterConfigController extends AuthenticatedController {
     xClusterCreatePrecheck.xClusterCreatePreChecks(
         requestedTableInfoList,
         createFormData.configType,
+        // The v1 xCluster create API cannot create configs in automatic DDL mode; only DR configs
+        // are created in automatic DDL mode.
+        false /* automaticDdlMode */,
         sourceUniverse,
         sourceTableInfoList,
         targetUniverse,
@@ -246,7 +249,9 @@ public class XClusterConfigController extends AuthenticatedController {
         sourceTableIdTargetTableIdMap,
         ybService,
         createFormData.bootstrapParams,
-        null /* currentReplicationGroupName */);
+        null /* currentReplicationGroupName */,
+        // The v1 xCluster create API cannot create configs in automatic DDL mode.
+        false /* matviewSupported */);
 
     if (createFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -459,17 +464,25 @@ public class XClusterConfigController extends AuthenticatedController {
 
     XClusterConfigTaskParams params;
     if (editFormData.tables != null) {
-      params =
-          getSetTablesTaskParams(
-              ybService,
-              xClusterConfig,
-              sourceUniverse,
-              targetUniverse,
-              editFormData.tables,
-              editFormData.bootstrapParams,
-              editFormData.autoIncludeIndexTables,
-              editFormData.dryRun,
-              softwareUpgradeHelper);
+      if (editFormData.dryRun) {
+        // Dry run only validates: run the (RPC-heavy) prechecks synchronously and return. The
+        // computed params are discarded since no task is submitted.
+        getSetTablesTaskParams(
+            ybService,
+            xClusterConfig,
+            sourceUniverse,
+            targetUniverse,
+            editFormData.tables,
+            editFormData.bootstrapParams,
+            editFormData.autoIncludeIndexTables,
+            true /* dryRun */,
+            true /* validateRequestedChange */);
+        return YBPSuccess.withMessage("The pre-checks are successful");
+      }
+      // Defer the table-set computation (and its universe RPCs and bookkeeping DB writes) to the
+      // EditXClusterConfig task, where it runs under the source/target universe locks. Callers
+      // that want synchronous validation feedback should use the dryRun path above.
+      params = new XClusterConfigTaskParams(xClusterConfig, editFormData);
     } else {
       // If renaming, verify xCluster replication with same name (between same source/target)
       // does not already exist.
@@ -546,7 +559,7 @@ public class XClusterConfigController extends AuthenticatedController {
         xClusterConfig, editForm, databaseIdsToAdd, databaseIdsToRemove);
   }
 
-  static XClusterConfigTaskParams getSetTablesTaskParams(
+  public static XClusterConfigTaskParams getSetTablesTaskParams(
       YBClientService ybService,
       XClusterConfig xClusterConfig,
       Universe sourceUniverse,
@@ -555,7 +568,7 @@ public class XClusterConfigController extends AuthenticatedController {
       @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       boolean autoIncludeIndexTables,
       boolean dryRun,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      boolean validateRequestedChange) {
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList = null;
     Map<String, String> sourceTableIdTargetTableIdMap = Collections.emptyMap();
@@ -566,9 +579,11 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> tableIdsToRemove = tableIdsToAddTableIdsToRemovePair.getSecond();
     log.info("tableIdsToAdd are {}; tableIdsToRemove are {}", tableIdsToAdd, tableIdsToRemove);
 
-    // For backward compatibility; if table is in replication, no need for bootstrapping.
-    xClusterConfig.updateNeedBootstrapForTables(
-        xClusterConfig.getTableIdsWithReplicationSetup(), false /* needBootstrap */);
+    if (!dryRun) {
+      // For backward compatibility; if table is in replication, no need for bootstrapping.
+      xClusterConfig.updateNeedBootstrapForTables(
+          xClusterConfig.getTableIdsWithReplicationSetup(), false /* needBootstrap */);
+    }
 
     if (!tableIdsToAdd.isEmpty()) {
       // Add table to xCluster configs used for DR must have bootstrapParams.
@@ -644,10 +659,22 @@ public class XClusterConfigController extends AuthenticatedController {
         }
       }
 
+      // Materialized views are replicated only in automatic DDL mode on supported YBDB versions.
+      XClusterUtil.checkMatviewReplicationSupported(
+          requestedTableInfoList,
+          Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode()),
+          sourceUniverse,
+          targetUniverse);
+      boolean matviewSupported =
+          XClusterUtil.isMatviewReplicationSupported(
+              Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode()),
+              sourceUniverse,
+              targetUniverse);
+
       // Make sure only supported relations types are passed in by the user.
       Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
           XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
-              requestedTableInfoList);
+              requestedTableInfoList, matviewSupported);
       if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -655,7 +682,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 "Only the following relation types are supported for xCluster replication: %s; The"
                     + " following tables have different relation types or is a colocated child"
                     + " table: %s",
-                XClusterConfigTaskBase.X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET,
+                XClusterConfigTaskBase.getSupportedTableRelationTypes(matviewSupported),
                 tableIdsPartitionedByIsXClusterSupported.get(false)));
       }
 
@@ -726,7 +753,8 @@ public class XClusterConfigController extends AuthenticatedController {
           sourceTableIdTargetTableIdMap,
           ybService,
           bootstrapParams,
-          xClusterConfig.getReplicationGroupName());
+          xClusterConfig.getReplicationGroupName(),
+          matviewSupported);
 
       if (!dryRun) {
         // Save the to-be-added tables in the DB.
@@ -753,22 +781,27 @@ public class XClusterConfigController extends AuthenticatedController {
       tableIdsToRemove.addAll(droppedTables);
     }
 
-    if (tableIdsToAdd.isEmpty() && tableIdsToRemove.isEmpty()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "No change in the xCluster config table list is detected");
-    }
-    Set<String> tableIdsToRemoveWithReplicationSetup =
-        tableIdsToRemove.stream()
-            .filter(tableId -> xClusterConfig.getTableIdsWithReplicationSetup().contains(tableId))
-            .collect(Collectors.toSet());
+    // These two checks validate the originally-requested change. They compare against the current
+    // (mutable) config table set, so they must only be enforced on the initial attempt: a retry
+    // recomputes the diff against a partially-applied config and would otherwise spuriously fail.
+    if (validateRequestedChange) {
+      if (tableIdsToAdd.isEmpty() && tableIdsToRemove.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No change in the xCluster config table list is detected");
+      }
+      Set<String> tableIdsToRemoveWithReplicationSetup =
+          tableIdsToRemove.stream()
+              .filter(tableId -> xClusterConfig.getTableIdsWithReplicationSetup().contains(tableId))
+              .collect(Collectors.toSet());
 
-    if (xClusterConfig.getTableIdsWithReplicationSetup().size() + tableIdsToAdd.size()
-        == tableIdsToRemoveWithReplicationSetup.size()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "The operation to remove tables from replication config will remove all the "
-              + "tables in replication which is not allowed; if you want to delete "
-              + "replication for all of them, please delete the replication config");
+      if (xClusterConfig.getTableIdsWithReplicationSetup().size() + tableIdsToAdd.size()
+          == tableIdsToRemoveWithReplicationSetup.size()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "The operation to remove tables from replication config will remove all the "
+                + "tables in replication which is not allowed; if you want to delete "
+                + "replication for all of them, please delete the replication config");
+      }
     }
 
     // Todo: Remove reliance on passing editFormData to the task params.
@@ -947,7 +980,8 @@ public class XClusterConfigController extends AuthenticatedController {
         ybService,
         bootstrapParams,
         xClusterConfig.getReplicationGroupName(),
-        true /* isRestartReplication */);
+        true /* isRestartReplication */,
+        XClusterUtil.isMatviewReplicationSupported(xClusterConfig));
 
     return new XClusterConfigTaskParams(
         xClusterConfig,
@@ -1784,7 +1818,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.getProducerCertsDir(
-                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider)));
+                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent)));
       }
     } catch (IllegalArgumentException e) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
@@ -1799,7 +1833,8 @@ public class XClusterConfigController extends AuthenticatedController {
       Map<String, String> sourceTableIdTargetTableIdMap,
       YBClientService ybService,
       @Nullable BootstrapParams bootstrapParams,
-      @Nullable String currentReplicationGroupName) {
+      @Nullable String currentReplicationGroupName,
+      boolean matviewSupported) {
     xClusterBootstrappingPreChecks(
         requestedTableInfoList,
         sourceTableInfoList,
@@ -1809,7 +1844,8 @@ public class XClusterConfigController extends AuthenticatedController {
         ybService,
         bootstrapParams,
         currentReplicationGroupName,
-        false /* isRestartReplication */);
+        false /* isRestartReplication */,
+        matviewSupported);
   }
 
   public static void xClusterBootstrappingPreChecks(
@@ -1821,7 +1857,8 @@ public class XClusterConfigController extends AuthenticatedController {
       YBClientService ybService,
       @Nullable BootstrapParams bootstrapParams,
       @Nullable String currentReplicationGroupName,
-      boolean isRestartReplication) {
+      boolean isRestartReplication,
+      boolean matviewSupported) {
 
     Set<String> requestedTableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     // If some tables do not exist on the target universe, bootstrapping is required.
@@ -1919,7 +1956,8 @@ public class XClusterConfigController extends AuthenticatedController {
                         sourceTableInfoList.stream()
                             .filter(
                                 tableInfo ->
-                                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                                    XClusterConfigTaskBase.isXClusterSupported(
+                                            tableInfo, matviewSupported)
                                         && tableInfo
                                             .getNamespace()
                                             .getId()

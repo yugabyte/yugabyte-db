@@ -8,7 +8,6 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
-import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
@@ -37,15 +36,20 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.diagnostics.ThreadDumpPublisher;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.idempotency.IdempotencyService;
+import com.yugabyte.yw.common.logging.LegacyLogArchiveCleanup;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
@@ -73,7 +77,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.fips.FipsStatus;
@@ -128,6 +132,7 @@ public class AppInit {
       ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup,
+      IdempotencyService idempotencyService,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
       XClusterScheduler xClusterScheduler,
@@ -145,7 +150,10 @@ public class AppInit {
       UniverseArchitectureBackfill universeArchitectureBackfill,
       RoleBindingUtil roleBindingUtil,
       SlowQueriesAggregator slowQueriesAggregator,
-      EmbeddedCollectorInitializer embeddedCollectorInitializer)
+      PACollectorSync paCollectorSync,
+      SettableRuntimeConfigFactory sConfigFactory,
+      LegacyLogArchiveCleanup legacyLogArchiveCleanup,
+      CustomCAStoreManager customCAStoreManager)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -156,6 +164,10 @@ public class AppInit {
       }
       log.info("YBA version: {}", displayVersion);
       if (!environment.isTest()) {
+        // Reapply persisted logging settings before anything else logs, since logback only reads
+        // them from system properties at parse time and would otherwise use the XML defaults.
+        LogUtil.applyPersistedLoggingConfig(sConfigFactory, config);
+
         // only start thread dump collection for YBM at this time
         if (config.getBoolean("yb.cloud.enabled")) {
           threadDumpPublisher.start();
@@ -180,7 +192,7 @@ public class AppInit {
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
             if (principal == null) {
-              log.info("Adding Principal entry for user with email: " + user.getEmail());
+              log.info("Adding Principal entry for user with uuid: " + user.getUuid());
               new Principal(user).save();
             }
             ResourceGroup resourceGroup =
@@ -198,7 +210,7 @@ public class AppInit {
                 "Created system role binding for user '{}' (email '{}') of customer '{}', "
                     + "with role '{}' (name '{}'), and default role binding '{}'.",
                 user.getUuid(),
-                user.getEmail(),
+                RedactingService.SECRET_REPLACEMENT,
                 customer.getUuid(),
                 newRbacRole.getRoleUUID(),
                 newRbacRole.getName(),
@@ -215,6 +227,10 @@ public class AppInit {
         }
         // yb.fixPaths has a specific, limited use case. This should run always.
         releasesUtils.releaseUploadPathFixup();
+        // Must run before importLocalReleases picks up restored uploads in the releases dir.
+        if (Util.restoreTaskInfoExists()) {
+          releasesUtils.restoredUploadPathFixup();
+        }
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(
@@ -223,6 +239,8 @@ public class AppInit {
                     .getOrDefault("synced", "false")
                     .toString());
         fileDataService.syncFileData(storagePath, ywFileDataSynced);
+        // Needs the trust store and CA files that syncFileData restores.
+        customCAStoreManager.addMissingTrustStoreCertificates(storagePath);
 
         String devopsHome = config.getString("yb.devops.home");
         if (devopsHome == null || devopsHome.length() == 0) {
@@ -280,10 +298,15 @@ public class AppInit {
           log.debug("skipping fetch latest arm build for cloud enabled deployment");
         }
 
+        CompletableFuture<Void> sensitiveGFlagPathsRegistered = new CompletableFuture<>();
         Thread flagsThread =
             new Thread(
                 () -> {
-                  updateSensitiveGflagsforRedaction(gFlagsValidation);
+                  try {
+                    updateSensitiveGflagsforRedaction(gFlagsValidation);
+                  } finally {
+                    sensitiveGFlagPathsRegistered.complete(null);
+                  }
                 });
         flagsThread.start();
 
@@ -308,7 +331,7 @@ public class AppInit {
         setUniverseKey.start();
 
         // Start the background task to redact secrets from audit table.
-        redactSecretsFromAudit.start();
+        redactSecretsFromAudit.start(sensitiveGFlagPathsRegistered);
         // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
         refreshKmsService.start();
 
@@ -326,6 +349,9 @@ public class AppInit {
         // Cleanup old support bundles
         supportBundleCleanup.start();
 
+        // Cleanup expired API idempotency keys
+        idempotencyService.start();
+
         slowQueriesAggregator.start();
         platformMetricsProcessor.start();
         alertConfigurationWriter.start();
@@ -339,6 +365,7 @@ public class AppInit {
         queryAlerts.start();
         healthChecker.initialize();
         shellLogsManager.startLogsGC();
+        legacyLogArchiveCleanup.start();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
         autoMasterFailoverScheduler.init();
@@ -366,7 +393,7 @@ public class AppInit {
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
 
-        embeddedCollectorInitializer.start();
+        paCollectorSync.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);
@@ -438,7 +465,6 @@ public class AppInit {
         sensitiveGflags.addAll(r.getSensitiveGflags());
       }
     } while (pagedList.hasNext());
-    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
-        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
+    RedactingService.addSensitiveGFlagPathsForLogs(sensitiveGflags);
   }
 }

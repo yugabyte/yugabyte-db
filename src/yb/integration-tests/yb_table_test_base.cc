@@ -30,6 +30,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -51,7 +52,6 @@ using client::YBSession;
 using client::YBTableCreator;
 using client::YBTableType;
 using client::YBTableName;
-using strings::Substitute;
 
 namespace integration_tests {
 
@@ -146,6 +146,7 @@ void YBTableTestBase::SetUp() {
         .ts_env = ts_env_ ? ts_env_.get() : nullptr,
         .ts_rocksdb_env = ts_rocksdb_env_ ? ts_rocksdb_env_.get() : nullptr
     };
+    CustomizeMiniCluster(&opts);
     LOG(INFO) << "opts: " << opts.ts_env;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = enable_ysql();
 
@@ -361,7 +362,7 @@ void YBTableTestBase::FetchTSMetricsPage() {
 
   if (!addr.empty()) {
     LOG(INFO) << "Fetching metrics from " << addr;
-    ASSERT_OK(c.FetchURL(Substitute("http://$0/metrics", addr), &buf));
+    ASSERT_OK(c.FetchURL(Format("http://$0/metrics", addr), &buf));
   }
 }
 

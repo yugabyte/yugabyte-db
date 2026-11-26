@@ -19,6 +19,7 @@ import static com.yugabyte.yw.common.NodeActionType.STOP;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -31,6 +32,7 @@ import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -98,6 +100,15 @@ public class NodeDetails {
 
   @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS migration pending for this node")
   public boolean migrationPending;
+
+  // Mount path to filesystem UUID of the data disks, read from /etc/fstab before a VM image upgrade
+  // replaces the root volume, whose new fstab doesn't have them. A retry or rerun reuses it only
+  // while the node is in state VMImageUpgrade, to remount the disks on a node that may already be
+  // on its new root volume; it's cleared once the node's upgrade finishes. Not cloned: the UUIDs
+  // belong to this node's disks.
+  @ApiModelProperty(hidden = true, value = "YbaApi Internal. Data disk mount path to fs UUID")
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public Map<String, String> pathToUUIDMapping;
 
   // Possible states in which this node can exist.
   public enum NodeState {
@@ -283,6 +294,24 @@ public class NodeDetails {
   // Which port node_exporter is running on.
   @ApiModelProperty(value = "Node exporter port")
   public int nodeExporterPort = 9300;
+
+  /** Systemd scope node_exporter runs in on a node. */
+  public enum NodeExporterSystemdLevel {
+    // Root-level unit running as prometheus, laid out by YBA versions before 2026.2.
+    ROOT,
+    // Unit in the DB user's systemd scope, the only layout that can serve TLS.
+    USER
+  }
+
+  // Unset on nodes laid out before this field existed. Only USER counts towards exporter TLS, so
+  // their universe stays on plain HTTP until the node is recorded as USER. Not cloned: a new node's
+  // layout is known only once it is provisioned.
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Systemd scope of node_exporter on this node: ROOT or USER. Unset if"
+              + " not known.")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
+  public NodeExporterSystemdLevel nodeExporterSystemdLevel;
 
   @ApiModelProperty(value = "Otel collector metrics port")
   public int otelCollectorMetricsPort = 8889;

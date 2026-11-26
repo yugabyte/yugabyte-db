@@ -21,24 +21,30 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
-DECLARE_bool(enable_backfilling_cdc_stream_with_replication_slot);
 DECLARE_uint32(max_replication_slots);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_pause_catalog_manager_bg_loop_start);
 
 namespace yb {
 namespace master {
@@ -79,7 +85,6 @@ class MasterTestXRepl  : public MasterTestBase {
     // in this test. So we need to explicitly set it here.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_backfilling_cdc_stream_with_replication_slot) = true;
     // Disable implicit dynamic table addition in CDC feature in this test because this
     // master-only test doesn't have pg_class, pg_publication_rel and pg_replication_origin system
     // catalog tables.
@@ -91,9 +96,6 @@ class MasterTestXRepl  : public MasterTestBase {
   Result<xrepl::StreamId> CreateCDCStreamForNamespace(
       const std::string& namespace_name, const std::string& cdcsdk_ysql_replication_slot_name = "",
       const std::string& cdcsdk_ysql_replication_slot_output_plugin = "");
-  Result<xrepl::StreamId> CreateCDCStreamForNamespaceOlderVersion(
-      const std::string& namespace_name,
-      cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE);
   Result<GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
   Result<GetCDCStreamResponsePB> GetCDCStream(const std::string& cdcsdk_ysql_replication_slot_name);
   Status DeleteCDCStream(const xrepl::StreamId& stream_id, bool force = false);
@@ -109,10 +111,6 @@ class MasterTestXRepl  : public MasterTestBase {
   Result<bool> IsDeleteNamespaceDone(std::string namespace_id);
   Status WaitForDeleteNamespaceToComplete(
       std::string namespace_id, MonoDelta timeout, const std::string& failure_message);
-
- private:
-  Result<xrepl::StreamId> CreateCDCStreamForNamespace(
-      CreateCDCStreamRequestPB* req, cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE);
 };
 
 Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStream(const TableId& table_id) {
@@ -153,6 +151,7 @@ Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespace(
     const std::string& namespace_id, const std::string& cdcsdk_ysql_replication_slot_name,
     const std::string& cdcsdk_ysql_replication_slot_output_plugin) {
   CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
 
   req.set_namespace_id(namespace_id);
   if (!cdcsdk_ysql_replication_slot_name.empty()) {
@@ -161,33 +160,14 @@ Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespace(
   if (!cdcsdk_ysql_replication_slot_output_plugin.empty()) {
     req.set_cdcsdk_ysql_replication_slot_plugin_name(cdcsdk_ysql_replication_slot_output_plugin);
   }
-  return CreateCDCStreamForNamespace(&req);
-}
 
-Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespaceOlderVersion(
-    const std::string& namespace_id, cdc::CDCRecordType record_type) {
-  CreateCDCStreamRequestPB req;
-
-  // Disabling the flag FLAGS_cdc_pg_create_grpc_stream to correctly simulate creation of an old
-  // versioned gRPC stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
-
-  // In older versions, the namespace_id is passed into the table_id field.
-  req.set_table_id(namespace_id);
-  return CreateCDCStreamForNamespace(&req, record_type);
-}
-
-Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespace(
-    CreateCDCStreamRequestPB* req, cdc::CDCRecordType record_type) {
-  CreateCDCStreamResponsePB resp;
-
-  AddKeyValueToCreateCDCStreamRequestOption(req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
-      req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
   AddKeyValueToCreateCDCStreamRequestOption(
-      req, cdc::kRecordType, CDCRecordType_Name(record_type));
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
-  RETURN_NOT_OK(proxy_replication_->CreateCDCStream(*req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -774,8 +754,8 @@ TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
 
   auto stream_id = ASSERT_RESULT(
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));
-  // Wait for background task to run (length of two wait intervals).
-  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+  // Wait for CDC background task to run (length of two wait intervals).
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_cdc_bg_task_wait_ms));
 
   // Ensure that the created stream wasn't deleted from the cdcsdk_replication_slots_to_stream_map_
   // map.
@@ -897,211 +877,6 @@ TEST_F(MasterTestXRepl, TestListCDCStreamsCDCSDKWithReplicationSlot) {
   ASSERT_EQ(expected_replica_identity_maps, resp_replica_identity_maps);
 }
 
-TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStream) {
-  CreateNamespaceResponsePB create_namespace_resp;
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchemaWithTypeOids));
-
-  // Disable replication commands and replica identity and create a CDCSDK stream to simulate the
-  // scenario of the stream being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
-  auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespaceOlderVersion(ns_id));
-
-  // Enable replication commands and replica identity and add the replication slot name to the
-  // created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
-
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
-  req.set_stream_id(stream_id.ToString());
-  ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      req, &resp, ResetAndGetController()));
-  ASSERT_FALSE(resp.has_error());
-
-  auto list_resp = ASSERT_RESULT(ListCDCStreams());
-  ASSERT_EQ(1, list_resp.streams_size());
-  ASSERT_EQ(stream_id.ToString(), list_resp.streams(0).stream_id());
-  ASSERT_EQ(kPgReplicationSlotName, list_resp.streams(0).cdcsdk_ysql_replication_slot_name());
-
-  // The stream should be searchable using the replication slot name as well.
-  auto get_resp = ASSERT_RESULT(GetCDCStream(kPgReplicationSlotName));
-  ASSERT_EQ(get_resp.stream().namespace_id(), ns_id);
-  ASSERT_EQ(get_resp.stream().stream_id(), stream_id.ToString());
-  ASSERT_EQ(get_resp.stream().cdcsdk_ysql_replication_slot_name(), kPgReplicationSlotName);
-  ASSERT_EQ(get_resp.stream().replica_identity_map_size(), 1);
-  for (auto [table_id, replica_identity] : get_resp.stream().replica_identity_map()) {
-    ASSERT_EQ(replica_identity, PgReplicaIdentity::CHANGE);
-  }
-
-  // Updating the replication slot name of the stream again should fail.
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName2);
-  req.set_stream_id(stream_id.ToString());
-  ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      req, &resp, ResetAndGetController()));
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(
-      resp.error().status().message().find(
-          "Cannot update the replication slot name of a CDCSDK stream"),
-      std::string::npos)
-      << resp.error().status().message();
-}
-
-TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamMissingStreamId) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
-  CreateNamespaceResponsePB create_namespace_resp;
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
-
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
-  ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      req, &resp, ResetAndGetController()));
-
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(
-      resp.error().status().message().find(
-          "Both CDC Stream ID and Replication slot name must be provided"),
-      std::string::npos)
-      << resp.error().status().message();
-}
-
-TEST_F(
-    MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamMissingReplicationSlotName) {
-  CreateNamespaceResponsePB create_namespace_resp;
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
-
-  // Disable replication commands and replica identity and create a CDCSDK stream to simulate the
-  // scenario of the stream being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
-  auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespaceOlderVersion(ns_id));
-
-  // Enable replication commands and replica identity and add the replication slot name to the
-  // created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_stream_id(stream_id.ToString());
-  ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      req, &resp, ResetAndGetController()));
-
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(
-      resp.error().status().message().find(
-          "Both CDC Stream ID and Replication slot name must be provided"),
-      std::string::npos)
-      << resp.error().status().message();
-}
-
-TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamInvalidStreamId) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
-  CreateNamespaceResponsePB create_namespace_resp;
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
-
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
-
-  // Stream with this id doesn't exist.
-  req.set_stream_id("00004000000030008000000000004001");
-  ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      req, &resp, ResetAndGetController()));
-
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_NE(resp.error().status().message().find("Could not find CDC stream"), std::string::npos)
-      << resp.error().status().message();
-}
-
-TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamInvalidSlotNames) {
-  CreateNamespaceResponsePB create_namespace_resp;
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
-
-  // Disable replication commands and replica identity and create a CDCSDK stream to simulate the
-  // scenario of the stream being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
-  auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespaceOlderVersion(ns_id));
-
-  // Enable replication commands and replica identity and add the replication slot name to the
-  // created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_stream_id(stream_id.ToString());
-
-  auto invalid_character_message =
-      "Replication slot names may only contain lower case letters, numbers, and the underscore "
-      "character.";
-  std::vector<std::pair<std::string, std::string>> slot_name_expected_error = {
-      std::make_pair("", "Replication slot name cannot be empty"),
-      std::make_pair(std::string('a', 64), "Replication slot name length must be < 64"),
-      std::make_pair("pgA", invalid_character_message),
-      std::make_pair("abc#", invalid_character_message)};
-  for (const auto& test_case : slot_name_expected_error) {
-    req.set_cdcsdk_ysql_replication_slot_name(test_case.first);
-
-    ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-        req, &resp, ResetAndGetController()));
-
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_NE(resp.error().status().message().find(test_case.second), std::string::npos)
-        << resp.error().status().message();
-  }
-}
-
-TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamInvalidReplicaIdentity) {
-  CreateNamespaceResponsePB create_namespace_resp;
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchemaWithTypeOids));
-
-  // Disable replication commands and replica identity and create a CDCSDK stream to simulate the
-  // scenario of the stream being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
-  auto stream_id = ASSERT_RESULT(
-      CreateCDCStreamForNamespaceOlderVersion(ns_id, cdc::CDCRecordType::FULL_ROW_NEW_IMAGE));
-
-  // Enable replication commands and replica identity and add the replication slot name to the
-  // created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
-
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
-  req.set_stream_id(stream_id.ToString());
-  ASSERT_OK(proxy_replication_->YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      req, &resp, ResetAndGetController()));
-  ASSERT_FALSE(resp.has_error());
-
-  auto get_resp = ASSERT_RESULT(GetCDCStream(kPgReplicationSlotName));
-  ASSERT_EQ(get_resp.stream().namespace_id(), ns_id);
-  ASSERT_EQ(get_resp.stream().stream_id(), stream_id.ToString());
-  ASSERT_EQ(get_resp.stream().cdcsdk_ysql_replication_slot_name(), kPgReplicationSlotName);
-  ASSERT_EQ(get_resp.stream().replica_identity_map_size(), 1);
-
-  // Since the record type FULL_ROW_NEW_IMAGE does not have a corresponding replica identity, we
-  // will get CHANGE as the replica identity for the table.
-  for (auto [table_id, replica_identity] : get_resp.stream().replica_identity_map()) {
-    ASSERT_EQ(replica_identity, PgReplicaIdentity::CHANGE);
-  }
-}
-
 TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
   TableId table_id;
   ASSERT_OK(CreateTableWithTableId(&table_id));
@@ -1124,6 +899,31 @@ TEST_F(MasterTestXRepl, DropNamespaceWithLiveCDCStream) {
   ASSERT_OK(DeleteNamespace(ns_id, YQL_DATABASE_PGSQL));
   ASSERT_OK(WaitForDeleteNamespaceToComplete(
       ns_id, MonoDelta::FromSeconds(30), "Failed waiting for database drop to complete"));
+}
+
+// RunXReplBgTasks runs on every background pass. With no failed universe or bootstrap to clear, it
+// must finish while another thread holds the catalog manager lock shared.
+TEST_F(MasterTestXRepl, TestXReplBgTasksRunDuringSharedLockHold) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_catalog_manager_bg_loop_start) = true;
+  // The paused loop does not check for shutdown, so resume it before the master stops.
+  auto resume_bg_loop = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_catalog_manager_bg_loop_start) = false;
+  });
+  // Let the background loop reach its pause point, so it does not run during the shared hold.
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+
+  auto& catalog_manager = mini_master_->catalog_manager_impl();
+  const auto epoch = catalog_manager.GetLeaderEpochInternal();
+  CountDownLatch done(1);
+  TestThreadHolder thread_holder;
+  {
+    CatalogManager::SharedLock lock(catalog_manager.mutex_);
+    thread_holder.AddThreadFunctor([&catalog_manager, &epoch, &done] {
+      catalog_manager.RunXReplBgTasks(epoch);
+      done.CountDown();
+    });
+    ASSERT_TRUE(done.WaitFor(MonoDelta::FromSeconds(10)));
+  }
 }
 
 } // namespace master

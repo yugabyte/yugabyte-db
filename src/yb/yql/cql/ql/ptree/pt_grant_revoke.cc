@@ -15,11 +15,10 @@
 // Treenode definitions for GRANT statements.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 
 #include "yb/common/redis_constants_common.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
@@ -32,7 +31,6 @@ namespace yb {
 namespace ql {
 
 using std::string;
-using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 // GRANT Role Statement.
@@ -111,8 +109,8 @@ Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
 
   auto iterator = kPermissionMap.find(string(permission_name_->c_str()));
   if (iterator == kPermissionMap.end()) {
-    return sem_context->Error(this, Substitute("Unknown Permission '$0'",
-                                               permission_name_->c_str()).c_str(),
+    return sem_context->Error(this, Format("Unknown Permission '$0'",
+                                           permission_name_->c_str()).c_str(),
                               ErrorCode::SYNTAX_ERROR);
   }
 
@@ -134,8 +132,8 @@ Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
     case ResourceType::KEYSPACE: {
       if (complete_resource_name_->QLName() == common::kRedisKeyspaceName) {
         return sem_context->Error(loc(),
-                                  strings::Substitute("$0 is a reserved keyspace name",
-                                                      common::kRedisKeyspaceName).c_str(),
+                                  Format("$0 is a reserved keyspace name",
+                                         common::kRedisKeyspaceName).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(),

@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_config.h"
 
+#include "yb/common/common_types.pb.h"
+
 // TODO: Remove once CDCStreamInfo has moved to xcluster_catalog_entity.h.
 #include "yb/master/catalog_entity_info.h"
 
@@ -21,6 +23,8 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
 
 namespace yb::master {
 
@@ -99,12 +103,22 @@ Status XClusterConfig::FillHeartbeatResponse(
     *resp->mutable_xcluster_producer_registry() = config_pb.xcluster_producer_registry();
   }
 
-  auto& xcluster_info_per_namespace =
-      *resp->mutable_xcluster_heartbeat_info()->mutable_xcluster_info_per_namespace();
-  for (const auto& [namespace_id, xcluster_info] : config_pb.xcluster_info_per_namespace()) {
-    xcluster_info_per_namespace[namespace_id] = xcluster_info;
+  if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+    auto& xcluster_info_per_namespace =
+        *resp->mutable_deprecated_xcluster_heartbeat_info()->mutable_xcluster_info_per_namespace();
+    for (const auto& [namespace_id, xcluster_info] : config_pb.xcluster_info_per_namespace()) {
+      xcluster_info_per_namespace[namespace_id] = xcluster_info;
+    }
   }
 
+  return Status::OK();
+}
+
+Status XClusterConfig::FillXClusterInfoPerNamespace(XClusterGuardedInfoPB& info) const {
+  SharedLock mutex_lock(mutex_);
+  SCHECK(xcluster_config_info_, IllegalState, "XCluster config is not initialized");
+  auto l = xcluster_config_info_->LockForRead();
+  *info.mutable_xcluster_info_per_namespace() = l->pb.xcluster_info_per_namespace();
   return Status::OK();
 }
 

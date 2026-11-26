@@ -82,6 +82,15 @@ public class AlertControllerTest extends FakeDBApplication {
               "Failed to perform health check for universe 'Test Universe'"
                   + " - check YB Platform logs for details or contact YB support team")
           .put(
+              HEALTH_CHECK_NOT_RUNNING,
+              "No health check of universe 'Test Universe' has completed for 4 health check"
+                  + " intervals. Alerts based on health checks can't fire for this universe until"
+                  + " health checks run again - check YB Platform logs.")
+          .put(
+              YBA_SCHEDULER_NOT_RUNNING,
+              "YBA scheduler 'HealthChecker' has not completed a run for 4 of its intervals"
+                  + " - check YB Platform logs and thread dumps.")
+          .put(
               HEALTH_CHECK_NOTIFICATION_ERROR,
               "Failed to perform health check notification"
                   + " for universe 'Test Universe' - check Health notification settings and"
@@ -224,6 +233,33 @@ public class AlertControllerTest extends FakeDBApplication {
               CLIENT_TO_NODE_CERT_EXPIRY,
               "Client to node certificate for universe 'Test Universe'"
                   + " will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
+              NODE_AGENT_SERVER_CERT_EXPIRY,
+              "Node agent server certificate for universe 'Test Universe'"
+                  + " will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
+              NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE,
+              "Node agent server certificate on node agent(s) not associated with a universe"
+                  + " will expire in 29 days."
+                  + "\nAffected node agents: 1.2.3.1:9070 1.2.3.2:9070")
+          .put(
+              NODE_EXPORTER_TLS_ROOT_NODES,
+              "node_exporter TLS is off for universe 'Test Universe' because 1 node(s) still run"
+                  + " node_exporter from the root-level systemd unit. Re-provision these nodes"
+                  + " with root to move it to the DB user's systemd."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
+              NODE_EXPORTER_ROOT_NON_UNIVERSE,
+              "1 node(s) not associated with a universe still run node_exporter from the"
+                  + " root-level systemd unit. They can't be added to universes that serve"
+                  + " node_exporter over TLS until node-agent-provision.sh is re-run with root on"
+                  + " them.\nAffected nodes: node1 node2 node3")
+          .put(
+              NODE_METRICS_COLLECTION_FAILURE,
+              "Node metrics collection failed for universe 'Test Universe' on 1 node(s). Alerts"
+                  + " based on node metrics can't fire for these nodes."
                   + "\nAffected nodes: node1 node2 node3")
           .put(
               YSQL_OP_AVG_LATENCY,

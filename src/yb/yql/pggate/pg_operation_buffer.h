@@ -38,6 +38,7 @@ class BufferableOperations {
  public:
   const PgsqlOps& operations() const { return operations_; }
   const PgObjectIds& relations() const { return relations_; }
+  PgOid single_relation_oid() const { return single_relation_oid_; }
   void Add(PgsqlOpPtr&& op, const PgTableDesc& table);
   void Swap(BufferableOperations* rhs);
   void Clear();
@@ -52,6 +53,9 @@ class BufferableOperations {
  private:
   PgsqlOps operations_;
   PgObjectIds relations_;
+
+  // If all ops belong to the same oid, this is set to a valid oid
+  PgOid single_relation_oid_ = kPgInvalidOid;
 };
 
 class PgOperationBuffer {

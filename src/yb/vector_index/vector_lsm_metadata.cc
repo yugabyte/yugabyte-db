@@ -13,11 +13,15 @@
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
+#include "yb/vector_index/vector_payload_map.h"
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 #include "yb/gutil/endian.h"
+
+#include "yb/storage/frontier.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/logging.h"
@@ -143,10 +147,19 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::s
   result.next_free_file_no = raw.next_free_file_no;
 
   // All chunks loaded, apply add/remove updates to get the current version.
+  // A chunk that holds no vector has no file and so gets no serial no, and an index accumulates
+  // one such chunk per frontier update, so they cannot share the serial no keyed map: it would
+  // keep one of them and drop the frontiers of all the others. They are never named by a removal
+  // either, since only a chunk that has a file can be removed, so keep them in a separate list.
   std::unordered_map<uint64_t, VectorLSMChunkPB*> chunks_map;
+  std::vector<VectorLSMChunkPB*> chunks_without_serial_no;
   for (auto& update : raw.updates) {
     for (auto& chunk : *update.mutable_add_chunks()) {
-      chunks_map.emplace(chunk.serial_no(), &chunk);
+      if (chunk.serial_no()) {
+        chunks_map.emplace(chunk.serial_no(), &chunk);
+      } else {
+        chunks_without_serial_no.push_back(&chunk);
+      }
     }
     for (const auto chunk_no : update.remove_chunks()) {
       if (!chunks_map.erase(chunk_no)) {
@@ -155,8 +168,11 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::s
     }
   }
 
-  result.chunks.reserve(chunks_map.size());
+  result.chunks.reserve(chunks_map.size() + chunks_without_serial_no.size());
   for (auto& [_, chunk] : chunks_map) {
+    result.chunks.push_back(std::move(*chunk));
+  }
+  for (auto* chunk : chunks_without_serial_no) {
     result.chunks.push_back(std::move(*chunk));
   }
 
@@ -178,7 +194,13 @@ Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
 //  - 4 bytes - size of serialized update body.
 //  - serialized update body.
 //  - CRC sum for the serialized update body.
-Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update) {
+Status VectorLSMMetadataAppendUpdate(
+    Env& env, WritableFile& file, const VectorLSMUpdatePB& update) {
+  // A power loss must not keep the record while dropping the directory entries of the files it
+  // references, such as just renamed chunks, or of a just created manifest file. The record could
+  // reach the disk as soon as it is appended, before the file sync below, so sync before appending.
+  RETURN_NOT_OK(env.SyncDir(DirName(file.filename())));
+
   constexpr auto kHeaderSize = sizeof(EntrySizeType);
   std::string bytes;
   bytes.append(kHeaderSize, '\0');
@@ -200,6 +222,83 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
 
 std::string VectorLSMMetadataLoadResult::ToString() const {
   return YB_STRUCT_TO_STRING(next_free_file_no, chunks);
+}
+
+Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir) {
+  auto files = VERIFY_RESULT(env->GetChildren(dir));
+  std::erase_if(files, [](const auto& file) {
+    return !file.ends_with(".meta") && !file.contains("vectorindex");
+  });
+  VectorLSMFiles result;
+  const auto payload_file_suffix = VectorIndexPayloadFilePath(std::string());
+  for (const auto& file : files) {
+    if (!file.ends_with(payload_file_suffix)) {
+      continue;
+    }
+    result.has_payload_files = true;
+    auto chunk_file = file.substr(0, file.size() - payload_file_suffix.size());
+    SCHECK(std::find(files.begin(), files.end(), chunk_file) != files.end(), IllegalState,
+           "Payload file without the chunk file: $0", file);
+  }
+  std::erase_if(files, [&payload_file_suffix](const auto& file) {
+    return file.ends_with(payload_file_suffix);
+  });
+  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs) {
+    // Refer to VectorLSMMetadataLoad().
+    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
+  });
+  result.manifest_and_chunk_files = std::move(files);
+  return result;
+}
+
+Result<bool> VectorLSMMetadataModifyChunkFrontiers(
+    Env* env, const std::string& dir,
+    const std::function<storage::UserFrontiersPtr()>& frontiers_factory,
+    const std::function<void(storage::UserFrontiers&)>& modify,
+    const storage::UserFrontiers& added_chunk_frontiers) {
+  if (!env->DirExists(dir)) {
+    return true;
+  }
+
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  // Only reads, so a failure leaves the storage as it is.
+  auto load = [&]() -> Result<size_t> {
+    auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env, dir));
+    uint64_t next_order_no = 0;
+    for (auto& chunk : load_result.chunks) {
+      // Decoded the same way as VectorLSM::Open does.
+      auto frontiers = frontiers_factory();
+      RETURN_NOT_OK(frontiers->Smallest().FromPB(chunk.smallest().user_frontier()));
+      RETURN_NOT_OK(frontiers->Largest().FromPB(chunk.largest().user_frontier()));
+      modify(*frontiers);
+      frontiers->Smallest().ToPB(chunk.mutable_smallest()->mutable_user_frontier());
+      frontiers->Largest().ToPB(chunk.mutable_largest()->mutable_user_frontier());
+      next_order_no = std::max(next_order_no, chunk.order_no() + 1);
+      *update.add_add_chunks() = std::move(chunk);
+    }
+    auto& added_chunk = *update.add_add_chunks();
+    added_chunk.set_order_no(next_order_no);
+    added_chunk_frontiers.Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+    added_chunk_frontiers.Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    return load_result.next_free_file_no;
+  };
+  auto next_free_file_no = load();
+  if (!next_free_file_no.ok()) {
+    LOG(WARNING) << "Not modifying chunk frontiers in " << dir << ", failed to load its manifest: "
+                 << next_free_file_no.status();
+    return false;
+  }
+
+  auto file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env, dir, *next_free_file_no));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env, *file, update));
+  RETURN_NOT_OK(file->Close());
+  // A caller can rely on the update surviving a crash, e.g. to skip a replay, so the new file
+  // must not be lost with its directory entry.
+  RETURN_NOT_OK(env->SyncDir(dir));
+  LOG(INFO) << "Modified frontiers of " << update.add_chunks_size() - 1 << " chunks in " << dir
+            << ", manifest file no: " << *next_free_file_no;
+  return true;
 }
 
 }  // namespace yb::vector_index

@@ -19,6 +19,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
@@ -282,19 +283,8 @@ func (plat Platform) copyYbcPackages() error {
 	return nil
 }
 
-func (plat Platform) deleteNodeAgentPackages() error {
-	log.Debug("Deleting old node agent packages")
-	// It deletes existing node-agent packages on upgrade.
-	// Even if it fails, it is ok.
-	releasesFolderPath := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
-	nodeAgentPattern := releasesFolderPath + "/node_agent-*.tar.gz"
-	matches, err := filepath.Glob(nodeAgentPattern)
-	if err == nil {
-		for _, f := range matches {
-			os.Remove(f)
-		}
-	}
-	return nil
+func nodeAgentReleasesDir() string {
+	return common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
 }
 
 func (plat Platform) copyNodeAgentPackages() error {
@@ -309,12 +299,11 @@ func (plat Platform) copyNodeAgentPackages() error {
 				plat.PlatformPackages, err.Error()))
 	}
 
+	// Overwrite existing files: an interrupted earlier upgrade to this version can leave a partial
+	// package, and YBA would serve it.
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
-		dest := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases/" + fileName
-		if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
-			common.CopyFile(f, dest)
-		}
+		common.CopyFile(f, filepath.Join(nodeAgentReleasesDir(), fileName))
 	}
 	return nil
 }
@@ -453,14 +442,24 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
+	// Before the template, for the same reason as in PerfAdvisor.Upgrade: it renders this into
+	// yb-platform.conf, and createPemFormatKeyAndCert below builds the keystore from it.
+	if _, err := common.EnsureGeneratedPassword("platform.keyStorePassword"); err != nil {
+		return err
+	}
 	if err := template.GenerateTemplate(plat); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
 	if err := plat.copyYbcPackages(); err != nil {
 		return err
 	}
-	if err := plat.deleteNodeAgentPackages(); err != nil {
-		return err
+	// Keep the installed version's packages: a failed upgrade rolls back to that version, and
+	// rollback does not copy them back. upgradeCmd prunes them once the upgrade succeeds.
+	if installedVersion, err := yugaware.InstalledVersionFromMetadata(); err != nil {
+		log.Warn("Not pruning node agent packages, cannot read the installed YBA version: " +
+			err.Error())
+	} else {
+		common.PruneNodeAgentPackages(nodeAgentReleasesDir(), installedVersion)
 	}
 	if err := plat.copyNodeAgentPackages(); err != nil {
 		return err
@@ -600,6 +599,9 @@ func (plat Platform) FinishReplicatedMigrate() error {
 	return nil
 }
 
+// platformKeystoreAlias is the alias the platform key is stored under in server.bcfks.
+const platformKeystoreAlias = "yugaware"
+
 func createPemFormatKeyAndCert() error {
 	paths := getServerKeyAndCert()
 	keyFile := paths.KeyPath
@@ -649,6 +651,18 @@ func createPemFormatKeyAndCert() error {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
+	}
+
+	// Called from every install, upgrade, reconfigure and cert-rotation path, so an upgrade is
+	// what moves an existing install off the PEM keystore.
+	keystorePassword, err := common.EnsureGeneratedPassword("platform.keyStorePassword")
+	if err != nil {
+		return err
+	}
+	if err := common.GenerateBCFKSKeystore(
+		certFile, keyFile, common.GetSelfSignedCertsDir(), platformKeystoreAlias,
+		keystorePassword); err != nil {
+		return fmt.Errorf("failed to generate platform BCFKS keystore: %w", err)
 	}
 	return nil
 }

@@ -11,15 +11,14 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -27,7 +26,9 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -84,6 +85,22 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected boolean isSkipPrechecks() {
+    return super.isSkipPrechecks() || skipPrechecksForNonRollingGFlagsUpgrade();
+  }
+
+  @Override
+  protected boolean isSkipUpdateConsistencyCheck() {
+    return skipPrechecksForNonRollingGFlagsUpgrade();
+  }
+
+  private boolean skipPrechecksForNonRollingGFlagsUpgrade() {
+    return taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+        && confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.skipPrechecksForNonRollingGFlagsUpgrade);
+  }
+
+  @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     String softwareVersion =
@@ -94,24 +111,10 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     }
     taskParams().verifyPreviewGFlagsSettings(universe);
 
-    // Validate GFlags through RPC
-    boolean skipRuntimeGflagValidation =
-        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
-    if (!skipRuntimeGflagValidation) {
-      if (Util.compareYBVersions(
-              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
-          >= 0) {
-        List<UniverseDefinitionTaskParams.Cluster> newClustersList =
-            new ArrayList<>(taskParams().clusters);
-        boolean useCLIBinary = true;
-        if (Util.compareYBVersions(
-                softwareVersion, "2026.2.0.0-b1", "2.31.0.0-b49", true /* suppressFormatError */)
-            >= 0) {
-          useCLIBinary = false;
-        }
-        createValidateGFlagsTask(newClustersList, useCLIBinary, softwareVersion);
-      }
-    }
+    createValidateGFlagsTaskInGFlagsUpgrades(
+        new ArrayList<>(taskParams().clusters),
+        softwareVersion,
+        skipPrechecksForNonRollingGFlagsUpgrade());
     addBasicPrecheckTasks();
   }
 
@@ -162,6 +165,10 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             default:
               throw new RuntimeException("Invalid Upgrade type!");
           }
+          // The node_exporter sidecar's scrape scheme follows the TLS the restarted pods render.
+          if (taskParams().upgradeOption != UpgradeOption.NON_RESTART_UPGRADE) {
+            createSwamperTargetUpdateTask(false /* removeFile */);
+          }
           installThirdPartyPackagesTaskK8s(
               universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
           // task to persist changed GFlags to universe in DB
@@ -171,6 +178,21 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   taskParams().tserverGFlags,
                   getPrimaryClusterSpecificGFlags())
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The helm upgrade renders the read replica from the task params, so its gflags must be
+          // saved too: later helm upgrades render from the universe and would revert them.
+          Map<UUID, Cluster> newClusters = taskParams().getNewVersionsOfClusters(universe);
+          for (Cluster curCluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+            Cluster newCluster = newClusters.get(curCluster.uuid);
+            if (!Objects.equals(
+                newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)) {
+              updateGFlagsPersistTasks(
+                      curCluster,
+                      newCluster.userIntent.masterGFlags,
+                      newCluster.userIntent.tserverGFlags,
+                      newCluster.userIntent.specificGFlags)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
+          }
         });
   }
 

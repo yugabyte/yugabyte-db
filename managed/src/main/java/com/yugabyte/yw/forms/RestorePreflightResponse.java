@@ -17,6 +17,10 @@ public class RestorePreflightResponse {
   @Builder.Default
   private Boolean hasKMSHistory = false;
 
+  @ApiModelProperty(
+      value = "YbaApi Internal. Whether the backup was taken on a FIPS-enabled universe, if known")
+  private Boolean fipsEnabled;
+
   @ApiModelProperty(value = "Backup Category")
   @Builder.Default
   private BackupCategory backupCategory = BackupCategory.YB_CONTROLLER;

@@ -11,7 +11,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
@@ -21,7 +20,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -686,6 +684,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
 
     for (List<NodeDetails> nodeList : split) {
+      Map<String, Boolean> ignoreStopErrorByNodeName =
+          nodeList.stream()
+              .collect(Collectors.toMap(n -> n.nodeName, n -> isIgnoreStopError(context, n)));
+
       // Nodes are grouped by the same set of server types, so it doesn't matter which node to take.
       Set<ServerType> processTypes = processTypesFunction.apply(nodeList.get(0));
 
@@ -718,22 +720,39 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       if (context.runBeforeStopping) {
         rollingUpgradeLambda.run(nodeList, processTypes);
       }
+      if (context.preAction != null) {
+        nodeList.forEach(context.preAction);
+      }
 
       // Stop yb-controller only if master server on node is in active role.
       if (isYbcPresent && activeRole) {
-        createServerControlTasks(nodeList, ServerType.CONTROLLER, "stop")
+        createStopServerTasks(
+                nodeList,
+                ServerType.CONTROLLER,
+                params -> {
+                  params.isIgnoreError =
+                      ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false);
+                })
             .setSubTaskGroupType(subGroupType);
       }
-
       stopProcessesOnNodes(
           nodeList,
           processTypes,
           context.reconfigureMaster && activeRole /* remove master from quorum */,
           false /* deconfigure */,
-          isBlacklistLeaders() /* flushTablets */,
+          params -> {
+            params.flushTabletsOnStopTserver = isBlacklistLeaders();
+            params.isIgnoreError = ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false);
+          },
           subGroupType);
 
-      createDisableMasterOnNonMasterNodesTasks(nodeList, subGroupType);
+      // Also a stop, so it tolerates errors on the same nodes as the stops above.
+      createDisableMasterOnNonMasterNodesTasks(
+          nodeList,
+          subGroupType,
+          params ->
+              params.isIgnoreError =
+                  ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false));
 
       if (!context.runBeforeStopping) {
         rollingUpgradeLambda.run(nodeList, processTypes);
@@ -885,6 +904,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     NodeState nodeState = getNodeState();
 
+    Map<String, Boolean> ignoreStopErrorByNodeName =
+        nodes.stream()
+            .collect(Collectors.toMap(n -> n.nodeName, n -> isIgnoreStopError(context, n)));
+
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
 
     if (context.runBeforeStopping) {
@@ -893,10 +916,21 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     // Stop yb-controller only if master server on node is in active role.
     if (isYbcPresent && activeRole) {
-      createServerControlTasks(nodes, ServerType.CONTROLLER, "stop")
+      createStopServerTasks(
+              nodes,
+              ServerType.CONTROLLER,
+              params ->
+                  params.isIgnoreError =
+                      ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false))
           .setSubTaskGroupType(subGroupType);
     }
-    createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
+    createStopServerTasks(
+            nodes,
+            processType,
+            params ->
+                params.isIgnoreError =
+                    ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false))
+        .setSubTaskGroupType(subGroupType);
 
     if (!context.runBeforeStopping) {
       nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
@@ -906,6 +940,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(nodes, processType)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // As in the rolling flow, the tserver being up does not mean that its postgres already
+      // accepts connections, so wait for it too before the upgrade reports success.
+      if (processType == ServerType.TSERVER && nodes.iterator().next().isYsqlServer) {
+        createWaitForServersTasks(nodes, ServerType.YSQLSERVER, context.getTargetUniverseState())
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
       if (isYbcPresent) {
         createServerControlTasks(nodes, ServerType.CONTROLLER, "start")
             .setSubTaskGroupType(subGroupType);
@@ -1001,13 +1041,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  protected SubTaskGroup createClusterUserIntentUpdateTask(UUID clutserUUID, UUID imageBundleUUID) {
+  protected SubTaskGroup createClusterUserIntentUpdateTask(Map<String, UUID> nodeToImageBundleMap) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterUserIntent");
     UpdateClusterUserIntent.Params updateClusterUserIntentParams =
         new UpdateClusterUserIntent.Params();
     updateClusterUserIntentParams.setUniverseUUID(taskParams().getUniverseUUID());
-    updateClusterUserIntentParams.clusterUUID = clutserUUID;
-    updateClusterUserIntentParams.imageBundleUUID = imageBundleUUID;
+    updateClusterUserIntentParams.nodeToImageBundleMap = nodeToImageBundleMap;
 
     UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
     updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
@@ -1100,42 +1139,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               userIntent, node, processType, oldGFlags, newGFlags, communicationPorts));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
-  protected void createManageOtelCollectorTasks(
-      UniverseDefinitionTaskParams.UserIntent userIntent,
-      List<NodeDetails> nodes,
-      boolean installOtelCollector,
-      TelemetryConfig telemetryConfig,
-      Function<NodeDetails, Map<String, String>> nodeToGflags) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
-    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    for (NodeDetails node : nodes) {
-      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
-      params.nodeName = node.nodeName;
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.azUuid = node.azUuid;
-      params.installOtelCollector = installOtelCollector;
-      params.otelCollectorEnabled =
-          installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
-      params.telemetryConfig = telemetryConfig;
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
-      params.gflags = nodeToGflags.apply(node);
-
-      ManageOtelCollector task = createTask(ManageOtelCollector.class);
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
@@ -1329,22 +1332,37 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return className;
   }
 
+  /**
+   * For a retry case, the node could be already stopped by the original task. In that case, the
+   * node agent will be unreachable and AnsibleClusterServerCtl will fail. So we need to ignore stop
+   * errors if upgrade could stop the node.
+   *
+   * @param nodeDetails
+   * @return
+   */
+  protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
+    return !isFirstTry() && upgradeContext.nodesAreStopped && nodeDetails.state != NodeState.Live;
+  }
+
   @Value
   @Builder
   public static class UpgradeContext {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    @Builder.Default boolean nodesAreStopped = false; // Whether nodes are phisically stopped.
     @Builder.Default boolean processTServersFirst = false;
     // This is transient universe state to keep track of changes already applied
     // (as actual universe in DB is usually updated at the end of task).
     Universe targetUniverseState;
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
+    Consumer<NodeDetails> preAction;
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
     UUID rootCAUUID;
     @Builder.Default boolean useExistingServerCert = false;
     Boolean useYBDBInbuiltYbc;
+    @Builder.Default boolean reconcilePgDataOwnershipToRoot = false;
   }
 }

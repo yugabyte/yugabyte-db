@@ -28,6 +28,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ScriptingCommandsTest extends JedisCommandTestBase {
 
   @SuppressWarnings("unchecked")

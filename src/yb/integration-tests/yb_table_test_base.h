@@ -25,7 +25,6 @@
 #include "yb/client/table_handle.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -111,6 +110,7 @@ class YBTableTestBase : public YBTest {
   }
 
   virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
+  virtual void CustomizeMiniCluster(MiniClusterOptions* opts) {}
 
   std::vector<std::string> master_rpc_addresses_as_strings() {
     std::vector<std::string> host_ports;

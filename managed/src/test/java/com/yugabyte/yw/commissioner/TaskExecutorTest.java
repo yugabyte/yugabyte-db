@@ -7,11 +7,13 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -21,12 +23,17 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -40,6 +47,7 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -50,6 +58,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -72,6 +81,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -95,11 +105,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpdateKubernetesDiskSize,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
+          TaskType.RollbackEditUniverse,
           TaskType.ReplaceNodeInUniverse,
           TaskType.EditKubernetesUniverse,
+          TaskType.RollbackEditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.ReadOnlyClusterDelete,
           TaskType.AddNodeToUniverse,
+          TaskType.RollbackAddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,
@@ -107,6 +120,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.MultiTableBackup,
           TaskType.BackupUniverse,
           TaskType.ResizeNode,
+          TaskType.RollbackResizeNode,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
           TaskType.CloudProviderDelete,
@@ -136,6 +150,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ModifyQueryLoggingConfig,
           TaskType.ModifyMetricsExportConfig,
           TaskType.ConfigureExportTelemetryConfig,
+          TaskType.KubernetesConfigureExportTelemetryConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
@@ -175,7 +190,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.EditKMSConfig,
           TaskType.DeleteKMSConfig,
           TaskType.ProvisionUniverseNodes,
-          TaskType.ProvisionUniverseNodes);
+          TaskType.RollbackEditKubernetesUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -275,6 +290,46 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     assertEquals(0, subTaskInfos.size());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testParamsValidationFailureLogsNoSecrets() {
+    ITask task = mockTaskCommon(false);
+    ObjectNode params = Json.newObject();
+    params.put("ysqlPassword", "dummy-ysql-secret");
+    params
+        .putObject("tserverGFlags")
+        .put("ycql_ldap_bind_passwd", "dummy-ycql-secret")
+        .put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-secret");
+    doReturn(params).when(task).getTaskParams();
+    doThrow(new PlatformServiceException(BAD_REQUEST, "Invalid params"))
+        .when(task)
+        .validateParams(anyBoolean());
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+
+    Logger executorLogger = (Logger) LoggerFactory.getLogger(TaskExecutor.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    executorLogger.addAppender(appender);
+    try {
+      assertThrows(
+          PlatformServiceException.class,
+          () -> taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1)));
+    } finally {
+      executorLogger.detachAppender(appender);
+    }
+
+    List<String> failureLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.contains("Params validation failed"))
+            .collect(Collectors.toList());
+    assertEquals(1, failureLogs.size());
+    String logged = failureLogs.get(0);
+    assertFalse(logged, logged.contains("dummy-ysql-secret"));
+    assertFalse(logged, logged.contains("dummy-ycql-secret"));
+    assertFalse(logged, logged.contains("dummy-hba-secret"));
+    assertTrue(logged, logged.contains("ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT));
   }
 
   @Test
@@ -382,6 +437,18 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
       latch.countDown();
     }
     waitForTask(taskUUID);
+  }
+
+  @Test
+  public void testRollbackTasksAreAbortable() {
+    // Rolling back an in-flight task starts with aborting it, so a rollback task must be abortable.
+    List<TaskType> notAbortable =
+        Arrays.stream(TaskType.values())
+            .filter(t -> t.getTaskClass() != null)
+            .filter(t -> TaskExecutor.canTaskRollback(t.getTaskClass()))
+            .filter(t -> !TaskExecutor.isTaskAbortable(t.getTaskClass()))
+            .collect(Collectors.toList());
+    assertTrue("Rollback tasks missing @Abortable: " + notAbortable, notAbortable.isEmpty());
   }
 
   @Test
@@ -567,7 +634,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    // CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
     RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner1, executor);
     // Wait for the task to be running.
@@ -575,20 +641,29 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     // Submit executor service shutdown to mimic shutdown hook.
     CompletableFuture.supplyAsync(
         () -> MoreExecutors.shutdownAndAwaitTermination(executor, 2, TimeUnit.SECONDS));
-    // Submit task executor shutdown to mimic shutdown hook.
-    CompletableFuture.supplyAsync(() -> taskExecutor.shutdown(Duration.ofSeconds(2)));
-    // Wait for the task to be cancelled.
-    waitForTask(taskUUID);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    // Aborted due to shutdown.
-    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
-    // This should get rejected as the executor is already shutdown.
-    assertThrows(
-        PlatformServiceException.class,
-        () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
-    taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // Submit task executor shutdown via the registered shutdown hook.
+    ShutdownHookHandler shutdownHookHandler = app.injector().instanceOf(ShutdownHookHandler.class);
+    try {
+      // Trigger the shutdown hook.
+      CompletableFuture.runAsync(
+          () ->
+              shutdownHookHandler.shutdownHooks(
+                  ShutdownHookHandler.ShutdownPhase.BEFORE_SERVICE_UNBIND));
+      // Wait for the task to be cancelled.
+      waitForTask(taskUUID);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+      // Aborted due to shutdown.
+      assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+      RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
+      // This should get rejected as the executor is already shutdown.
+      assertThrows(
+          PlatformServiceException.class,
+          () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
+      taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    } finally {
+      Util.resetYbaShutdownStarted();
+    }
   }
 
   @Test
@@ -662,7 +737,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toCollection(TreeSet::new));
-    assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
+    Set<TaskType> missingInExpected = Sets.difference(retryableTaskTypes, RETRYABLE_TASKS);
+    Set<TaskType> missingInActual = Sets.difference(RETRYABLE_TASKS, retryableTaskTypes);
+    String msg =
+        String.format(
+            "Missing in expected: %s, missing in actual: %s", missingInExpected, missingInActual);
+    assertEquals(msg, RETRYABLE_TASKS, retryableTaskTypes);
   }
 
   @Test

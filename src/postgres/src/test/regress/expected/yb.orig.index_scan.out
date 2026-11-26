@@ -2142,6 +2142,45 @@ SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, 'p') ORDER BY a, b;
 ---+---
 (0 rows)
 
+-- NULL on a varlena key column must not crash while binding row bounds
+-- (YbDatumToBinary used to detoast a null pointer).
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=1 loops=1)
+   Index Cond: (ROW(a, b) > ROW(0, NULL::text))
+   Rows Removed by Index Recheck: 1
+(3 rows)
+
+SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;
+ a | b 
+---+---
+ 3 | z
+(1 row)
+
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=2 loops=1)
+   Index Cond: (ROW(a, b) <= ROW(0, NULL::text))
+   Rows Removed by Index Recheck: 1
+(3 rows)
+
+SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;
+ a  | b 
+----+---
+ -5 | q
+ -1 | p
+(2 rows)
+
 DROP TABLE pk_comp;
 -- Same tests as above but the overflowing subkey is in the middle of PK
 CREATE TABLE pk_comp (a TEXT, b INT, c TEXT, PRIMARY KEY (a ASC, b ASC, c ASC));
@@ -4414,8 +4453,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) /*+ Set(enable_material OF
          Heap Fetches: 0
    ->  Index Only Scan using null_test_a_b_idx on null_test t2 (actual rows=1 loops=4)
          Index Cond: (ROW(a, b) <= ROW(t1.a, t1.b))
+         Rows Removed by Index Recheck: 0
          Heap Fetches: 0
-(6 rows)
+(7 rows)
 
 /*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */ SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b);
  a  | b | a  | b 

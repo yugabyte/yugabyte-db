@@ -135,9 +135,6 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, (select b4 from t
 -- Hint generation for WHERE subqueries.
 explain (hints on, costs off) select count(*) from t1, t2, t3 where a1=a2 and a1=a3 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
--- Change join order and use all merge joins.
-/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
-
 -- Hint generation for VALUES clause(s). Should see no errors/warnings.
 explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3)) val1(c0, c1), t0, t1, (values(1, 1), (2, 2), (3, 3)) val2(c0, c1)  where val1.c1=a0 and a0=a1 and val2.c1=val1.c1;
 
@@ -203,6 +200,7 @@ where unn1 < 4 and ch1 > ch2;
 -- Complex query;
 explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
 
+-- Warns because the two top-level YbBatchedNL hints are ignored (#34351).
 /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
 
 -- Correlated subquery with multiple blocks. Should not give any warnings/errors.
@@ -397,6 +395,16 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- No plan can be found using the hint. Should generate warnings.
 /*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
+-- Same under the YB cost model: the scan copy costed for the pushed-down
+-- aggregate keeps the disabled cost, so the plan check still reports the scan.
+set yb_enable_cbo = on;
+/*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+reset yb_enable_cbo;
+
+-- Parallel zeros partial seqscans on a non-inh rel.  That must not hide
+-- NoSeqScan: still no valid path.
+/*+ NoSeqScan(tab) Parallel(tab 2) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+
 -- No plan can be found using the hint. Should generate warnings.
 /*+ set(enable_seqscan off) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
@@ -418,6 +426,16 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- Cannot do a ROJ so should get a warning.
 /*+ leading((t4 t5)) nestLoop(t4 t5) */ explain (costs on, uids on) select count(*) from t4 right join t5 on a4=a5;
 
+-- Change join order and use all merge joins.  The middle join has no merge
+-- clause, so its MergeJoin hint cannot be honored and gets a warning.
+/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+
+-- Same with sort-based deduping of the subqueries; the Leading order must
+-- still hold.
+set enable_hashagg to off;
+/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+reset enable_hashagg;
+
 -- Try to use hash join without an equality predicate. Should get an error, re-plan, and get first 5 rows.
 set pg_hint_plan.yb_bad_hint_mode to replan;
 /*+ hashJoin(t3 t4) */ select unn3, unn4 from t3 join t4 on a3<a4 order by unn3, unn4 limit 5;
@@ -434,6 +452,28 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 
 -- Bad table name in parallel hint. Should get warnings/errors.
 /*+ Parallel(t11 3 hard) */ explain (hints on, costs off) select count(*) from t1;
+
+-- Hard Parallel on a partitioned table disables non-partial paths on the
+-- inheritance parent but leaves hinted partial paths.  Should not warn that
+-- hinting found no path.
+set pg_hint_plan.yb_enable_internal_hint_test to off;
+set yb_enable_base_scans_cost_model to on;
+set yb_enable_parallel_append to on;
+set parallel_setup_cost to 0;
+set parallel_tuple_cost to 0;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
+
+-- Without cheap parallel costs the serial Append is chosen.  Hard Parallel
+-- is not used as intended.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+set pg_hint_plan.yb_bad_hint_mode to error;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+set pg_hint_plan.yb_bad_hint_mode to warn;
+reset yb_enable_base_scans_cost_model;
+reset yb_enable_parallel_append;
+set pg_hint_plan.yb_enable_internal_hint_test to on;
 
 -- Use bad name 't22' in hint. Should get warnings and whatever plan was found without the bad leading hint.
 /*+ Leading(((((t5 t4) t1) t3) t22)) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
@@ -487,5 +527,263 @@ explain (hints on) SELECT MAX((0.6002056)::MONEY) FROM t1*, ONLY t0, ONLY v6 LEF
 SELECT MAX((0.6002056)::MONEY) FROM t1*, ONLY t0, ONLY v6 LEFT OUTER JOIN t4* ON TRUE RIGHT OUTER JOIN t2* ON FALSE GROUP BY - (+ (strpos(t4.c0, v6.c0)));
 
 drop schema yb26670 cascade;
+
+drop schema if exists yb_merge_scan_hint cascade;
+create schema yb_merge_scan_hint;
+reset all;
+set search_path to yb_merge_scan_hint;
+set pg_hint_plan.yb_enable_internal_hint_test to on;
+
+create table test (k1 INT, v1 INT, v2 INT, bucket_id INT GENERATED ALWAYS AS (yb_hash_code(k1) % 3) STORED, PRIMARY KEY (bucket_id ASC, k1));
+insert into test (select s, s from generate_series (1, 123456) s);
+create index test_pkey2 on test(bucket_id ASC, k1 DESC);
+create index i1 on test(bucket_id asc, v1 asc);
+create index i2 on test(v2 asc);
+create index i2d on test(v2 desc);
+analyze test;
+
+set yb_enable_cbo to on;
+set pg_hint_plan.yb_bad_hint_mode to warn;
+
+-- Unhinted merge scan via SET.  These have no hint, so the internal hint
+-- test round-trips generated IndexScan / IndexOnlyScan (merge = on).
+-- i1d is created after this: i1 and i1d are cost-tied for ORDER BY v1.
+set pg_hint_plan.yb_internal_hint_test_fail to on;
+reset yb_max_merge_scan_streams;
+explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+explain (hints on, costs off) select bucket_id, v1 from test where v1 > 112345 and bucket_id IN (0, 1, 2) order by v1;
+set pg_hint_plan.yb_internal_hint_test_fail to off;
+create index i1d on test(bucket_id asc, v1 desc);
+
+-- Same query across GUC default/1 and IndexScan with no merge option, merge=on, merge=off.
+-- GUC 1 is below the 3-stream SAOP, so merge does not fire even with merge=on.
+reset yb_max_merge_scan_streams;
+/*+ indexscan(test test_pkey) */ explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+
+/*+ indexscan(test test_pkey(merge=on)) */ explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+
+/*+ indexscan(test test_pkey(merge=off)) */ explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+
+set yb_max_merge_scan_streams = 1;
+/*+ indexscan(test test_pkey) */ explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+
+/*+ indexscan(test test_pkey(merge=on)) */ explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+
+/*+ indexscan(test test_pkey(merge=off)) */ explain (hints on, costs off) select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+
+reset yb_max_merge_scan_streams;
+
+explain (hints on, costs off) /*+ IndexScan(test i1d (merge=on)) IndexScan(test_1 i1 (merge=off)) */
+SELECT *
+FROM (
+    SELECT *
+    FROM test
+    WHERE v1 > 112345
+      AND bucket_id IN (0, 1, 2)
+    ORDER BY v1
+) AS dt1
+
+EXCEPT ALL
+
+SELECT *
+FROM (
+    SELECT *
+    FROM test
+    WHERE v1 > 112345
+      AND bucket_id IN (0, 1, 2)
+    ORDER BY v1
+) AS dt2;
+
+explain (hints on, costs off) /*+ IndexScan(test (merge=off) i1d (merge=on)) IndexScan(test_1 (merge=on) i1 (merge=off)) */
+SELECT *
+FROM (
+    SELECT *
+    FROM test
+    WHERE v1 > 112345
+      AND bucket_id IN (0, 1, 2)
+    ORDER BY v1
+) AS dt1
+
+EXCEPT ALL
+
+SELECT *
+FROM (
+    SELECT *
+    FROM test
+    WHERE v1 > 112345
+      AND bucket_id IN (0, 1, 2)
+    ORDER BY v1
+) AS dt2;
+
+explain (hints on, costs off)
+/*+ IndexScan(test (merge=off) test_pkey (merge=on)) IndexScan(test_1 (merge=off) i1d) */
+SELECT *
+FROM (
+    SELECT *
+    FROM test
+    WHERE v1 > 112345
+      AND bucket_id IN (0, 1, 2)
+    ORDER BY k1
+) AS dt1
+EXCEPT ALL
+SELECT *
+FROM (
+    SELECT *
+    FROM test
+    WHERE v1 > 112345
+      AND bucket_id IN (0, 1, 2)
+    ORDER BY k1
+) AS dt2;
+
+-- One IndexScan, two named indexes.  Per-index merge overrides the table
+-- option and the two indexes disagree with each other.  ORDER BY k1 uses
+-- test_pkey; ORDER BY v1 uses i1.
+/*+ IndexScan(test (merge=on) test_pkey (merge=off) i1 (merge=on)) */ explain (hints on, costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan(test (merge=on) test_pkey (merge=off) i1 (merge=on)) */ explain (hints on, costs off)
+select * from test where v1 > 112345 and bucket_id IN (0, 1, 2) order by v1;
+/*+ IndexScan(test (merge=off) test_pkey (merge=on) i1 (merge=off)) */ explain (hints on, costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan(test (merge=off) test_pkey (merge=on) i1 (merge=off)) */ explain (hints on, costs off)
+select * from test where v1 > 112345 and bucket_id IN (0, 1, 2) order by v1;
+
+-- IndexOnlyScan on a secondary index (i1).  YB primary keys cannot
+-- IndexOnlyScan.
+/*+ IndexOnlyScan(test i1 (merge=on)) */ explain (hints on, costs off)
+select bucket_id, v1 from test where v1 > 112345 and bucket_id IN (0, 1, 2) order by v1;
+/*+ IndexOnlyScan(test i1 (merge=off)) */ explain (hints on, costs off)
+select bucket_id, v1 from test where v1 > 112345 and bucket_id IN (0, 1, 2) order by v1;
+
+-- Interaction of merge=on/off with yb_max_merge_scan_streams.
+-- PK (c1, c2, c3): c1 IN (0,1,2) AND c2 IN (0,1,2) is 3 streams for ORDER BY
+-- c2 and 9 streams for ORDER BY c3.
+create table t (c1 int, c2 int, c3 int, n int,
+  primary key (c1 asc, c2 asc, c3 asc));
+insert into t
+select c1, c2, c3, c1 * 100 + c2 * 10 + c3
+from generate_series(0, 2) c1,
+     generate_series(0, 2) c2,
+     generate_series(0, 9) c3;
+analyze t;
+
+-- Covering secondary index: YB PKs cannot IndexOnlyScan.
+create index t_idx on t(c1, c2, c3);
+
+-- GUC 3: merge=on should merge ORDER BY c2 (3 streams) but not ORDER BY c3 (9).
+set yb_max_merge_scan_streams = 3;
+/*+ IndexScan(t t_pkey (merge=on)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ IndexScan(t t_pkey (merge=on)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c3;
+/*+ IndexOnlyScan(t t_idx (merge=on)) */ explain (costs off)
+select c2, c3 from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ IndexOnlyScan(t t_idx (merge=on)) */ explain (costs off)
+select c2, c3 from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c3;
+
+-- GUC 0: merge=on uses the GUC default, so ORDER BY c3 (9 streams) merges.
+set yb_max_merge_scan_streams = 0;
+/*+ IndexScan(t t_pkey (merge=on)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c3;
+
+-- Set() disagrees with the session GUC.  Placement relative to IndexScan
+-- should not matter: Set hints are applied at planner start.
+-- merge=off still suppresses merge when Set() would otherwise allow it.
+set yb_max_merge_scan_streams = 0;
+/*+ Set(yb_max_merge_scan_streams 3) IndexScan(t t_pkey (merge=on)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ IndexScan(t t_pkey (merge=on)) Set(yb_max_merge_scan_streams 3) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ Set(yb_max_merge_scan_streams 3) IndexScan(t t_pkey (merge=off)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ IndexScan(t t_pkey (merge=off)) Set(yb_max_merge_scan_streams 3) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+
+-- Set(0) with merge=on: merge=on still uses the GUC default of 64.
+reset yb_max_merge_scan_streams;
+/*+ Set(yb_max_merge_scan_streams 0) IndexScan(t t_pkey (merge=on)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c3;
+
+-- Keys are folded at parse, so MERGE=on and merge=off are the same option
+-- and per-index merge=off replaces the relation-level on.
+/*+ IndexScan(t (MERGE=on) t_pkey (merge=off)) */ explain (costs off)
+select * from t where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+
+-- Partitioned table.  Relation-level and per-index merge=off must reach
+-- the partitions (aliases pt_1, ...; partition index names are not pt_pkey).
+create table pt (c1 int, c2 int, c3 int, n int,
+  primary key (c1 asc, c2 asc, c3 asc)) partition by list (c1);
+create table pt_0 partition of pt for values in (0);
+create table pt_1 partition of pt for values in (1);
+create table pt_2 partition of pt for values in (2);
+insert into pt
+select c1, c2, c3, c1 * 100 + c2 * 10 + c3
+from generate_series(0, 2) c1,
+     generate_series(0, 2) c2,
+     generate_series(0, 9) c3;
+analyze pt;
+
+reset yb_max_merge_scan_streams;
+/*+ IndexScan(pt pt_pkey (merge=on)) */ explain (costs off)
+select * from pt where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ IndexScan(pt (merge=off)) */ explain (costs off)
+select * from pt where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+/*+ IndexScan(pt pt_pkey (merge=off)) */ explain (costs off)
+select * from pt where c1 in (0, 1, 2) and c2 in (0, 1, 2) order by c2;
+
+-- Derived SAOPs.  The query has no condition on bucket_id; the merge scan's
+-- bucket_id IN (0, 1, 2) is derived from the generated column.  A merge=on
+-- hint derives it whether yb_max_merge_scan_streams is 0 or > 0, and a
+-- merge=off hint suppresses it in both cases.
+set yb_enable_derived_saops to on;
+set yb_max_merge_scan_streams = 0;
+/*+ IndexScan(test test_pkey (merge=on)) */ explain (costs off)
+select * from test where k1 > 112345 order by k1;
+/*+ IndexScan(test test_pkey (merge=off)) */ explain (costs off)
+select * from test where k1 > 112345 order by k1;
+reset yb_max_merge_scan_streams;
+/*+ IndexScan(test test_pkey (merge=on)) */ explain (costs off)
+select * from test where k1 > 112345 order by k1;
+/*+ IndexScan(test test_pkey (merge=off)) */ explain (costs off)
+select * from test where k1 > 112345 order by k1;
+
+-- merge=on does not override the cost model.  Only the YB cost model costs
+-- merge streams, so with yb_enable_cbo off no merge path is built and the
+-- hint is reported as unused.
+set yb_enable_cbo to off;
+/*+ IndexScan(test test_pkey (merge=on)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+set yb_enable_cbo to on;
+
+-- Malformed merge options are parse errors, so yb_bad_hint_mode can catch them.
+reset yb_max_merge_scan_streams;
+/*+ IndexScan(test test_pkey (merge=yes)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan(test test_pkey (foo=on)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan(test test_pkey (merge)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan((merge=on) test test_pkey) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan(test test_pkey (merge=on)*/ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ SeqScan(test (merge=on)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ NestLoop(a b (merge=on)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScanRegexp(test test_pkey (merge=on)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+/*+ IndexScan(test test_pkey ()) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+-- Unusable index must not apply relation-level merge=on to every index.
+set yb_max_merge_scan_streams = 0;
+/*+ IndexScan(test (merge=on) nosuch) */ explain (hints on, costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+reset yb_max_merge_scan_streams;
+set pg_hint_plan.yb_bad_hint_mode to error;
+/*+ IndexScan(test test_pkey (merge=yes)) */ explain (costs off)
+select * from test where k1 > 112345 and bucket_id IN (0, 1, 2) order by k1;
+set pg_hint_plan.yb_bad_hint_mode to warn;
+
+drop schema yb_merge_scan_hint cascade;
 
 \set ECHO none

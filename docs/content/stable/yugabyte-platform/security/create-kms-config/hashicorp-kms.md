@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp
 menu:
   stable_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-4-hashicorp-kms
+    identifier: create-kms-config-5-hashicorp-kms
     weight: 50
 type: docs
 ---
@@ -31,6 +31,13 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
     <a href="../azure-kms/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
+    </a>
+  </li>
+
+  <li >
+    <a href="../oci-kms/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
     </a>
   </li>
 
@@ -225,7 +232,7 @@ To confirm that the information is correct, click **Show details** or **Actions 
 ## Delete a KMS configuration
 
 {{<note title="Note">}}
-Without a KMS configuration, you would no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
+Without a KMS configuration, you would no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. You can't delete a KMS configuration while any existing universe has used it. If you delete a universe, keep its KMS configuration for as long as you need to restore that universe's backups.
 {{</note>}}
 
 To delete a KMS configuration, navigate to **Integrations > Security > Encryption At Rest** to open a list of existing configurations and click its corresponding **Actions > Delete Configuration**.

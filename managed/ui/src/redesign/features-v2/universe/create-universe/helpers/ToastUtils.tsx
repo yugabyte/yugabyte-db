@@ -14,12 +14,13 @@ import { YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
 import { ToastNotificationDuration } from '@app/redesign/helpers/constants';
 import { ErrorBoundary } from '@app/redesign/features/rbac/common/validator/ErrorBoundary';
 
+// Passing an existing toast id replaces that toast in place; every call returns the toast id.
 export type YBToastApi = {
-  info: (text: string) => void;
-  success: (text: string) => void;
-  error: (text: string) => void;
-  warn: (text: string) => void;
-  inProgress: (text: string) => void;
+  info: (text: string, id?: string) => string;
+  success: (text: string, id?: string) => string;
+  error: (text: string, id?: string) => string;
+  warn: (text: string, id?: string) => string;
+  inProgress: (text: string, id?: string) => string;
 };
 
 type ToastEntry = { id: string; text: string; variant: AlertVariant };
@@ -44,9 +45,11 @@ const YBToastLayer: FC<{
   const onDismiss = useCallback(() => dismiss(item.id), [dismiss, item.id]);
 
   useEffect(() => {
+    // In-progress toasts stay until replaced by the final result.
+    if (item.variant === AlertVariant.InProgress) return;
     const timer = window.setTimeout(onDismiss, TOAST_AUTO_DISMISS_MS);
     return () => window.clearTimeout(timer);
-  }, [item.id, onDismiss]);
+  }, [item.id, item.variant, onDismiss]);
 
   return (
     <div
@@ -77,24 +80,24 @@ export const YBToastProvider: FC<{ children: ReactNode }> = ({ children }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const api = useMemo<YBToastApi>(
-    () => ({
-      info: (text: string) =>
-        setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Info }]),
-      success: (text: string) =>
-        setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Success }]),
-      error: (text: string) =>
-        setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Error }]),
-      warn: (text: string) =>
-        setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Warning }]),
-      inProgress: (text: string) =>
-        setToasts((prev) => [
-          ...prev,
-          { id: nextToastId(), text, variant: AlertVariant.InProgress }
-        ])
-    }),
-    []
-  );
+  const api = useMemo<YBToastApi>(() => {
+    const show = (variant: AlertVariant) => (text: string, id?: string) => {
+      const toastId = id ?? nextToastId();
+      setToasts((prev) =>
+        prev.some((t) => t.id === toastId)
+          ? prev.map((t) => (t.id === toastId ? { id: toastId, text, variant } : t))
+          : [...prev, { id: toastId, text, variant }]
+      );
+      return toastId;
+    };
+    return {
+      info: show(AlertVariant.Info),
+      success: show(AlertVariant.Success),
+      error: show(AlertVariant.Error),
+      warn: show(AlertVariant.Warning),
+      inProgress: show(AlertVariant.InProgress)
+    };
+  }, []);
 
   useEffect(() => {
     toastApiRef.current = api;
@@ -135,9 +138,9 @@ export const useYBToast = (): YBToastApi => {
 
 /** Imperative API; only works after {@link YBToastProvider} has mounted. */
 export const YBToast: YBToastApi = {
-  info: (text: string) => toastApiRef.current?.info(text),
-  success: (text: string) => toastApiRef.current?.success(text),
-  error: (text: string) => toastApiRef.current?.error(text),
-  warn: (text: string) => toastApiRef.current?.warn(text),
-  inProgress: (text: string) => toastApiRef.current?.inProgress(text)
+  info: (text, id) => toastApiRef.current?.info(text, id) ?? '',
+  success: (text, id) => toastApiRef.current?.success(text, id) ?? '',
+  error: (text, id) => toastApiRef.current?.error(text, id) ?? '',
+  warn: (text, id) => toastApiRef.current?.warn(text, id) ?? '',
+  inProgress: (text, id) => toastApiRef.current?.inProgress(text, id) ?? ''
 };

@@ -7,6 +7,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.Common;
@@ -14,7 +17,10 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -35,9 +41,12 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +58,7 @@ import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseCRUDHandlerTest extends FakeDBApplication {
@@ -112,6 +122,52 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     }
   }
 
+  // PLAT-23125: adding a read replica without otelCollectorEnabled in the request must not skip the
+  // OTEL collector on the new nodes.
+  @Test
+  public void createClusterCarriesOtelCollectorEnabledFromUniverse() {
+    Universe universe = ModelFactory.createFromConfig(provider, "otel-rr", "r1-az1-3-3");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(), u -> u.getUniverseDetails().otelCollectorEnabled = true);
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrIntent.numNodes = 1;
+    rrIntent.replicationFactor = 1;
+    UniverseDefinitionTaskParams.Cluster asyncCluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC, rrIntent);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.clusters =
+        new ArrayList<>(
+            Arrays.asList(universe.getUniverseDetails().getPrimaryCluster(), asyncCluster));
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.expectedUniverseVersion = -1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams,
+        customer.getId(),
+        asyncCluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
+    taskParams.clusters =
+        new ArrayList<>(Collections.singletonList(taskParams.getClusterByUuid(asyncCluster.uuid)));
+    taskParams.nodeDetailsSet =
+        taskParams.nodeDetailsSet.stream()
+            .filter(n -> n.isInPlacement(asyncCluster.uuid))
+            .collect(Collectors.toSet());
+    // As sent by a client that omits the field.
+    taskParams.otelCollectorEnabled = false;
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.ReadOnlyClusterCreate));
+
+    universeCRUDHandler.createCluster(customer, universe, taskParams);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(any(TaskType.class), captor.capture());
+    assertTrue(captor.getValue().otelCollectorEnabled);
+  }
+
   @Test
   public void updatePrimaryIncorrectReplicasFailTest() {
     Universe universe = ModelFactory.createFromConfig(provider, "ahaha", "r1-az1-3-3;r2-az2-2-2");
@@ -138,6 +194,41 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
             .contains("Cannot have number of replicas 3 greater than the number of nodes 2"));
   }
 
+  // Only the cross-cloud federation API changes federationConfigured on an existing cluster. An
+  // edit whose request omits it must keep the stored value.
+  @Test
+  public void updateKeepsFederationConfiguredFromUniverse() {
+    Universe universe = ModelFactory.createFromConfig(provider, "fed-edit", "r1-az1-3-3");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .setFederationConfigured(true));
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    // An edit that adds a node, as sent by a client that omits the field.
+    UniverseDefinitionTaskParams.Cluster primary = taskParams.getPrimaryCluster();
+    primary.userIntent.numNodes += 1;
+    primary.userIntent.setFederationConfigured(false);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams,
+        customer.getId(),
+        primary.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse));
+
+    universeCRUDHandler.update(
+        customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(any(TaskType.class), captor.capture());
+    assertTrue(captor.getValue().getPrimaryCluster().userIntent.isFederationConfigured());
+  }
+
   private UniverseDefinitionTaskParams.UserIntent testIntent() {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
@@ -156,7 +247,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
           for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
             n.cloudInfo.instance_type = "c5.4xlarge";
           }
@@ -177,7 +268,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
           List<NodeDetails> nodes =
               univ.getUniverseDetails().getNodesInCluster(primaryUuid).stream()
                   .collect(Collectors.toList());
@@ -211,7 +302,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
-          primary.userIntent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(primary.userIntent, "c5.4xlarge");
           UserIntentOverrides overrides = new UserIntentOverrides();
           AZOverrides azOverrides = new AZOverrides();
           azOverrides.setInstanceType("c5.9xlarge");
@@ -239,7 +330,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         universeUuid,
         univ -> {
           Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
-          primary.userIntent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(primary.userIntent, "c5.4xlarge");
           UserIntentOverrides overrides = new UserIntentOverrides();
           AZOverrides azOverrides = new AZOverrides();
           azOverrides.setInstanceType("c5.9xlarge");
@@ -274,8 +365,8 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
-          intent.masterInstanceType = "m5.2xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
+          TestUtils.updateInstanceType(intent, ServerType.MASTER, "m5.2xlarge");
           intent.dedicatedNodes = true;
           NodeDetails master = nodes.get(0);
           master.nodeName = "host-master";
@@ -305,7 +396,8 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "small";
+          TestUtils.updateInstanceType(intent, "small");
+
           for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
             n.cloudInfo.instance_type = "huge";
           }
@@ -409,7 +501,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
           NodeDetails live =
               univ.getUniverseDetails().getNodesInCluster(primaryUuid).iterator().next();
           live.nodeName = "host-live";
@@ -575,18 +667,108 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     assertNull(azOverrides.get(az2.getUuid()));
   }
 
+  // PLAT-21736: use_memory_defaults_optimized_for_ysql must be set on both Master and TServer,
+  // since the two processes rely on agreeing on this flag to negotiate available memory.
+  @Test
+  public void maybeSetNewInstallGflags_setsMemoryFlagOnBothMasterAndTserver() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    Map<String, String> masterFlags = universe.getNewInstallGFlags(ServerType.MASTER);
+    Map<String, String> tserverFlags = universe.getNewInstallGFlags(ServerType.TSERVER);
+    assertEquals("true", masterFlags.get("use_memory_defaults_optimized_for_ysql"));
+    assertEquals("true", tserverFlags.get("use_memory_defaults_optimized_for_ysql"));
+    // Sanity check the sibling flags from the same eligibility bucket are still master-only.
+    assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
+    assertEquals("true", masterFlags.get("split_respects_tablet_replica_limits"));
+    assertNull(universe.getConfig().get(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_k8sGetsYsqlFlagsAndAppliesThem() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2025.2.0.0", false, true);
+    primaryCluster.userIntent.providerType = Common.CloudType.kubernetes;
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    for (ServerType serverType : List.of(ServerType.MASTER, ServerType.TSERVER)) {
+      Map<String, String> flags = universe.getNewInstallGFlags(serverType);
+      assertEquals("true", flags.get("yb_enable_read_committed_isolation"));
+      assertEquals("yb_enable_cbo=on", flags.get("ysql_pg_conf_csv"));
+      assertTrue(!flags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    }
+    assertEquals("true", universe.getConfig().get(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagWhenYsqlDisabled() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", false, false);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    Map<String, String> masterFlags = universe.getNewInstallGFlags(ServerType.MASTER);
+    Map<String, String> tserverFlags = universe.getNewInstallGFlags(ServerType.TSERVER);
+    assertTrue(!masterFlags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    assertTrue(!tserverFlags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    // Non-memory flags in this bucket are unaffected by enableYSQL.
+    assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagBelowVersionThreshold() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.1.0.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertTrue(universe.getNewInstallGFlags(ServerType.MASTER).isEmpty());
+    assertTrue(universe.getNewInstallGFlags(ServerType.TSERVER).isEmpty());
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagForDedicatedNodes() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", true, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertTrue(
+        !universe
+            .getNewInstallGFlags(ServerType.MASTER)
+            .containsKey("use_memory_defaults_optimized_for_ysql"));
+    assertTrue(
+        !universe
+            .getNewInstallGFlags(ServerType.TSERVER)
+            .containsKey("use_memory_defaults_optimized_for_ysql"));
+  }
+
+  private Cluster newInstallGflagsCluster(
+      String ybSoftwareVersion, boolean dedicatedNodes, boolean enableYSQL) {
+    UserIntent userIntent = testIntent();
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.dedicatedNodes = dedicatedNodes;
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.providerType = Common.CloudType.aws;
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
   private UniverseConfigureTaskParams buildConfigureTaskParams(
       boolean dedicatedNodes, boolean setMasterDeviceInfo, boolean setMasterInstanceType) {
     UserIntent userIntent = new UserIntent();
     userIntent.dedicatedNodes = dedicatedNodes;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    ProviderInitializer pi =
+        TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+            .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
     if (setMasterDeviceInfo) {
-      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+      pi.setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 50));
     }
     if (setMasterInstanceType) {
-      userIntent.masterInstanceType = "m5.large";
+      pi.setMasterInstanceType("m5.large");
     }
-
     Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
     taskParams.currentClusterType = ClusterType.PRIMARY;

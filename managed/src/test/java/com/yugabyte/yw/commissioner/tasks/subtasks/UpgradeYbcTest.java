@@ -17,8 +17,13 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -92,6 +97,83 @@ public class UpgradeYbcTest extends FakeDBApplication {
     upgradeYbcTask.run();
     Universe postUpgradeUni = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(TARGET_YBC_VERSION, postUpgradeUni.getUniverseDetails().getYbcSoftwareVersion());
+  }
+
+  @Test
+  public void testUpgradeSuccessWithMasterOnlyNode() {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          NodeDetails masterOnly = new NodeDetails();
+          masterOnly.nodeName = "yb-master-0";
+          masterOnly.nodeUuid = UUID.randomUUID();
+          masterOnly.cloudInfo = new CloudSpecificInfo();
+          masterOnly.cloudInfo.private_ip = "10.0.0.99";
+          masterOnly.isTserver = false;
+          masterOnly.isMaster = true;
+          params.nodeDetailsSet.add(masterOnly);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+
+    UpgradeYbc.Params params = new UpgradeYbc.Params();
+    params.universeUUID = defaultUniverse.getUniverseUUID();
+    params.validateOnlyLiveNodes = false;
+    params.ybcVersion = TARGET_YBC_VERSION;
+    UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
+    upgradeYbcTask.initialize(params);
+    try {
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
+    } catch (Exception e) {
+      assertNull(e);
+    }
+    when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
+    List<String> tserverVersions =
+        defaultUniverse.getNodes().stream()
+            .filter(n -> n.isTserver)
+            .map(n -> TARGET_YBC_VERSION)
+            .toList();
+    when(mockYbcUpgrade.getUniverseNodeYbcVersions(any(), anyBoolean()))
+        .thenReturn(tserverVersions);
+    upgradeYbcTask.run();
+    Universe postUpgradeUni = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(TARGET_YBC_VERSION, postUpgradeUni.getUniverseDetails().getYbcSoftwareVersion());
+  }
+
+  @Test
+  public void testUpgradeDoesNotStampWhenNoNodeRunsYbc() {
+    UniverseUpdater updater =
+        u ->
+            u.getUniverseDetails()
+                .nodeDetailsSet
+                .forEach(
+                    n -> {
+                      n.isMaster = true;
+                      n.isTserver = false;
+                    });
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    String preUpgradeVersion = defaultUniverse.getUniverseDetails().getYbcSoftwareVersion();
+
+    UpgradeYbc.Params params = new UpgradeYbc.Params();
+    params.universeUUID = defaultUniverse.getUniverseUUID();
+    params.validateOnlyLiveNodes = false;
+    params.ybcVersion = TARGET_YBC_VERSION;
+    UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
+    upgradeYbcTask.initialize(params);
+    try {
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
+    } catch (Exception e) {
+      assertNull(e);
+    }
+    when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
+    when(mockYbcUpgrade.getUniverseNodeYbcVersions(any(), anyBoolean())).thenReturn(List.of());
+
+    upgradeYbcTask.run();
+
+    // Nothing reported the new version, so the universe must not be marked as upgraded.
+    Universe postUpgradeUni = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(preUpgradeVersion, postUpgradeUni.getUniverseDetails().getYbcSoftwareVersion());
   }
 
   @Test

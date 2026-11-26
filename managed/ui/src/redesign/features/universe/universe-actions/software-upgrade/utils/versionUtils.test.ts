@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { YbdbRelease } from '../dtos';
+import type { YbdbRelease, YbdbReleaseArtifact } from '../dtos';
 import { ReleaseState, ReleaseYbType } from '../dtos';
 import { buildVersionOptions, getReleaseSeries } from './versionUtils';
 
@@ -39,7 +39,7 @@ describe('buildVersionOptions', () => {
     options.map((option) => option.version);
 
   it('returns empty array when no releases are provided', () => {
-    expect(buildVersionOptions([], '2.18.0.0-b123', undefined, false)).toEqual([]);
+    expect(buildVersionOptions([], '2.18.0.0-b123', undefined, false, 'LINUX')).toEqual([]);
   });
 
   it('attaches the full release info to every option', () => {
@@ -47,7 +47,7 @@ describe('buildVersionOptions', () => {
       ['2.18.1.0-b5', 'STS'],
       ['2.18.2.0-b3', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.18.1.0-b5', undefined, false);
+    const options = buildVersionOptions(releases, '2.18.1.0-b5', undefined, false, 'LINUX');
     const releaseByVersion = Object.fromEntries(releases.map((r) => [r.version, r]));
 
     options.forEach((option) => {
@@ -62,7 +62,7 @@ describe('buildVersionOptions', () => {
       ['2.18.2.0-b3', 'STS'],
       ['2.18.3.0-b1', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.18.1.0-b123', undefined, false);
+    const options = buildVersionOptions(releases, '2.18.1.0-b123', undefined, false, 'LINUX');
 
     // When current is stable and within the same series, both promoted options
     // point to the highest version in that series.
@@ -86,7 +86,7 @@ describe('buildVersionOptions', () => {
       ['2.17.0.0-b523', 'PREVIEW'],
       ['2.18.1.0-b6', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.17.0.0-b123', undefined, true);
+    const options = buildVersionOptions(releases, '2.17.0.0-b123', undefined, true, 'LINUX');
 
     expect(versionsOf(options)).toEqual([
       '2025.2.1.0-b23', // Latest stable release
@@ -108,7 +108,7 @@ describe('buildVersionOptions', () => {
       ['2.18.0.0-b1', 'STS'],
       ['2.18.1.0-b2', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.17.0.0-b1', undefined, false);
+    const options = buildVersionOptions(releases, '2.17.0.0-b1', undefined, false, 'LINUX');
     const versions = versionsOf(options);
 
     // Stable versions should be excluded
@@ -140,7 +140,7 @@ describe('buildVersionOptions', () => {
       ['2.18.1.0-b5', 'STS'],
       ['2.18.2.0-b3', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.18.0.0-b1', undefined, false);
+    const options = buildVersionOptions(releases, '2.18.0.0-b1', undefined, false, 'LINUX');
 
     expect(versionsOf(options)).not.toContain('2.17.1.0-b1');
     expect(versionsOf(options)).toEqual(
@@ -153,7 +153,7 @@ describe('buildVersionOptions', () => {
       ['2025.2.1.0', 'LTS'],
       ['2025.2.2.0', 'LTS']
     ]);
-    const options = buildVersionOptions(releases, '2025.2.1.0-b132', undefined, false);
+    const options = buildVersionOptions(releases, '2025.2.1.0-b132', undefined, false, 'LINUX');
 
     expect(versionsOf(options)).toEqual(expect.arrayContaining(['2025.2.2.0', '2025.2.1.0']));
   });
@@ -165,7 +165,7 @@ describe('buildVersionOptions', () => {
       ['2.18.1.0-b10', 'STS'],
       ['2.18.2.0-b1', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.18.1.0-b3', undefined, false);
+    const options = buildVersionOptions(releases, '2.18.1.0-b3', undefined, false, 'LINUX');
 
     expect(versionsOf(options)).toEqual(
       expect.arrayContaining(['2.18.2.0-b1', '2.18.1.0-b10', '2.18.1.0-b5', '2.18.1.0-b3'])
@@ -189,7 +189,7 @@ describe('buildVersionOptions', () => {
       ['2.18.2.0-b1', 'STS'],
       ['2.18.3.0-b1', 'STS']
     ]);
-    const options = buildVersionOptions(releases, '2.18.2.0-b1', undefined, false);
+    const options = buildVersionOptions(releases, '2.18.2.0-b1', undefined, false, 'LINUX');
     const versions = versionsOf(options);
 
     // Older stable versions should be excluded
@@ -208,7 +208,7 @@ describe('buildVersionOptions', () => {
       ['2.18.1.0-b3', 'STS']
     ]);
     // skipVersionChecks=true so both stable and preview appear in the grouped list
-    const options = buildVersionOptions(releases, '2.17.0.0-b1', undefined, true);
+    const options = buildVersionOptions(releases, '2.17.0.0-b1', undefined, true, 'LINUX');
 
     // Stable releases get "(Stable)" suffix
     expect(options).toEqual(
@@ -234,7 +234,7 @@ describe('buildVersionOptions', () => {
         ['2.18.2.0-b1', 'STS', ['x86_64']],
         ['2.18.3.0-b1', 'STS', ['aarch64']]
       ]);
-      const options = buildVersionOptions(releases, '2.18.1.0-b1', 'aarch64', false);
+      const options = buildVersionOptions(releases, '2.18.1.0-b1', 'aarch64', false, 'LINUX');
 
       expect(versionsOf(options)).not.toContain('2.18.2.0-b1');
       expect(versionsOf(options)).toEqual(
@@ -247,7 +247,7 @@ describe('buildVersionOptions', () => {
         ['2.18.1.0-b1', 'STS', ['x86_64']],
         ['2.18.2.0-b1', 'STS', ['aarch64']]
       ]);
-      const options = buildVersionOptions(releases, '2.18.1.0-b1', undefined, false);
+      const options = buildVersionOptions(releases, '2.18.1.0-b1', undefined, false, 'LINUX');
 
       expect(versionsOf(options)).toEqual(
         expect.arrayContaining(['2.18.2.0-b1', '2.18.1.0-b1'])
@@ -260,7 +260,7 @@ describe('buildVersionOptions', () => {
         ['2.18.5.0-b1', 'STS', ['x86_64']],
         ['2.18.3.0-b1', 'STS', ['aarch64']]
       ]);
-      const options = buildVersionOptions(releases, '2.18.1.0-b1', 'aarch64', false);
+      const options = buildVersionOptions(releases, '2.18.1.0-b1', 'aarch64', false, 'LINUX');
 
       expect(options).toEqual(
         expect.arrayContaining([
@@ -280,9 +280,76 @@ describe('buildVersionOptions', () => {
           state: ReleaseState.ACTIVE
         }
       ];
-      const options = buildVersionOptions(releases, '2.18.1.0-b1', 'x86_64', false);
+      const options = buildVersionOptions(releases, '2.18.1.0-b1', 'x86_64', false, 'LINUX');
 
       expect(options).toEqual([]);
+    });
+  });
+
+  describe('platform filtering', () => {
+    const createRelease = (
+      version: string,
+      releaseType: ReleaseType,
+      artifacts: YbdbReleaseArtifact[]
+    ): YbdbRelease => ({
+      release_uuid: `release-uuid-${version}`,
+      version,
+      yb_type: ReleaseYbType.YBDB,
+      release_type: releaseType,
+      state: ReleaseState.ACTIVE,
+      artifacts
+    });
+
+    const linuxAndHelmArtifacts: YbdbReleaseArtifact[] = [
+      { platform: 'LINUX', architecture: 'x86_64' },
+      { platform: 'KUBERNETES', architecture: null }
+    ];
+
+    it('keeps Helm releases for a Kubernetes universe even when info.arch does not match the Linux artifact', () => {
+      const releases = [
+        createRelease('2.31.0.0-b438', 'PREVIEW', linuxAndHelmArtifacts),
+        createRelease('2.31.0.0-b469', 'PREVIEW', linuxAndHelmArtifacts),
+        createRelease('2.31.0.0-b480', 'PREVIEW', linuxAndHelmArtifacts)
+      ];
+      const options = buildVersionOptions(
+        releases,
+        '2.31.0.0-b438',
+        'aarch64',
+        false,
+        'KUBERNETES'
+      );
+
+      expect(versionsOf(options)).toEqual(
+        expect.arrayContaining(['2.31.0.0-b480', '2.31.0.0-b469', '2.31.0.0-b438'])
+      );
+    });
+
+    it('excludes releases with no Kubernetes artifact from a Kubernetes universe', () => {
+      const releases = [
+        createRelease('2.31.0.0-b438', 'PREVIEW', linuxAndHelmArtifacts),
+        createRelease('2.31.0.0-b469', 'PREVIEW', [{ platform: 'LINUX', architecture: 'aarch64' }])
+      ];
+      const options = buildVersionOptions(
+        releases,
+        '2.31.0.0-b438',
+        'aarch64',
+        false,
+        'KUBERNETES'
+      );
+
+      expect(versionsOf(options)).not.toContain('2.31.0.0-b469');
+      expect(versionsOf(options)).toContain('2.31.0.0-b438');
+    });
+
+    it('excludes Helm-only releases from a VM universe when architecture is unknown', () => {
+      const releases = [
+        createRelease('2.18.1.0-b1', 'STS', [{ platform: 'LINUX', architecture: 'x86_64' }]),
+        createRelease('2.18.2.0-b1', 'STS', [{ platform: 'KUBERNETES', architecture: null }])
+      ];
+      const options = buildVersionOptions(releases, '2.18.1.0-b1', undefined, false, 'LINUX');
+
+      expect(versionsOf(options)).toEqual(expect.arrayContaining(['2.18.1.0-b1']));
+      expect(versionsOf(options)).not.toContain('2.18.2.0-b1');
     });
   });
 });

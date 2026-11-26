@@ -73,14 +73,8 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCloudCode().name());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    UniverseDefinitionTaskParams.UserIntent userIntent = getUserIntent();
-    List<Integer> ports = new ArrayList<>();
-    if (userIntent.enableYSQL)
-      ports.add(universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort);
-    if (userIntent.enableYCQL)
-      ports.add(universe.getUniverseDetails().communicationPorts.yqlServerRpcPort);
-    if (userIntent.enableYEDIS)
-      ports.add(universe.getUniverseDetails().communicationPorts.redisServerRpcPort);
+    List<Integer> ports =
+        getForwardedPorts(getUserIntent(), universe.getUniverseDetails().communicationPorts);
     LoadBalancerConfig lbConfig = taskParams().lbConfig;
     try {
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = getNodeIDs(lbConfig.getAzNodes());
@@ -103,6 +97,23 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
       log.error(msg, e);
       Throwables.propagate(e);
     }
+  }
+
+  /** The YSQL, YCQL and YEDIS ports that a load balancer forwards, in that order. */
+  public static List<Integer> getForwardedPorts(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      UniverseTaskParams.CommunicationPorts communicationPorts) {
+    List<Integer> ports = new ArrayList<>();
+    if (userIntent.enableYSQL) {
+      ports.add(communicationPorts.ysqlServerRpcPort);
+    }
+    if (userIntent.enableYCQL) {
+      ports.add(communicationPorts.yqlServerRpcPort);
+    }
+    if (userIntent.enableYEDIS) {
+      ports.add(communicationPorts.redisServerRpcPort);
+    }
+    return ports;
   }
 
   NLBHealthCheckConfiguration getNlbHealthCheckConfiguration(

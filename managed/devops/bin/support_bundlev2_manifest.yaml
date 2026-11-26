@@ -1,0 +1,456 @@
+# Copyright 2026 YugabyteDB, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+kind: SupportBundleV2
+metadata:
+  name: support-bundle-v2-template
+spec:
+  # The universe comes from --name and the collection window from --start-time / --end-time: both
+  # given are used as given, only --end-time starts 24h before it, only --start-time ends now,
+  # neither collects the last 24h. A universeName or collectionTimeRange added here is ignored, and
+  # a collectionTimeRange is reported, since a manifest outlives the run whose dates it held.
+
+  # Optional: restrict NodeComponents collection to specific DB nodes. When the list is empty,
+  # every node in the universe is considered, which is the default behaviour.
+  # GlobalComponents are collected once for the universe and are not scoped by this list.
+  # Override via: --node-names on support-bundlev2
+  nodeSelection:
+    nodeNames: []
+
+  # Global-level components (collected on YBA / universe scope, not per DB node).
+  # YBA: script-driven components executed locally on the YBA host (YBAComponent API).
+  # Any other key is a v1 global component (TabletReport, ClusterConfig, ...) that YBA's v1
+  # collector gathers; listing it here is enough. A bare key names the component itself.
+  GlobalComponents:
+    YBA:
+      - ApplicationLogs
+    YbaMetadata:
+    TabletReport:
+    ClusterConfig:
+    PrometheusMetrics:
+    PerfAdvisor:
+    K8sInfo:
+
+  # Node-level components to run in this request, grouped by execution type.
+  # On Kubernetes universes the server adjusts this list at two points:
+  #   - SystemLogs and NodeAgent are dropped at validation time (host /var/log with sudo, and a
+  #     node agent install, neither of which exists in a pod), so they are absent from the
+  #     bundle's manifest.json as well.
+  #   - YbcLogs, collect_cdc_state and collect_threadz_memz_rpcz_stats need the tserver process,
+  #     so they are collected from tserver pods only, as are the YSQL and YCQL components. A
+  #     NodeDetails is one pod on Kubernetes.
+  # OutputFiles / ErrorFiles report EMPTY in a pod, where the processes log to stdout rather than
+  # to master.out / tserver.out.
+  NodeComponents:
+    Files:
+      - SystemLogs
+      - UniverseLogs
+      - OutputFiles
+      - ErrorFiles
+      - GFlags
+      - Instance
+      - ConsensusMeta
+      - TabletMeta
+      - NodeAgent
+      - CoreFiles
+      - YbcLogs
+    Bash:
+      - collect_top_ps_pmap_stats
+      - collect_thp_and_timezone_settings
+      - collect_data_dir_map
+      - collect_threadz_memz_rpcz_stats
+      - collect_heap_snapshot
+      - collect_cdc_state
+    YSQL:
+      - ysql_yugabyte_queries
+      - ysql_system_platform_queries
+    YCQL:
+      - ycql_queries
+    YbAdmin:
+      - yb_admin_commands
+
+  execution:
+    linuxUser: yugabyte
+    timeoutSecs: 3600
+
+  # Defaults shared by components.
+  defaults:
+    mountPath: "/mnt/d0"
+    nodeDataDirTemplate: "${defaults.mountPath}/yb-data"
+    # YB software home (provider YB_HOME_DIR). Used by GFlags, OutputFiles, ErrorFiles (v1 parity).
+    # For Kubernetes gflag overrides, override per-universe to /tmp/yugabyte.
+    ybHomeDir: "/home/yugabyte"
+    # YBA moves a tar written as yugabyte into the bundle's directory under the node's tmp directory
+    # (tmp_dir gflag, else the provider's remote tmp directory); SystemLogs' tar stays here.
+    remoteTmpDir: "/tmp"
+    nodeAgentInstallPath: "/opt/yugabyte"
+
+  # Component definitions that support_bundlev2.go can materialize into ScriptOptions + params.
+  componentConfigs:
+    UniverseLogs:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_universe_logs_bundle"
+
+      params:
+        # Paths are resolved on the server (SupportBundleScriptParamResolver) from the node's data
+        # directory, the master/tserver log_dir gflag overrides, and the node-agent install path.
+        mountPath: ""
+        nodeHomeDir: ""
+        masterLogsPath: ""
+        tserverLogsPath: ""
+        ynpLogPath: ""
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/universe-logs-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+        filterPgAuditLogs: true
+
+    ApplicationLogs:
+      enabled: true
+      script:
+        scriptFile: "bin/yba_utils.sh"
+        entrypoint: "create_application_logs_bundle"
+      params:
+        # logDir, regex, and SDF are resolved on the server from log.override.path and
+        # runtime config.
+        logDir: ""
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/application-logs-${bundleUuid}.tar.gz"
+
+    TabletReport:
+      enabled: true
+      # Global-level v1 component: TabletReportComponent (master leader APIs, tablet state).
+
+    ClusterConfig:
+      enabled: true
+      # Global-level v1 component: ClusterConfigComponent (the master's cluster config and YBA's
+      # placement info for each cluster).
+
+    YbaMetadata:
+      enabled: true
+      # Global-level v1 component: YbaMetadataComponent (YBA DB metadata on the platform host).
+
+    PrometheusMetrics:
+      enabled: true
+      # Global-level v1 component: PrometheusMetricsComponent (prom dump under bundle/YBA/).
+      # promDumpStartDate/promDumpEndDate default from collection endDate on the server
+      # when omitted. RFC3339, e.g.
+      #   promDumpStartDate: "2022-12-12T13:07:18Z"
+      #   promDumpEndDate: "2022-12-13T13:07:18Z"
+      params:
+        # NODE_EXPORT is dropped for Kubernetes universes, where node_exporter is not scraped.
+        prometheusMetricsTypes:
+          - MASTER_EXPORT
+          - NODE_EXPORT
+          - PLATFORM
+          - PROMETHEUS
+          - TSERVER_EXPORT
+          - CQL_EXPORT
+          - YSQL_EXPORT
+        # How metrics are fetched from Prometheus:
+        #   PROMQL       - query_range API (v1 default); supports custom promQueries
+        #   REMOTE_READ  - remote read API; larger/historical dumps, no custom promQueries
+        promExportType: REMOTE_READ
+        # Output encoding (meaning depends on promExportType):
+        #   PROMQL_JSON - JSON time-series (required for PROMQL; optional for REMOTE_READ)
+        #   PROM_CHUNK  - binary chunked remote-read payload (REMOTE_READ only)
+        promMetricsFormat: PROM_CHUNK
+        # Downsampling step for PROMQL export (must stay true for PROMQL).
+        promDumpDownSample: true
+
+    PerfAdvisor:
+      enabled: true
+      # Global-level v1 component: PerfAdvisorComponent (PA external service dump under
+      # bundle/YBA/pa/).
+      # paDumpStartDate/paDumpEndDate default from collection endDate on the server when omitted.
+      # RFC3339, e.g.
+      #   paDumpStartDate: "2022-12-12T13:07:18Z"
+      #   paDumpEndDate: "2022-12-13T13:07:18Z"
+      params:
+        paMetricsFormat: PROM_CHUNK
+
+    K8sInfo:
+      enabled: true
+      # Global-level v1 component: K8sInfoComponent (kubectl outputs for K8s universes).
+
+    SystemLogs:
+      enabled: true
+      # Provider ssh user (sudo) to read /var/log; YBA then runs it only with this entry's args.
+      runAs: providerSshUser
+      # Not supported on Kubernetes: reads the host's /var/log through sudo, so the server drops
+      # this sub-component for those universes.
+      # The collection window (collectionTimeRange) is injected at runtime by
+      # SupportBundleScriptParamResolver; it is not set here. So are the file selection regex
+      # (system_logs_regex_pattern below) and the journald toggle
+      # (yb.support_bundle.collect_journald_logs), both universe scoped, so v1 and v2 answer to the
+      # same settings. Files are picked by regex and mtime, which is why no log name or rotation
+      # cadence appears here.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_system_logs_bundle"
+      params:
+        logDir: "/var/log"
+        useSudo: true
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/system-logs-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    YbcLogs:
+      enabled: true
+      # The node redacts any server.conf this component stages with the helper YBA verifies, and
+      # drops the copy when it can't.
+      redactServerConf: true
+      # Collected from tserver pods only on Kubernetes: the ybc controller lives with the tserver.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_ybc_logs_bundle"
+      params:
+        # Resolved on the server: getDataDirPath()/ybc-data for the data dir, the log_dir gflag for
+        # logs, and YB_HOME (or the k8s YW data dir) for server.conf.
+        nodeHomeDir: ""
+        ybcLogsPath: ""
+        ybcServerConfPath: ""
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/ybc-logs-${bundleUuid}-${nodeName}.tar.gz"
+
+    OutputFiles:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_output_files_bundle"
+      params:
+        dirFlag: "--node_home_dir"
+        fileFlag: "--output_file"
+        files:
+          - "master/master.out"
+          - "tserver/tserver.out"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/output-files-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    ErrorFiles:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_error_files_bundle"
+      params:
+        dirFlag: "--node_home_dir"
+        fileFlag: "--error_file"
+        files:
+          - "master/master.err"
+          - "tserver/tserver.err"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/error-files-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    GFlags:
+      enabled: true
+      redactServerConf: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_gflags_bundle"
+      params:
+        # v1 uses provider getYbHomeDir() at runtime (SupportBundleScriptParamResolver).
+        # For k8s, the server uses /tmp/yugabyte automatically.
+        dirFlag: "--node_home_dir"
+        fileFlag: "--gflag_file"
+        files:
+          - "master/conf/server.conf"
+          - "tserver/conf/server.conf"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/gflags-${bundleUuid}-${nodeName}.tar.gz"
+
+    Instance:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_instance_bundle"
+      params:
+        dirFlag: "--node_data_dir"
+        fileFlag: "--instance_file"
+        files:
+          - "master/instance"
+          - "tserver/instance"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/instance-${bundleUuid}-${nodeName}.tar.gz"
+
+    ConsensusMeta:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_consensus_meta_bundle"
+      params:
+        dirFlag: "--node_data_dir"
+        fileFlag: "--consensus_meta_file"
+        files:
+          - "master/consensus-meta"
+          - "tserver/consensus-meta"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/consensus-meta-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    TabletMeta:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_tablet_meta_bundle"
+      params:
+        dirFlag: "--node_data_dir"
+        fileFlag: "--tablet_meta_file"
+        files:
+          - "master/tablet-meta"
+          - "tserver/tablet-meta"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/tablet-meta-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    NodeAgent:
+      enabled: true
+      # Not supported on Kubernetes: pods run no node agent, so the server drops this
+      # sub-component for those universes.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_node_agent_bundle"
+      params:
+        dirFlag: "--node_agent_home_dir"
+        fileFlag: "--node_agent_path"
+        files:
+          - "logs"
+          - "config"
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/node-agent-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    CoreFiles:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_core_files_bundle"
+      params:
+        # Resolved on the server from the provider's getYbHomeDir(), plus /cores.
+        # For Kubernetes the server uses /mnt/disk0/cores, where the pods write cores.
+        nodeHomeDir: ""
+        coresDir: ""
+        maxNumRecentCores: 1
+        maxCoreFileSize: 25000000000
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/core-files-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    collect_top_ps_pmap_stats:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "collect_top_ps_pmap_stats"
+      params:
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/top-ps-pmap-stats-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+        timeoutSecs: 300
+
+    collect_thp_and_timezone_settings:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "collect_thp_and_timezone_settings"
+      params:
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/thp-and-timezone-settings-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+        timeoutSecs: 300
+
+    collect_data_dir_map:
+      enabled: true
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "collect_data_dir_map"
+      params:
+        # Lines per directory listing; the walk stops there and the file notes the cut.
+        maxListingLines: 200000
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/data-dir-map-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+        timeoutSecs: 300
+
+    collect_threadz_memz_rpcz_stats:
+      enabled: true
+      # Collected from tserver pods only on Kubernetes: curls the tserver http port.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "collect_threadz_memz_rpcz_stats"
+      params:
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/threadz-memz-rpcz-stats-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+        timeoutSecs: 300
+
+    collect_heap_snapshot:
+      enabled: true
+      # The server sets --collect_master / --collect_tserver from the node's role, so a pod only
+      # curls the endpoints its own process serves.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "collect_heap_snapshot"
+      params:
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/heap-snapshot-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+        timeoutSecs: 300
+
+    collect_cdc_state:
+      enabled: true
+      # Collected from tserver pods only on Kubernetes: dials the tserver rpc port.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "collect_cdc_state"
+      params:
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/cdc-state-${bundleUuid}-${nodeName}.tar.gz"
+        timeoutSecs: 300
+
+    ysql_yugabyte_queries:
+      enabled: true
+      params:
+        dbName: yugabyte
+        queries:
+          - "SELECT datname FROM pg_database;"
+          - "SELECT * FROM pg_stat_statements limit 20;"
+          - "SELECT * FROM yb_terminated_queries limit 20;"
+          - >-
+            SELECT queryid, query FROM pg_stat_statements
+            WHERE queryid IN (SELECT query_id FROM yb_terminated_queries);
+        outputFileName: "ysql_yugabyte_queries_output_${currentTimestampUTC}.txt"
+        timeoutSecs: 60
+
+    ysql_system_platform_queries:
+      enabled: true
+      # Cluster-wide state, so it runs on one node per bundle rather than on every node.
+      scope: cluster
+      params:
+        dbName: system_platform
+        queries:
+          - >-
+            SELECT timestamp, database, query, calls, mean_time, p99
+            FROM slow_queries_data ORDER BY timestamp DESC LIMIT 20;
+        outputFileName: "ysql_system_platform_queries_output_${currentTimestampUTC}.txt"
+        timeoutSecs: 60
+
+    ycql_queries:
+      enabled: true
+      params:
+        queries:
+          - "SELECT keyspace_name FROM system_schema.keyspaces;"
+          - "SELECT * FROM system_schema.tables limit 20;"
+          - "SELECT * FROM system.local limit 20;"
+        outputFileName: "ycql_queries_output_${currentTimestampUTC}.txt"
+        timeoutSecs: 60
+
+    yb_admin_commands:
+      enabled: true
+      scope: cluster
+      params:
+        ybAdminCommands:
+          - "list_all_masters"
+          - "list_all_tablet_servers"
+          - "list_snapshots"
+          - "list_snapshot_schedules"
+        outputFileName: "yb_admin_commands_output_${currentTimestampUTC}.txt"
+        timeoutSecs: 60
+
+  # Output contract expected by support_bundlev2.go after execution.
+  output:
+    expectStdoutMarkers:
+      statusKey: "BUNDLE_STATUS"
+      pathKey: "BUNDLE_PATH"
+    validStatuses:
+      - OK
+      - EMPTY
+      - FAILED

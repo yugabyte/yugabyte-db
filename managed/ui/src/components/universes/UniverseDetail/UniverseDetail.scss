@@ -128,8 +128,9 @@ $padding: 30px;
   margin-top: 0 !important;
 }
 
-.universe-detail.universe-detail-settings > .tab-content {
-  padding: 16px;
+.universe-detail.universe-detail-settings > .tab-content,
+.universe-detail.universe-detail-monitoring > .tab-content {
+  padding: 16px 16px 16px 0px;
 }
 .delete-universe-check-container {
   float: left;
@@ -505,24 +506,6 @@ h2 {
     left: 40%;
     min-width: 300px;
   }
-
-  #queries-tab-panel {
-    .alert {
-      position: absolute;
-      top: 20px;
-      min-width: 300px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 15px 28px 15px 15px;
-
-      .alert-close {
-        position: absolute;
-        top: 2px;
-        right: 5px;
-        cursor: pointer;
-      }
-    }
-  }
 }
 
 .toggle-universe-list {
@@ -859,12 +842,13 @@ h2 {
   line-height: normal;
   margin: 12px 0px;
   color: #333 !important;
-  &:hover, &:focus {
+  &:hover,
+  &:focus {
     color: #333 !important;
   }
 }
 .menu-item-subtext {
-  color: #4E5F6D;
+  color: #4e5f6d;
   font-size: 10px;
   font-style: normal;
   font-weight: 300;

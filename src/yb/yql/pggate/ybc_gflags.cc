@@ -57,6 +57,14 @@ DEFINE_test_flag(uint32, ysql_conn_mgr_auth_delay_ms, 0,
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
     "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
+    "Enable the use of the auth-backend for authentication of logical connections. "
+    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
+    "spawning a fresh PG backend to perform authentication for each incoming auth request."
+    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
+    "and thus is faster as it skips needing to spawn a new backend process each time."
+    );
+
 DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
     "Maximum size of the query which connection manager can process in the deploy phase or while"
     "forwarding the client query");
@@ -84,6 +92,23 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
+    "Maximum number of rows returned by each catalog prefetch request. 0 means no limit.");
+
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
+    "Maximum combined response size in bytes of each catalog prefetch round. Capped at the safe "
+    "maximum RPC response size. 0 uses that safe maximum.");
+
+// Backs the yb_enable_stale_catalog_prefetch GUC: pg_wrapper writes this into postgresql.conf
+// under the name without the ysql_ prefix, and a runtime change reloads it.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_stale_catalog_prefetch, true,
+    "Whether a connection starting may read the catalog at a version this node already has "
+    "cached, instead of fetching the whole catalog from the leader. It does so while the master "
+    "leader reports that it is shedding catalog prefetches, and when another connection is "
+    "already filling the catalog for its database. Also decides the admission priority of the "
+    "read a backend makes ahead of authentication: on, that read is admitted ahead of prefetches "
+    "waiting to begin; off, it takes the ordinary priority.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "
@@ -100,6 +125,9 @@ DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
+
+DEFINE_NON_RUNTIME_bool(ysql_catalog_prefetch_minimize_index_scans, true,
+    "Read system table during catalog prefetching without index scan (if possible)");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
@@ -131,6 +159,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
     " right away without incurring a master lookup");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
+    "When enabled, a non-zero client_connection_check_interval in ysql_pg_conf_csv will also "
+    "check for client disconnects during backend initialization.");
+TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
+
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
     "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
     "...) is served from the tserver response cache, turning per-connection "
@@ -161,6 +194,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
+DEFINE_test_flag(uint32, ysql_delay_before_relcache_init_phase3_ms, 0,
+    "Delay a starting YSQL backend after it has checked that its database exists and before "
+    "RelationCacheInitializePhase3.");
+
 DEFINE_test_flag(bool, enable_obj_tuple_locks, false,
     "Enable object tuple locks in the lock manager.");
 
@@ -171,9 +208,9 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false
     "When set to true, enables the query API for logical replication in YSQL via the "
     "pg_logical_slot_get/peek_changes functions.");
 
-DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -181,6 +218,8 @@ DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_uint32(pg_cache_response_trust_auth_lifetime_limit_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -197,6 +236,14 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
   }
 
   return true;
+}
+
+// Postgres compares this value with strcmp, so the synonym is mapped to the documented value here.
+const char* SequenceSupportMode() {
+  if (FLAGS_ysql_conn_mgr_sequence_support_mode == "pooled_with_currval_lastval") {
+    return "pooled_with_curval_lastval";
+  }
+  return FLAGS_ysql_conn_mgr_sequence_support_mode.c_str();
 }
 
 }  // namespace
@@ -231,8 +278,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
-      .ysql_enable_colocated_tables_with_tablespaces =
-          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
       .ysql_enable_create_database_oid_collision_retry =
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
@@ -252,17 +297,19 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
+      .ysql_conn_mgr_use_auth_backend = &FLAGS_ysql_conn_mgr_use_auth_backend,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
       .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
-      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
+      .ysql_conn_mgr_sequence_support_mode = SequenceSupportMode(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
+      .ysql_enable_concurrent_ddl = &FLAGS_ysql_enable_concurrent_ddl,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_bypass_anonymous_savepoint_ddl_check =
@@ -284,9 +331,23 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_ysql_delay_before_relcache_init_phase3_ms =
+          &FLAGS_TEST_ysql_delay_before_relcache_init_phase3_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
-          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization
+          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
+      .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
+          &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+      .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,
+      .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
+      .ysql_catalog_prefetch_minimize_index_scans =
+          &FLAGS_ysql_catalog_prefetch_minimize_index_scans,
+      .ysql_enable_startup_client_connection_check =
+          &FLAGS_ysql_enable_startup_client_connection_check,
+      .ysql_yb_pg_partman_use_native_txn_ddl_and_locks =
+          &FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
+      .pg_cache_response_trust_auth_lifetime_limit_ms =
+          &FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms,
   };
   // clang-format on
   return &accessor;

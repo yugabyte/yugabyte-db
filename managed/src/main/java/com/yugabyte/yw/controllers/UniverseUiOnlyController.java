@@ -6,9 +6,14 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -23,6 +28,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -41,6 +48,8 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -57,10 +66,10 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseUiOnlyController.class);
 
   @Inject private RuntimeConfGetter confGetter;
-
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private RoleBindingUtil roleBindingUtil;
+  @Inject private GFlagsValidation gFlagsValidation;
 
   /**
    * @deprecated Use UniverseInfoController.getUniverseResources that returns resources for universe
@@ -71,7 +80,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   public Result getUniverseResourcesOld(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     UniverseDefinitionTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, confGetter);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -80,7 +89,14 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             customerUUID.toString(),
             Audit.ActionType.GetUniverseResources,
             Json.toJson(taskParams));
-    return PlatformResults.withData(universeInfoHandler.getUniverseResources(customer, taskParams));
+    // Keeping the current logic.
+    UniverseDefinitionTaskParams.ClusterType clusterType = taskParams.currentClusterType;
+    if (clusterType == null) {
+      clusterType = UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+    }
+
+    return PlatformResults.withData(
+        universeInfoHandler.getUniverseResources(customer, taskParams, clusterType, true));
   }
 
   /**
@@ -137,7 +153,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, confGetter);
 
     universeCRUDHandler.configure(customer, taskParams);
     auditService()
@@ -146,11 +162,63 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.TargetType.Universe,
             Objects.toString(taskParams.getUniverseUUID(), null),
             Audit.ActionType.Configure);
-    // Never redact configure's API response. For CREATE operation, we do not have universe model to
-    // get gflags from. To keep clients consistent, we will not redact CREATE. For EDIT, the payload
-    // is formed from GET universe's API response which will already be redacted. So no need to do
-    // it here.
+    Util.convertSingleProviderSpecsToOldSchema(confGetter, taskParams);
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      redactStoredSecrets(taskParams);
+    }
     return PlatformResults.withData(taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
+  }
+
+  // The response can hold the universe's stored gflags and Kubernetes overrides, such as after a
+  // reset of its configuration. An edit replaces masterGFlags, tserverGFlags or specificGFlags with
+  // the stored one as a whole when any of its values is REDACTED, and restores each REDACTED
+  // override secret from the stored overrides, so only values equal to the stored ones are
+  // redacted. The others hold the client's own values, which a redaction would drop.
+  private void redactStoredSecrets(UniverseConfigureTaskParams taskParams) {
+    Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
+    if (universe == null || taskParams.clusters == null) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster storedCluster = cluster.uuid == null ? null : universe.getCluster(cluster.uuid);
+      if (cluster.userIntent == null || storedCluster == null || storedCluster.userIntent == null) {
+        continue;
+      }
+      UserIntent stored = storedCluster.userIntent;
+      UserIntent userIntent = cluster.userIntent;
+      if (userIntent.masterGFlags != null && userIntent.masterGFlags.equals(stored.masterGFlags)) {
+        userIntent.masterGFlags =
+            RedactingService.redactGFlags(
+                userIntent.masterGFlags, stored.ybSoftwareVersion, gFlagsValidation);
+      }
+      if (userIntent.tserverGFlags != null
+          && userIntent.tserverGFlags.equals(stored.tserverGFlags)) {
+        userIntent.tserverGFlags =
+            RedactingService.redactGFlags(
+                userIntent.tserverGFlags, stored.ybSoftwareVersion, gFlagsValidation);
+      }
+      if (userIntent.specificGFlags != null
+          && userIntent.specificGFlags.equals(stored.specificGFlags)) {
+        userIntent.specificGFlags =
+            GFlagsUtil.redactSensitiveSpecificGFlags(
+                userIntent.specificGFlags, gFlagsValidation, stored.ybSoftwareVersion);
+      }
+      if (userIntent.universeOverrides != null
+          && userIntent.universeOverrides.equals(stored.universeOverrides)) {
+        userIntent.universeOverrides =
+            KubernetesOverridesRedactor.redact(userIntent.universeOverrides);
+      }
+      if (userIntent.azOverrides != null && stored.azOverrides != null) {
+        // An edit restores each AZ's overrides from the stored overrides of the same AZ.
+        Map<String, String> azOverrides = new LinkedHashMap<>(userIntent.azOverrides);
+        azOverrides.replaceAll(
+            (az, overrides) ->
+                Objects.equals(overrides, stored.azOverrides.get(az))
+                    ? KubernetesOverridesRedactor.redact(overrides)
+                    : overrides);
+        userIntent.azOverrides = azOverrides;
+      }
+    }
   }
 
   @ApiOperation(
@@ -179,7 +247,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, confGetter);
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> options =
         UniverseCRUDHandler.getUpdateOptions(taskParams, taskParams.clusterOperation);
@@ -209,9 +277,11 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   public Result create(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UniverseControllerRequestBinder.rejectFipsDisabledOnFipsYba(request);
     UniverseResp universeResp =
         universeCRUDHandler.createUniverse(
-            customer, bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class));
+            customer,
+            bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, confGetter));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -242,7 +312,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, universe);
+        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, universe, confGetter);
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
@@ -276,7 +346,8 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         universeCRUDHandler.createCluster(
             customer,
             universe,
-            bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, universe));
+            bindFormDataToTaskParams(
+                request, UniverseDefinitionTaskParams.class, universe, confGetter));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -356,7 +427,8 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     // Use universe when binding so gflags come from YBA metadata, not request payload.
-    UpgradeParams taskParams = bindFormDataToTaskParams(request, UpgradeParams.class, universe);
+    UpgradeParams taskParams =
+        bindFormDataToTaskParams(request, UpgradeParams.class, universe, confGetter);
 
     UUID taskUUID = universeCRUDHandler.upgrade(customer, universe, taskParams);
     auditService()
@@ -395,7 +467,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         universeCRUDHandler.updateDiskSize(
             customer,
             universe,
-            bindFormDataToTaskParams(request, DiskIncreaseFormData.class, universe));
+            bindFormDataToTaskParams(request, DiskIncreaseFormData.class, universe, confGetter));
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -432,7 +504,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     TlsConfigUpdateParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            request, TlsConfigUpdateParams.class, universe);
+            request, TlsConfigUpdateParams.class, universe.getUniverseUUID(), confGetter);
 
     UUID taskUUID = universeCRUDHandler.tlsConfigUpdate(customer, universe, taskParams);
     auditService()
@@ -486,7 +558,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     try {
       UpgradeTaskParams taskParams =
           UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-              request, UpgradeTaskParams.class, universe);
+              request, UpgradeTaskParams.class, universe.getUniverseUUID(), confGetter);
       UniverseResp universeResp = universeCRUDHandler.migrateUniverse(customer, taskParams);
       auditService()
           .createAuditEntryWithReqBody(

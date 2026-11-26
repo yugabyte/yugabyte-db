@@ -7,7 +7,7 @@ By our team:
 * [Install pgrx extensions in PostgreSQL](https://tcdioss.tcdi.com/blog/install-pgx-extensions) by [Ryan Lambert](https://github.com/rustprooflabs)
 * [SPI changes in pgrx 0.7.0](https://tcdioss.tcdi.com/blog/pgx-0-7-0-spi-changes) by [Ryan Lambert](https://github.com/rustprooflabs)
 * [Pgrx: Year in Review 2022](https://tcdioss.tcdi.com/blog/pgx-year-in-review-2022) by [Ryan Lambert](https://github.com/rustprooflabs)
-* "Forging SQL from Rust" ([archive](forging-sql-from-rust.md)) by [Ana Hobden (a `pgrx` maintainer)](https://github.com/Hoverbear/)
+* "Forging SQL from Rust" ([historical archive](forging-sql-from-rust.md)) by [Ana Hobden (a `pgrx` maintainer)](https://github.com/Hoverbear/)
 
 By others (chronological order):
 

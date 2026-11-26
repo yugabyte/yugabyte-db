@@ -308,12 +308,18 @@ BEGIN
     WHERE task_details->>'document_id' = v_doc_inflight::TEXT
   ), 'Processing document must NOT be enqueued';
 
-  -- Second build: still no enqueue for COMPLETED/PROCESSING. The QUEUED
-  -- and FAILED rows above are now duplicated -- that's a separate
-  -- concern (NOT EXISTS guard against work_queue could be added later);
-  -- the contract we're locking in here is that PROCESSING/COMPLETED
-  -- documents are never re-enqueued.
+  -- Second build: PROCESSING/COMPLETED documents are still not enqueued,
+  -- and the QUEUED and FAILED documents already have a live task for this
+  -- index, so nothing new is enqueued at all.
   PERFORM dist_rag.build_index(v_index_id);
+  SELECT COUNT(*) INTO v_second_count
+  FROM dist_rag.work_queue
+  WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
+    AND task_details->>'index_id' = v_index_id::TEXT;
+  ASSERT v_second_count = 2,
+    format('Re-running build_index must not enqueue duplicates, found %s tasks',
+           v_second_count);
+
   SELECT COUNT(*) INTO v_second_count
   FROM dist_rag.work_queue
   WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
@@ -323,6 +329,50 @@ BEGIN
     format('Re-running build_index must not enqueue PROCESSING/COMPLETED docs, found %s', v_second_count);
 
   RAISE NOTICE 'PASS: build_index skips PROCESSING/COMPLETED docs and re-runs idempotently for them';
+END $$;
+
+-- ============================================
+-- Test 7a2: A source shared by two indexes gets a task for each
+-- ============================================
+-- The duplicate-task guard in _queue_source_documents is per index, so
+-- building the second index still queues its documents.
+DO $$
+DECLARE
+  v_source_id UUID;
+  v_index_a UUID;
+  v_index_b UUID;
+  v_doc UUID;
+  v_tasks INT;
+BEGIN
+  RAISE NOTICE '=== Test 7a2: one source, two indexes ===';
+  v_source_id := dist_rag.create_source(r_source_uri := 'https://twoindexes.example.com/docs/');
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_source_id, 'shared.pdf', 'https://twoindexes.example.com/shared.pdf',
+          'QUEUED'::dist_rag.document_processing_status_enum)
+  RETURNING document_id INTO v_doc;
+  v_index_a := dist_rag.init_vector_index(
+    r_index_name := 'two_indexes_a',
+    r_sources := ARRAY[v_source_id]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536)
+  );
+  v_index_b := dist_rag.init_vector_index(
+    r_index_name := 'two_indexes_b',
+    r_sources := ARRAY[v_source_id]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536)
+  );
+
+  PERFORM dist_rag.build_index(v_index_a);
+  PERFORM dist_rag.build_index(v_index_b);
+  PERFORM dist_rag.build_index(v_index_b);
+
+  SELECT COUNT(*) INTO v_tasks
+  FROM dist_rag.work_queue
+  WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
+    AND task_details->>'document_id' = v_doc::TEXT;
+  ASSERT v_tasks = 2,
+    format('Expected one task per index for the shared document, got %s', v_tasks);
+
+  RAISE NOTICE 'PASS: each index sharing a source gets its own task';
 END $$;
 
 -- ============================================
@@ -354,6 +404,134 @@ BEGIN
     AND task_details->>'index_id' = v_index_id::TEXT;
   ASSERT v_preprocess_count >= 1, 'Should have queued at least 1 document by name';
   RAISE NOTICE 'PASS: Build index by name queued % documents', v_preprocess_count;
+END $$;
+
+-- ============================================
+-- Test 7c: One document row per file in a source (0.0.4)
+-- ============================================
+DO $$
+DECLARE
+  v_source_id UUID;
+  v_other_source UUID;
+BEGIN
+  RAISE NOTICE '=== Test 7c: uq_documents_source_uri ===';
+  v_source_id := dist_rag.create_source(r_source_uri := 'https://unique.example.com/docs/');
+  v_other_source := dist_rag.create_source(r_source_uri := 'https://unique2.example.com/docs/');
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_source_id, 'a.pdf', 'https://unique.example.com/a.pdf');
+
+  BEGIN
+    INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+    VALUES (v_source_id, 'a.pdf', 'https://unique.example.com/a.pdf');
+    RAISE EXCEPTION 'a second row for the same source and URI was accepted';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  -- The crawler's targetless upsert skips the row instead of failing.
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_source_id, 'a.pdf', 'https://unique.example.com/a.pdf')
+  ON CONFLICT DO NOTHING;
+
+  -- The same file in another source, and rows with no URI, are allowed.
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_other_source, 'a.pdf', 'https://unique.example.com/a.pdf'),
+         (v_source_id, 'n1', NULL), (v_source_id, 'n2', NULL);
+
+  ASSERT (SELECT count(*) FROM dist_rag.documents
+          WHERE document_uri = 'https://unique.example.com/a.pdf') = 2,
+    'Expected one row per source for the shared URI';
+  RAISE NOTICE 'PASS: one document row per (source_id, document_uri)';
+END $$;
+
+-- ============================================
+-- Test 7d: At most one live PREPROCESS task per document and index (0.0.4)
+-- ============================================
+DO $$
+DECLARE
+  v_details JSONB := jsonb_build_object('document_id', gen_random_uuid(),
+                                        'index_id', gen_random_uuid());
+  v_task UUID;
+BEGIN
+  RAISE NOTICE '=== Test 7d: uq_live_preprocess ===';
+  INSERT INTO dist_rag.work_queue (task_type, task_details)
+  VALUES ('PREPROCESS', v_details) RETURNING id INTO v_task;
+
+  BEGIN
+    INSERT INTO dist_rag.work_queue (task_type, task_details) VALUES ('PREPROCESS', v_details);
+    RAISE EXCEPTION 'a second live task was accepted';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  -- Claiming keeps the task inside the index predicate without a conflict.
+  UPDATE dist_rag.work_queue SET task_status = 'IN_PROGRESS' WHERE id = v_task;
+  -- A second index for the same document is a different key.
+  INSERT INTO dist_rag.work_queue (task_type, task_details)
+  VALUES ('PREPROCESS', v_details || jsonb_build_object('index_id', gen_random_uuid()));
+  -- A FAILED task leaves the predicate, so a retry can be queued.
+  UPDATE dist_rag.work_queue SET task_status = 'FAILED' WHERE id = v_task;
+  INSERT INTO dist_rag.work_queue (task_type, task_details) VALUES ('PREPROCESS', v_details);
+
+  RAISE NOTICE 'PASS: one live task per document and index';
+END $$;
+
+-- ============================================
+-- Test 7e: _queue_document queues one document for each mapped index (0.0.4)
+-- ============================================
+DO $$
+DECLARE
+  v_mapped UUID;
+  v_unmapped UUID;
+  v_doc UUID;
+  v_done UUID;
+  v_lonely UUID;
+  v_queued INT;
+BEGIN
+  RAISE NOTICE '=== Test 7e: _queue_document ===';
+  v_mapped := dist_rag.create_source(r_source_uri := 'https://queuedoc.example.com/docs/');
+  v_unmapped := dist_rag.create_source(r_source_uri := 'https://queuedoc2.example.com/docs/');
+  PERFORM dist_rag.init_vector_index(
+    r_index_name := 'queue_document_a',
+    r_sources := ARRAY[v_mapped]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536));
+  PERFORM dist_rag.init_vector_index(
+    r_index_name := 'queue_document_b',
+    r_sources := ARRAY[v_mapped]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536));
+
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, document_type)
+  VALUES (v_mapped, 'q.txt', 'https://queuedoc.example.com/q.txt', 'text/plain')
+  RETURNING document_id INTO v_doc;
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_mapped, 'done.txt', 'https://queuedoc.example.com/done.txt', 'COMPLETED')
+  RETURNING document_id INTO v_done;
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_unmapped, 'l.txt', 'https://queuedoc2.example.com/l.txt')
+  RETURNING document_id INTO v_lonely;
+
+  ASSERT dist_rag._queue_document(v_doc) = 2, 'Expected a task for each of the two indexes';
+  ASSERT dist_rag._queue_document(v_doc) = 0, 'A second call must add nothing';
+  ASSERT dist_rag._queue_document(v_done) = 0, 'A COMPLETED document must not be queued';
+  ASSERT dist_rag._queue_document(v_lonely) = 0, 'An unmapped source has no index to queue for';
+
+  SELECT count(*) INTO v_queued FROM dist_rag.work_queue
+  WHERE task_details->>'document_id' = v_doc::TEXT
+    AND task_details->>'document_type' = 'text/plain'
+    AND task_details->>'source_id' = v_mapped::TEXT;
+  ASSERT v_queued = 2, format('Expected two complete task payloads, got %s', v_queued);
+  RAISE NOTICE 'PASS: _queue_document queues per mapped index and skips finished documents';
+END $$;
+
+-- ============================================
+-- Test 7f: maintenance_runs is seeded for the orphan sweep (0.0.4)
+-- ============================================
+DO $$
+BEGIN
+  RAISE NOTICE '=== Test 7f: maintenance_runs ===';
+  ASSERT EXISTS (SELECT 1 FROM dist_rag.maintenance_runs WHERE name = 'orphan_sweep'),
+    'The orphan_sweep row must exist so a worker can claim a sweep';
+  RAISE NOTICE 'PASS: maintenance_runs has the orphan_sweep row';
 END $$;
 
 -- ============================================
@@ -651,6 +829,420 @@ BEGIN
   ASSERT v_total_chunks >= 10, 'Should report at least 10 chunks processed';
   ASSERT v_completion_rate = 100.00, 'Completion rate should be 100% for 1 completed pipeline';
   RAISE NOTICE 'PASS: pipeline_stats - chunks: %, completion rate: % %%', v_total_chunks, v_completion_rate;
+END $$;
+
+-- ============================================
+-- Test 20: create_column_embedding_mapping declares an uninitialized mapping
+-- ============================================
+DO $$
+DECLARE
+  v_mapping_id UUID;
+  v_status dist_rag.column_embedding_registration_status_enum;
+  v_vector_index_id UUID;
+  v_tenant_col TEXT;
+  v_priority_col TEXT;
+  v_source_table TEXT;
+  v_text_columns TEXT[];
+  v_filter_by_columns JSONB;
+  v_order_by JSONB;
+  v_filters JSONB := jsonb_build_array(
+    jsonb_build_object('source_filter_on_column', 'trace_id', 'target_value_from_column', 'conversation_id'),
+    jsonb_build_object('source_filter_on_column', 'metadata', 'json_key', 'message_id', 'target_value_from_column', 'message_id'),
+    jsonb_build_object('source_filter_on_column', 'project_id', 'resolve', jsonb_build_object(
+      'schema', 'meko_system', 'table', 'langfuse_project_mapping',
+      'select_column', 'langfuse_project_id', 'where_column', 'datapack_id',
+      'where_value_from_row_column', 'tenant_id'
+    ))
+  );
+BEGIN
+  RAISE NOTICE '=== Test 20: create_column_embedding_mapping declares an uninitialized mapping ===';
+
+  v_mapping_id := dist_rag.create_column_embedding_mapping(
+    r_registration_name := 'conversation_history_search_langfuse_test',
+    r_destination_schema := 'datapacks',
+    r_destination_table := 'conversation_history_search',
+    r_destination_embedding_column := 'embeddings',
+    r_source_schema := 'clickhouse',
+    r_source_table := 'observations',
+    r_source_text_columns := ARRAY['input', 'output'],
+    r_source_filter_by_columns := v_filters,
+    r_destination_tenant_column := 'tenant_id',
+    r_destination_priority_column := 'priority',
+    r_source_order_by := jsonb_build_object('column', 'start_time', 'direction', 'ASC')
+  );
+  ASSERT v_mapping_id IS NOT NULL, 'Mapping ID should not be NULL';
+
+  SELECT status, vector_index_id, destination_tenant_column, destination_priority_column,
+         source_table, source_text_columns, source_filter_by_columns, source_order_by
+  INTO v_status, v_vector_index_id, v_tenant_col, v_priority_col, v_source_table, v_text_columns,
+       v_filter_by_columns, v_order_by
+  FROM dist_rag.column_embedding_registrations
+  WHERE id = v_mapping_id;
+
+  ASSERT v_status = 'PAUSED'::dist_rag.column_embedding_registration_status_enum,
+    'a freshly declared mapping should default to PAUSED (not yet initialized)';
+  ASSERT v_vector_index_id IS NULL, 'vector_index_id should be NULL until init_column_embedding runs';
+  ASSERT v_tenant_col = 'tenant_id', 'destination_tenant_column should round-trip';
+  ASSERT v_priority_col = 'priority', 'destination_priority_column should round-trip';
+  ASSERT v_source_table = 'observations', 'source_table should round-trip';
+  ASSERT v_text_columns = ARRAY['input', 'output'], 'source_text_columns should round-trip';
+  ASSERT jsonb_array_length(v_filter_by_columns) = 3, 'source_filter_by_columns should round-trip as a 3-element array';
+  ASSERT v_filter_by_columns->0->>'target_value_from_column' = 'conversation_id',
+    'row-derived filter value should round-trip';
+  ASSERT v_filter_by_columns->2->'resolve'->>'where_value_from_row_column' = 'tenant_id',
+    'resolver row-derived where-value should round-trip';
+  ASSERT v_order_by->>'column' = 'start_time', 'source_order_by should round-trip';
+  RAISE NOTICE 'PASS: create_column_embedding_mapping - mapping %', v_mapping_id;
+END $$;
+
+-- ============================================
+-- Test 20b: init_column_embedding activates a declared mapping, without
+-- creating any physical backing table (unlike init_vector_index)
+-- ============================================
+DO $$
+DECLARE
+  v_mapping_id UUID;
+  v_index_id UUID;
+  v_status dist_rag.column_embedding_registration_status_enum;
+  v_linked_index_id UUID;
+  v_index_name VARCHAR(50);
+  v_ai_provider dist_rag.ai_provider_enum;
+  v_embedding_model_params JSONB;
+  v_table_exists BOOLEAN;
+BEGIN
+  RAISE NOTICE '=== Test 20b: init_column_embedding activates a mapping ===';
+
+  SELECT id INTO v_mapping_id FROM dist_rag.column_embedding_registrations
+  WHERE registration_name = 'conversation_history_search_langfuse_test';
+
+  v_index_id := dist_rag.init_column_embedding(
+    r_mapping_id := v_mapping_id,
+    r_ai_provider := 'OPENAI',
+    r_embedding_model_params := jsonb_build_object('model', 'text-embedding-3-large', 'dimensions', 1536)
+  );
+  ASSERT v_index_id IS NOT NULL, 'init_column_embedding should return a vector_index_id';
+
+  SELECT status, vector_index_id INTO v_status, v_linked_index_id
+  FROM dist_rag.column_embedding_registrations WHERE id = v_mapping_id;
+  ASSERT v_status = 'ACTIVE'::dist_rag.column_embedding_registration_status_enum,
+    'init_column_embedding should activate the mapping';
+  ASSERT v_linked_index_id = v_index_id, 'mapping.vector_index_id should link to the new vector_indexes row';
+
+  SELECT index_name, ai_provider, embedding_model_params INTO v_index_name, v_ai_provider, v_embedding_model_params
+  FROM dist_rag.vector_indexes WHERE id = v_index_id;
+  ASSERT v_index_name = 'conversation_history_search_langfuse_test',
+    'the new vector_indexes row should reuse the mapping''s registration_name as index_name';
+  ASSERT v_ai_provider = 'OPENAI'::dist_rag.ai_provider_enum, 'ai_provider should round-trip';
+  ASSERT v_embedding_model_params->>'model' = 'text-embedding-3-large', 'embedding_model_params should round-trip';
+
+  -- The whole point of not calling _create_vector_index_table: no physical
+  -- table named after the mapping/index should exist anywhere.
+  SELECT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_tables
+    WHERE tablename = 'conversation_history_search_langfuse_test'
+  ) INTO v_table_exists;
+  ASSERT NOT v_table_exists,
+    'init_column_embedding must never create a physical backing table (destination table already exists)';
+
+  RAISE NOTICE 'PASS: init_column_embedding activates a mapping';
+END $$;
+
+-- ============================================
+-- Test 20c: init_column_embedding rejects re-initializing an already-active mapping
+-- ============================================
+DO $$
+DECLARE
+  v_mapping_id UUID;
+  v_error_caught BOOLEAN := FALSE;
+BEGIN
+  RAISE NOTICE '=== Test 20c: init_column_embedding rejects double-init ===';
+
+  SELECT id INTO v_mapping_id FROM dist_rag.column_embedding_registrations
+  WHERE registration_name = 'conversation_history_search_langfuse_test';
+
+  BEGIN
+    PERFORM dist_rag.init_column_embedding(
+      r_mapping_id := v_mapping_id, r_ai_provider := 'OPENAI',
+      r_embedding_model_params := jsonb_build_object('model', 'text-embedding-3-large', 'dimensions', 1536)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'Re-initializing an already-active mapping should raise an exception';
+
+  RAISE NOTICE 'PASS: init_column_embedding rejects double-init';
+END $$;
+
+-- ============================================
+-- Test 20d: init_column_embedding validates mapping_id and embedding_model_params
+-- ============================================
+DO $$
+DECLARE
+  v_error_caught BOOLEAN;
+  v_pending_mapping_id UUID;
+BEGIN
+  RAISE NOTICE '=== Test 20d: init_column_embedding validation ===';
+
+  -- Unknown mapping_id
+  v_error_caught := FALSE;
+  BEGIN
+    PERFORM dist_rag.init_column_embedding(
+      r_mapping_id := gen_random_uuid(), r_ai_provider := 'OPENAI',
+      r_embedding_model_params := jsonb_build_object('dimensions', 1536)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'Unknown mapping_id should raise an exception';
+
+  -- Missing "dimensions" in embedding_model_params
+  v_pending_mapping_id := dist_rag.create_column_embedding_mapping(
+    r_registration_name := 'pending_init_validation_test',
+    r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+    r_destination_embedding_column := 'embeddings',
+    r_source_schema := 'clickhouse', r_source_table := 'observations',
+    r_source_text_columns := ARRAY['input'],
+    r_source_filter_by_columns := jsonb_build_array(jsonb_build_object('source_filter_on_column', 'trace_id', 'value', 'x'))
+  );
+  v_error_caught := FALSE;
+  BEGIN
+    PERFORM dist_rag.init_column_embedding(
+      r_mapping_id := v_pending_mapping_id, r_ai_provider := 'OPENAI',
+      r_embedding_model_params := jsonb_build_object('model', 'text-embedding-3-large')
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'embedding_model_params missing "dimensions" should raise an exception';
+
+  -- That mapping should still be uninitialized after the failed attempt.
+  ASSERT (SELECT vector_index_id FROM dist_rag.column_embedding_registrations
+          WHERE id = v_pending_mapping_id) IS NULL,
+    'a failed init_column_embedding call must not leave a partially-linked mapping';
+
+  RAISE NOTICE 'PASS: init_column_embedding validation';
+END $$;
+
+-- ============================================
+-- Test 20e: create_column_embedding_mapping is idempotent (ON CONFLICT DO
+-- UPDATE) and re-running it never un-initializes an already-active mapping
+-- ============================================
+DO $$
+DECLARE
+  v_mapping_id_1 UUID;
+  v_mapping_id_2 UUID;
+  v_batch_size INTEGER;
+  v_count INTEGER;
+  v_status dist_rag.column_embedding_registration_status_enum;
+  v_vector_index_id UUID;
+BEGIN
+  RAISE NOTICE '=== Test 20e: create_column_embedding_mapping is idempotent ===';
+
+  v_mapping_id_1 := dist_rag.create_column_embedding_mapping(
+    r_registration_name := 'idempotent_test_registration',
+    r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+    r_destination_embedding_column := 'embeddings',
+    r_source_schema := 'clickhouse', r_source_table := 'observations',
+    r_source_text_columns := ARRAY['input'],
+    r_source_filter_by_columns := jsonb_build_array(jsonb_build_object('source_filter_on_column', 'trace_id', 'value', 'x')),
+    r_destination_claim_batch_size := 25
+  );
+
+  PERFORM dist_rag.init_column_embedding(
+    r_mapping_id := v_mapping_id_1, r_ai_provider := 'OPENAI',
+    r_embedding_model_params := jsonb_build_object('model', 'text-embedding-3-large', 'dimensions', 1536)
+  );
+
+  -- Re-declare with a changed value -- should update the existing row (not
+  -- duplicate it) and must NOT touch vector_index_id/status.
+  v_mapping_id_2 := dist_rag.create_column_embedding_mapping(
+    r_registration_name := 'idempotent_test_registration',
+    r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+    r_destination_embedding_column := 'embeddings',
+    r_source_schema := 'clickhouse', r_source_table := 'observations',
+    r_source_text_columns := ARRAY['input'],
+    r_source_filter_by_columns := jsonb_build_array(jsonb_build_object('source_filter_on_column', 'trace_id', 'value', 'x')),
+    r_destination_claim_batch_size := 500
+  );
+
+  ASSERT v_mapping_id_1 = v_mapping_id_2, 'Re-declaring the same name should update, not create a new id';
+
+  SELECT COUNT(*) INTO v_count FROM dist_rag.column_embedding_registrations
+  WHERE registration_name = 'idempotent_test_registration';
+  ASSERT v_count = 1, 'Re-declaring the same name should not duplicate the row';
+
+  SELECT destination_claim_batch_size, status, vector_index_id
+  INTO v_batch_size, v_status, v_vector_index_id
+  FROM dist_rag.column_embedding_registrations WHERE id = v_mapping_id_1;
+  ASSERT v_batch_size = 500, 'Re-declaring should apply the new config value';
+  ASSERT v_status = 'ACTIVE'::dist_rag.column_embedding_registration_status_enum,
+    'Re-declaring an already-initialized mapping must not reset its status to PAUSED';
+  ASSERT v_vector_index_id IS NOT NULL,
+    'Re-declaring an already-initialized mapping must not clear its vector_index_id';
+
+  RAISE NOTICE 'PASS: create_column_embedding_mapping is idempotent';
+END $$;
+
+-- ============================================
+-- Test 21: create_column_embedding_mapping validates required fields and filter-by-column shape
+-- ============================================
+DO $$
+DECLARE
+  v_error_caught BOOLEAN;
+BEGIN
+  RAISE NOTICE '=== Test 21: create_column_embedding_mapping validation ===';
+
+  -- NULL source_text_columns
+  v_error_caught := FALSE;
+  BEGIN
+    PERFORM dist_rag.create_column_embedding_mapping(
+      r_registration_name := 'validation_test_1',
+      r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+      r_destination_embedding_column := 'embeddings',
+      r_source_schema := 'clickhouse', r_source_table := 'observations',
+      r_source_text_columns := NULL,
+      r_source_filter_by_columns := jsonb_build_array(jsonb_build_object('source_filter_on_column', 'id', 'value', 'x'))
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'NULL source_text_columns should raise an exception';
+
+  -- Filter entry with zero value sources
+  v_error_caught := FALSE;
+  BEGIN
+    PERFORM dist_rag.create_column_embedding_mapping(
+      r_registration_name := 'validation_test_3',
+      r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+      r_destination_embedding_column := 'embeddings',
+      r_source_schema := 'clickhouse', r_source_table := 'observations',
+      r_source_text_columns := ARRAY['input'],
+      r_source_filter_by_columns := jsonb_build_array(jsonb_build_object('source_filter_on_column', 'id'))
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'Filter entry with no value source should raise an exception';
+
+  -- Filter entry with two value sources (value AND target_value_from_column)
+  v_error_caught := FALSE;
+  BEGIN
+    PERFORM dist_rag.create_column_embedding_mapping(
+      r_registration_name := 'validation_test_4',
+      r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+      r_destination_embedding_column := 'embeddings',
+      r_source_schema := 'clickhouse', r_source_table := 'observations',
+      r_source_text_columns := ARRAY['input'],
+      r_source_filter_by_columns := jsonb_build_array(
+        jsonb_build_object('source_filter_on_column', 'id', 'value', 'x', 'target_value_from_column', 'y')
+      )
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'Filter entry with two value sources should raise an exception';
+
+  -- resolve sub-spec missing where_value/where_value_from_row_column
+  v_error_caught := FALSE;
+  BEGIN
+    PERFORM dist_rag.create_column_embedding_mapping(
+      r_registration_name := 'validation_test_5',
+      r_destination_schema := 'datapacks', r_destination_table := 'conversation_history_search',
+      r_destination_embedding_column := 'embeddings',
+      r_source_schema := 'clickhouse', r_source_table := 'observations',
+      r_source_text_columns := ARRAY['input'],
+      r_source_filter_by_columns := jsonb_build_array(jsonb_build_object('source_filter_on_column', 'project_id', 'resolve',
+        jsonb_build_object('schema', 's', 'table', 't', 'select_column', 'c', 'where_column', 'w')))
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'resolve sub-spec missing where_value/where_value_from_row_column should raise an exception';
+
+  RAISE NOTICE 'PASS: create_column_embedding_mapping validation';
+END $$;
+
+-- ============================================
+-- Test 22: set_column_embedding_registration_status pauses and resumes
+-- ============================================
+DO $$
+DECLARE
+  v_status dist_rag.column_embedding_registration_status_enum;
+  v_error_caught BOOLEAN := FALSE;
+BEGIN
+  RAISE NOTICE '=== Test 22: set_column_embedding_registration_status ===';
+
+  PERFORM dist_rag.set_column_embedding_registration_status('conversation_history_search_langfuse_test', 'PAUSED');
+  SELECT status INTO v_status FROM dist_rag.column_embedding_registrations
+  WHERE registration_name = 'conversation_history_search_langfuse_test';
+  ASSERT v_status = 'PAUSED'::dist_rag.column_embedding_registration_status_enum, 'Status should be PAUSED';
+
+  PERFORM dist_rag.set_column_embedding_registration_status('conversation_history_search_langfuse_test', 'ACTIVE');
+  SELECT status INTO v_status FROM dist_rag.column_embedding_registrations
+  WHERE registration_name = 'conversation_history_search_langfuse_test';
+  ASSERT v_status = 'ACTIVE'::dist_rag.column_embedding_registration_status_enum, 'Status should be ACTIVE again';
+
+  BEGIN
+    PERFORM dist_rag.set_column_embedding_registration_status('does_not_exist_registration', 'PAUSED');
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'Unknown registration_name should raise an exception';
+
+  RAISE NOTICE 'PASS: set_column_embedding_registration_status';
+END $$;
+
+-- ============================================
+-- Test 23: column_embedding_registration_stats view + column_embedding_registration_progress function
+-- ============================================
+DO $$
+DECLARE
+  v_reg_id UUID;
+  v_pending INT;
+  v_in_progress INT;
+  v_failed INT;
+  v_total BIGINT;
+  v_embedded BIGINT;
+  v_pending_or_failed BIGINT;
+  v_error_caught BOOLEAN := FALSE;
+BEGIN
+  RAISE NOTICE '=== Test 23: column_embedding_registration_stats / column_embedding_registration_progress ===';
+
+  SELECT id INTO v_reg_id FROM dist_rag.column_embedding_registrations
+  WHERE registration_name = 'conversation_history_search_langfuse_test';
+
+  INSERT INTO dist_rag.column_embedding_progress (registration_id, dest_row_pk_in_text, status)
+  VALUES
+    (v_reg_id, 'row-pending-1', 'QUEUED'),
+    (v_reg_id, 'row-pending-2', 'QUEUED'),
+    (v_reg_id, 'row-in-progress-1', 'IN_PROGRESS'),
+    (v_reg_id, 'row-failed-1', 'FAILED');
+
+  SELECT pending_count, in_progress_count, failed_count
+  INTO v_pending, v_in_progress, v_failed
+  FROM dist_rag.column_embedding_registration_stats
+  WHERE registration_name = 'conversation_history_search_langfuse_test';
+
+  ASSERT v_pending = 2, 'pending_count should be 2';
+  ASSERT v_in_progress = 1, 'in_progress_count should be 1';
+  ASSERT v_failed = 1, 'failed_count should be 1';
+
+  SELECT total_rows, embedded_rows, pending_or_failed_rows
+  INTO v_total, v_embedded, v_pending_or_failed
+  FROM dist_rag.column_embedding_registration_progress('conversation_history_search_langfuse_test');
+
+  ASSERT v_total IS NOT NULL, 'total_rows should be computed against the real destination table';
+  ASSERT v_total = v_embedded + v_pending_or_failed,
+    'total_rows should equal embedded_rows + pending_or_failed_rows';
+
+  BEGIN
+    PERFORM dist_rag.column_embedding_registration_progress('does_not_exist_registration');
+  EXCEPTION WHEN OTHERS THEN
+    v_error_caught := TRUE;
+  END;
+  ASSERT v_error_caught, 'Unknown registration_name should raise a clear error';
+
+  RAISE NOTICE 'PASS: column_embedding_registration_stats / column_embedding_registration_progress';
 END $$;
 
 -- ============================================

@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -82,7 +83,7 @@ TEST_F(TabletServerITest, TestNumberOfSegmentInCrashloop) {
   ExternalTabletServer* ts = cluster_->tablet_server(0);
   itest::TServerDetails* ts_details = tablet_servers_[ts->instance_id().permanent_uuid()].get();
   string wal_dir = JoinPathSegments(cluster_->data_root(), ts->id(), "yb-data", "tserver", "wals",
-                      Substitute("table-$0", table_->id()), Substitute("tablet-$0", tablet_id_));
+                      Format("table-$0", table_->id()), Format("tablet-$0", tablet_id_));
 
   // Simulate crashloop.
   int restart_num = 50;

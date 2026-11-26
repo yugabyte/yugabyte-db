@@ -417,6 +417,13 @@ WHERE tablet_id = '00000000000000000000000000000000';
  <insufficient privilege> |                 |               |             | 
 (1 row)
 
+-- ============================================================
+-- yb_tablegroup_size
+-- ============================================================
+-- Parent-size checks need drive-info heartbeats and live in
+-- PgTableSizeTest. An unknown oid errors without waiting.
+SELECT yb_tablegroup_size(0);
+ERROR:  tablegroup with OID 0 does not exist
 -- Cleanup
 \c yugabyte yugabyte
 DROP DATABASE colocated_db;

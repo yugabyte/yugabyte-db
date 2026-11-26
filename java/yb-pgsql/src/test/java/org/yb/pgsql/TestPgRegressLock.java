@@ -36,13 +36,19 @@ public class TestPgRegressLock extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("enable_object_locking_for_table_locks", "true");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     // TODO(#27819): Revert to default waiter timeout once the GH is addressed.
     flagMap.put("refresh_waiter_timeout_ms", "5000");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     flagMap.put("TEST_delay_forwarding_waiting_probes_ms",
                 String.valueOf(DELAY_FORWARDING_WAITING_PROBES_MS));
     appendToYsqlPgConf(flagMap, "statement_timeout=300000");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
 

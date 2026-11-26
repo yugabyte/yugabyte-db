@@ -22,12 +22,134 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 | Source | Migration type | Status | Effective date |
 | :----- | :------------- | :----- | :------------- |
 | Oracle | [Live migration](../migrate/live-migrate/), including<br>[fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) | Not supported | - |
-| Oracle | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
-| MySQL | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+| Oracle | [Offline migration](../migrate/migrate-steps/) | Not supported | October 13, 2026 |
+| MySQL | [Offline migration](../migrate/migrate-steps/) | Not supported | October 13, 2026 |
 
 Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated on July 13, 2026. PostgreSQL migrations are unaffected.
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
+
+## v2026.11.1 - November 17, 2026
+
+### Enhancements
+
+- Enhanced schema drift detection ([schema detect-drift](../reference/schema-migration/detect-drift/)):
+  - Reports additional information about changes to primary keys, unique constraints, check constraints, foreign keys, and indexes, in addition to tables and columns. `--object-type-list` and `--exclude-object-type-list` now accept `CONSTRAINT` and `INDEX`.
+  - For an added table, reports its full definition: keys, check constraints, indexes, and parent partition or inheritance link.
+  - In fall-forward migrations, the suggested actions now also tell you to apply the change on the source-replica and to restart import data to source-replica when needed.
+  - The HTML report now lists the object types that drift detection does not check, such as sequences, views, functions, types, and triggers.
+  - Config templates now include the `disable-schema-snapshot-capture` and `schema-snapshot-capture-interval` options, commented out.
+- Enhanced unsupported datatype detection in [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/):
+  - Unsupported datatypes used through a domain, an array, or a composite type are flagged.
+  - Datatype issues are reported by table rather than by column.
+  - Range and multirange columns (built-in and user-defined) are now reported as unsupported for live migration.
+  - Indexes and primary or unique keys on these types, and on domains over types that YugabyteDB can't index, are reported too.
+  - Composite types are no longer flagged as unsupported for live migration with fall-forward or fall-back unless one of their fields has an unsupported datatype.
+- SSL certificate, key, and CRL paths that contain spaces or the characters `+`, `%`, `&`, or `#` now work. A connection URI that contains raw spaces or a malformed `%` is now rejected, matching PostgreSQL behavior.
+
+### Bug fixes
+
+- Fixed an issue that silently corrupted data during live migration for columns typed as a domain over `tsvector` or `tsquery`.
+- Fixed an issue where `pg_dump` (in [export schema](../reference/schema-migration/export-schema/) and [export data](../reference/data-migration/export-data/)), assess-migration, and read-replica connections ignored the `--source-ssl-*` settings, so sources that require client certificates failed. These connections now enforce `verify-ca` and `verify-full`, so pass `--source-ssl-root-cert` explicitly.
+- Fixed an issue where some errors during [import data](../reference/data-migration/import-data/), such as constraint violations and data errors, were wrongly treated as retryable.
+- Fixed issues in schema detect-drift:
+  - Fixed a misleading error when the export directory held no schema snapshots, including when snapshot capture was turned off.
+  - Fixed an issue where no drift was reported when `--table-list` named a table outside `--source-db-schema`. It now fails with an unknown-table error.
+  - Fixed an issue where a rerun printed a separate overwrite notice for each report file.
+
+## v2026.10.2 - October 27, 2026
+
+### Enhancements
+
+- Improved schema drift diagnosis.
+  - [schema detect-drift](../reference/schema-migration/detect-drift/) now sets each change's severity, impact, and recommended action based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover is initiated but not completed.
+  - schema detect-drift now reports changes that can go either way as separate types, such as NOT NULL set versus dropped, and a partition attached versus detached.
+- Live migration now skips columns whose type is built on an unsupported datatype, and lists them in the unsupported-columns output of export data. This covers domains, arrays, composites, and user-defined multiranges. Arrays of geometric types, pg_lsn[], txid_snapshot[], timetz[], and arrays of range types are now also skipped in live migration. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+
+### Bug fixes
+
+- Fixed an issue where non-ASCII characters were written as `?` during live migration export when the host locale was not UTF-8, such as `LANG=C`.
+- Fixed an issue where a time value of `24:00:00` was migrated as `00:00:00` during live migration.
+- Fixed an issue where [assess-migration](../reference/assess-migration/) failed with a `UNIQUE constraint failed: column_statistics ...` error on schemas with inherited tables after `ANALYZE` was run on the source.
+
+## v2026.10.1 - October 13, 2026
+
+### Enhancements
+
+- The [export data](../reference/data-migration/export-data/) command now checks for schema drift when a PostgreSQL live export fails because Debezium stopped while streaming changes, and prints the result after the failure message.
+- [Initiate cutover to target](../reference/cutover-archive/cutover/#cutover-to-target) now checks the PostgreSQL source for schema drift before cutting over, to ensure the source and target schemas still match.
+- Voyager cannot migrate data for tables that use `INHERITS`. The assessment report shows this caveat, and [export data](../reference/data-migration/export-data/) exits with an error when any table in the migration uses inheritance. See [Data migration for table inheritance is not supported](../known-issues/postgresql/#data-migration-for-table-inheritance-is-not-supported). YugabyteDB supports [table inheritance](../../api/ysql/the-sql-language/ddl-inherit/) in {{<release "2025.1">}} {{<tags/feature/tp>}}, {{<release "2025.2">}} {{<tags/feature/tp>}}, and {{<release "2026.1">}} {{<tags/feature/ga>}}.
+- [refcursor](https://www.postgresql.org/docs/current/plpgsql-cursors.html) columns are reported as an unsupported data type for live migration and skipped during live export. Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) flag each such column. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+- [xid8](https://www.postgresql.org/docs/current/datatype-oid.html), [xid](https://www.postgresql.org/docs/current/datatype-oid.html), and [cid](https://www.postgresql.org/docs/current/datatype-oid.html) columns are skipped during live export. Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) report `xid` and `xid8` as unsupported by YugabyteDB, and `cid` as unsupported for live migration. See [Datatypes not supported by YugabyteDB](../known-issues/postgresql/#unsupported-datatypes-by-yugabytedb) and [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+- Improved live migration throughput by reducing per-event work in streaming conflict detection for `UPDATE`s that do not change unique-index columns.
+
+### Bug fixes
+
+- Fixed an issue where a crash in [import data](../reference/data-migration/import-data/) during cutover to target could leave in-flight change events missing on the target.
+- Fixed an issue where live migration of a partitioned table whose primary key is defined only on its partitions (not on the root) could modify or delete rows in the wrong partitions. Import data now refuses this configuration when [--use-partition-root](../reference/data-migration/import-data/#arguments) is true, and tells you to re-run with `--use-partition-root false`.
+- Fixed an issue where live migration with `--use-partition-root false` could use an arbitrarily chosen primary key for conflict detection when a partitioned table's leaf partitions had inconsistent keys. Voyager now reports this as an error.
+
+## v2026.9.3 - September 30, 2026
+
+### New features
+
+- {{<tags/feature/tp>}} Added the [schema detect-drift](../reference/schema-migration/detect-drift/) command, which reports how the source PostgreSQL schema changed while a migration was running. To support this, [export schema](../reference/schema-migration/export-schema/) and [export data](../reference/data-migration/export-data/) now capture periodic source schema snapshots by default for PostgreSQL sources. Turn this off with `--disable-schema-snapshot-capture true`. Reports are written as HTML and JSON to `<export-dir>/reports/`.
+
+### Enhancements
+
+- All installation methods (RHEL 8, RHEL 9, Ubuntu, Homebrew, Docker, and airgapped) now bundle PostgreSQL 18 client tools (`pg_dump`) instead of PostgreSQL 17, so you can migrate PostgreSQL 18 sources. Assessment reports don't yet include incompatibilities between PostgreSQL 18 and YugabyteDB; that reporting is planned for a later release. See [Assessment and schema analysis limitations](../known-issues/#postgresql-features-after-version-17).
+- Sizing recommendations from [assess-migration](../reference/assess-migration/) now use YugabyteDB v2026.1 experiment data by default, instead of the v2025.2 numbers used earlier.
+- Upgraded the bundled [YugabyteDB CDC gRPC connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#connector-compatibility) to 2026.1.2.0.1.
+
+### Bug fixes
+
+- Fixed an issue where a custom `--cdc-partition-key` or `--cdc-partition-key-overrides` set on the first iteration of an [iterative cutover](../reference/iterative-cutover/) was silently dropped in subsequent iterations, so CDC routing fell back to the primary key.
+- Fixed a crash in the fall-back exporter ([export data from target](../reference/data-migration/export-data/#export-data-from-target)) when a YugabyteDB tablet split occurred during CDC streaming.
+
+## v2026.9.2 - September 15, 2026
+
+### New features
+
+- Added support for a custom partition key in the CDC phase of [import data](../reference/data-migration/import-data/) using `--cdc-partition-key-overrides`, so change events for a table can be routed on a chosen list of columns instead of its primary key during live migration, thereby improving CDC import throughput by avoiding conflicts.
+
+  Example: `--cdc-partition-key-overrides 'public.orders:table;sales.events:pk;public.payments:(customer_id,region)'`.
+- Added `--log-max-size-mb` and `--log-max-backups` to control yb-voyager log rotation. Available as CLI flags or [configuration file](../reference/configuration-file/) global keys. `--log-max-backups -1` retains all rotated files.
+
+### Enhancements
+
+- Added YugabyteDB v2026.1 as the latest stable supported target version.
+- Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) reports no longer flag XML data type columns and XML functions as unsupported when the target is YugabyteDB v2026.1 or later, reporting them only as a live-migration caveat.
+- Multi-range columns are now reported as live-migration caveats when the target is YugabyteDB v2025.1 or later, where they were previously not reported at all.
+- [Export data](../reference/data-migration/export-data/) for live migration now fails fast when a table in scope has a DEFERRABLE UNIQUE or PRIMARY KEY constraint, listing the affected tables instead of stalling later during the streaming phase.
+- In [import data](../reference/data-migration/import-data/), with `--cdc-partition-key auto`, a table having a unique index on a STORED generated column is now routed using the table strategy, and an explicit `pk` or custom strategy on such a table is rejected before the snapshot begins.
+- Improved live-migration conflict-detection logs: multi-column unique-index values are now rendered readably and table names appear as `schema.table`. The logs also report when a detected conflict clears and how long the event was blocked.
+- Errors that were previously ignored are now surfaced: failures closing with a written report, control, or batch file; failures persisting migration state; and invalid cloud-storage `--data-dir` URLs.
+
+## v2026.9.1 - September 1, 2026
+
+### Enhancements
+
+- Upgraded the [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/) to support YugabyteDB v2026.1.
+
+### Bug fixes
+
+- Fixed an issue where live migration of PostgreSQL hstore values containing SQL NULL could stall permanently during CDC.
+- Fixed an issue where live [import data](../reference/data-migration/import-data/) could fail with a unique-violation error when an UPDATE changed only some columns of a composite unique index.
+- Fixed an issue where import data could hang after an abrupt Voyager exit, waiting on locks held by a stale connection.
+- Fixed an issue where import data could proceed with the wrong target schema if setting the search path failed, and where a failed source-database connection could crash Voyager instead of reporting an error.
+
+## v2026.8.2 - August 18, 2026
+
+### Enhancements
+
+- Improved CDC partition key conflict handling. Tables with foreign keys or unique indexes had to be used with the slower table mode, but can now be consumed by parallel streams:
+  - Improved resume validation for `--cdc-partition-key-overrides` so equivalent configurations are accepted and changed table strategies are identified clearly.
+  - CDC partition key options are now visible in [import data](../reference/data-migration/import-data/) help and live migration configuration templates.
+
+### Bug fixes
+
+- Fixed an issue where live migration unique key conflict detection incorrectly treated non-key INCLUDE columns of a covering unique index as part of the uniqueness key.
+- Fixed an issue where live migration could fail with read-restart errors while updating migration metadata.
 
 ## v2026.8.1 - August 4, 2026
 

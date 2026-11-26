@@ -31,7 +31,9 @@
 //
 // Tests for the yb-admin command-line tool with multiple masters.
 
+#include <map>
 #include <regex>
+#include <unordered_set>
 
 #include <gtest/gtest.h>
 
@@ -39,8 +41,12 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 
+#include "yb/tools/admin-test-base.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 
@@ -50,6 +56,93 @@ namespace tools {
 namespace {
 
 static const char* const kAdminToolName = "yb-admin";
+
+// Parses tabular yb-admin output (a header row followed by one row per entry) into one
+// map per row, keyed by column header. Keying by header name rather than by position
+// means adding a column to the output does not silently change which column a comparison
+// ignores.
+using OutputRow = std::map<std::string, std::string>;
+
+std::vector<OutputRow> ParseTabularOutput(const std::string& output) {
+  std::vector<OutputRow> rows;
+  std::vector<std::string> headers;
+  for (const auto& line : StringSplit(output, '\n')) {
+    if (util::TrimStr(line).empty()) {
+      continue;
+    }
+    std::vector<std::string> fields;
+    for (const auto& field : StringSplit(line, '\t')) {
+      fields.push_back(util::TrimStr(field));
+    }
+    if (headers.empty()) {
+      headers = std::move(fields);
+      continue;
+    }
+    OutputRow row;
+    for (size_t i = 0; i < fields.size() && i < headers.size(); ++i) {
+      row[headers[i]] = fields[i];
+    }
+    rows.push_back(std::move(row));
+  }
+  return rows;
+}
+
+std::vector<OutputRow> DropColumns(
+    std::vector<OutputRow> rows, const std::unordered_set<std::string>& columns) {
+  for (auto& row : rows) {
+    for (const auto& col : columns) {
+      row.erase(col);
+    }
+  }
+  return rows;
+}
+
+// yb-admin talks to the current leader, so Lag(ms) is N/A for the leader's own row (the
+// leader does not track itself) and a non-negative integer for every other master, which
+// the leader does track.
+Status CheckListAllMastersLagSemantics(
+    const std::string& output, size_t expected_num_masters) {
+  const auto rows = ParseTabularOutput(output);
+  SCHECK_EQ(rows.size(), expected_num_masters, IllegalState, "Unexpected number of master rows");
+  size_t na_count = 0;
+  for (const auto& row : rows) {
+    const auto lag_it = row.find("Lag(ms)");
+    const auto role_it = row.find("Role");
+    SCHECK(
+        lag_it != row.end() && role_it != row.end(), IllegalState,
+        "Missing Role or Lag(ms) column");
+    if (lag_it->second == "N/A") {
+      SCHECK_EQ(role_it->second, "LEADER", IllegalState, "Non-leader master reports no lag");
+      ++na_count;
+    } else {
+      const auto lag_ms = VERIFY_RESULT(CheckedStoll(lag_it->second));
+      SCHECK_GE(lag_ms, int64_t{0}, IllegalState, "Negative lag");
+    }
+  }
+  SCHECK_EQ(
+      na_count, size_t{1}, IllegalState, "Expected only the leader's own row to report no lag");
+  return Status::OK();
+}
+
+// Re-runs list_all_masters until the Lag(ms) contract above holds. ListMasters iterates the
+// committed Raft config while the lag values come from the leader's tracked-peer map, so
+// around a config change or an election the two can briefly disagree and a master can be
+// listed before the leader tracks it (reporting a second N/A). Polling keeps the assertion
+// strict without depending on that timing.
+void AssertListAllMastersLagSemantics(
+    const std::string& master_addrs, size_t expected_num_masters) {
+  std::string output;
+  Status check_status;
+  ASSERT_OK_PREPEND(
+      LoggedWaitFor(
+          [&]() -> Result<bool> {
+            output = VERIFY_RESULT(RunAdminToolCommand(master_addrs, "list_all_masters"));
+            check_status = CheckListAllMastersLagSemantics(output, expected_num_masters);
+            return check_status.ok();
+          },
+          30s * kTimeMultiplier, "list_all_masters reports the expected Lag(ms) values"),
+      Format("Last check: $0. Last output:\n$1", check_status, output));
+}
 
 } // namespace
 
@@ -79,7 +172,13 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
       admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output2));
   LOG(INFO) << "full master_addresses: list_all_masters: " << output2;
-  ASSERT_EQ(output1, output2);
+  // Lag(ms) is wall-clock based and differs between the two invocations, so compare
+  // every other column by name. Adding a column after Lag(ms) will not silently
+  // start comparing the volatile values again.
+  const std::unordered_set<std::string> kVolatileColumns = {"Lag(ms)"};
+  ASSERT_EQ(DropColumns(ParseTabularOutput(output1), kVolatileColumns),
+            DropColumns(ParseTabularOutput(output2), kVolatileColumns));
+  ASSERT_NO_FATALS(AssertListAllMastersLagSemantics(cluster_->GetMasterAddresses(), 3));
 
   output1.clear();
   output2.clear();
@@ -113,6 +212,7 @@ void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
   LOG(INFO) << "list_all_masters \n" << output2;
   const auto lines2 = StringSplit(output2, '\n');
   ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
+  ASSERT_NO_FATALS(AssertListAllMastersLagSemantics(master_addrs, kNumInitMasters));
 
   std::string output3;
   auto args = ToStringVector(
@@ -131,6 +231,7 @@ void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
   LOG(INFO) << "list_all_masters \n" << output4;
   const auto lines4 = StringSplit(output4, '\n');
   ASSERT_EQ(lines4.size(), kNumInitMasters);
+  ASSERT_NO_FATALS(AssertListAllMastersLagSemantics(master_addrs, kNumInitMasters - 1));
 }
 
 TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
@@ -154,6 +255,7 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
   LOG(INFO) << "list_all_masters \n" << output2;
   const auto lines2 = StringSplit(output2, '\n');
   ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
+  ASSERT_NO_FATALS(AssertListAllMastersLagSemantics(master_addrs, kNumInitMasters));
 
   auto shell_master = ASSERT_RESULT(cluster_->StartShellMaster());
   ASSERT_NE(shell_master, nullptr);
@@ -173,6 +275,7 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
   LOG(INFO) << "list_all_masters \n" << output4;
   const auto lines4 = StringSplit(output4, '\n');
   ASSERT_EQ(lines4.size(), kNumInitMasters + 2);
+  ASSERT_NO_FATALS(AssertListAllMastersLagSemantics(master_addrs, kNumInitMasters + 1));
 }
 
 TEST_F(YBAdminMultiMasterTest, FlushSysCatalog) {

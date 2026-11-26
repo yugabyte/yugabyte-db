@@ -20,17 +20,21 @@ type ResolverDataProvider interface {
 	GetInstanceType(ctx context.Context) (*model.NodeInstanceType, error)
 	GetTmpDirectory(ctx context.Context) (string, error)
 	GetNodeAgentPort(ctx context.Context) (string, error)
+	GetCertificateName(ctx context.Context) (string, error)
+	GetYBAInfo(ctx context.Context) (*model.YBAInfo, error)
 }
 
 // DefaultResolverDataProvider is the default implementation of ResolverDataProvider that fetches data from YBA APIs.
 type DefaultResolverDataProvider struct {
-	args          *Args
-	sessionInfo   *model.SessionInfo
-	nodeInstance  *model.NodeInstance
-	provider      *model.Provider
-	instanceType  *model.NodeInstanceType
-	tmpDirectory  string
-	nodeAgentPort string
+	args            *Args
+	sessionInfo     *model.SessionInfo
+	nodeInstance    *model.NodeInstance
+	provider        *model.Provider
+	instanceType    *model.NodeInstanceType
+	tmpDirectory    string
+	nodeAgentPort   string
+	certificateName string
+	ybaInfo         *model.YBAInfo
 }
 
 // NewDefaultResolverDataProvider creates a new instance of DefaultResolverDataProvider with the provided arguments.
@@ -66,7 +70,20 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 		skipTlsVerify.(bool),
 	)
 	if err != nil {
-		util.ConsoleLogger().Infof(ctx, "Could not fetch session info - %s", err.Error())
+		util.ConsoleLogger().Errorf(ctx, "Could not fetch session info - %s", err.Error())
+		return err
+	}
+	// Manual provisioning runs before any universe exists, so there is no universe fipsEnabled to
+	// read. YBA's own FIPS status is the right stand-in: UniverseCRUDHandler marks every universe
+	// created on a FIPS enabled YBA as FIPS enabled, so a node being provisioned for that YBA has
+	// to be provisioned for FIPS.
+	dp.ybaInfo, err = yba.GetYBAInfo(ctx,
+		ybaUrl.(string),
+		ybaApiKey.(string),
+		skipTlsVerify.(bool),
+	)
+	if err != nil {
+		util.ConsoleLogger().Errorf(ctx, "Could not fetch YBA info - %s", err.Error())
 		return err
 	}
 	dp.nodeInstance, err = yba.GetNodeInstanceByIp(ctx,
@@ -78,7 +95,7 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().
-			Infof(ctx, "Could not fetch node instance by IP/ FQDN %s - %s", nodeExternalFqdn.(string), err.Error())
+			Errorf(ctx, "Could not fetch node instance by IP/ FQDN %s - %s", nodeExternalFqdn.(string), err.Error())
 		return err
 	}
 	dp.provider, err = yba.GetProviderByZone(ctx,
@@ -90,7 +107,7 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().
-			Infof(ctx, "Could not fetch provider by zone %s - %s", dp.nodeInstance.ZoneUuid, err.Error())
+			Errorf(ctx, "Could not fetch provider by zone %s - %s", dp.nodeInstance.ZoneUuid, err.Error())
 		return err
 	}
 	dp.instanceType, err = yba.GetInstanceType(ctx,
@@ -103,7 +120,7 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().
-			Infof(ctx, "Could not fetch instance type %s - %s", dp.nodeInstance.Details.InstanceType, err.Error())
+			Errorf(ctx, "Could not fetch instance type %s - %s", dp.nodeInstance.Details.InstanceType, err.Error())
 		return err
 	}
 	dp.tmpDirectory, err = yba.GetRuntimeConfig(ctx,
@@ -116,7 +133,7 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().
-			Infof(ctx, "Could not fetch runtime config for tmp directory - %s", err.Error())
+			Errorf(ctx, "Could not fetch runtime config for tmp directory - %s", err.Error())
 		return err
 	}
 	dp.nodeAgentPort, err = yba.GetRuntimeConfig(ctx,
@@ -129,8 +146,38 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().
-			Infof(ctx, "Could not fetch runtime config for node agent port - %s", err.Error())
+			Errorf(ctx, "Could not fetch runtime config for node agent port - %s", err.Error())
 		return err
+	}
+	// Node agent may not exist yet for greenfield installs.
+	nodeAgent, err := yba.GetNodeAgentByIp(ctx,
+		ybaUrl.(string),
+		ybaApiKey.(string),
+		skipTlsVerify.(bool),
+		dp.sessionInfo.CustomerId,
+		nodeExternalFqdn.(string),
+	)
+	if err == util.ErrNotExist {
+		util.ConsoleLogger().
+			Infof(ctx, "Node agent not found for IP/FQDN %s", nodeExternalFqdn.(string))
+	} else if err != nil {
+		util.ConsoleLogger().
+			Errorf(ctx, "Could not fetch node agent by IP/FQDN %s - %s", nodeExternalFqdn.(string), err.Error())
+		return err
+	} else if nodeAgent != nil && nodeAgent.CertificateUuid != "" {
+		dp.certificateName, err = yba.GetCertificateLabelByUuid(ctx,
+			ybaUrl.(string),
+			ybaApiKey.(string),
+			skipTlsVerify.(bool),
+			dp.sessionInfo.CustomerId,
+			nodeAgent.CertificateUuid,
+		)
+		if err != nil {
+			util.ConsoleLogger().
+				Errorf(ctx, "Could not resolve certificate name for %s - %s",
+					nodeAgent.CertificateUuid, err.Error())
+			return err
+		}
 	}
 	return nil
 }
@@ -163,4 +210,13 @@ func (dp *DefaultResolverDataProvider) GetTmpDirectory(
 
 func (dp *DefaultResolverDataProvider) GetNodeAgentPort(ctx context.Context) (string, error) {
 	return dp.nodeAgentPort, nil
+}
+
+func (dp *DefaultResolverDataProvider) GetYBAInfo(
+	ctx context.Context) (*model.YBAInfo, error) {
+	return dp.ybaInfo, nil
+}
+
+func (dp *DefaultResolverDataProvider) GetCertificateName(ctx context.Context) (string, error) {
+	return dp.certificateName, nil
 }

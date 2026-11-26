@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
@@ -52,7 +53,6 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -111,7 +111,6 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTableName;
 using strings::Split;
-using strings::Substitute;
 
 namespace {
 
@@ -210,14 +209,14 @@ namespace {
 std::unique_ptr<Subprocess> MakePerfStat() {
   if (!FLAGS_perf_stat_scan) return std::unique_ptr<Subprocess>();
   // No output flag for perf-stat 2.x, just print to output
-  string cmd = Substitute("perf stat --pid=$0", getpid());
+  string cmd = Format("perf stat --pid=$0", getpid());
   LOG(INFO) << "Calling: \"" << cmd << "\"";
   return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
 std::unique_ptr<Subprocess> MakePerfRecord() {
   if (!FLAGS_perf_record_scan) return std::unique_ptr<Subprocess>();
-  string cmd = Substitute("perf record --pid=$0 --call-graph", getpid());
+  string cmd = Format("perf record --pid=$0 --call-graph", getpid());
   if (FLAGS_perf_fp_flag) cmd += " fp";
   LOG(INFO) << "Calling: \"" << cmd << "\"";
   return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
@@ -285,8 +284,8 @@ void FullStackInsertScanTest::DoConcurrentClientInserts() {
     start_latch.CountDown();
   }
   LOG_TIMING(INFO,
-             strings::Substitute("concurrent inserts ($0 rows, $1 threads)",
-                                 kNumRows, kNumInsertClients)) {
+             Format("concurrent inserts ($0 rows, $1 threads)",
+                    kNumRows, kNumInsertClients)) {
     start_latch.CountDown();
     for (const scoped_refptr<Thread>& thread : threads) {
       ASSERT_OK(ThreadJoiner(thread.get()).warn_every(15s).Join());

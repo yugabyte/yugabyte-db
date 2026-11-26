@@ -17,11 +17,16 @@ import static org.junit.Assert.fail;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.prometheus.metrics.model.snapshots.CounterSnapshot.CounterDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.DataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
@@ -32,10 +37,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import play.libs.Json;
 
 public class TestUtils {
+  private static final boolean MULTIPROVIDER_ENABLED_IN_TESTS = false;
+
   public static String readResource(String path) {
     try {
       return IOUtils.toString(
@@ -119,5 +127,122 @@ public class TestUtils {
       }
     }
     return null;
+  }
+
+  // Should already have a single provider.
+  public static ProviderInitializer updateInstanceType(
+      UniverseDefinitionTaskParams.UserIntent userIntent, String newInstanceType) {
+    return updateInstanceType(userIntent, UniverseTaskBase.ServerType.TSERVER, newInstanceType);
+  }
+
+  // Should already have a single provider.
+  public static ProviderInitializer updateInstanceType(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      UniverseTaskBase.ServerType serverType,
+      String newInstanceType) {
+    ProviderInitializer providerInitializer = existingProviderInitializer(userIntent);
+    if (serverType == UniverseTaskBase.ServerType.MASTER) {
+      return providerInitializer.setMasterInstanceType(newInstanceType);
+    } else {
+      return providerInitializer.setInstanceType(newInstanceType);
+    }
+  }
+
+  // Should already have a single provider.
+  public static void updateDeviceInfo(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      UniverseTaskBase.ServerType serverType,
+      Consumer<DeviceInfo> mutator) {
+    UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
+    mutator.accept(userIntent.getBaseDeviceInfo(providerUUID, serverType));
+  }
+
+  public static ProviderInitializer copyMasterDeviceInfoFromDeviceInfo(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
+    DeviceInfo deviceInfo = userIntent.getBaseDeviceInfo(providerUUID);
+    return existingProviderInitializer(userIntent).setMasterDeviceInfo(deviceInfo.clone());
+  }
+
+  // Should already have a single provider.
+  public static ProviderInitializer existingProviderInitializer(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    return Util.providerInitializerForExistingIntent(
+        userIntent, userIntent.maybeGetSingleProviderUUID().get());
+  }
+
+  public static ProviderInitializer specificationProviderInitializer(
+      UniverseDefinitionTaskParams.UserIntent userIntent, UUID providerUUID) {
+    return new SpecificationProviderInitializer(userIntent, providerUUID);
+  }
+
+  public static ProviderInitializer getProviderInitializerForTests(
+      UniverseDefinitionTaskParams.UserIntent userIntent, UUID providerUUID) {
+    return MULTIPROVIDER_ENABLED_IN_TESTS
+        ? new SpecificationProviderInitializer(userIntent, providerUUID)
+        : new IntentProviderInitializer(userIntent, providerUUID);
+  }
+
+  public static ProviderInitializer intentProviderInitializer(
+      UniverseDefinitionTaskParams.UserIntent userIntent, UUID providerUUID) {
+    return new IntentProviderInitializer(userIntent, providerUUID);
+  }
+
+  public static ProviderInitializer intentProviderInitializer(
+      UniverseDefinitionTaskParams.UserIntent userIntent, Provider provider) {
+    ProviderInitializer result = new IntentProviderInitializer(userIntent, provider.getUuid());
+    result.setProviderType(provider.getCloudCode());
+    return result;
+  }
+
+  public static ProviderInitializer initUserIntent(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Provider provider,
+      String instanceType,
+      DeviceInfo deviceInfo,
+      String accessKeyCode) {
+    return initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        instanceType,
+        deviceInfo,
+        accessKeyCode);
+  }
+
+  public static ProviderInitializer initUserIntent(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      UUID providerUUD,
+      Common.CloudType cloudType,
+      String instanceType,
+      DeviceInfo deviceInfo,
+      String accessKeyCode) {
+    ProviderInitializer providerInitializer =
+        getProviderInitializerForTests(userIntent, providerUUD);
+    providerInitializer.setProviderType(cloudType);
+    providerInitializer.setInstanceType(instanceType);
+    providerInitializer.setDeviceInfo(deviceInfo);
+    providerInitializer.setAccessCode(accessKeyCode);
+    return providerInitializer;
+  }
+
+  public static ProviderInitializer copyProviderFields(
+      UniverseDefinitionTaskParams.UserIntent curIntent,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      RuntimeConfGetter confGetter) {
+    UUID providerUUID = curIntent.maybeGetSingleProviderUUID().get();
+    ProviderInitializer providerInitializer =
+        getProviderInitializerForTests(newIntent, providerUUID);
+
+    providerInitializer.setAccessCode(curIntent.getAccessKeyCodeForProvider(providerUUID));
+    providerInitializer.setProviderType(curIntent.getAllCloudTypes().iterator().next());
+    providerInitializer.setInstanceType(curIntent.getBaseInstanceType(providerUUID));
+
+    DeviceInfo deviceInfo = curIntent.getBaseDeviceInfo(providerUUID).clone();
+    deviceInfo.numVolumes = 2;
+
+    providerInitializer.setDeviceInfo(deviceInfo);
+    providerInitializer.setAccessCode(curIntent.getAccessKeyCodeForProvider(providerUUID));
+    return providerInitializer;
   }
 }

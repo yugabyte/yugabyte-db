@@ -6,13 +6,12 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,14 +31,14 @@ public class PersistUseClockbound extends UniverseTaskBase {
 
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       AtomicBoolean useClockbound = new AtomicBoolean(true);
-      for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-        if (cluster.userIntent.providerType == CloudType.onprem) {
+
+      for (Provider provider : Util.getAllProviders(universe.getUniverseDetails())) {
+        if (provider.getCloudCode() == CloudType.onprem) {
           useClockbound.set(
               useClockbound.get()
                   && provider.getDetails().getCloudInfo().getOnprem().isUseClockbound());
-        } else if (cluster.userIntent.providerType == CloudType.kubernetes
-            || cluster.userIntent.providerType == CloudType.azu) {
+        } else if (provider.getCloudCode() == CloudType.kubernetes
+            || provider.getCloudCode() == CloudType.azu) {
           useClockbound.set(false);
         } else {
           useClockbound.set(

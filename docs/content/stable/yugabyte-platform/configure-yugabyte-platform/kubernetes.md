@@ -114,7 +114,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Optionally, use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
 
-1. Optionally, use the **Storage Classes** field to enter the storage class name as a single string (for example, `yb-standard`). If you do not specify a value, it defaults to `standard`. Ensure that this storage class exists in your Kubernetes cluster. Refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/). After a universe is created, you can change storage class and volume count on YugabyteDB v2026.1.0.0 or later using [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/).
+1. Optionally, use the **Storage Classes** field to enter the storage class name as a single string (for example, `yb-standard`). If you do not specify a value, it defaults to `standard`. Ensure that this storage class exists in your Kubernetes cluster. Refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/). After a universe is created, you can change storage class and volume count on YugabyteDB v2026.1.0.0 or later using [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/).
 
 1. Optionally, use the **Kube Pod Address Template** field to enter the pod address template.
 
@@ -274,7 +274,15 @@ serviceEndpoints:
 
 ### Run as non-root
 
-Overrides to run YugabyteDB as a non-root user:
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and Kubernetes pods run as a non-root user by default.
+
+{{< note title="OpenShift" >}}
+
+This section does not apply to OpenShift. OpenShift always runs YugabyteDB pods as non-root and enforces that policy itself, not through `podSecurityContext`. Do not set or modify `podSecurityContext` on OpenShift; doing so can cause the pods to fail. For OpenShift, see [Create OpenShift provider configuration](../openshift/).
+
+{{< /note >}}
+
+In versions earlier than v2026.1.2, use the following overrides to run YugabyteDB as a non-root user:
 
 ```yml
 podSecurityContext:
@@ -286,7 +294,18 @@ podSecurityContext:
   runAsGroup: 10001
 ```
 
-Note that you cannot change users during the Helm upgrades.
+This is the default starting in v2026.1.2.
+
+If you upgrade a non-OpenShift universe to v2026.1.2 or later and you haven't pinned a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
+
+To keep running as root on a non-OpenShift universe, set the following override before you upgrade:
+
+```yml
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: false
+  runAsUser: 0
+```
 
 ### Tolerations
 
@@ -438,13 +457,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 
 ### Prepare OpenShift clusters for MCS
 
-Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner add-on to enable MCS. At a very high level this involves following steps:
-
-1. Create a management cluster and install RHACM on it. For details, see [Installing Red Hat Advanced Cluster Management for Kubernetes](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/install/installing) in the Red Hat documentation.
-1. Provision the OpenShift clusters which will be connected together.
-   Ensure that the CIDRs mentioned in the cluster configuration file at `networking.clusterNetwork`, `networking.serviceNetwork`, and `networking.machineNetwork` are non-overlapping across the multiple clusters. You can find more details about these options in provider-specific sections under the [OpenShift Container Platform installation overview](https://docs.openshift.com/container-platform/4.11/installing/index.html) (look for sections named "Installing a cluster on [provider name] with customizations").
-1. Import the clusters into RHACM as a cluster set, and install the Submariner add-on on them. For more information, see [Configuring Submariner](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/add-ons/add-ons-overview#configuring-submariner).
-1. Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YBA.
+For OpenShift (RHACM and Submariner) clusters, see [Prepare OpenShift clusters for MCS](../openshift/#prepare-openshift-clusters-for-mcs) on the OpenShift provider page.
 
 ### Prepare Kubernetes clusters for Istio multicluster
 
@@ -495,31 +508,7 @@ For example, if your cluster membership name is `yb-asia-south1`, then the **Add
 
 #### Configure region and zones for OpenShift MCS
 
-Follow the instructions in [Create OpenShift provider configuration](../openshift/) and [Create a provider](#create-a-provider). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
-
-1. Specify fields such as Region, Zone, and so on as you would normally.
-1. Set the **Cluster DNS Domain** to `clusterset.local`.
-1. Upload the correct **Kube Config** of the cluster.
-1. Set the **Pod Address Template** to `{pod_name}.<cluster name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the `<cluster name>` is the name of the OpenShift cluster set during the cluster set creation.
-1. Set the **Overrides** as follows:
-
-   ```yaml
-   multicluster:
-     createServiceExports: true
-     kubernetesClusterId: "<cluster name>"
-   ```
-
-For example, if your cluster name is `yb-asia-south1`, then the values will be as follows:
-
-- **Pod Address Template**
-  `{pod_name}.yb-asia-south1.{service_name}.{namespace}.svc.{cluster_domain}`
-- **Overrides**
-
-  ```yaml
-  multicluster:
-    createServiceExports: true
-    kubernetesClusterId: "yb-asia-south1"
-  ```
+For OpenShift clusters connected using MCS (Submariner), see [Configure region and zones for OpenShift MCS](../openshift/#configure-region-and-zones-for-openshift-mcs) on the OpenShift provider page.
 
 #### Configure region and zones for Istio
 

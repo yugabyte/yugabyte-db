@@ -1,6 +1,6 @@
 description: Export telemetry config request (unified telemetry configs + upgrade options)
-x-yba-api-since: 2026.1.0.0
-x-yba-api-visibility: internal
+x-yba-api-since: 2026.1.2.0
+x-yba-api-visibility: preview
 required: false
 content:
   application/json:

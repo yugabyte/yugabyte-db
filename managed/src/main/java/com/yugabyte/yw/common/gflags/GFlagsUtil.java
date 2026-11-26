@@ -16,11 +16,13 @@ import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -37,8 +39,10 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -50,6 +54,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
@@ -59,10 +64,12 @@ import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.*;
@@ -132,12 +139,17 @@ public class GFlagsUtil {
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
   public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
+  public static final String USE_CLIENT_CERTIFICATES =
+      "node_to_node_encryption_use_client_certificates";
+  public static final String NODE_TO_NODE_REQUIRED_UID = "node_to_node_encryption_required_uid";
+  public static final String VERIFY_CLIENT_ENDPOINT = "verify_client_endpoint";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
   public static final String PSQL_PROXY_BIND_ADDRESS = "pgsql_proxy_bind_address";
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+  public static final String YSQL_HBA_CONF = "ysql_hba_conf";
   public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
   public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
   public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
@@ -196,8 +208,10 @@ public class GFlagsUtil {
   public static final String YBC_DISK_READ_BYTES_PER_SECOND = "disk_read_bytes_per_sec";
   public static final String YBC_DISK_WRITE_BYTES_PER_SECOND = "disk_write_bytes_per_sec";
   public static final String YBC_DISK_IO_REQUEST_SIZE = "disk_io_request_size_bytes";
+  public static final String YBC_REQUIRE_CLIENT_CERTIFICATES = "require_client_certificates";
   public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
+  public static final String DEFAULT_TMP_DIRECTORY = "/tmp";
   public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
   public static final String JWT_AUDIENCES = "jwt_audiences=";
   public static final String JWT_ISSUERS = "jwt_issuers=";
@@ -205,6 +219,10 @@ public class GFlagsUtil {
   public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
   public static final String JWT_AUTH = "jwt";
   public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
+  // K8s pods keep these on the persistent volume: the container filesystem is reset on every pod
+  // restart, so files under the YB home would be lost.
+  public static final String K8S_GFLAG_REMOTE_FILES_PATH =
+      KubernetesTaskBase.K8S_NODE_YW_DATA_DIR + "/conf/gflag_files/";
   // DB internal glag to suppress going into shell mode and delete files on master removal.
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
@@ -213,8 +231,20 @@ public class GFlagsUtil {
 
   public static final String ALLOWED_PREVIEW_FLAGS_CSV = "allowed_preview_flags_csv";
 
+  public static final Set<String> GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE =
+      ImmutableSet.of("emergency_repair_mode");
+
+  public static final Set<String> YSQL_HBA_GFLAGS =
+      ImmutableSet.of(YSQL_HBA_CONF_CSV, YSQL_HBA_CONF);
+
+  public static final String YSQL_HBA_REQUIRES_AUTH_ERROR =
+      "Cannot set ysql_hba_conf_csv or ysql_hba_conf while YSQL auth is disabled";
+
+  private static final CSVFormat CSV_FORMAT =
+      CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
-      Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
+      Pattern.compile(
+          "^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$", Pattern.CASE_INSENSITIVE);
   private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
   public static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
@@ -412,7 +442,17 @@ public class GFlagsUtil {
       }
     }
 
-    extra_gflags.putAll(getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
+    Map<String, String> ysqlGFlags =
+        getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp);
+    // Merge, don't replace: the tserver defaults above can carry new install ysql_pg_conf_csv
+    // entries (e.g. yb_enable_cbo=on).
+    if (ysqlGFlags.containsKey(YSQL_PG_CONF_CSV)) {
+      ysqlGFlags.put(
+          YSQL_PG_CONF_CSV,
+          overrideWithTelemetryYsqlPgConfCsv(
+              extra_gflags.get(YSQL_PG_CONF_CSV), ysqlGFlags.get(YSQL_PG_CONF_CSV)));
+    }
+    extra_gflags.putAll(ysqlGFlags);
     extra_gflags.putAll(getYCQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
     extra_gflags.putAll(getCertsAndTlsGFlags(taskParam, universe));
 
@@ -575,7 +615,7 @@ public class GFlagsUtil {
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
-    if (userIntent.providerType == CloudType.local) {
+    if (Util.isLocal(cluster)) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
       ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
@@ -670,6 +710,21 @@ public class GFlagsUtil {
       return CommonUtils.DEFAULT_YB_HOME_DIR;
     }
     return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
+  }
+
+  /** Directory on the node that holds files referenced by gflags, such as JWKS keys. */
+  public static String getRemoteGFlagFilesPath(Provider provider) {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      return K8S_GFLAG_REMOTE_FILES_PATH;
+    }
+    return provider.getYbHome() + GFLAG_REMOTE_FILES_PATH;
+  }
+
+  private static String getRemoteGFlagFilesPath(@Nullable String providerUUID) {
+    if (providerUUID == null) {
+      return getYbHomeDir(null) + GFLAG_REMOTE_FILES_PATH;
+    }
+    return getRemoteGFlagFilesPath(Provider.getOrBadRequest(UUID.fromString(providerUUID)));
   }
 
   private static String getMasterAddrs(
@@ -808,7 +863,88 @@ public class GFlagsUtil {
       }
       result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     }
-    return result == null ? "/tmp" : result;
+    return result == null ? DEFAULT_TMP_DIRECTORY : result;
+  }
+
+  /** Normalizes a tmp directory path for comparison. */
+  public static String normalizeTmpDirectoryPath(String path) {
+    if (path == null || path.trim().isEmpty()) {
+      return DEFAULT_TMP_DIRECTORY;
+    }
+    return Paths.get(path.trim()).normalize().toString();
+  }
+
+  /** Returns the effective DB tmp_dir from gflags, or {@link #DEFAULT_TMP_DIRECTORY} if unset. */
+  public static String getEffectiveDbTmpDir(Map<String, String> gflags) {
+    if (gflags == null) {
+      return DEFAULT_TMP_DIRECTORY;
+    }
+    return normalizeTmpDirectoryPath(gflags.get(TMP_DIRECTORY));
+  }
+
+  /**
+   * Validates that on-prem provider {@code remoteTmpDirectory} matches master/tserver {@code
+   * tmp_dir} gflags. Returns an error message if inconsistent, or {@code null} if valid or not
+   * applicable.
+   */
+  public static String checkTmpDirGflagConsistency(
+      RuntimeConfGetter confGetter,
+      Provider provider,
+      Cluster cluster,
+      Collection<Cluster> allClusters) {
+    if (provider.getCloudCode() != CloudType.onprem) {
+      return null;
+    }
+    String providerTmp =
+        normalizeTmpDirectoryPath(
+            confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+    String clusterName =
+        cluster.userIntent.universeName != null
+            ? cluster.userIntent.universeName
+            : cluster.uuid.toString();
+
+    for (UUID azUuid : getAzUuidsForTmpDirGflagCheck(cluster, provider)) {
+      for (ServerType serverType : ImmutableList.of(ServerType.MASTER, ServerType.TSERVER)) {
+        Map<String, String> gflags = getGFlagsForAZ(azUuid, serverType, cluster, allClusters);
+        String dbTmp = getEffectiveDbTmpDir(gflags);
+        if (!Paths.get(providerTmp).equals(Paths.get(dbTmp))) {
+          return String.format(
+              "Provider remote tmp directory is '%s', but tmp_dir gflag is '%s' for %s on cluster"
+                  + " '%s'. Set tmp_dir='%s' in master and tserver gflags to match the provider"
+                  + " configuration, or disable this check by setting '%s' to true on the provider"
+                  + " runtime configuration.",
+              providerTmp,
+              dbTmp,
+              serverType.name().toLowerCase(),
+              clusterName,
+              providerTmp,
+              ProviderConfKeys.skipTmpDirGflagConsistencyCheck.getKey());
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Collection<UUID> getAzUuidsForTmpDirGflagCheck(
+      Cluster cluster, Provider provider) {
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
+    if (placementInfo == null || placementInfo.getAllAZUUIDs().isEmpty()) {
+      return Collections.singletonList(null);
+    }
+    return placementInfo
+        .azInfoStream()
+        .filter(az -> Objects.equals(provider.getUuid(), az.cloud.uuid))
+        .map(az -> az.placementAZ.uuid)
+        .collect(Collectors.toSet());
+  }
+
+  // A GCP passthrough load balancer keeps its own IP as the packet destination, health probes
+  // included, so a proxy bound to the private IP alone refuses them. Any GCP load balancer: YBA
+  // can't tell the user's kind, and a proxy load balancer works either way.
+  public static boolean listensOnLoadBalancerAddress(@Nullable Cluster cluster) {
+    return cluster != null
+        && cluster.userIntent.providerType == CloudType.gcp
+        && (cluster.userIntent.enableLB || ManagedLoadBalancerUtil.isEnabled(cluster));
   }
 
   private static Map<String, String> getYSQLGFlags(
@@ -819,7 +955,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       pgsqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -884,9 +1022,13 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getAuditLogConfig());
-    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getQueryLogConfig());
-    return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
+    return getYsqlPgConfCsv(taskParams.getAuditLogConfig(), taskParams.getQueryLogConfig());
+  }
+
+  public static String getYsqlPgConfCsv(
+      AuditLogConfig auditLogConfig, QueryLogConfig queryLogConfig) {
+    return GFlagsUtil.mergeCSVs(
+        getYsqlPgConfCsv(auditLogConfig), getYsqlPgConfCsv(queryLogConfig), true);
   }
 
   public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
@@ -978,7 +1120,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String cqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       cqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -1179,42 +1323,360 @@ public class GFlagsUtil {
   }
 
   /**
-   * Make sure FIPS related GFlags are not overridden + check provider type - as only K8S is
-   * currently supported.
+   * Provider types a FIPS enabled universe can run on.
+   *
+   * <p>On Kubernetes the database runs from a container image that carries the validated module, so
+   * there is no host to prepare. On the rest, the node's OS is put into FIPS mode by the
+   * ConfigureFips provisioning module, which fails provisioning rather than leaving a node that
+   * only looks FIPS enabled - so the guarantee is that the node was verified in FIPS mode, not that
+   * it came from a particular provider. The types left out (docker, local, other) have no node
+   * provisioning to hook into.
+   */
+  private static final Set<CloudType> FIPS_SUPPORTED_PROVIDERS =
+      ImmutableSet.of(
+          CloudType.kubernetes,
+          CloudType.aws,
+          CloudType.gcp,
+          CloudType.azu,
+          CloudType.oci,
+          CloudType.onprem);
+
+  private static final Set<String> GFLAGS_FROM_ENV = ImmutableSet.of("fromenv", "tryfromenv");
+
+  private static final String FIPS_GFLAG_ENV_VAR = "FLAGS_" + OPENSSL_REQUIRE_FIPS;
+
+  // Both keep "FIPS enabled universe", which clients and tests match on.
+  private static final String FIPS_GFLAG_REQUIRED =
+      "A FIPS enabled universe needs " + OPENSSL_REQUIRE_FIPS + " set to true or left unset";
+  private static final String FIPS_GFLAG_FROM_ENV =
+      "A FIPS enabled universe cannot read " + OPENSSL_REQUIRE_FIPS + " from the environment";
+
+  private static final Pattern HELM_EXTRA_ENV_NAME =
+      Pattern.compile("(^|\\.)extraEnv\\[\\d+\\]\\.name$");
+
+  /**
+   * Make sure FIPS related GFlags are not overridden, and that the provider is one whose nodes can
+   * be put into FIPS mode.
    *
    * @param fipsEnabled
    */
   public static void validateFipsCompliancy(
       UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
     if (fipsEnabled) {
-      if (userIntent.providerType != CloudType.kubernetes) {
+      Set<CloudType> nonSupported =
+          userIntent.getAllCloudTypes().stream()
+              .filter(ct -> !FIPS_SUPPORTED_PROVIDERS.contains(ct))
+              .collect(Collectors.toSet());
+      if (!nonSupported.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            "Currently only Kubernetes provider is supported for FIPS compliant universe");
+            String.format(
+                "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
-      // This is for new universes only, so don't consider old form of GFLags
-      if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
-        Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
-        if (userIntent.specificGFlags.getPerAZ() != null) {
-          azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
-        }
-        for (UUID azUuid : azUuids) {
-          Map<String, String> masterGFlags =
-              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER);
-          if (masterGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
-              && !masterGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
+      getUserGFlagMaps(userIntent).forEach(GFlagsUtil::checkFipsGFlagNotDisabled);
+      validateHelmOverridesGFlags(
+          userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  /** Validates the values of the gflags a user intent sets, in gflags and in K8s overrides. */
+  public static void validateGFlagValues(UniverseDefinitionTaskParams.UserIntent userIntent) {
+    getUserGFlagMaps(userIntent).values().forEach(GFlagsUtil::checkNoLineBreaks);
+    validateHelmOverridesGFlags(
+        userIntent.universeOverrides, userIntent.azOverrides, false /* fipsEnabled */);
+  }
+
+  /** A user intent's gflag maps, keyed by where they come from, for error messages. */
+  private static Map<String, Map<String, String>> getUserGFlagMaps(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    Map<String, Map<String, String>> result = new LinkedHashMap<>();
+    if (userIntent.specificGFlags == null) {
+      // Create still accepts the deprecated maps and converts them to specificGFlags only after
+      // the checks run.
+      result.put("master gflags", userIntent.masterGFlags);
+      result.put("tserver gflags", userIntent.tserverGFlags);
+    } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
+      Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+      if (userIntent.specificGFlags.getPerAZ() != null) {
+        azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+      }
+      for (UUID azUuid : azUuids) {
+        String az =
+            azUuid == null
+                ? ""
+                : " of AZ "
+                    + AvailabilityZone.maybeGet(azUuid)
+                        .map(AvailabilityZone::getCode)
+                        .orElse(azUuid.toString());
+        result.put(
+            "master gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.MASTER));
+        result.put(
+            "tserver gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
+      }
+    }
+    return result;
+  }
+
+  /**
+   * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
+   * can't be set by hand, except to false on a universe without it; while it is on, the identity
+   * checks the chart's client cert can't pass stay off.
+   */
+  public static void validateNodeToNodeClientCerts(
+      UniverseDefinitionTaskParams.UserIntent userIntent, boolean useClientCerts) {
+    getUserGFlagMaps(userIntent)
+        .values()
+        .forEach(gflags -> checkClientCertGFlags(gflags, "", useClientCerts));
+    validateNodeToNodeClientCertsOfHelmOverrides(
+        userIntent.universeOverrides, userIntent.azOverrides, useClientCerts);
+  }
+
+  /** As above for helm overrides. */
+  public static void validateNodeToNodeClientCertsOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean useClientCerts) {
+    List<String> overrides = new ArrayList<>();
+    overrides.add(universeOverrides);
+    if (azOverrides != null) {
+      overrides.addAll(azOverrides.values());
+    }
+    for (String overridesYaml : overrides) {
+      Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+      checkClientCertGFlags(flatOverrides, "gflags.master.", useClientCerts);
+      checkClientCertGFlags(flatOverrides, "gflags.tserver.", useClientCerts);
+    }
+  }
+
+  private static void checkClientCertGFlags(
+      @Nullable Map<String, String> gflags, String prefix, boolean useClientCerts) {
+    if (gflags == null) {
+      return;
+    }
+    // false is allowed where it changes nothing, so universes that set it before this check keep
+    // passing edits and gflags upgrades.
+    String value = gflags.get(prefix + USE_CLIENT_CERTIFICATES);
+    if (value != null && (useClientCerts || !"false".equalsIgnoreCase(value))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts, chosen at"
+                  + " universe creation. Remove it with a gflags upgrade.",
+              USE_CLIENT_CERTIFICATES));
+    }
+    if (useClientCerts
+        && (StringUtils.isNotBlank(gflags.get(prefix + NODE_TO_NODE_REQUIRED_UID))
+            || "true".equalsIgnoreCase(gflags.get(prefix + VERIFY_CLIENT_ENDPOINT)))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "useNodeToNodeClientCerts doesn't support %s or %s: YugabyteDB Anywhere's"
+                  + " client certificate matches neither",
+              NODE_TO_NODE_REQUIRED_UID, VERIFY_CLIENT_ENDPOINT));
+    }
+  }
+
+  /**
+   * @param source where the gflags come from, as in "the tserver gflags of AZ az-1"
+   */
+  public static void checkFipsGFlagNotDisabled(
+      String source, @Nullable Map<String, String> gflags) {
+    if (gflags == null) {
+      return;
+    }
+    if (gflags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(gflags.get(OPENSSL_REQUIRE_FIPS))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s, but the %s set it to %s.",
+              FIPS_GFLAG_REQUIRED, source, gflags.get(OPENSSL_REQUIRE_FIPS)));
+    }
+    String fromEnvFlag = getFipsGFlagFromEnvFlag(gflags);
+    if (fromEnvFlag != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s, but %s in the %s lists it.", FIPS_GFLAG_FROM_ENV, fromEnvFlag, source));
+    }
+  }
+
+  /**
+   * The gflags library's fromenv and tryfromenv take a list of gflags to read from FLAGS_<name>
+   * environment variables, a way to set the FIPS gflag without its own key. Returns the one that
+   * lists it, if any.
+   */
+  @Nullable
+  private static String getFipsGFlagFromEnvFlag(Map<String, String> gflags) {
+    return GFLAGS_FROM_ENV.stream()
+        .filter(
+            flag ->
+                gflags.get(flag) != null
+                    && Arrays.stream(gflags.get(flag).split(","))
+                        .anyMatch(name -> name.trim().equals(OPENSSL_REQUIRE_FIPS)))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
+   * Each gflag is written to the server's flagfile as one --name=value line, so a line break in a
+   * name or value adds a line of its own, which can override a gflag YBA sets.
+   */
+  public static void checkNoLineBreaks(@Nullable Map<String, String> gflags) {
+    if (gflags == null) {
+      return;
+    }
+    gflags.forEach(
+        (name, value) -> {
+          if (StringUtils.containsAny(name, "\r\n")
+              || (value != null && StringUtils.containsAny(value, "\r\n"))) {
             throw new PlatformServiceException(
-                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+                BAD_REQUEST, String.format("GFlag %s cannot contain a line break", name.trim()));
           }
-          Map<String, String> tserverGFlags =
-              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER);
-          if (tserverGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
-              && !tserverGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
-          }
+        });
+  }
+
+  /**
+   * gflags reads a dash in a flag name as an underscore, and YBA passes names to the DB as typed,
+   * so {@code ycql-ldap-bind-passwd} sets {@code ycql_ldap_bind_passwd}. Compare gflag names, such
+   * as against the sensitive gflags, by this spelling.
+   */
+  public static String canonicalGFlagName(String name) {
+    return name.replace('-', '_');
+  }
+
+  /**
+   * A new cluster, in a new universe or added to one, has no stored value to put back in place of
+   * REDACTED, so a gflag copied from an API response would otherwise be applied and stored as the
+   * literal token. Checks the same gflags as mergeSensitiveGFlags: the version's sensitive gflags,
+   * which must not contain REDACTED, and ysql_hba_conf_csv, which must not contain it anywhere.
+   * Other gflags may contain the word. Kubernetes overrides get the same check from
+   * KubernetesOverridesRedactor.restore with nothing stored.
+   */
+  public static void checkNoRedactedGFlagsOnCreate(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String ybSoftwareVersion,
+      GFlagsValidation gFlagsValidation) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    Set<String> redactedGFlags =
+        new HashSet<>(
+            RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation));
+    redactedGFlags.add(YSQL_HBA_CONF_CSV);
+    for (Map.Entry<String, Map<String, String>> gflags : getUserGFlagMaps(userIntent).entrySet()) {
+      if (gflags.getValue() == null) {
+        continue;
+      }
+      for (Map.Entry<String, String> gflag : gflags.getValue().entrySet()) {
+        if (redactedGFlags.contains(canonicalGFlagName(gflag.getKey()))
+            && RedactingService.isGFlagRedacted(gflag.getValue())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "GFlag %s in %s contains %s: a new cluster has no stored value to restore it"
+                      + " from. Submit the actual value.",
+                  gflag.getKey(), gflags.getKey(), RedactingService.SECRET_REPLACEMENT));
         }
       }
+    }
+    KubernetesOverridesRedactor.restore(
+        null, userIntent.universeOverrides, "Kubernetes universe overrides");
+    KubernetesOverridesRedactor.restoreAz(null, userIntent.azOverrides);
+  }
+
+  /**
+   * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
+   * are merged over the gflags YBA generates, so they could inject gflag lines or, on a FIPS
+   * universe, turn the FIPS gflag off where the gflags API refuses to.
+   */
+  public static void validateHelmOverridesGFlags(
+      String universeOverrides, Map<String, String> azOverrides, boolean fipsEnabled) {
+    Map<String, String> overrides = new LinkedHashMap<>();
+    overrides.put("Kubernetes universe overrides", universeOverrides);
+    if (azOverrides != null) {
+      azOverrides.forEach((az, yaml) -> overrides.put("Kubernetes overrides of AZ " + az, yaml));
+    }
+    for (Map.Entry<String, String> entry : overrides.entrySet()) {
+      String overridesYaml = entry.getValue();
+      Map<String, String> flatOverrides;
+      try {
+        flatOverrides = flattenHelmOverrides(overridesYaml);
+      } catch (PlatformServiceException e) {
+        if (fipsEnabled) {
+          throw e;
+        }
+        // Left to the overrides validation; helm cannot render gflags from them either.
+        continue;
+      }
+      validateHelmValuesGFlags(flatOverrides, fipsEnabled, entry.getKey());
+    }
+  }
+
+  /**
+   * Same checks as {@link #validateHelmOverridesGFlags} on flattened helm values, for the values a
+   * task renders.
+   */
+  public static void validateHelmValuesGFlags(
+      Map<String, String> flatValues, boolean fipsEnabled, String source) {
+    for (String server : List.of("master", "tserver")) {
+      String prefix = "gflags." + server + ".";
+      Map<String, String> gflags = new HashMap<>();
+      flatValues.forEach(
+          (key, value) -> {
+            if (key.startsWith(prefix)) {
+              gflags.put(key.substring(prefix.length()), value);
+            }
+          });
+      checkNoLineBreaks(gflags);
+      if (!fipsEnabled) {
+        continue;
+      }
+      checkFipsGFlagNotDisabled(String.format("%s (gflags.%s)", source, server), gflags);
+    }
+    if (fipsEnabled) {
+      flatValues.forEach(
+          (key, value) -> {
+            if (HELM_EXTRA_ENV_NAME.matcher(key).find() && FIPS_GFLAG_ENV_VAR.equals(value)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "%s, but the %s set environment variable %s (%s).",
+                      FIPS_GFLAG_FROM_ENV, source, FIPS_GFLAG_ENV_VAR, key));
+            }
+          });
+    }
+  }
+
+  /** Returns the HBA gflags set in kubernetes helm overrides, keyed by AZ and override path. */
+  public static Map<String, String> getYsqlHbaHelmOverrides(
+      @Nullable String universeOverrides, @Nullable Map<String, String> azOverrides) {
+    Map<String, String> overridesByScope = new HashMap<>();
+    overridesByScope.put("", universeOverrides);
+    if (azOverrides != null) {
+      overridesByScope.putAll(azOverrides);
+    }
+    Map<String, String> result = new HashMap<>();
+    overridesByScope.forEach(
+        (scope, overridesYaml) -> {
+          Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+          for (String server : List.of("master", "tserver")) {
+            for (String gflag : YSQL_HBA_GFLAGS) {
+              String path = "gflags." + server + "." + gflag;
+              if (StringUtils.isNotBlank(flatOverrides.get(path))) {
+                result.put(scope + "/" + path, flatOverrides.get(path));
+              }
+            }
+          }
+        });
+    return result;
+  }
+
+  private static Map<String, String> flattenHelmOverrides(@Nullable String overridesYaml) {
+    try {
+      return HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+    } catch (Exception e) {
+      // Overrides that cannot be read cannot be checked, so they are not accepted either.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
     }
   }
 
@@ -1226,6 +1688,12 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
+
+    if (!userIntent.enableYSQLAuth
+        && !getYsqlHbaHelmOverrides(userIntent.universeOverrides, userIntent.azOverrides)
+            .isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+    }
 
     if (userIntent.specificGFlags != null && userIntent.specificGFlags.isInheritFromPrimary()) {
       return;
@@ -1254,6 +1722,19 @@ public class GFlagsUtil {
         masterGFlags, MASTER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Master");
     validateGflagsAgainstIntent(
         tserverGFlags, TSERVER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Tserver");
+
+    if (!userIntent.enableYSQLAuth) {
+      List<Map<String, String>> allGFlags =
+          new ArrayList<>(Arrays.asList(masterGFlags, tserverGFlags));
+      if (userIntent.specificGFlags != null && userIntent.specificGFlags.getPerAZ() != null) {
+        userIntent.specificGFlags.getPerAZ().values().stream()
+            .filter(Objects::nonNull)
+            .forEach(azFlags -> allGFlags.addAll(azFlags.value.values()));
+      }
+      if (allGFlags.stream().anyMatch(GFlagsUtil::containsYsqlHbaGFlags)) {
+        throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
   }
 
   private static void validateGflagsAgainstIntent(
@@ -1281,9 +1762,10 @@ public class GFlagsUtil {
   }
 
   /**
-   * Process user gflags: 1) merge some CSV gflags. 2) remove gflags that are forbidden to override
-   * (if not allowOverrideAll) 3) check host and port for proxy bind addresses gflags if user
-   * specified both.
+   * Process user gflags: 1) merge some CSV gflags. 2) reset gflags that are forbidden to override
+   * (if not allowOverrideAll) to the platform value; not removed, since the node agent path passes
+   * platform and user gflags merged in one map. 3) check host and port for proxy bind addresses
+   * gflags if user specified both.
    *
    * @param node - node details
    * @param userGFlags - glfags specified by user
@@ -1297,6 +1779,16 @@ public class GFlagsUtil {
       boolean allowOverrideAll,
       RuntimeConfGetter confGetter,
       AnsibleConfigureServers.Params taskParams) {
+    // Values stored before the API checks existed must not reach the flagfile either.
+    checkNoLineBreaks(userGFlags);
+    String fromEnvFlag = getFipsGFlagFromEnvFlag(userGFlags);
+    if ("true".equals(platformGFlags.get(OPENSSL_REQUIRE_FIPS)) && fromEnvFlag != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s, but %s in the gflags of node %s lists it.",
+              FIPS_GFLAG_FROM_ENV, fromEnvFlag, node.nodeName));
+    }
     mergeCSVs(userGFlags, platformGFlags, UNDEFOK, false);
     if (!allowOverrideAll) {
       GFLAGS_FORBIDDEN_TO_OVERRIDE.forEach(
@@ -1305,13 +1797,25 @@ public class GFlagsUtil {
                 && platformGFlags.containsKey(gflag)
                 && !userGFlags.get(gflag).equals(platformGFlags.get(gflag))) {
               LOG.warn(
-                  "Removing {} from user gflags, values mismatch: user {} platform {}",
+                  "Overriding {} in user gflags, values mismatch: user {} platform {}",
                   gflag,
                   userGFlags.get(gflag),
                   platformGFlags.get(gflag));
-              userGFlags.remove(gflag);
+              userGFlags.put(gflag, platformGFlags.get(gflag));
             }
           });
+    }
+    // Enforced even with allowOverrideAll: the gflags validators can be bypassed, and a FIPS
+    // universe must never run with FIPS off.
+    if ("true".equals(platformGFlags.get(OPENSSL_REQUIRE_FIPS))
+        && userGFlags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(userGFlags.get(OPENSSL_REQUIRE_FIPS))) {
+      LOG.warn(
+          "Overriding {}={} with true in user gflags of FIPS universe node {}",
+          OPENSSL_REQUIRE_FIPS,
+          userGFlags.get(OPENSSL_REQUIRE_FIPS),
+          node.nodeName);
+      userGFlags.put(OPENSSL_REQUIRE_FIPS, "true");
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
@@ -1355,6 +1859,14 @@ public class GFlagsUtil {
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
     mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
+    // User entries win over platform defaults, but telemetry entries win over user entries.
+    // getYSQLGFlags adds telemetry only with YSQL enabled, so do the same here.
+    if (userGFlags.containsKey(YSQL_PG_CONF_CSV) && taskParams.enableYSQL) {
+      userGFlags.put(
+          YSQL_PG_CONF_CSV,
+          overrideWithTelemetryYsqlPgConfCsv(
+              userGFlags.get(YSQL_PG_CONF_CSV), getYsqlPgConfCsv(taskParams)));
+    }
     mergeCSVs(userGFlags, platformGFlags, ALLOWED_PREVIEW_FLAGS_CSV, true);
 
     // timestamp_hitory_retention_sec gflag should be max of platform and user values
@@ -1501,6 +2013,79 @@ public class GFlagsUtil {
     }
   }
 
+  public static Set<String> getChangedGFlags(
+      Collection<Cluster> currentClusters,
+      Collection<Cluster> updatedClusters,
+      Collection<String> candidateGFlags) {
+    Set<String> changedGFlags = new TreeSet<>();
+    Map<UUID, Cluster> currentClustersByUuid =
+        currentClusters.stream()
+            .collect(Collectors.toMap(cluster -> cluster.uuid, cluster -> cluster));
+    Map<UUID, Cluster> updatedClustersByUuid =
+        updatedClusters.stream()
+            .collect(Collectors.toMap(cluster -> cluster.uuid, cluster -> cluster));
+
+    Set<UUID> clusterUuids = new HashSet<>(currentClustersByUuid.keySet());
+    clusterUuids.addAll(updatedClustersByUuid.keySet());
+    for (UUID clusterUuid : clusterUuids) {
+      Cluster currentCluster = currentClustersByUuid.get(clusterUuid);
+      Cluster updatedCluster = updatedClustersByUuid.get(clusterUuid);
+
+      Set<UUID> azUuids = new HashSet<>();
+      azUuids.add(null);
+      addPerAZGFlagUuids(azUuids, currentCluster);
+      addPerAZGFlagUuids(azUuids, updatedCluster);
+      for (UUID azUuid : azUuids) {
+        for (ServerType serverType : EnumSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+          Map<String, String> currentGFlags =
+              currentCluster == null
+                  ? Collections.emptyMap()
+                  : getGFlagsForAZ(azUuid, serverType, currentCluster, currentClusters);
+          Map<String, String> updatedGFlags =
+              updatedCluster == null
+                  ? Collections.emptyMap()
+                  : getGFlagsForAZ(azUuid, serverType, updatedCluster, updatedClusters);
+          for (String gflag : candidateGFlags) {
+            if (currentGFlags.containsKey(gflag) != updatedGFlags.containsKey(gflag)
+                || !Objects.equals(currentGFlags.get(gflag), updatedGFlags.get(gflag))) {
+              changedGFlags.add(gflag);
+            }
+          }
+        }
+      }
+    }
+    return changedGFlags;
+  }
+
+  public static boolean hasYsqlHbaGFlags(Collection<Cluster> clusters) {
+    for (Cluster cluster : clusters) {
+      Set<UUID> azUuids = new HashSet<>();
+      azUuids.add(null);
+      addPerAZGFlagUuids(azUuids, cluster);
+      for (UUID azUuid : azUuids) {
+        for (ServerType serverType : EnumSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+          if (containsYsqlHbaGFlags(getGFlagsForAZ(azUuid, serverType, cluster, clusters))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean containsYsqlHbaGFlags(@Nullable Map<String, String> gflags) {
+    return gflags != null
+        && YSQL_HBA_GFLAGS.stream().anyMatch(gflag -> StringUtils.isNotBlank(gflags.get(gflag)));
+  }
+
+  private static void addPerAZGFlagUuids(Set<UUID> azUuids, @Nullable Cluster cluster) {
+    if (cluster != null
+        && cluster.userIntent.specificGFlags != null
+        && cluster.userIntent.specificGFlags.getPerAZ() != null) {
+      azUuids.addAll(cluster.userIntent.specificGFlags.getPerAZ().keySet());
+    }
+  }
+
   private static String getMountPoints(AnsibleConfigureServers.Params taskParam) {
     if (taskParam.deviceInfo == null) {
       return null;
@@ -1584,46 +2169,23 @@ public class GFlagsUtil {
   }
 
   public static String mergeCSVs(String csv1, String csv2, boolean mergeKeyValues) {
-    StringWriter writer = new StringWriter();
-    try {
-      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-        Set<String> existingKeys = new HashSet<>();
-        Set<String> records = new LinkedHashSet<>();
-        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
-        for (CSVRecord record : parser) {
-          appendEntries(record, records, existingKeys, mergeKeyValues);
+    Set<String> existingKeys = new HashSet<>();
+    Set<String> records = new LinkedHashSet<>();
+    for (String csv : Arrays.asList(csv1, csv2)) {
+      for (String entry : parseCSVEntries(csv)) {
+        if (mergeKeyValues) {
+          Optional<String> key = getKey(entry);
+          if (key.isPresent()) {
+            if (existingKeys.contains(key.get())) {
+              continue;
+            }
+            existingKeys.add(key.get());
+          }
         }
-        parser = new CSVParser(new StringReader(csv2), csvFormat);
-        for (CSVRecord record : parser) {
-          appendEntries(record, records, existingKeys, mergeKeyValues);
-        }
-        csvPrinter.printRecord(records);
-        csvPrinter.flush();
+        records.add(entry);
       }
-    } catch (IOException ignored) {
-      // can't really happen
     }
-    return writer.toString();
-  }
-
-  private static void appendEntries(
-      CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
-    record
-        .toList()
-        .forEach(
-            entry -> {
-              if (mergeKeyValues) {
-                Optional<String> key = getKey(entry);
-                if (key.isPresent()) {
-                  if (existingKeys.contains(key.get())) {
-                    return;
-                  }
-                  existingKeys.add(key.get());
-                }
-              }
-              result.add(entry);
-            });
+    return printCSVEntries(records);
   }
 
   private static Optional<String> getKey(String keyValue) {
@@ -1637,6 +2199,68 @@ public class GFlagsUtil {
     return Optional.empty();
   }
 
+  /**
+   * Overrides base ysql_pg_conf_csv entries with telemetry ones in place (keys match in any case,
+   * as in PostgreSQL) and appends the rest, so an unchanged base keeps its order.
+   */
+  public static String overrideWithTelemetryYsqlPgConfCsv(String baseCsv, String telemetryCsv) {
+    if (StringUtils.isEmpty(telemetryCsv)) {
+      return mergeCSVs(StringUtils.defaultString(baseCsv), "", true);
+    }
+    Map<String, String> telemetryEntries = new LinkedHashMap<>();
+    for (String entry : parseCSVEntries(telemetryCsv)) {
+      telemetryEntries.putIfAbsent(getCaseInsensitiveKey(entry), entry);
+    }
+    Set<String> baseKeys = new HashSet<>();
+    Set<String> appliedTelemetryKeys = new HashSet<>();
+    Set<String> result = new LinkedHashSet<>();
+    for (String entry : parseCSVEntries(StringUtils.defaultString(baseCsv))) {
+      String telemetryKey = getCaseInsensitiveKey(entry);
+      if (telemetryEntries.containsKey(telemetryKey)) {
+        if (appliedTelemetryKeys.add(telemetryKey)) {
+          result.add(telemetryEntries.get(telemetryKey));
+        }
+      } else if (baseKeys.add(getKey(entry).orElse(entry))) {
+        result.add(entry);
+      }
+    }
+    telemetryEntries.forEach(
+        (key, entry) -> {
+          if (!appliedTelemetryKeys.contains(key)) {
+            result.add(entry);
+          }
+        });
+    return printCSVEntries(result);
+  }
+
+  private static String getCaseInsensitiveKey(String entry) {
+    return getKey(entry).orElse(entry).toLowerCase(Locale.ROOT);
+  }
+
+  private static List<String> parseCSVEntries(String csv) {
+    List<String> entries = new ArrayList<>();
+    try (CSVParser parser =
+        new CSVParser(new StringReader(StringUtils.defaultString(csv)), CSV_FORMAT)) {
+      for (CSVRecord record : parser) {
+        entries.addAll(record.toList());
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to parse CSV", e);
+    }
+    return entries;
+  }
+
+  private static String printCSVEntries(Collection<String> entries) {
+    StringWriter writer = new StringWriter();
+    try (CSVPrinter csvPrinter = new CSVPrinter(writer, CSV_FORMAT)) {
+      csvPrinter.printRecord(entries);
+      csvPrinter.flush();
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to print CSV", e);
+    }
+    return writer.toString();
+  }
+
   public static void mergeCSVs(
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
@@ -1647,6 +2271,28 @@ public class GFlagsUtil {
       userGFlags.put(
           key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
+  }
+
+  /**
+   * Whether the universe's servers run with its new install gflags. K8s universes created before
+   * {@link Universe#K8S_APPLY_NEW_INSTALL_GFLAGS} have them saved but never applied, and applying
+   * them later would change running workloads (read committed isolation, cost based optimizer).
+   */
+  public static boolean areNewInstallGFlagsApplied(Universe universe) {
+    return !Util.isKubernetesBasedUniverse(universe)
+        || Boolean.parseBoolean(
+            universe.getConfig().getOrDefault(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, "false"));
+  }
+
+  /**
+   * Adds the universe's new install gflags to the given gflags as defaults: values already in the
+   * map win, and ysql_pg_conf_csv entries are merged per key.
+   */
+  public static void mergeNewInstallGFlags(
+      Map<String, String> gflags, Universe universe, ServerType serverType) {
+    Map<String, String> newInstallGFlags = universe.getNewInstallGFlags(serverType);
+    mergeCSVs(gflags, newInstallGFlags, YSQL_PG_CONF_CSV, true);
+    newInstallGFlags.forEach(gflags::putIfAbsent);
   }
 
   // Extract out the flag names from the undefok gflag.
@@ -1726,8 +2372,7 @@ public class GFlagsUtil {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, String.format("JWKS file write failed %s", e.getMessage()));
       }
-      String ybHomeDir = getYbHomeDir(providerUUID);
-      String remoteJWKSFilePath = ybHomeDir + GFLAG_REMOTE_FILES_PATH + fileName;
+      String remoteJWKSFilePath = getRemoteGFlagFilesPath(providerUUID) + fileName;
       String jwtJWKSPath = JWT_JWKS_FILE_PATH + "=\"\"" + remoteJWKSFilePath + "\"\"";
       StringBuilder sb = new StringBuilder(hbaConfValue);
       sb.replace(jwksIndex, endIndex + 1, jwtJWKSPath);
@@ -2093,37 +2738,22 @@ public class GFlagsUtil {
   }
 
   public static String getLogLinePrefix(QueryLogConfig queryLogConfig, String ysqlPgConfCsv) {
-    // Priority 1: User specificGFlags take precedence when explicitly set
-    String userLogLinePrefix = extractLogLinePrefixFromCsv(ysqlPgConfCsv);
-    if (!DEFAULT_LOG_LINE_PREFIX.equals(userLogLinePrefix)) {
-      return userLogLinePrefix;
-    }
-    // Priority 2: Fall back to query log API's log_line_prefix if available
+    // Telemetry over user, as in the ysql_pg_conf_csv merge, so the collector uses PG's prefix.
     if (queryLogConfig != null
         && queryLogConfig.getYsqlQueryLogConfig() != null
+        && queryLogConfig.getYsqlQueryLogConfig().isEnabled()
         && StringUtils.isNotEmpty(queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix())) {
       return queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix();
     }
-    // Priority 3: Return default
-    return DEFAULT_LOG_LINE_PREFIX;
+    return extractLogLinePrefixFromCsv(ysqlPgConfCsv);
   }
 
   private static String extractLogLinePrefixFromCsv(String pgConfCsv) {
-    if (StringUtils.isEmpty(pgConfCsv)) {
-      return DEFAULT_LOG_LINE_PREFIX;
-    }
-    try {
-      CSVParser parser = new CSVParser(new StringReader(pgConfCsv), CSVFormat.DEFAULT);
-      for (CSVRecord record : parser) {
-        for (String entry : record.toList()) {
-          Matcher matcher = LOG_LINE_PREFIX_PATTERN.matcher(entry);
-          if (matcher.matches()) {
-            return matcher.group(1);
-          }
-        }
+    for (String entry : parseCSVEntries(pgConfCsv)) {
+      Matcher matcher = LOG_LINE_PREFIX_PATTERN.matcher(entry);
+      if (matcher.matches()) {
+        return matcher.group(1);
       }
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to parse CSV", e);
     }
     return DEFAULT_LOG_LINE_PREFIX;
   }
@@ -2250,15 +2880,21 @@ public class GFlagsUtil {
       return "None (Empty gflags map in request)";
     }
     LinkedHashSet<String> found = new LinkedHashSet<>();
-    for (String name : sensitiveGFlagNames) {
-      if (RedactingService.SECRET_REPLACEMENT.equals(newFlags.get(name))) {
-        found.add(name);
-      }
-    }
-    String hbaCsv = newFlags.get("ysql_hba_conf_csv");
-    if (hbaCsv != null && hbaCsv.contains(RedactingService.SECRET_REPLACEMENT)) {
-      found.add("ysql_hba_conf_csv");
-    }
+    newFlags.forEach(
+        (name, value) -> {
+          if (value == null) {
+            return;
+          }
+          String canonicalName = canonicalGFlagName(name);
+          boolean redacted =
+              canonicalName.equals(YSQL_HBA_CONF_CSV)
+                  ? value.contains(RedactingService.SECRET_REPLACEMENT)
+                  : sensitiveGFlagNames.contains(canonicalName)
+                      && value.equals(RedactingService.SECRET_REPLACEMENT);
+          if (redacted) {
+            found.add(name);
+          }
+        });
     return found.isEmpty() ? String.join(", ", sensitiveGFlagNames) : String.join(", ", found);
   }
 
@@ -2268,8 +2904,11 @@ public class GFlagsUtil {
       Map<String, String> newGFlags,
       GFlagsValidation gFlagsValidation,
       String ybSoftwareVersion) {
-    if (existingGFlags == null || newGFlags == null) {
-      return newGFlags;
+    if (newGFlags == null) {
+      return null;
+    }
+    if (existingGFlags == null) {
+      existingGFlags = Collections.emptyMap();
     }
 
     Map<String, String> mergedGFlags = new HashMap<>(newGFlags);
@@ -2278,12 +2917,32 @@ public class GFlagsUtil {
       Set<String> sensitiveGFlagFields =
           RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
 
-      for (String sensitiveFlag : sensitiveGFlagFields) {
-        String newValue = newGFlags.get(sensitiveFlag);
-        String existingValue = existingGFlags.get(sensitiveFlag);
+      for (Map.Entry<String, String> newGFlag : newGFlags.entrySet()) {
+        String sensitiveFlag = newGFlag.getKey();
+        String canonicalName = canonicalGFlagName(sensitiveFlag);
+        if (canonicalName.equals(YSQL_HBA_CONF_CSV)) {
+          mergeRedactedYsqlHbaConf(
+              existingGFlags, sensitiveFlag, newGFlag.getValue(), mergedGFlags);
+          continue;
+        }
+        if (!sensitiveGFlagFields.contains(canonicalName)) {
+          continue;
+        }
+        String newValue = newGFlag.getValue();
+        String existingValue = storedGFlagValue(existingGFlags, sensitiveFlag);
 
         if (RedactingService.isGFlagRedacted(newValue)) {
-          if (existingValue != null && existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
+          if (existingValue == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                sensitiveFlag
+                    + " cannot be submitted as "
+                    + RedactingService.SECRET_REPLACEMENT
+                    + ": the universe stores no value for it in the same place (server type,"
+                    + " and AZ for an AZ override) to restore it from."
+                    + " Provide the actual value in the request.");
+          }
+          if (existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 "The stored value of "
@@ -2293,47 +2952,10 @@ public class GFlagsUtil {
                     + "; the real value cannot be recovered."
                     + " Provide the actual value in the request.");
           }
-          if (existingValue != null) {
-            mergedGFlags.put(sensitiveFlag, existingValue);
-            LOG.debug(
-                "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
-          }
+          mergedGFlags.put(sensitiveFlag, existingValue);
+          LOG.debug(
+              "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
         }
-      }
-
-      String newYsqlHbaConf = newGFlags.get(YSQL_HBA_CONF_CSV);
-      String existingYsqlHbaConf = existingGFlags.get(YSQL_HBA_CONF_CSV);
-
-      if (RedactingService.isGFlagRedacted(newYsqlHbaConf)) {
-        if (existingYsqlHbaConf == null) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "ysql_hba_conf_csv cannot be submitted with "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd: no prior universe value exists to restore the password"
-                  + " from. Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
-        }
-        if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "The stored ysql_hba_conf_csv already contains "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd; the real password cannot be recovered."
-                  + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
-        }
-        // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input
-        String existingRedacted =
-            RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
-        if (!existingRedacted.equals(newYsqlHbaConf)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "ysql_hba_conf_csv contains "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd but differs from the stored value in other fields."
-                  + " To apply HBA changes alongside a new password, submit the full"
-                  + " ysql_hba_conf_csv with the actual ldapbindpasswd.");
-        }
-        mergedGFlags.put(YSQL_HBA_CONF_CSV, existingYsqlHbaConf);
       }
     } catch (PlatformServiceException e) {
       throw e;
@@ -2369,14 +2991,73 @@ public class GFlagsUtil {
     return mergedGFlags;
   }
 
+  /** Restores ldapbindpasswd in a ysql_hba_conf_csv that came back with it REDACTED. */
+  private static void mergeRedactedYsqlHbaConf(
+      Map<String, String> existingGFlags,
+      String hbaFlag,
+      String newYsqlHbaConf,
+      Map<String, String> mergedGFlags) {
+    if (!RedactingService.isGFlagRedacted(newYsqlHbaConf)) {
+      return;
+    }
+    String existingYsqlHbaConf = storedGFlagValue(existingGFlags, hbaFlag);
+    if (existingYsqlHbaConf == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "ysql_hba_conf_csv cannot be submitted with "
+              + RedactingService.SECRET_REPLACEMENT
+              + " in ldapbindpasswd: the universe stores no value for it in the same place"
+              + " (server type, and AZ for an AZ override) to restore the password from."
+              + " Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
+    }
+    if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "The stored ysql_hba_conf_csv already contains "
+              + RedactingService.SECRET_REPLACEMENT
+              + " in ldapbindpasswd; the real password cannot be recovered."
+              + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
+    }
+    // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input. Gflags
+    // upgrades trim the values they receive, and the stored value may be untrimmed.
+    String existingRedacted =
+        RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
+    if (!existingRedacted.trim().equals(newYsqlHbaConf.trim())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "ysql_hba_conf_csv contains "
+              + RedactingService.SECRET_REPLACEMENT
+              + " in ldapbindpasswd but differs from the stored value in other fields."
+              + " To apply HBA changes alongside a new password, submit the full"
+              + " ysql_hba_conf_csv with the actual ldapbindpasswd.");
+    }
+    mergedGFlags.put(hbaFlag, existingYsqlHbaConf);
+  }
+
+  /** The stored value of a gflag, under the request's spelling of its name or another spelling. */
+  private static String storedGFlagValue(Map<String, String> storedGFlags, String name) {
+    if (storedGFlags.containsKey(name)) {
+      return storedGFlags.get(name);
+    }
+    String canonicalName = canonicalGFlagName(name);
+    return storedGFlags.entrySet().stream()
+        .filter(stored -> canonicalGFlagName(stored.getKey()).equals(canonicalName))
+        .findFirst()
+        .map(Map.Entry::getValue)
+        .orElse(null);
+  }
+
   // Merges sensitive SpecificGFlags, preserving actual values when REDACTED is received.
   public static SpecificGFlags mergeSensitiveSpecificGFlags(
       SpecificGFlags existingSpecificGFlags,
       SpecificGFlags newSpecificGFlags,
       GFlagsValidation gFlagsValidation,
       String ybSoftwareVersion) {
-    if (existingSpecificGFlags == null || newSpecificGFlags == null) {
-      return newSpecificGFlags;
+    if (newSpecificGFlags == null) {
+      return null;
+    }
+    if (existingSpecificGFlags == null) {
+      existingSpecificGFlags = new SpecificGFlags();
     }
 
     // Merge per-process flags
@@ -2440,5 +3121,34 @@ public class GFlagsUtil {
     }
 
     return mergedSpecificGFlags;
+  }
+
+  /** Returns a copy with the sensitive values of its per-process and per-AZ gflags redacted. */
+  public static SpecificGFlags redactSensitiveSpecificGFlags(
+      SpecificGFlags specificGFlags, GFlagsValidation gFlagsValidation, String ybSoftwareVersion) {
+    if (specificGFlags == null) {
+      return null;
+    }
+    SpecificGFlags redacted = specificGFlags.clone();
+    redactPerProcessFlags(redacted.getPerProcessFlags(), gFlagsValidation, ybSoftwareVersion);
+    if (redacted.getPerAZ() != null) {
+      redacted
+          .getPerAZ()
+          .values()
+          .forEach(azFlags -> redactPerProcessFlags(azFlags, gFlagsValidation, ybSoftwareVersion));
+    }
+    return redacted;
+  }
+
+  private static void redactPerProcessFlags(
+      SpecificGFlags.PerProcessFlags flags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (flags == null || flags.value == null) {
+      return;
+    }
+    flags.value.replaceAll(
+        (serverType, gflags) ->
+            RedactingService.redactGFlags(gflags, ybSoftwareVersion, gFlagsValidation));
   }
 }

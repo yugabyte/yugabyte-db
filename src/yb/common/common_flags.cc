@@ -36,6 +36,7 @@ TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEPRECATE_FLAG(bool, enable_pg_savepoints, "04_2024");
+DEPRECATE_FLAG(bool, ysql_yb_disable_ddl_transaction_block_for_read_committed, "09_2026");
 
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, true,
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
@@ -90,10 +91,16 @@ DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_colocated_tables_with_tablespaces, false,
-    "Enable creation of colocated tables with a specified placement policy via a tablespace."
-    "If true, creating a colocated table  will colocate the table on an implicit "
-    "tablegroup that is determined by the tablespace it uses. We turn the feature off by default.");
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_colocated_tables_with_tablespaces,
+    kExternal, false, true,
+    "Place a colocated table or index that is created with a tablespace in an implicit tablegroup "
+    "of that tablespace, so that the tablespace decides the placement of its colocation tablet. "
+    "If false, a colocated table created with a tablespace stays in the default implicit "
+    "tablegroup of the database, where the tablespace does not affect its placement, and a "
+    "tablespace on an index of a colocated table is refused.");
+
+// Replaced by the AutoFlag above.
+DEPRECATE_FLAG(bool, ysql_enable_colocated_tables_with_tablespaces, "11_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
     "If true, enable per-database PG new object identifier allocator.");
@@ -121,6 +128,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, 
     "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
     "in use so that only one consumer can use it at a time across the universe.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_replication_slot_wait_max_retries, 0,
+    "Maximum number of advisory-lock RPC timeout retries for "
+    "DROP_REPLICATION_SLOT ... WAIT before giving up with an error. "
+    "0 (default) retries indefinitely.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
@@ -130,13 +142,18 @@ DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_transactional_ddl,
+    kLocalPersisted, false, true,
+    "When set, logical replication with transactional DDL support is enabled.");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");
 TAG_FLAG(TEST_hide_details_for_pg_regress, hidden);
 
 DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
-     "Controls the maximum number of replication slots that are allowed to exist on a cluster.");
+     "Controls the maximum number of replication slots that are allowed to exist on a cluster. "
+     "Must be set on both tserver and master with the same value.");
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -173,17 +190,11 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTra
     "block instead of their separate transactions. Ensure DDL atomicity is "
     "enabled via ysql_yb_enable_ddl_atomicity_infra and ysql_yb_ddl_rollback_enabled flags.");
 
-DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_committed, false,
-    "If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction "
-    "instead of the as part of the enclosing transaction block even if "
-    "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
-    "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
-
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
     "must be true to enable the feature.");
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_ddl_savepoint_support, false,
+DEFINE_NON_RUNTIME_bool(ysql_yb_enable_ddl_savepoint_support, kEnableDdlTransactionBlocks,
     "If true, support for savepoints for DDL statements within a transaction block will be "
     "enabled. This flag only takes effect if ysql_yb_ddl_transaction_block_enabled is set to "
     "true.");
@@ -226,11 +237,54 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     kEnableObjectLockingForTableLocks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
-    "implement pg table locks.");
+    "implement pg table locks. Before turning this off on a running cluster, turn "
+    "disable_global_object_locks on with a rolling restart: once no node takes global object "
+    "locks, every CREATE INDEX waits for all backends to reach its catalog version instead of "
+    "waiting for lock holders.");
+DEFINE_NON_RUNTIME_bool(disable_global_object_locks, false,
+    "When true, transactions on this node take no global object locks, and each DDL runs in a "
+    "separate transaction. Locks up to ROW EXCLUSIVE, which reads and writes take, still go to "
+    "the local object lock manager, so a DDL on another node that takes global object locks "
+    "waits for them. Stronger locks and session locks take no object lock.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
-    "Auto flag that controls whether table-level object locking can be safely enabled "
-    "during upgrade. Both this flag and enable_object_locking_for_table_locks "
-    "must be true to enable the feature.");
+    "DEPRECATED: no-op. Use ysql_yb_enable_global_object_locking_infra.");
+// Gates global object locking and what depends on it: DDL-strength and session object locks,
+// transactional DDL, and concurrent DDL. A transaction latches it at start. While it is false, or
+// while disable_global_object_locks is true, the transaction runs without global object locking:
+// its DDLs run in separate DDL transactions and take no object locks, and its requests keep the
+// tablets' catalog version check. With enable_object_locking_for_table_locks true, it still takes
+// the object locks of its reads and writes (up to ROW EXCLUSIVE) locally, so that DDLs with global
+// object locks wait for it (#36572, #37355).
+//
+// Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote. As an AutoFlag
+// that starts unpromoted on upgrade, it keeps every transaction without global object locking
+// until finalize, i.e. until all nodes run the new binary. So the mixed-mode handling only has to
+// deal with transactions with and without global object locking that both come from new binaries.
+// This assumes the pre-upgrade cluster has the features off. If they are on, upgraded tservers run
+// without global object locking until finalize, while the not-yet-upgraded ones keep using the
+// features.
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_global_object_locking_infra, kLocalPersisted, false,
+    true,
+    "Auto flag that gates global object locking during upgrade. With this flag and "
+    "enable_object_locking_for_table_locks both true, and disable_global_object_locks false, a "
+    "transaction runs with global object locking: DDL-strength object locks, transactional DDL "
+    "and concurrent DDL. Otherwise, with enable_object_locking_for_table_locks true, it takes "
+    "the object locks of its reads and writes (up to ROW EXCLUSIVE) locally, and with it false it "
+    "takes no object locks.");
+
+DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
+    kEnableObjectLockingForTableLocks,
+    "When this is true and transactional DDL, table level locks, and DDL savepoint support are "
+    "all in effect, pg_partman uses those features and advisory locks, which lets it create "
+    "default partitions and run undo_partition. Otherwise pg_partman behaves as if this were "
+    "false. If ysql_yb_enable_advisory_locks is false, the pg_partman functions that take "
+    "advisory locks fail. If partition sets have default partitions, then before turning this "
+    "off, or turning off one of those features, move the rows out of those default partitions "
+    "with partition_data_time or partition_data_id and drop them. Otherwise run_maintenance skips "
+    "those sets, retention included, and rows collect in their default partitions. Once this is "
+    "in effect again, run_maintenance fails with \"updated partition constraint for default "
+    "partition ... would be violated by some row\" until partition_data_time or partition_data_id "
+    "moves those rows out.");
 
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
@@ -238,53 +292,64 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, false,
-    "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
-    "support.] Use this flag to toggle support for concurrent DDLs.");
-DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+    "Takes effect only when enable_object_locking_for_table_locks is true and "
+    "disable_global_object_locks is false. When true, DDLs on unrelated objects run "
+    "concurrently, and object locks order DDLs on related objects. When false, the DDLs in a "
+    "database that increment the catalog version run one at a time, even on unrelated objects. "
+    "DDLs that do not increment the catalog version and ANALYZEs from the auto-analyze service "
+    "do not wait. A DDL that increments the catalog version of every database, such as one that "
+    "changes a shared catalog, waits only for the DDLs in the database it runs in. Set the same "
+    "value on every tserver: a DDL on a tserver where it is true does not wait.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(
-            FLAGS_master_ts_rpc_timeout_ms, FLAGS_refresh_waiter_timeout_ms),
+            FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms),
+            FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Requires master_ts_rpc_timeout_ms to be >= refresh_waiter_timeout_ms"),
     FLAG_DELAYED_COND_VALIDATOR(
-        !_value || !FLAGS_enable_object_lock_fastpath || FLAGS_pg_client_use_shared_memory,
+        !_value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+            FINAL_FLAG_VALUE(pg_client_use_shared_memory),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true"));
 
 DEFINE_validator(pg_client_use_shared_memory,
     FLAG_DELAYED_COND_VALIDATOR(
-      _value || !FLAGS_enable_object_lock_fastpath || !FLAGS_enable_object_locking_for_table_locks,
+      _value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "pg_client_use_shared_memory must be true with enable_object_locking_for_table_locks and "
       "enable_object_lock_fastpath on"));
 
 DEFINE_validator(enable_object_lock_fastpath,
     FLAG_DELAYED_COND_VALIDATOR(
-      !_value || FLAGS_pg_client_use_shared_memory || !FLAGS_enable_object_locking_for_table_locks,
+      !_value || FINAL_FLAG_VALUE(pg_client_use_shared_memory) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true when "
       "enable_object_locking_for_table_locks is on"));
 
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
-        (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),
+        (!_value || FINAL_FLAG_VALUE(ysql_yb_ddl_rollback_enabled)),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
+    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-        ::yb::flags_internal::compare_less_equal(_value, FLAGS_master_ts_rpc_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+        ::yb::flags_internal::compare_less_equal(
+            _value, FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms)),
         "Must be <= master_ts_rpc_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_validator(master_ts_rpc_timeout_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-            ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+            ::yb::flags_internal::compare_greater_equal(
+                _value, FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key,
@@ -396,11 +461,26 @@ DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
 DEFINE_NON_RUNTIME_bool(is_yb_managed, false,
   "If true instance is running in a YugabyteDB managed environment (YBM)");
 
+DEFINE_RUNTIME_AUTO_bool(enforce_xcluster_guarded_lease, kLocalPersisted, false, true,
+    "Should the xCluster-guarded information lease be enforced?  If so, the xCluster role for a "
+    "namespace will be reported as UNAVAILABLE if the TServer does not have a current lease.");
+
+DEFINE_RUNTIME_bool(enable_persistence_gate, true,
+    "Whether to refuse YSQL writes and commits whose persisting xCluster has stopped.  Also aborts "
+    "pending transactions whose commits would likewise be refused.  Takes effect only once "
+    "enforce_xcluster_guarded_lease is on.");
+TAG_FLAG(enable_persistence_gate, advanced);
+TAG_FLAG(enable_persistence_gate, hidden);
+
 namespace yb {
 
 void InitCommonFlags() {
   // Note! Autoflags are in non-promoted state (are set to the initial value) during execution of
   // this function. Be very careful in manipulations with such flags.
+}
+
+bool IsPersistenceGateEnforced() {
+  return FLAGS_enable_persistence_gate && FLAGS_enforce_xcluster_guarded_lease;
 }
 
 } // namespace yb

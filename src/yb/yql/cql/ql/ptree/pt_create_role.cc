@@ -14,9 +14,8 @@
 //
 // Treenode definitions for CREATE TYPE statements.
 //--------------------------------------------------------------------------------------------------
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/crypt.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
@@ -28,7 +27,6 @@ DECLARE_bool(use_cassandra_authentication);
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 using yb::util::bcrypt_hashpw;
 using yb::util::kBcryptHashSize;
 
@@ -123,7 +121,7 @@ Status PTCreateRole::Analyze(SemContext* sem_context) {
           char hash[kBcryptHashSize];
           int ret = bcrypt_hashpw(passwordOpt->password(), hash);
           if (ret != 0) {
-            return STATUS(IllegalState, Substitute("Could not hash password, reason: $0", ret));
+            return STATUS(IllegalState, Format("Could not hash password, reason: $0", ret));
           }
           salted_hash_ = MCMakeShared<MCString>(sem_context->PSemMem(), hash , kBcryptHashSize);
           seen_password = true;

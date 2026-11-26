@@ -40,11 +40,10 @@
 #include <string>
 #include <vector>
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
@@ -54,7 +53,6 @@ namespace yb {
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 PstackWatcher::PstackWatcher(MonoDelta timeout)
     : timeout_(std::move(timeout)), running_(true), cond_(&lock_) {
@@ -110,16 +108,16 @@ Status PstackWatcher::HasProgram(const char* progname) {
   proc.DisableStderr();
   proc.DisableStdout();
   RETURN_NOT_OK_PREPEND(proc.Start(),
-      Substitute("HasProgram($0): error running 'which'", progname));
+      Format("HasProgram($0): error running 'which'", progname));
   int wait_status = 0;
   RETURN_NOT_OK(proc.Wait(&wait_status));
   if ((WIFEXITED(wait_status)) && (0 == WEXITSTATUS(wait_status))) {
     return Status::OK();
   }
-  return STATUS(NotFound, Substitute("can't find $0: exited?=$1, status=$2",
-                                     progname,
-                                     static_cast<bool>(WIFEXITED(wait_status)),
-                                     WEXITSTATUS(wait_status)));
+  return STATUS(NotFound, Format("can't find $0: exited?=$1, status=$2",
+                                 progname,
+                                 static_cast<bool>(WIFEXITED(wait_status)),
+                                 WEXITSTATUS(wait_status)));
 }
 
 Status PstackWatcher::DumpStacks(int flags) {
@@ -171,13 +169,13 @@ Status PstackWatcher::RunGdbStackDump(pid_t pid, int flags) {
   Env* env = Env::Default();
   RETURN_NOT_OK(env->GetExecutablePath(&executable));
   argv.push_back(executable);
-  argv.push_back(Substitute("$0", pid));
+  argv.push_back(Format("$0", pid));
   return RunStackDump(prog, argv);
 }
 
 Status PstackWatcher::RunPstack(const std::string& progname, pid_t pid) {
   string prog(progname);
-  string pid_string(Substitute("$0", pid));
+  string pid_string(Format("$0", pid));
   vector<string> argv;
   argv.push_back(prog);
   argv.push_back(pid_string);

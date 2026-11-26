@@ -122,6 +122,8 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   void SeekToDocKeyPrefix(Slice doc_key_prefix) override;
 
+  void SetUpperBound(Slice upper_bound) override;
+
   // Refreshes the iterator if it was in finished state.
   // filter - filter mode that should be used with refreshed iterator.
   void Refresh(SeekFilter filter);
@@ -172,6 +174,10 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   Slice shared_key_prefix() const;
   Slice upperbound() const;
+
+  // Exclusive upper bound of the whole scan, as configured by Init: the scan spec bound when it
+  // has one, otherwise the table upper bound.
+  Slice GetInitialUpperBound() const;
 
   Status InitIterator(
       const BloomFilterOptions& bloom_filter,
@@ -235,6 +241,15 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   const DocDB doc_db_;
 
+  // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
+  // RocksDB does not get destroyed while the iterator is still in use.
+  // Must be declared before db_iter_, i.e. destroyed after it: a tablet shutdown parked on this
+  // counter resumes as soon as it is released and destroys the RocksDB instances, while tearing
+  // down the RocksDB iterators owned by db_iter_ still touches the DB (CleanupIteratorState ->
+  // DBImpl::PurgeObsoleteFiles). See issue #33496.
+  ScopedRWOperation pending_op_holder_;
+  const ScopedRWOperation& pending_op_ref_;
+
   // A copy of the bound key of the end of the scan range (if any). We stop scan if iterator
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
@@ -243,11 +258,6 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   IntentAwareIteratorPtr db_iter_;
   std::unique_ptr<ScanChoices> scan_choices_;
-
-  // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
-  // RocksDB does not get destroyed while the iterator is still in use.
-  ScopedRWOperation pending_op_holder_;
-  const ScopedRWOperation& pending_op_ref_;
 
   // Indicates whether we've already finished iterating.
   bool done_ = false;
@@ -278,6 +288,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   size_t obsolete_keys_found_past_cutoff_ = 0;
 
   KeyBuffer prefix_buffer_;
+  // Upper bound set by SetUpperBound, empty otherwise. upperbound_scope_ refers to it while it is
+  // set.
+  KeyBuffer upper_bound_;
   std::optional<IntentAwareIteratorUpperboundScope> upperbound_scope_;
   std::optional<IntentAwareIteratorLowerboundScope> lowerbound_scope_;
 

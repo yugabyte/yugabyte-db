@@ -26,6 +26,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class JedisSentinelTest extends BaseYBClassForJedis {
   private static final String MASTER_NAME = "mymaster";
   private static final String MONITOR_MASTER_NAME = "mymastermonitor";

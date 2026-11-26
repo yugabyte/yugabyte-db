@@ -32,7 +32,11 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -98,6 +102,7 @@ class RaftConfigPB;
 namespace tserver {
 class TabletServer;
 class FullCompactionManager;
+class TierMigrationReconciler;
 
 using rocksdb::MemoryMonitor;
 
@@ -110,6 +115,7 @@ typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletFlusher;
 class TabletMetadataValidator;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
@@ -129,6 +135,7 @@ YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
 YB_STRONGLY_TYPED_BOOL(ShouldWait);
+YB_STRONGLY_TYPED_BOOL(CopyRetryableRequestsFromParent);
 
 struct AdminCompactionOptions {
   ShouldWait should_wait;
@@ -194,6 +201,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
+  TabletFlusher& tablet_flusher() const { return *tablet_flusher_; }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -364,6 +373,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MarkTabletDirty(const TabletId& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
+  // MarkTabletDirty for a change with no consensus event behind it (a tier migration event), so
+  // the stateful-service callbacks that follow a consensus change are not run.
+  void MarkTabletReportDirty(const TabletId& tablet_id,
+                             std::shared_ptr<consensus::StateChangeContext> context);
+
   void MarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
@@ -387,11 +401,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
   //
-  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
-  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
-  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
-  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
-  // the requested tier on this node, falls back to the default (all-disk) policy.
+  // 'target_tier' (e.g. from a tablespace's storage_tier) restricts data-directory candidates
+  // to disks tagged with that tier (see FsManager::GetDataRootDirsForTier), so the tablet's
+  // home dir lands on the requested tier. When empty, this defaults to kDefaultStorageTier
+  // ("ssd") rather than spreading across every configured disk regardless of tier -- see
+  // storage_tier.h. WAL directory selection is always tier-agnostic, since WAL dirs are not
+  // part of tier_paths. By default, WAL lives on the fastest tier with disks ("ssd").
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,
@@ -405,12 +420,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // per-drive min-count policy as GetAndRegisterDataAndWalDir, but restricts the candidate set
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
-  // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
-  // light_weight_compact when migrating SSTs to a different tier.
+  // The AlterTabletTier RPC handler calls this for a request that names a different tier than
+  // the persisted one, and for the same tier when IsTargetTierPathIdValid rejects the persisted
+  // path_id; the migration's moves then target the returned path_id.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
-  // place data on the returned path_id (e.g. after a successful light_weight_compact) are
+  // place data on the returned path_id (e.g. after a successful ScheduleDBPathMove) are
   // responsible for calling RegisterDataAndWalDir themselves to commit the assignment, so later
   // calls to this function and to GetAndRegisterDataAndWalDir see accurate load counts.
   //
@@ -419,6 +435,37 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const tablet::RaftGroupMetadata& meta,
       const std::string& table_id,
       const std::string& target_tier) EXCLUDES(dir_assignment_mutex_);
+
+  // Tiered storage: whether path_id can be trusted as a target_tier disk for this tablet on this
+  // node. A persisted (target_storage_tier, target_tier_path_id) pair is the cached resolution
+  // from a prior AlterTabletTier/creation, only trustworthy on the node that wrote it, so:
+  //   - path_id must be a real entry in meta's tier_paths.
+  //   - that entry's tier must equal target_tier (catches stale ids after e.g. a split child got
+  //     a different tier_paths layout than its parent).
+  //   - that entry's data root must still be configured for target_tier on this node (catches
+  //     disks removed from --fs_data_dirs or relabeled to a different tier).
+  // Read-only: ResolveTargetTierPathId repairs what this rejects at tablet open, and the
+  // AlterTabletTier handler re-resolves instead, so the tablet's guarded write stays the only
+  // writer of an open tablet's target. A caller that read the pair itself passes the values it
+  // read, so what it validates is what it goes on to use.
+  bool IsTargetTierPathIdValid(
+      const tablet::RaftGroupMetadata& meta, const std::string& target_tier,
+      uint32_t path_id) const;
+  // The same for meta's own persisted pair; false when no target tier is persisted.
+  bool IsTargetTierPathIdValid(const tablet::RaftGroupMetadata& meta) const;
+
+  // Tiered storage: repairs and returns the path_id this tablet's regular DB should target for
+  // new flushes/compactions. Run on every load (OpenTablet). If IsTargetTierPathIdValid rejects
+  // the persisted path_id, re-resolves via SelectPathIdForTier and persists the repair so this
+  // does not need to happen again on the next load. If the tier has no disks on this node at
+  // all, returns 0 without touching the persisted value, so the intent survives until a disk for
+  // that tier reappears. OpenTablet uses only the status of that result: the regular DB still
+  // opens with the stale path_id, so flushes, compaction output and reconciler passes keep
+  // targeting its directory until then (follow-up work); only the AlterTabletTier handler, via
+  // IsTargetTierPathIdValid, declines to trust it. With tiered storage disabled, returns 0 and
+  // clears a persisted path_id, again leaving target_storage_tier alone.
+  Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
+      EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
   // for both of the given data and wal directories.
   void RegisterDataAndWalDir(FsManager* fs_manager,
@@ -443,12 +490,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
 
+  TierMigrationReconciler* tier_migration_reconciler() { return tier_migration_reconciler_.get(); }
+
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry() { return waiting_txn_registry_.get(); }
 
   Status UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
+
+  // Background task that recomputes each tablet's DocDB SST statistics aggregate. The poller only
+  // hands the sweep to sst_stats_resync_pool_; ResyncSstStatsForAllTablets is the sweep itself.
+  void ResyncSstStats();
+  void ResyncSstStatsForAllTablets();
 
   // Background task that emits metrics.
   void EmitMetrics();
@@ -462,6 +516,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
+  struct ClearRocksDBCacheResult {
+    // Unset when the block cache is disabled.
+    std::optional<size_t> block_cache_evicted_bytes;
+    size_t table_readers_evicted = 0;
+  };
+
+  // Closes every tablet's open table readers, then evicts every unreferenced entry from the shared
+  // RocksDB block cache.
+  ClearRocksDBCacheResult ClearRocksDBCache();
+
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.
   Status TriggerAdminCompaction(const TabletPtrs& tablets, const AdminCompactionOptions& options);
@@ -473,6 +537,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   client::YBMetaDataCache* YBMetaDataCache() const;
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
+
+  uint64_t TEST_BootstrapWallClockTimeUs() const {
+    return ts_bootstrap_wall_clock_time_us_->value();
+  }
+
+  uint64_t TEST_StartupTabletsPendingBootstrap() const {
+    return ts_startup_tablets_pending_bootstrap_->value();
+  }
 
   // Returns the last snapshot hybrid time tracked for `schedule_id` from the most recent master
   // heartbeat response, or HybridTime::kMin if the schedule is not (yet) known to this tserver.
@@ -554,8 +626,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // method. A TransitionInProgressDeleter must be passed as 'deleter' into
   // this method in order to remove that transition-in-progress entry when
   // opening the tablet is complete (in either a success or a failure case).
+  // 'copy_retryable_requests_from_parent' must be kTrue only from ApplyTabletSplit, which opens
+  // the split child before it has replicated any writes of its own.
   void OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
-                  const scoped_refptr<TransitionInProgressDeleter>& deleter);
+                  const scoped_refptr<TransitionInProgressDeleter>& deleter,
+                  CopyRetryableRequestsFromParent copy_retryable_requests_from_parent);
 
   // Open a tablet whose metadata has already been loaded.
   void BootstrapAndInitTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
@@ -630,7 +705,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // See CreateAndRegisterTabletPeer and OpenTablet.
   void CreatePeerAndOpenTablet(
       const tablet::RaftGroupMetadataPtr& meta,
-      const scoped_refptr<TransitionInProgressDeleter>& deleter);
+      const scoped_refptr<TransitionInProgressDeleter>& deleter,
+      CopyRetryableRequestsFromParent copy_retryable_requests_from_parent);
 
   TSTabletManagerStatePB state() const {
     SharedLock<RWMutex> lock(mutex_);
@@ -660,7 +736,24 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::string TabletLogPrefix(const TabletId& tablet_id) const;
 
-  void CleanupCheckpoints();
+  // Deletes leftover remote bootstrap checkpoint dirs and fills startup_vector_index_storages_.
+  void ScanTabletDataDirsOnStartup();
+
+  // Deletes the startup_vector_index_storages_ entries of tablets that are not in tablet_dir_names
+  // (base names of the loaded tablets' RocksDB dirs) and whose RocksDB dir is gone: tablets dropped
+  // with storages they did not list, since DeleteTabletData destroys only the listed ones. Called
+  // from Init, before RPC services start, so no tablet can be created meanwhile.
+  void DeleteStartupVectorIndexStoragesOfDeletedTablets(
+      const std::unordered_set<std::string>& tablet_dir_names);
+
+  // Deletes the startup_vector_index_storages_ entries of meta's tablet that meta does not list. A
+  // crash during a restore, or a restore on a build before #35006, leaves such storages. Called
+  // before the peer starts, so no operation can add an index meanwhile, and for a tablet that
+  // bootstraps, after bootstrap: Tablet::AddTableInMemory creates the storage of a new index before
+  // the superblock listing it is flushed, and replay adds such an index back if its ADD_TABLE is
+  // known committed. One applied before its commit was logged stays pending until the peer starts,
+  // so the sweep deletes its storage, and applying it creates the storage again and backfills it.
+  void DeleteStartupUnlistedVectorIndexStorages(const tablet::RaftGroupMetadata& meta);
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
 
@@ -671,6 +764,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MaybeDoChecksForTests(const TableId& table_id) REQUIRES_SHARED(mutex_);
 
   void CleanupSplitTablets();
+
+  // Steps down every leader on this TServer while its tablets must not lead (see
+  // PersistenceGate::ShouldRelinquishLeadership).  Runs on the scheduler; the step-downs run on
+  // the Raft pool, in StepDownLocalLeaders.
+  void RelinquishLeadershipIfNeeded();
+  void StepDownLocalLeaders();
 
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
@@ -690,6 +789,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void PollWaitingTxnRegistry();
 
   void FlushDirtySuperblocks();
+
+  void EnterQuiescentModeForIdleTablets();
 
   // Helper functions to reduce code duplication between RemoteBootstrap and RemoteSnapshotTransfer
   // flows.
@@ -731,9 +832,27 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Returns the data root from candidate_dirs with the fewest tablets for table_id (tie-break:
   // fewest tablets overall on that drive). candidate_dirs must be a subset of the dirs tracked in
   // table_data_assignment_map_. Caller must hold dir_assignment_mutex_.
+  //
+  // extra_counts, if non-empty, is added on top of the per-table count for each candidate dir
+  // before comparing -- see CountMigrationTargets, which is how SelectPathIdForTier accounts for
+  // tablets that were *migrated* onto a disk (as opposed to created there), since those never
+  // touch table_data_assignment_map_.
   std::string PickMinLoadDataRootUnlocked(
       const std::string& table_id,
-      const std::vector<std::string>& candidate_dirs) REQUIRES(dir_assignment_mutex_);
+      const std::vector<std::string>& candidate_dirs,
+      const std::unordered_map<std::string, size_t>& extra_counts = {})
+      REQUIRES(dir_assignment_mutex_);
+
+  // Tiered storage: counts, for table_id, how many currently-loaded tablets have a persisted
+  // migration target (target_storage_tier/target_tier_path_id) resolving to each of
+  // candidate_dirs. table_data_assignment_map_ only tracks each tablet's *home* dir, so without
+  // this a repeated AlterTabletTier call would keep "seeing" an empty disk and piling every
+  // migrated tablet of a table onto the same one. Must be called without holding
+  // dir_assignment_mutex_ (it walks tablet_map_ via GetTabletPeersWithTableId, which takes the
+  // separate mutex_).
+  std::unordered_map<std::string, size_t> CountMigrationTargets(
+      const std::string& table_id, const std::vector<std::string>& candidate_dirs) const
+      EXCLUDES(dir_assignment_mutex_);
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
   PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
@@ -743,6 +862,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   FsManager* const fs_manager_;
 
   TabletServer* server_;
+
+  // Created in Init, before any tablet peer.  Every tablet peer points at it, so it must outlive
+  // their use of it: all peers are shut down (see CompleteShutdown) before this manager is
+  // destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
 
   consensus::RaftPeerPB local_peer_pb_;
 
@@ -771,6 +895,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // bootstrap, creation, or deletion is in-progress
   TransitionInProgressMap transition_in_progress_ GUARDED_BY(transition_in_progress_mutex_);
   mutable std::mutex transition_in_progress_mutex_;
+
+  // Paths of the vector index storages ("<tablet dir>.vi-*") found at startup, keyed by the base
+  // name of the tablet's RocksDB dir.
+  std::unordered_map<std::string, std::vector<std::string>> startup_vector_index_storages_
+      GUARDED_BY(startup_vector_index_storages_mutex_);
+  std::mutex startup_vector_index_storages_mutex_;
 
   // Tablets to include in the next tablet report. When a tablet is added/removed/added
   // locally and needs to be reported to the master, an entry is added to this map.
@@ -817,6 +947,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for Raft replication callback operations.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 
+  // Bounded process-wide pool for physical tablet snapshot directory cleanup.
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+  std::unique_ptr<TabletFlusher> tablet_flusher_;
+
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
 
@@ -853,10 +987,30 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
+  std::unique_ptr<rpc::Poller> relinquish_leadership_poller_;
+
+  // Whether StepDownLocalLeaders is queued or running; at most one is.
+  std::atomic<bool> relinquish_leadership_running_{false};
+
+  // When StepDownLocalLeaders last asked this TServer's leader of each tablet to step down.  Never
+  // pruned: an entry is a few dozen bytes per tablet this TServer has led.  Used only by
+  // StepDownLocalLeaders, which runs one at a time.
+  std::unordered_map<TabletId, CoarseTimePoint> relinquish_step_down_requests_;
+
   // Updates the metrics for the amount of active (non-retention / snapshot-related) and total data
   // on the server, accounting for hardlinks.
   std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
   std::unique_ptr<rpc::Poller> data_size_metric_updater_;
+
+  // Recomputes each tablet's DocDB SST statistics aggregate from its whole live file set. The
+  // sweep reads a properties block per SST file not already in the table cache, so it runs on its
+  // own thread rather than on the messenger scheduler's IO threads, which also dispatch RPCs.
+  // Both are null unless the collector is enabled.
+  std::unique_ptr<rpc::Poller> sst_stats_resync_poller_;
+  std::unique_ptr<ThreadPool> sst_stats_resync_pool_;
+  // Set while a sweep is queued or running, so that a sweep outlasting the interval does not
+  // accumulate duplicate passes behind it.
+  std::atomic<bool> sst_stats_resync_active_{false};
 
   std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 
@@ -879,6 +1033,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Gauge to monitor the total time to open all tablets' metadata.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_open_metadata_time_us_;
+
+  // Gauge to monitor the wall-clock time to bootstrap all tablets during startup.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_bootstrap_wall_clock_time_us_;
+
+  // Gauge to monitor the number of startup tablets that have not finished bootstrapping yet.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_startup_tablets_pending_bootstrap_;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
@@ -911,7 +1071,25 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
+  std::unique_ptr<BackgroundTask> quiescent_tablets_bg_task_;
+
+  struct QuiescentCheck {
+    CoarseTimePoint time;
+    tablet::TabletPeerWeakPtr peer;
+
+    // Reversed, so that the top of the priority queue is the earliest check.
+    bool operator<(const QuiescentCheck& rhs) const {
+      return time > rhs.time;
+    }
+  };
+
+  std::mutex quiescent_checks_mutex_;
+  // Tablets ordered by the time when they could enter the quiescent mode.
+  std::priority_queue<QuiescentCheck> quiescent_checks_ GUARDED_BY(quiescent_checks_mutex_);
+
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
+
+  std::unique_ptr<TierMigrationReconciler> tier_migration_reconciler_;
 
   std::shared_mutex service_registration_mutex_;
   std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;

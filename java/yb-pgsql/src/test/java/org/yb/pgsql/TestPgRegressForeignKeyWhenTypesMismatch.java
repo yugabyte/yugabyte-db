@@ -27,18 +27,20 @@ public class TestPgRegressForeignKeyWhenTypesMismatch extends BasePgRegressTest 
     // where the compile-time default is set to off by default.
     appendToYsqlPgConf(flagMap, "yb_enable_fkey_batched_docdb_lookup_when_types_mismatch=true");
 
-    // We turn the locks on to ensure we get same results for EXPLAIN (ANALYZE)
-    // queries. ysql_yb_ddl_transaction_block_enabled=true is a prerequisite for
-    // enable_object_locking_for_table_locks to be true.
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
+    // We turn table-level locks on to ensure we get same results for EXPLAIN (ANALYZE) queries.
+    toggleDDLMode(flagMap, /* useLegacy */ false);
 
     // We turn off the fastpath to ensure we get same results for EXPLAIN (ANALYZE)
     // queries on Linux and Mac, otherwise, the Storage Flush Requests are different.
     flagMap.put("enable_object_lock_fastpath", "false");
 
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
 

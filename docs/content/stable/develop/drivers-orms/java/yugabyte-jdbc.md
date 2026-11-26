@@ -166,7 +166,7 @@ The following table describes the connection parameters required to connect usin
 | ssl  | Enable SSL client connection | false |
 | sslmode | SSL mode | require |
 | sslrootcert | Path to the root certificate on your computer | ~/.postgresql/ |
-| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier |
+| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver 42.7.3-yb-6 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier |
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
@@ -177,7 +177,7 @@ jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-ba
 
 If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
-To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Aeon, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.3.5-yb-2 or later. For previous versions of the driver, use `verify-ca`.)
+To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Aeon, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.7.3-yb-6 or later. For previous versions of the driver, use `verify-ca`.)
 
 ### Step 3: Write your application
 

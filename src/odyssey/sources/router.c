@@ -344,7 +344,8 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	od_instance_t *instance = server->global->instance;
 	od_debug(
 		&instance->logger, "lcv expire", NULL, server,
-		"now_us=%lu, ttl_us=%lu, new_logical_client_version=%ld, server_lcv=%d",
+		"now_us=%" PRIu64 ", ttl_us=%" PRIu64
+		", new_logical_client_version=%" PRId64 ", server_lcv=%" PRId64,
 		now_us, ttl_us, new_logical_client_version,
 		server->yb_logical_client_version);
 
@@ -361,7 +362,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	if (ttl_us == 0) {
 		server->yb_marked_for_close = true;
 		od_debug(&instance->logger, "lcv expire", NULL, server,
-			 "marking server for close, server lcv=%d, new lcv=%d",
+			 "marking server for close, server lcv=%" PRId64 ", new lcv=%" PRId64,
 			 server->yb_logical_client_version,
 			 new_logical_client_version);
 	} else if (server->yb_expiry_time_us == UINT64_MAX) {
@@ -372,7 +373,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
 		od_debug(
 			&instance->logger, "lcv expire", NULL, server,
-			"setting expiry time for server, server lcv=%d, new lcv=%d, expiry_time_us=%lu",
+			"setting expiry time for server, server lcv=%" PRId64 ", new lcv=%" PRId64 ", expiry_time_us=%" PRIu64,
 			server->yb_logical_client_version,
 			new_logical_client_version, server->yb_expiry_time_us);
 	}
@@ -415,7 +416,8 @@ void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
 
 		od_debug(
 			&instance->logger, "lcv check", NULL, NULL,
-			"Found logical client version %ld greater than current max version %ld",
+			"Found logical client version %" PRId64
+			" greater than current max version %" PRId64,
 			new_logical_client_version, max_logical_client_version);
 		break;
 	}
@@ -468,6 +470,19 @@ void yb_mark_routes_inactive(od_router_t *router, int db_oid, int user_oid)
 	od_router_foreach(router, yb_mark_route_inactive, argv);
 }
 
+static inline int yb_kill_idle_client_cb(od_client_t *client, void **argv)
+{
+	int *killed = argv[0];
+
+	/* Safety check since od_client_kill uses client->notify_io */
+	if (client->notify_io == NULL)
+		return 0;
+
+	od_client_kill(client);
+	(*killed)++;
+	return 0;
+}
+
 static inline int od_router_gc_cb(od_route_t *route, void **argv)
 {
 	od_route_pool_t *pool = argv[0];
@@ -475,9 +490,26 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 	int index = route->id.yb_stats_index;
 	od_route_lock(route);
 
-	if (route->status == YB_ROUTE_INACTIVE &&
-	    od_server_pool_active(&route->server_pool) == 0)
-		goto clean;
+	if (route->status == YB_ROUTE_INACTIVE) {
+		if (od_server_pool_active(&route->server_pool) == 0 &&
+		    od_client_pool_total(&route->client_pool) == 0)
+			goto clean;
+
+		int killed = 0;
+		void *kill_argv[] = { &killed };
+		od_client_pool_foreach(&route->client_pool, OD_CLIENT_PENDING,
+				       yb_kill_idle_client_cb, kill_argv);
+		int queued = yb_od_client_pool_queue(&route->client_pool);
+		for (int i = 0; i < queued; i++)
+			od_route_signal(route);
+		if (killed > 0 || queued > 0)
+			od_log(&instance->logger, "router-gc", NULL, NULL,
+			       "sent kill op to %d pending clients and woke %d"
+				   " queued clients on inactive route %s.%s",
+			       killed, queued, route->yb_database_name,
+			       route->yb_user_name);
+		goto done;
+	}
 
 	if (od_server_pool_total(&route->server_pool) > 0 ||
 	    od_client_pool_total(&route->client_pool) > 0)
@@ -885,9 +917,11 @@ static uint32_t yb_count_all_active_routes(od_router_t *router, od_route_t *curr
  */
 static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 					 od_route_t *current_route,
-					 uint32_t per_route_quota)
+					 uint32_t per_route_quota,
+					 uint32_t recipient_pool_size)
 {
 	od_server_t *idle_server = NULL;
+	od_instance_t *instance = router->global->instance;
 	od_router_lock(router);
 
 	od_route_pool_t *pool = &router->route_pool;
@@ -905,17 +939,27 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 		uint32_t route_yb_in_use =
 			od_server_pool_total(&route->server_pool);
 		if (route_yb_in_use > per_route_quota) {
-			idle_server = od_pg_server_pool_next(&route->server_pool,
-				OD_SERVER_IDLE);
-
 			/*
-			 * Note the lack of od_route_unlock(route) in this case.
-			 * The caller is responsible for unlocking the route once it is done
-			 * shutting down this server.
+			 * YB: When the recipient route is at or over quota, only evict
+			 * from a donor route that has at least two more connections than
+			 * the recipient, so donating one slot never makes the recipient
+			 * overshoot the donor.
 			 */
-			if (idle_server) {
-				od_router_unlock(router);
-				return idle_server;
+			bool donor_is_up_by_two = route_yb_in_use > recipient_pool_size + 1;
+			bool recipient_is_under_quota = recipient_pool_size < per_route_quota;
+			if (recipient_is_under_quota || donor_is_up_by_two) {
+				idle_server = od_pg_server_pool_next(
+					&route->server_pool, OD_SERVER_IDLE);
+
+				/*
+				 * Note the lack of od_route_unlock(route) in this case.
+				 * The caller is responsible for unlocking the route once it is done
+				 * shutting down this server.
+				 */
+				if (idle_server) {
+					od_router_unlock(router);
+					return idle_server;
+				}
 			}
 		}
 		od_route_unlock(route);
@@ -1027,6 +1071,11 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 client_for_router->yb_logical_client_version);
 
 	for (;;) {
+		if (route->status == YB_ROUTE_INACTIVE) {
+			od_route_unlock(route);
+			return OD_ROUTER_ERROR;
+		}
+
 		/*
 		 * YB: In YB_GUC_ADOPTION_CONNECTION_STATIC mode with an outdated client version,
 		 * we cannot spawn new connections (they would get the latest version). Instead,
@@ -1207,7 +1256,9 @@ od_router_status_t od_router_attach(od_router_t *router,
 					(uint32_t)instance->config.yb_ysql_max_connections /
 						num_active_routes;
 				od_server_t *idle_server =
-					yb_get_idle_server_to_close(router, route, per_route_quota);
+					yb_get_idle_server_to_close(
+						router, route, per_route_quota,
+						connections_in_pool);
 				if (idle_server) {
 					// Close the server and make space for ourselves.
 					od_route_t *idle_route = idle_server->route;
@@ -1300,16 +1351,6 @@ attach:
 	server->client = client_for_router;
 	server->idle_time = 0;
 	server->key_client = client_for_router->key;
-
-	/*
-	 * YB: Enable/disable parse queue tracking based on the runtime
-	 * gflag `ysql_conn_mgr_enable_parse_queue_tracking`.
-	 */
-	if (route->rule->pool->reserve_prepared_statement) {
-		yb_od_parse_queue_enable(
-			&server->parse_queue,
-			instance->config.yb_enable_parse_queue_tracking);
-	}
 
 	if (route->id.logical_rep) {
 		/*
@@ -1528,6 +1569,14 @@ void od_router_close(od_router_t *router, od_client_t *client)
 	assert(route != NULL);
 
 	od_server_t *server = client->server;
+
+	/*
+	 * YB: Mark the role's routes inactive if the role was dropped. The normal
+	 * path is at RFQ but this is added as a fallback if the backend dies
+	 * after sending the error but before sending RFQ.
+	 */
+	yb_apply_dropped_object(server);
+
 	od_backend_close_connection(server);
 
 	od_route_lock(route);

@@ -12,6 +12,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/test_thread_holder.h"
@@ -104,8 +105,8 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -135,6 +136,22 @@ class PgAshVectorIndexTest : public PgAshSingleNode {
     options->extra_tserver_flags.push_back(Format(
         "--TEST_yb_ash_wait_code_to_sleep_at=$0",
         std::to_underlying(ash::WaitStateCode::kVectorIndex_Search)));
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_sleep_at_wait_state_ms=$0", 2 * kSamplingIntervalMs));
+  }
+};
+
+class PgAshRelationOidTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    // A read is fast, so it is unlikely to be in-flight when the sampler runs. Force it to
+    // linger in the wait state long enough for the sampler to catch it reliably.
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_wait_code_to_sleep_at=$0,$1,$2",
+        std::to_underlying(ash::WaitStateCode::kCatalogRead),
+        std::to_underlying(ash::WaitStateCode::kTableRead),
+        std::to_underlying(ash::WaitStateCode::kStorageFlush)));
     options->extra_tserver_flags.push_back(Format(
         "--TEST_yb_ash_sleep_at_wait_state_ms=$0", 2 * kSamplingIntervalMs));
   }
@@ -292,8 +309,13 @@ const Configuration kIndexRPCs{
     ash::PggateRPC::kGetIndexBackfillProgress,
     ash::PggateRPC::kWaitForBackendsCatalogVersion},
   .tserver_flags = {
-    "--ysql_yb_test_block_index_phase=postbackfill",
-    "--ysql_disable_index_backfill=false"}};
+    "--ysql_yb_test_block_index_phase=indisvalid",
+    "--ysql_disable_index_backfill=false",
+    "--enable_object_locking_for_table_locks=false",
+    "--ysql_yb_ddl_transaction_block_enabled=false",
+    "--ysql_yb_enable_ddl_savepoint_support=false",
+    "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
+    "--ysql_enable_concurrent_ddl=false"}};
 
 // Test for RPCs which are fired with queries related to replication slots
 const Configuration kReplicationRPCs{
@@ -351,6 +373,10 @@ const Configuration kParallelRPCs{
 const Configuration kTabletSplitRPCs{
   .rpc_list = {
     ash::PggateRPC::kGetTablePartitionList},
+  // The harness default of 0 lets the child's post-split compaction move its history cutoff past
+  // the read time of a concurrent SELECT, which then fails with "Snapshot too old".
+  .tserver_flags = {
+    "--timestamp_history_retention_interval_sec=3600"},
   .master_flags = {
     "--enable_automatic_tablet_splitting=true",
     "--tablet_split_low_phase_shard_count_per_node=2",
@@ -764,8 +790,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
+  const auto txn_ddl = ASSERT_RESULT(cluster_->GetFlag(
+      pg_ts, "ysql_yb_enable_replication_slot_transactional_ddl")) == "true";
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this]() {
+  thread_holder.AddThreadFunctor([this, txn_ddl]() {
     std::vector<std::string> argv = {
         GetPgToolPath("pg_recvlogical"),
         "--dbname=yugabyte",
@@ -773,7 +801,9 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
         Format("--host=$0", pg_ts->bind_host()),
         Format("--port=$0", pg_ts->ysql_port()),
         Format("--slot=$0", kSlotName),
-        "--endpos=0/6", // so that the replication stops after 2 commits
+        // With transactional DDL, DDL records also take LSN values. Therefore, adjust endpos
+        // accordingly so that both the commits are streamed.
+        Format("--endpos=0/$0", txn_ddl ? "11" : "6"),
         "--file=-",
         "--start"
     };
@@ -1587,6 +1617,52 @@ TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamp
              kView, start_time, end_time)}));
 }
 
+TEST_P(YbAshV2TestWithCircularBufferSize, TestTimeBoundsBetweenSamples) {
+  constexpr auto kView = "yb_active_session_history";
+  // A single sleeping session gives one sample per sampling round, so with the 1 KiB buffer
+  // there is a time gap between the last slot and slot 0.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT pg_sleep(2)"));
+  ASSERT_OK(StopAshSampling());
+
+  // Bounds: every sample time, every midpoint between consecutive sample times, one point on
+  // each side of the buffer's time range, and times at and before 2000-01-01, where
+  // timestamptz is 0. The view filtered on sample_time is the expected result.
+  const auto [num_sample_times, bad_start_bounds, bad_end_bounds, bad_empty_ranges] =
+      ASSERT_RESULT((conn_->FetchRow<int64_t, int64_t, int64_t, int64_t>(Format(R"#(
+          WITH times AS (SELECT DISTINCT sample_time AS ts FROM $0),
+               bounds AS (SELECT ts FROM times
+                          UNION
+                          SELECT ts + (LEAD(ts) OVER (ORDER BY ts) - ts) / 2 FROM times
+                          UNION
+                          SELECT MIN(ts) - INTERVAL '1 ms' FROM times
+                          UNION
+                          SELECT MAX(ts) + INTERVAL '1 ms' FROM times
+                          UNION
+                          SELECT '2000-01-01 00:00:00+00'
+                          UNION
+                          SELECT '1999-12-31 00:00:00+00'),
+               results AS (
+                 SELECT
+                   ARRAY(SELECT sample_time FROM $0 WHERE sample_time >= b.ts ORDER BY 1)
+                     = ARRAY(SELECT sample_time FROM $0(b.ts) ORDER BY 1) AS start_ok,
+                   ARRAY(SELECT sample_time FROM $0 WHERE sample_time < b.ts ORDER BY 1)
+                     = ARRAY(SELECT sample_time FROM $0(NULL, b.ts) ORDER BY 1) AS end_ok,
+                   (SELECT COUNT(*) FROM $0(b.ts, b.ts)) = 0 AS empty_ok
+                 FROM bounds b WHERE b.ts IS NOT NULL)
+          SELECT (SELECT COUNT(*) FROM times),
+                 COUNT(*) FILTER (WHERE NOT start_ok),
+                 COUNT(*) FILTER (WHERE NOT end_ok),
+                 COUNT(*) FILTER (WHERE NOT empty_ok)
+          FROM results
+      )#", kView))));
+  // At least one gap between samples, or the checks below compare empty results.
+  ASSERT_GE(num_sample_times, 2);
+  EXPECT_EQ(bad_start_bounds, 0);
+  EXPECT_EQ(bad_end_bounds, 0);
+  EXPECT_EQ(bad_empty_ranges, 0);
+}
+
 // Regression test: ASH samples for ConflictResolution_WaitOnConflictingTxns must carry the user's
 // query_id across wait-queue refresh retries. The wait queue refreshes a stalled waiter every
 // refresh_waiter_timeout_ms; the waiter's Write RPC times out and is re-sent by RpcRetrier on a
@@ -1684,6 +1760,53 @@ TEST_F_EX(PgAshTest, VectorIndexSearch, PgAshVectorIndexTest) {
   ASSERT_GT(count, 0)
       << "ASH recorded no VectorIndex_Search samples carrying the search query_id; the wait "
       << "event was either not entered or not attributed to the originating query.";
+}
+
+// The wait event aux of a read is the OID of the relation which is read, and the aux of a flush
+// of buffered writes is the OID of the relation they belong to when they all belong to one.
+TEST_F_EX(PgAshTest, ReadsReportRelationOid, PgAshRelationOidTest) {
+  static constexpr auto kCatalogRelName = "pg_statistic_ext_data";
+  static constexpr auto kTableName = "ash_relation_oid_test";
+  static constexpr auto kRowsPerInsert = 100;
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
+
+  // Read both relations continuously so the sampler observes the (deliberately slowed) reads.
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kCatalogRelName)));
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName)));
+    }
+  });
+
+  // A multi row insert buffers its writes and flushes them in one request. The table has no
+  // secondary index, so the flushed operations all belong to it and the flush reports its OID.
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) i",
+          kTableName, i * kRowsPerInsert + 1, (i + 1) * kRowsPerInsert));
+    }
+  });
+
+  const auto ash_query = Format(
+      "SELECT COUNT(*) FILTER (WHERE wait_event = 'CatalogRead' "
+      "  AND wait_event_aux = '$0'::regclass::oid::text) > 0 "
+      "AND COUNT(*) FILTER (WHERE wait_event = 'TableRead' "
+      "  AND wait_event_aux = '$1'::regclass::oid::text) > 0 "
+      "AND COUNT(*) FILTER (WHERE wait_event = 'StorageFlush' "
+      "  AND wait_event_aux = '$1'::regclass::oid::text) > 0 "
+      "FROM yb_active_session_history",
+      kCatalogRelName, kTableName);
+  const auto status = WaitFor([this, &ash_query]() -> Result<bool> {
+    return conn_->FetchRow<bool>(ash_query);
+  }, 60s * kTimeMultiplier,
+     "wait for CatalogRead, TableRead and StorageFlush samples with their relation OID");
+  thread_holder_.Stop();
+  ASSERT_OK(status);
 }
 
 // With write pipelining the write is acked before Raft replication. Check that the tracking

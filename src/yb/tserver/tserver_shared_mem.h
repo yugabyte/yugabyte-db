@@ -33,6 +33,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/reserved_address_segment.h"
+#include "yb/util/shmem/robust_lent_object.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
@@ -99,6 +100,33 @@ class TServerSharedData {
     return db_catalog_versions_[index].load(std::memory_order_acquire);
   }
 
+  // The newest catalog version this node has a whole connection start's prefetch cached for, per
+  // database. A backend starting up can read the catalog at this version from the local response
+  // cache instead of fetching a fresh copy from the master leader, and applies the invalidation
+  // messages between that version and the current one before it finishes starting up. Written only
+  // when the last request of such a prefetch is cached, so it describes a set that is wholly here
+  // rather than what some backend believes it fetched.
+  void SetYsqlDbLastPrefetchedCatalogVersion(size_t index, uint64_t version) {
+    DCHECK_LT(index, kMaxNumDbCatalogVersions);
+    db_last_prefetched_catalog_versions_[index].store(version, std::memory_order_release);
+  }
+
+  uint64_t ysql_db_last_prefetched_catalog_version(size_t index) const {
+    DCHECK_LT(index, kMaxNumDbCatalogVersions);
+    return db_last_prefetched_catalog_versions_[index].load(std::memory_order_acquire);
+  }
+
+  // Last known catalog prefetch load on the master leader, refreshed from the heartbeat. Read by
+  // postgres backends before they bump the catalog version, which is what sends the whole cluster
+  // to the leader to prefetch again.
+  void SetYsqlCatalogPrefetchLoad(uint32_t load) {
+    ysql_catalog_prefetch_load_.store(load, std::memory_order_release);
+  }
+
+  uint32_t ysql_catalog_prefetch_load() const {
+    return ysql_catalog_prefetch_load_.load(std::memory_order_acquire);
+  }
+
   void SetPostgresAuthKey(uint64_t auth_key) {
     postgres_auth_key_ = auth_key;
   }
@@ -116,11 +144,21 @@ class TServerSharedData {
     return tserver_uuid_;
   }
 
-  void SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-    cron_leader_lease_ = cron_leader_lease_end;
+  void SetCronLeaseEnd(MonoTime lease_end) {
+    cron_lease_end_ = lease_end;
   }
 
-  bool IsCronLeader() const;
+  void SetCronCanStartJobs(bool can_start) {
+    cron_can_start_jobs_ = can_start;
+  }
+
+  // Whether this node holds a valid (unexpired) pg_cron leader lease. Remains true while draining
+  // after a step down, until the lease expires.
+  bool HasCronLease() const;
+
+  // Whether this node is the active pg_cron leader (holds a valid lease and has not stepped down).
+  // Only the active leader starts new job runs.
+  bool CanCronStartJobs() const;
 
   void SetPid(pid_t pid) {
     pid_ = pid;
@@ -128,10 +166,6 @@ class TServerSharedData {
 
   pid_t pid() const {
     return pid_;
-  }
-
-  docdb::ObjectLockSharedState* object_lock_state() const {
-    return object_lock_state_.get();
   }
 
  private:
@@ -145,7 +179,11 @@ class TServerSharedData {
 
   std::atomic<uint64_t> db_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
 
-  std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
+  std::atomic<MonoTime> cron_lease_end_{MonoTime::kUninitialized};
+
+  // Set while this node is the pg_cron leader, cleared when it steps down. CanCronStartJobs()
+  // requires this flag and an unexpired lease: only then may the node start new job runs.
+  std::atomic<bool> cron_can_start_jobs_{false};
 
   // pid of the local TServer
   pid_t pid_;
@@ -154,7 +192,9 @@ class TServerSharedData {
   // be used.
   std::atomic<bool> fully_initialized_{false};
 
-  SharedMemoryUniquePtr<docdb::ObjectLockSharedState> object_lock_state_;
+  std::atomic<uint32_t> ysql_catalog_prefetch_load_{0};
+
+  std::atomic<uint64_t> db_last_prefetched_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
 };
 
 using SharedMemoryReadyCallback = std::function<void()>;
@@ -184,6 +224,10 @@ class SharedMemoryManager {
     return data_.get();
   }
 
+  SharedMemoryBackingAllocator& allocator() {
+    return allocator_;
+  }
+
  private:
   void ExecuteParentNegotiator(const std::shared_ptr<AddressSegmentNegotiator>& negotiator);
 
@@ -208,7 +252,7 @@ class SharedMemoryManager {
   ConcurrentPointer<TServerSharedData> data_{nullptr};
 };
 
-using PgSessionLockOwnerTagShared = ChildProcessRO<docdb::SessionLockOwnerTag>;
+using PgSessionObjectLockData = RobustLentObject<docdb::ObjectLockSharedState>;
 
 YB_STRONGLY_TYPED_BOOL(Create);
 
@@ -223,6 +267,7 @@ class SharedExchange {
   Result<Slice> FetchResponse(CoarseTimePoint deadline);
   bool ResponseReady();
   bool ReadyToSend();
+  bool busy() const;
   void ResetBusy();
   void Respond(size_t size);
   Result<size_t> Poll();
@@ -285,7 +330,7 @@ class PgSessionSharedMemoryManager {
 
   SharedExchange& exchange();
 
-  [[nodiscard]] PgSessionLockOwnerTagShared& object_locking_data();
+  [[nodiscard]] PgSessionObjectLockData& object_locking_data();
 
   void SetOldestReadPointSerialNo(uint64_t serial_no);
   // Returns a pointer into session shared memory; valid for the manager's lifetime.
@@ -303,9 +348,12 @@ class PgSessionSharedMemoryManager {
   std::unique_ptr<Impl> impl_;
 };
 
-constexpr size_t kTooBigResponseMask = 1ULL << 63;
-constexpr size_t kBigSharedMemoryMask = 1ULL << 62;
+constexpr size_t kTooBigResponseMark = 1ULL << 63;
+constexpr size_t kBigSharedMemoryMarkShift = 62;
+constexpr size_t kBigSharedMemoryMark = 1ULL << kBigSharedMemoryMarkShift;
 constexpr size_t kBigSharedMemoryIdShift = 40;
+constexpr size_t kBigSharedMemoryMaxId =
+    (1ULL << (kBigSharedMemoryMarkShift - kBigSharedMemoryIdShift)) - 1;
 
 std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id);
 

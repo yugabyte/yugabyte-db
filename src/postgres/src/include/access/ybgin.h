@@ -65,7 +65,8 @@ extern bool ybgininsert(Relation rel, Datum *values, bool *isnull,
 						struct IndexInfo *indexInfo, bool shared_insert);
 extern void ybgindelete(Relation rel, Datum *values, bool *isnull,
 						Datum ybctid, Relation heapRel,
-						struct IndexInfo *indexInfo);
+						struct IndexInfo *indexInfo,
+						bool persist_missing_row);
 extern IndexBuildResult *ybginbackfill(Relation heap, Relation index,
 									   struct IndexInfo *indexInfo,
 									   struct YbBackfillInfo *bfinfo,

@@ -23,6 +23,12 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
   private static final String MULTI_ROOT_CERT = "%s.%s.ca.multi.root.crt";
   private static final String MULTI_ROOT_CERT_KEY = "%s.%s.ca.multi.root.key.pem";
 
+  /** The root CA a temporary multi-CA cert was made from, read from its file name. */
+  public static UUID getOriginalRootCA(CertificateInfo multiCert) {
+    String fileName = new File(multiCert.getCertificate()).getName();
+    return UUID.fromString(fileName.split("\\.")[0]);
+  }
+
   @Inject
   protected UniverseUpdateRootCert(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -110,10 +116,7 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
           // TODO why are these null checks needed if they must exist?
           if (newRootCert != null && multiCert != null && CertificateInfo.isTemporary(multiCert)) {
             File multiCertFile = new File(multiCert.getCertificate());
-            // Temporary root cert file follows the below convention
-            // <original-root-ca-uuid>.ca.multi.root.crt
-            // Original rootCA uuid is extracted from the file name
-            UUID oldRootCA = UUID.fromString(multiCertFile.getName().split("\\.")[0]);
+            UUID oldRootCA = getOriginalRootCA(multiCert);
             CertificateInfo oldRootCert = CertificateInfo.get(oldRootCA);
 
             File oldRootCertFile = new File(oldRootCert.getCertificate());
@@ -164,10 +167,7 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
           CertificateInfo rootCert = CertificateInfo.getOrBadRequest(universeDetails.rootCA);
           if (CertificateInfo.isTemporary(rootCert)) {
             File rootCertFile = new File(rootCert.getCertificate());
-            // Temporary root cert file follows the below convention
-            // <original-root-ca-uuid>.ca.multi.root.crt
-            // Original rootCA uuid is extracted from the file name
-            UUID originalRootCA = UUID.fromString(rootCertFile.getName().split("\\.")[0]);
+            UUID originalRootCA = getOriginalRootCA(rootCert);
             saveUniverseDetails(
                 universe -> {
                   UniverseDefinitionTaskParams details = universe.getUniverseDetails();

@@ -1,0 +1,13 @@
+title: TaskRetrySpec
+description: |
+  TaskRetrySpec
+
+  Options for retrying a failed task. The retry parameters themselves are reconstructed
+  by YBA from the failed task; this payload only carries optional metadata for the retry
+  request.
+type: object
+properties:
+  reason:
+    description: 'Optional human-readable reason for the retry, recorded in the audit log.'
+    type: string
+    example: Retrying failed edit universe operation

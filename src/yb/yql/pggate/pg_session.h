@@ -50,6 +50,13 @@ namespace yb::pggate {
 
 class PgFlushDebugContext;
 
+// What a request says about the connection start it belongs to. Carried outside CacheOptions
+// because a connection start reading without the cache sets it too. See PgPerformOptionsPB.
+struct PgConnectionPrefetchOptions {
+  bool part_of_connection_prefetch = false;
+  bool completes_connection_prefetch = false;
+};
+
 struct PgSessionRunOptions {
   HybridTime in_txn_limit{};
   ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
@@ -83,6 +90,11 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
+
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, std::string transaction_id,
+      std::vector<uint32_t> aborted_subtxn_set);
+  void ResetHistoricalReadContext();
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -148,6 +160,14 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     uint32_t key_group;
     std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
+    // Catalog version the response is cached at, for the tserver to record. Already inside
+    // key_value, but only as bytes it cannot interpret.
+    uint64_t catalog_version;
+    // Do not fill on a miss; see CachingInfoPB.lookup_only.
+    bool lookup_only;
+    // Return rather than wait behind a fill already under way; see
+    // CachingInfoPB.send_away_if_fill_in_flight.
+    bool send_away_if_fill_in_flight;
   };
 
   Result<PerformFuture> RunAsync(
@@ -157,7 +177,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
       const OperationGenerator& generator, const RunOptions& options = {});
 
   Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options = {});
+      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options,
+      PgConnectionPrefetchOptions connection_prefetch);
 
   std::string GenerateNewYbrowid();
 
@@ -186,6 +207,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
+  void SetupPerformOptionsForSeparateDdlTxn(tserver::PgPerformOptionsPB* options) const;
+
   void SetTransactionHasWrites();
   Result<bool> CurrentTransactionUsesFastPath() const;
 
@@ -196,7 +219,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
+  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux);
 
   Status AcquireAdvisoryLock(
       const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
@@ -236,6 +259,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     bool has_catalog_ops = false;
     std::optional<ReadTimeAction> read_time_action = {};
     std::optional<CacheOptions> cache_options = std::nullopt;
+    PgConnectionPrefetchOptions connection_prefetch = {};
     HybridTime in_txn_limit = {};
   };
 
@@ -243,13 +267,14 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   NonTransactionalWrites OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const;
 
-  Status SetReadTimeIfPresent(const PgsqlOps& operations, tserver::PgPerformOptionsPB& options);
+  Status SetReadTimeIfPresent(
+      const PgsqlOps& operations, bool has_catalog_ops, tserver::PgPerformOptionsPB& options);
   Status CheckConflictWithYbReadTime(const PgsqlOps& operations);
 
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
       const Generator& generator, const RunOptions& options,
-      std::optional<CacheOptions>&& cache_options = std::nullopt);
+      std::optional<CacheOptions>&& cache_options, PgConnectionPrefetchOptions connection_prefetch);
 
   template <class... Args>
   auto SetupPerformOptions(Args&&... args) {
@@ -279,6 +304,13 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   ReadHybridTime catalog_read_time_;
+
+  struct HistoricalReadContext {
+    ReadHybridTime read_time;
+    std::string transaction_id;
+    std::vector<uint32_t> aborted_subtxn_set;
+  };
+  std::optional<HistoricalReadContext> historical_read_context_;
 
   // Execution status.
   Status status_;
@@ -311,8 +343,11 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
 template<class PB>
 Status SetupPerformOptionsForDdlIfNeeded(PgSession& session, PB& req) {
-  return req.use_regular_transaction_block() ?
-    session.SetupPerformOptionsForDdl(req.mutable_options()) : Status::OK();
+  if (req.use_regular_transaction_block()) {
+    return session.SetupPerformOptionsForDdl(req.mutable_options());
+  }
+  session.SetupPerformOptionsForSeparateDdlTxn(req.mutable_options());
+  return Status::OK();
 }
 
 }  // namespace yb::pggate

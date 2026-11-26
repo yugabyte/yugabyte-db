@@ -13,11 +13,17 @@ import (
 	"node-agent/ynp/yba"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
 
-const ModuleName = "InstallNodeAgent"
+const (
+	ModuleName = "InstallNodeAgent"
+	// Template value holding the payload directory, so that run.j2 reads the files from where
+	// they are written.
+	ybaPayloadDirKey = "yba_payload_dir"
+)
 
 type InstallNodeAgent struct {
 	*config.BaseModule
@@ -27,6 +33,19 @@ func NewInstallNodeAgent(basePath string) config.Module {
 	return &InstallNodeAgent{
 		BaseModule: config.NewBaseModule(ModuleName, filepath.Join(basePath, "node_agent")),
 	}
+}
+
+func (m *InstallNodeAgent) getChronyServers(values map[string]any) []string {
+	var chronyServers []string
+	if str, ok := values["chrony_servers"].(string); ok {
+		for _, token := range strings.Split(str, ",") {
+			token = strings.TrimSpace(token)
+			if token != "" {
+				chronyServers = append(chronyServers, token)
+			}
+		}
+	}
+	return chronyServers
 }
 
 func (m *InstallNodeAgent) generateProviderPayload(
@@ -63,23 +82,16 @@ func (m *InstallNodeAgent) generateProviderPayload(
 		region.Longitude = lon
 	}
 	nodeExporterPort := config.GetInt(values, "node_exporter_port", 9300)
-	var chronyServers []string
-	if str, ok := values["chrony_servers"].(string); ok {
-		for _, token := range strings.Split(str, ",") {
-			token = strings.TrimSpace(token)
-			if token != "" {
-				chronyServers = append(chronyServers, token)
-			}
-		}
-	}
+	chronyServers := m.getChronyServers(values)
+
 	provider := model.Provider{
 		BasicInfo: model.BasicInfo{
 			Name: providerName,
 			Code: "onprem",
 		},
-		Cuuid:         values["customer_uuid"].(string),
-		AirGapInstall: config.GetBool(values, "is_airgap", false),
+		Cuuid: values["customer_uuid"].(string),
 		Details: model.ProviderDetails{
+			AirGapInstall:       config.GetBool(values, "is_airgap", false),
 			SkipProvisioning:    true, /* Manual provisioning */
 			InstallNodeExporter: true, /* Default is true */
 			NodeExporterPort:    int(nodeExporterPort),
@@ -88,6 +100,8 @@ func (m *InstallNodeAgent) generateProviderPayload(
 					YbHomeDir:          ybHomeDir,
 					UseClockbound:      useClockbound,
 					EnableMultiTenancy: enableMultiTenancy,
+					// YNP owns the configuration of the providers it creates.
+					YnpManaged: true,
 				},
 			},
 		},
@@ -168,6 +182,48 @@ func (m *InstallNodeAgent) generateProviderUpdatePayload(
 	return provider
 }
 
+// parseMountPoints parses instance_type_mount_points from config (e.g. "['/mnt/d0', '/mnt/d1']").
+func parseMountPoints(mountPoints string) ([]string, error) {
+	mountPoints = strings.Trim(mountPoints, "[]")
+	mountPoints = strings.ReplaceAll(mountPoints, "'", "")
+	mountPoints = strings.ReplaceAll(mountPoints, "\"", "")
+	mps := strings.Split(mountPoints, ",")
+	j := 0
+	for i := range mps {
+		mp := strings.TrimSpace(mps[i])
+		if len(mp) == 0 {
+			continue
+		}
+		filePath := filepath.Clean(mp)
+		if filePath == "/" {
+			return nil, errors.New(
+				"yba.instance_type.mount_points: Root mount point '/' is not allowed",
+			)
+		}
+		mps[j] = filePath
+		j++
+	}
+	mps = mps[:j]
+	if len(mps) == 0 {
+		return nil, errors.New("yba.instance_type.mount_points: No mount points provided")
+	}
+	return mps, nil
+}
+
+func mountPathsFromInstanceType(instanceType *model.NodeInstanceType) []string {
+	var paths []string
+	for _, vd := range instanceType.Details.VolumeDetailsList {
+		for _, p := range strings.Split(vd.MountPath, ",") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			paths = append(paths, filepath.Clean(p))
+		}
+	}
+	return paths
+}
+
 func (m *InstallNodeAgent) generateInstanceTypePayload(
 	values map[string]any,
 ) (*model.NodeInstanceType, error) {
@@ -178,28 +234,12 @@ func (m *InstallNodeAgent) generateInstanceTypePayload(
 	mountPoints, ok := values["instance_type_mount_points"].(string)
 	if !ok || mountPoints == "" {
 		return nil, errors.New(
-			"instance_type_mount_points is required but not provided in configuration",
+			"yba.instance_type.mount_points is required but not provided in configuration",
 		)
 	}
-	mountPoints = strings.Trim(mountPoints, "[]")
-	mountPoints = strings.ReplaceAll(mountPoints, "'", "")
-	mps := strings.Split(mountPoints, ", ")
-	j := 0
-	for i := range mps {
-		if len(mps[i]) == 0 {
-			// Skip empty mount points.
-			continue
-		}
-		filePath := filepath.Clean(mps[i])
-		if filePath == "/" {
-			return nil, errors.New("Root mount point '/' is not allowed")
-		}
-		mps[j] = filePath
-		j++
-	}
-	mps = mps[:j]
-	if len(mps) == 0 {
-		return nil, errors.New("No mount points provided")
+	mps, err := parseMountPoints(mountPoints)
+	if err != nil {
+		return nil, err
 	}
 	volumeDetails := []model.VolumeDetails{}
 	for _, mp := range mps {
@@ -259,7 +299,7 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
 	customerUuid := values["customer_uuid"].(string)
 	instanceTypeName := values["instance_type_name"].(string)
-	_, err := yba.GetInstanceType(ctx,
+	instanceType, err := yba.GetInstanceType(ctx,
 		ybaUrl,
 		apiKey,
 		skipTlsVerify,
@@ -267,20 +307,34 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 		provider.Uuid,
 		instanceTypeName,
 	)
+	if err == nil && !instanceType.Active {
+		// YBA deactivates an instance type once its last node is removed. Lookup by code still
+		// returns it, but the installer only lists active ones, so recreate it.
+		util.FileLogger().Infof(ctx,
+			"Instance type %s in provider %s is inactive, recreating it",
+			instanceTypeName,
+			provider.Name(),
+		)
+		err = util.ErrNotExist
+	}
 	if err == nil {
-		// Instance type already exists, no need to create.
-		return nil
+		// Instance type already exists; config mounts must match YBA.
+		return m.verifyInstanceTypeMountPaths(ctx, values, instanceTypeName, instanceType)
 	}
 	if err == util.ErrNotExist {
-		util.ConsoleLogger().Info(ctx, "Instance type does not exist, creating it.")
+		util.ConsoleLogger().Infof(ctx,
+			"Instance type %s does not exist in provider %s, generating create payload...",
+			instanceTypeName,
+			provider.Name(),
+		)
 		instanceData, err := m.generateInstanceTypePayload(values)
 		if err != nil {
 			return err
 		}
-		instancePayloadFile := filepath.Join(
-			values["tmp_directory"].(string),
-			"create_instance.json",
-		)
+		instancePayloadFile, err := m.ybaPayloadPath(values, "create_instance.json")
+		if err != nil {
+			return err
+		}
 		f, ferr := os.Create(instancePayloadFile)
 		if ferr != nil {
 			return ferr
@@ -367,6 +421,66 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 	return false, nil
 }
 
+// verifyInstanceTypeMountPaths ensures YAML mount points match an existing instance type
+// in YBA. Divergent mounts on reprovision can desync local disk layout from what YBA expects.
+func (m *InstallNodeAgent) verifyInstanceTypeMountPaths(
+	ctx context.Context,
+	values map[string]any,
+	instanceTypeCode string,
+	instanceType *model.NodeInstanceType,
+) error {
+	mountPoints, ok := values["instance_type_mount_points"].(string)
+	if !ok || mountPoints == "" {
+		return errors.New(
+			"Config instance_type_mount_points is required but not provided in configuration",
+		)
+	}
+	inputPaths, err := parseMountPoints(mountPoints)
+	if err != nil {
+		return err
+	}
+	existingPaths := mountPathsFromInstanceType(instanceType)
+	if !slices.Equal(inputPaths, existingPaths) {
+		util.FileLogger().Errorf(ctx,
+			"yba.instance_type.mount_points differ from existing instance type: config=%v, instance type=%v",
+			inputPaths,
+			existingPaths,
+		)
+		return fmt.Errorf(
+			"yba.instance_type.mount_points %v do not match existing instance type %s mount paths %v",
+			inputPaths,
+			instanceTypeCode,
+			existingPaths,
+		)
+	}
+	return nil
+}
+
+// ybaPayloadDir returns the staging directory for the YBA payload files read by run.j2.
+func (m *InstallNodeAgent) ybaPayloadDir(values map[string]any) string {
+	tmpDir, ok := values["tmp_directory"].(string)
+	if !ok {
+		tmpDir = "/tmp"
+	}
+	userID, ok := values["yb_user_id"].(string)
+	if !ok {
+		userID = "none"
+	}
+	return filepath.Join(tmpDir, "ynp-node-agent-"+userID)
+}
+
+// ybaPayloadPath returns the path of a payload file in the staging directory read by run.j2.
+func (m *InstallNodeAgent) ybaPayloadPath(
+	values map[string]any,
+	fileName string,
+) (string, error) {
+	stagingPath := m.ybaPayloadDir(values)
+	if err := os.MkdirAll(stagingPath, 0750); err != nil {
+		return "", fmt.Errorf("Node agent staging path %s cannot be created: %w", stagingPath, err)
+	}
+	return filepath.Join(stagingPath, fileName), nil
+}
+
 func (m *InstallNodeAgent) cleanup(ctx context.Context, values map[string]any) {
 	filesToRemove := []string{
 		"create_provider.json",
@@ -374,15 +488,15 @@ func (m *InstallNodeAgent) cleanup(ctx context.Context, values map[string]any) {
 		"create_instance.json",
 		"add_node_to_provider.json",
 	}
-	tmpDir, ok := values["tmp_directory"].(string)
-	if !ok {
-		util.ConsoleLogger().Info(ctx, "Temporary directory not found")
-		return
-	}
 	for _, fileName := range filesToRemove {
-		filePath := filepath.Join(tmpDir, fileName)
-		if _, err := os.Stat(filePath); err == nil {
-			os.Remove(filePath)
+		if filePath, err := m.ybaPayloadPath(values, fileName); err == nil {
+			if _, err := os.Stat(filePath); err == nil {
+				os.Remove(filePath)
+			}
+		} else {
+			util.ConsoleLogger().Errorf(ctx,
+				"Failed to clean up previous payload file %s: %v", fileName, err)
+			return
 		}
 	}
 }
@@ -395,18 +509,59 @@ func (m *InstallNodeAgent) RenderTemplates(
 		// Not implemented: call base module's RenderTemplates
 		return nil, nil
 	}
+	values[ybaPayloadDirKey] = m.ybaPayloadDir(values)
 	m.cleanup(ctx, values)
 	provider, err := m.getProvider(ctx, values)
 	if err != nil && err != util.ErrNotExist {
 		return nil, err
 	}
 	if err == nil {
+		if provider.Code != "onprem" {
+			return nil, fmt.Errorf(
+				"Provider %s is not an on-prem provider (found %s)",
+				provider.Name(),
+				provider.Code,
+			)
+		}
+		if !provider.Details.SkipProvisioning {
+			return nil, fmt.Errorf(
+				"Provider %s is configured for sudo provisioning, which is not supported",
+				provider.Name(),
+			)
+		}
 		providerYbHomeDir := provider.Details.CloudInfo.Onprem.YbHomeDir
 		if providerYbHomeDir != "" && providerYbHomeDir != values["yb_home_dir"].(string) {
 			return nil, fmt.Errorf(
-				"Provider YugabyteDB home directory (%s) does not match the configured value (%s)",
+				"Provider %s YugabyteDB home directory (%s) does not match configured value (%s)",
+				provider.Name(),
 				providerYbHomeDir,
 				values["yb_home_dir"].(string),
+			)
+		}
+		isAirGap := config.GetBool(values, "is_airgap", false)
+		if isAirGap != provider.Details.AirGapInstall {
+			util.ConsoleLogger().
+				Warnf(ctx, "Ignoring air gap configuration mismatch: expected %v but found %v", isAirGap, provider.Details.AirGapInstall)
+		}
+		// Order does not matter. Providers created by older YNP versions have no NTP servers.
+		chronyServers := m.getChronyServers(values)
+		providerNtpServers := slices.Clone(provider.Details.NtpServers)
+		slices.Sort(chronyServers)
+		slices.Sort(providerNtpServers)
+		if !slices.Equal(chronyServers, providerNtpServers) {
+			util.ConsoleLogger().
+				Warnf(ctx, "Ignoring chrony servers mismatch: expected %v but found %v", chronyServers, providerNtpServers)
+		}
+		// YBA scrapes node exporter on the provider's port, so installing it on another port
+		// leaves the node unreachable.
+		nodeExporterPort := int(config.GetInt(values, "node_exporter_port", 9300))
+		if provider.Details.NodeExporterPort != 0 &&
+			provider.Details.NodeExporterPort != nodeExporterPort {
+			return nil, fmt.Errorf(
+				"Provider %s node exporter port (%d) does not match the configured value (%d)",
+				provider.Name(),
+				provider.Details.NodeExporterPort,
+				nodeExporterPort,
 			)
 		}
 		regionExists := false
@@ -431,10 +586,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 			config.GetBool(values, "configure_cgroup", true)
 		if !regionExists || !zoneExists || multiTenancyDiff {
 			updateProviderData := m.generateProviderUpdatePayload(values, provider)
-			updateProviderDataFile := filepath.Join(
-				values["tmp_directory"].(string),
-				"update_provider.json",
-			)
+			updateProviderDataFile, err := m.ybaPayloadPath(values, "update_provider.json")
+			if err != nil {
+				return nil, err
+			}
 			f, ferr := os.Create(updateProviderDataFile)
 			if ferr != nil {
 				return nil, ferr
@@ -451,12 +606,18 @@ func (m *InstallNodeAgent) RenderTemplates(
 		}
 		values["provider_id"] = provider.Uuid
 	} else {
-		util.ConsoleLogger().Info(ctx, "Generating provider create payload...")
+		util.ConsoleLogger().Infof(ctx,
+			"Provider %s does not exist, generating provider create payload...",
+			values["provider_name"].(string),
+		)
 		providerPayload, err := m.generateProviderPayload(values)
 		if err != nil {
 			return nil, err
 		}
-		providerPayloadFile := filepath.Join(values["tmp_directory"].(string), "create_provider.json")
+		providerPayloadFile, err := m.ybaPayloadPath(values, "create_provider.json")
+		if err != nil {
+			return nil, err
+		}
 		f, ferr := os.Create(providerPayloadFile)
 		if ferr != nil {
 			return nil, ferr
@@ -471,7 +632,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 		if err != nil {
 			return nil, err
 		}
-		instancePayloadFile := filepath.Join(values["tmp_directory"].(string), "create_instance.json")
+		instancePayloadFile, err := m.ybaPayloadPath(values, "create_instance.json")
+		if err != nil {
+			return nil, err
+		}
 		f2, ferr2 := os.Create(instancePayloadFile)
 		if ferr2 != nil {
 			return nil, ferr2
@@ -493,10 +657,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 		nodeAlreadyExists = exists
 	}
 	if !nodeAlreadyExists {
-		addNodePayloadFile := filepath.Join(
-			values["tmp_directory"].(string),
-			"add_node_to_provider.json",
-		)
+		addNodePayloadFile, err := m.ybaPayloadPath(values, "add_node_to_provider.json")
+		if err != nil {
+			return nil, err
+		}
 		f3, ferr3 := os.Create(addNodePayloadFile)
 		if ferr3 != nil {
 			return nil, ferr3

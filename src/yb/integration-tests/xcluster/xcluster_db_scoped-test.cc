@@ -11,26 +11,78 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 #include <gmock/gmock.h>
 
+#include "yb/cdc/cdc_service_context.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/colocated_util.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/xcluster_util.h"
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 
-DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/json_document.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/string_util.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
+
+DECLARE_bool(allow_insecure_connections);
+DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
+DECLARE_bool(TEST_return_legacy_universe_replication_info);
+DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(vector_index_store_payload);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
+DECLARE_bool(TEST_xcluster_drop_bootstrap_producer_response);
+DECLARE_bool(TEST_xcluster_fail_record_stream_bootstrap_info);
+DECLARE_bool(TEST_enable_remote_bootstrap);
+DECLARE_bool(TEST_enable_sync_points);
+DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
+DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
 using namespace std::chrono_literals;
 
@@ -71,6 +123,112 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   Result<master::GetXClusterStreamsResponsePB> GetAllXClusterStreams(
       const NamespaceId& namespace_id) {
     return GetXClusterStreams(namespace_id, /*table_names=*/{}, /*pg_schema_names=*/{});
+  }
+
+  // Stops apply and returns the safe time the target settled at, which stays the safe time
+  // afterwards so a caller can compare against it later.
+  //
+  // Both waits are needed. Setting the flag does not stop an apply already in flight, so wait for
+  // the pollers to sleep. The master then recomputes the safe time on its own timer, so it keeps
+  // climbing for an interval after the last apply; wait until two readings agree.
+  Result<HybridTime> FreezeXClusterApply() {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(producer_client()->GetTabletsFromTableId(producer_table_->id(), 0, &tablets));
+    std::unordered_set<TabletId> tablet_ids;
+    for (const auto& tablet : tablets) {
+      tablet_ids.insert(tablet.tablet_id());
+    }
+    SCHECK(!tablet_ids.empty(), IllegalState, "Producer table reported no tablets");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+    RETURN_NOT_OK(WaitForConsumerPollersToSleep(tablet_ids));
+
+    // Two readings taken twice the update interval apart, so an unchanged pair means the master had
+    // more than one chance to publish a higher value and did not.
+    const auto poll_interval = FLAGS_xcluster_safe_time_update_interval_secs * 2s;
+    HybridTime previous;
+    HybridTime settled;
+    RETURN_NOT_OK(LoggedWaitFor(
+        [this, &previous, &settled]() -> Result<bool> {
+          const auto current = VERIFY_RESULT(TargetXClusterSafeTime());
+          SCHECK(current.is_valid(), IllegalState, "Target reported no xCluster safe time");
+          const bool at_rest = previous.is_valid() && current == previous;
+          previous = current;
+          settled = current;
+          return at_rest;
+        },
+        kTimeout, "target's xCluster safe time to stop advancing", poll_interval,
+        /* delay_multiplier = */ 1.0, poll_interval));
+    return settled;
+  }
+
+  void ResumeXClusterApply() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  }
+
+  Result<xrepl::StreamId> GetProducerStreamId(const TableId& table_id) {
+    const auto streams =
+        VERIFY_RESULT(GetAllXClusterStreams(VERIFY_RESULT(GetNamespaceId(producer_client()))));
+    for (const auto& table_info : streams.table_infos()) {
+      if (table_info.table_id() == table_id) {
+        return xrepl::StreamId::FromString(table_info.xrepl_stream_id());
+      }
+    }
+    return STATUS_FORMAT(NotFound, "No stream found for table $0", table_id);
+  }
+
+  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets(const TableId& table_id) {
+    auto& catalog_manager =
+        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto stream = VERIFY_RESULT(
+        catalog_manager.GetXReplStreamInfo(VERIFY_RESULT(GetProducerStreamId(table_id))));
+    const auto stream_lock = stream->LockForRead();
+    const auto& tablet_ids = stream_lock->pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
+    std::vector<TabletId> result(tablet_ids.begin(), tablet_ids.end());
+    std::sort(result.begin(), result.end());
+    return result;
+  }
+
+  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets() {
+    return GetProducerStreamBootstrapTablets(producer_table_->id());
+  }
+
+  Result<std::unordered_map<TabletId, OpId>> GetProducerStreamCheckpoints(
+      const TableId& table_id) {
+    const auto stream_id = VERIFY_RESULT(GetProducerStreamId(table_id));
+    auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
+    Status iteration_status;
+    std::unordered_map<TabletId, OpId> result;
+    for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
+             cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &iteration_status))) {
+      RETURN_NOT_OK(row_result);
+      if (row_result->key.stream_id == stream_id && row_result->checkpoint) {
+        result[row_result->key.tablet_id] = *row_result->checkpoint;
+      }
+    }
+    RETURN_NOT_OK(iteration_status);
+    return result;
+  }
+
+  Result<std::unordered_map<TabletId, OpId>> GetProducerStreamCheckpoints() {
+    return GetProducerStreamCheckpoints(producer_table_->id());
+  }
+
+  std::vector<TabletId> ProducerActiveTabletIds(const TableId& table_id) {
+    std::vector<TabletId> result;
+    for (const auto& peer : ListTableActiveTabletLeadersPeers(producer_cluster(), table_id)) {
+      result.push_back(peer->tablet_id());
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+  }
+
+  std::vector<TabletId> ProducerActiveTabletIds() {
+    return ProducerActiveTabletIds(producer_table_->id());
+  }
+
+  Result<HybridTime> TargetXClusterSafeTime() {
+    return consumer_client()->GetXClusterSafeTimeForNamespace(
+        VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
 
   void VerifyRangedPartitionsWithIndex(bool is_colocated = false) {
@@ -132,6 +290,61 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
     ASSERT_OK(validate_rows(c_conn));
   }
+
+  // Even rows of vec_tbl were moved or deleted and odd rows stayed put, so the two rows nearest to
+  // the original vector of an even row are its odd neighbours. Returns the even rows whose search
+  // finds other rows.
+  Result<std::vector<int32_t>> WrongVectorSearches(pgwrapper::PGConn& conn, int32_t num_rows) {
+    constexpr auto kSearch = "SELECT id FROM vec_tbl ORDER BY embedding <-> '[$0, $0, $0]' LIMIT 2";
+    SCHECK(
+        VERIFY_RESULT(conn.HasIndexScan(Format(kSearch, 0))), IllegalState,
+        "Vector search does not use the index");
+    std::vector<int32_t> result;
+    for (int32_t id = 2; id < num_rows; id += 2) {
+      auto ids = VERIFY_RESULT(conn.FetchRows<int32_t>(Format(kSearch, id)));
+      std::sort(ids.begin(), ids.end());
+      if (ids != std::vector<int32_t>{id - 1, id + 1}) {
+        result.push_back(id);
+      }
+    }
+    return result;
+  }
+
+  void TestNonTransactionalVectorUpdates();
+  void TestColocationParentCreatedAfterSetup();
+};
+
+class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
+ public:
+  bool UseAutomaticMode() override { return true; }
+
+  void TestVectorIndexUpdatesWithDifferentTabletLayouts();
+  void TestVectorIndexChangeOfUnappliedInsert(const std::string& statement, bool split_target);
+  void TestOldLeaderCheckpointFinishesAfterSplit(const std::string& pause_point);
+};
+
+// Both universes run TLS, and CreateReplicationFromCheckpoint stages the source's certificates
+// under <certs_for_cdc_dir>/<replication_group_id>, which is the directory an operator names to
+// --xcluster_source_certs_dir_name. Both universes here share one certificate authority, so a
+// test wanting the source to reject the connection names test_certs/CA2 instead.
+class XClusterDBScopedAutomaticModeTlsTest : public XClusterDBScopedAutomaticModeTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = GetCertsDir();
+    // Per-test dir: a shared one under the build tree races with concurrent test processes
+    // rewriting ca.crt while the master reads it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) = GetTestPath("xCluster");
+    XClusterDBScopedAutomaticModeTest::SetUp();
+  }
+
+  std::string SourceCertsDir() const {
+    return JoinPathSegments(FLAGS_certs_for_cdc_dir, kReplicationGroupId.ToString());
+  }
+
+  std::string OtherCaCertsDir() const { return JoinPathSegments(GetCertsDir(), "CA2"); }
 };
 
 TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
@@ -201,6 +414,8 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   auto replication_info =
       ASSERT_RESULT(target_xcluster_client.GetUniverseReplicationInfo(kReplicationGroupId));
   ASSERT_EQ(replication_info.replication_type, XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED);
+  ASSERT_STR_CONTAINS(replication_info.deprecated_source_master_addresses, "host:");
+  ASSERT_FALSE(replication_info.source_master_addrs.empty());
   ASSERT_EQ(replication_info.db_scope_namespace_id_map.size(), 1);
   const auto& source_namespace_id = producer_table_->name().namespace_id();
   const auto& target_namespace_id = consumer_table_->name().namespace_id();
@@ -228,6 +443,1244 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_OK(InsertRowsInProducer(50, 100));
 
   ASSERT_OK(VerifyWrittenRecords());
+}
+
+namespace {
+
+// One JSON object per line: the slices, then the summary last. Non-JSON lines are notices.
+std::vector<std::string> JsonLines(const std::string& out) {
+  std::vector<std::string> lines;
+  for (auto& line : StringSplit(out, '\n')) {
+    if (!line.empty() && line[0] == '{') {
+      lines.push_back(line);
+    }
+  }
+  return lines;
+}
+
+// A sweep that finds anything exits non-zero, and CallAdmin drops stdout when that happens -- but
+// the summary an operator acts on is on stdout, and the skip notices are on stderr. Tests asserting
+// a failing sweep need all three, so this keeps them together.
+struct SweepRun {
+  Status status;
+  std::string output;
+  std::string error;
+};
+
+SweepRun RunAdminKeepingOutput(const std::vector<std::string>& args) {
+  SweepRun run;
+  LOG(INFO) << "Execute: " << AsString(args);
+  run.status = Subprocess::Call(args, &run.output, &run.error);
+  LOG(INFO) << "stdout: " << run.output;
+  if (!run.error.empty()) {
+    LOG(INFO) << "stderr: " << run.error;
+  }
+  return run;
+}
+
+// Sums the source rows a sweep hashed for one table, checking every slice matched on the way
+// through. The total is what separates a correct walk from a plausible-looking one: a walk that
+// skipped rows sums low, and one that re-hashed them sums high, while both still report kMatch.
+Result<uint64_t> SumSourceRows(const std::string& out, const TableId& source_table_id) {
+  auto lines = JsonLines(out);
+  SCHECK_GE(lines.size(), size_t{2}, IllegalState, "expected at least one slice and a summary");
+  uint64_t rows = 0;
+  for (size_t i = 0; i + 1 < lines.size(); ++i) {
+    JsonDocument slice_doc;
+    auto slice = VERIFY_RESULT(slice_doc.Parse(lines[i]));
+    SCHECK_EQ(
+        VERIFY_RESULT(slice["result"].GetString()), std::string("kMatch"), IllegalState,
+        "a slice did not match");
+    // The group also carries the overhead streams' tables, which are not the subject here.
+    if (VERIFY_RESULT(slice["source_table_id"].GetString()) == source_table_id) {
+      rows += VERIFY_RESULT(slice["source"]["row_count"].GetUint64());
+    }
+  }
+  JsonDocument doc;
+  auto root = VERIFY_RESULT(doc.Parse(lines.back()));
+  SCHECK_EQ(
+      VERIFY_RESULT(root["result"].GetString()), std::string("kMatch"), IllegalState,
+      "the sweep did not match");
+  SCHECK(!root["unfinished"].IsValid(), IllegalState, "the sweep left a table unfinished");
+  return rows;
+}
+
+}  // namespace
+
+// Tests that the target gets every row when the source splits between the checkpoint and the
+// target setup.
+TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
+  ASSERT_OK(SetUpClusters());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+
+  const auto checkpointed_tablets = ProducerActiveTabletIds();
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, producer_table_->id()));
+  ASSERT_OK(InsertRowsInProducer(50, 100));
+  ASSERT_NE(ProducerActiveTabletIds(), checkpointed_tablets);
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
+
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(InsertRowsInProducer(100, 150));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
+}
+
+// Tests that a checkpoint whose tablets fail to be recorded still succeeds, and that its stream
+// keeps blocking splits.
+TEST_F(XClusterDBScopedAutomaticModeTest, SplitBlockedWithoutRecordedTablets) {
+  ASSERT_OK(SetUpClusters());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info) = true;
+  ASSERT_TRUE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+
+  ASSERT_TRUE(ASSERT_RESULT(GetProducerStreamBootstrapTablets()).empty());
+  auto& catalog_manager =
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto status = catalog_manager.XReplValidateSplitCandidateTable(producer_table_->id());
+  ASSERT_TRUE(status.IsNotSupported()) << status;
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+// Tests that a retry of the initial checkpoint skips the streams that a failed attempt recorded.
+TEST_F(XClusterDBScopedAutomaticModeTest, InitialCheckpointRetryKeepsRecordedCheckpoint) {
+  ASSERT_OK(SetUpClusters());
+  // Every BootstrapProducer response is lost, so the checkpoint only completes if the retry skips
+  // the streams that the first attempt recorded.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_drop_bootstrap_producer_response) = true;
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_drop_bootstrap_producer_response) = false;
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), ProducerActiveTabletIds());
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+void XClusterDBScopedAutomaticModeTest::TestOldLeaderCheckpointFinishesAfterSplit(
+    const std::string& pause_point) {
+  ASSERT_OK(SetUpClusters(SetupParams{.num_masters = 3}));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+
+  // Pause the first BootstrapProducer run.
+  std::atomic<bool> first_run{true};
+  CountDownLatch paused(1), resume(1);
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(pause_point, [&](void*) {
+    if (first_run.exchange(false)) {
+      paused.CountDown();
+      resume.Wait();
+    }
+  });
+  sync_point->EnableProcessing();
+
+  TestThreadHolder threads;
+  // Resume the paused run even if an assert fails, so teardown does not hang.
+  auto resume_on_exit = ScopeExit([&resume] { resume.CountDown(); });
+  threads.AddThreadFunctor([this] {
+    ASSERT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  });
+  ASSERT_TRUE(paused.WaitFor(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  // The new leader checkpoints again while the first run stays paused.
+  ASSERT_OK(producer_cluster()->StepDownMasterLeader());
+  threads.JoinAll();
+  const auto checkpointed_tablets = ProducerActiveTabletIds();
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
+  const auto checkpoints = ASSERT_RESULT(GetProducerStreamCheckpoints());
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, producer_table_->id()));
+  ASSERT_OK(InsertRowsInProducer(50, 100));
+
+  StringWaiterLogSink not_recorded_sink(Format(
+      "Not recording the bootstrap tablets of xCluster stream $0",
+      ASSERT_RESULT(GetProducerStreamId(producer_table_->id()))));
+  resume.CountDown();
+  ASSERT_OK(not_recorded_sink.WaitFor(MonoDelta::FromSeconds(kRpcTimeout)));
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
+  const auto checkpoints_after = ASSERT_RESULT(GetProducerStreamCheckpoints());
+  for (const auto& tablet_id : checkpointed_tablets) {
+    ASSERT_EQ(checkpoints_after.at(tablet_id), checkpoints.at(tablet_id)) << tablet_id;
+  }
+
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(InsertRowsInProducer(100, 150));
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+// Tests that a checkpoint run left behind by a master failover does not overwrite the new
+// leader's checkpoint once the tablets have split, whether it resolved the tablets before or after
+// the split.
+TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointReadsOpIdsAfterSplit) {
+  TestOldLeaderCheckpointFinishesAfterSplit(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds");
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointResolvesTabletsAfterSplit) {
+  TestOldLeaderCheckpointFinishesAfterSplit(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
+}
+
+// Tests that a checkpoint succeeds when a local peer is tombstoned during BootstrapProducer.
+TEST_F(XClusterDBScopedAutomaticModeTest, CheckpointWithTombstonedLocalPeer) {
+  ASSERT_OK(SetUpClusters());
+  // Stop the leader from remote bootstrapping the tombstoned peer back before the run reads it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
+
+  // After the run reads the tablet locations, tombstone a follower peer on its tserver, as the
+  // load balancer would.
+  SyncPointScope sync_point;
+  sync_point->SetCallBack(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [this](void* arg) {
+        const auto ts_uuid = static_cast<cdc::CDCServiceContext*>(arg)->permanent_uuid();
+        const auto followers = ListTableTabletPeers(
+            producer_cluster(), producer_table_->id(), ListPeersFilter::kNonLeaders);
+        const auto follower = std::ranges::find_if(
+            followers, [&](const auto& peer) { return peer->permanent_uuid() == ts_uuid; });
+        ASSERT_NE(follower, followers.end());
+        auto* ts = ASSERT_NOTNULL(producer_cluster()->find_tablet_server(ts_uuid));
+        ASSERT_OK(ts->DeleteTablet((*follower)->tablet_id(), tablet::TABLET_DATA_TOMBSTONED));
+      });
+  sync_point->EnableProcessing();
+
+  StringWaiterLogSink fallback_sink("from its leader, since the local peer cannot serve");
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_TRUE(fallback_sink.IsEventOccurred());
+}
+
+// The only place kDiverged is reached against two real universes; every other verify test runs on
+// one cluster or expects the sides to agree.
+//
+// The divergence is created before the inbound group makes the target read-only. Keeping the group
+// alive preserves the certified safe time needed to distinguish divergence from replication lag.
+TEST_F(XClusterDBScopedTest, VerifyXClusterSliceReportsRealDivergence) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+
+  // This row is outside the source rows' key range and is not removed when replication starts.
+  constexpr uint32_t kExtraTargetRows = 1;
+  ASSERT_OK(WriteWorkload(
+      1000, 1000 + kExtraTargetRows, &consumer_cluster_, consumer_table_->name()));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 20;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto verify_slice = [this](std::optional<uint64_t> read_ht) -> Result<JsonDocument> {
+    auto out = read_ht ? VERIFY_RESULT(CallAdmin(
+                             consumer_cluster(), "verify_xcluster_slice", producer_table_->id(),
+                             consumer_table_->id(), producer_cluster()->GetMasterAddresses(),
+                             *read_ht))
+                       : VERIFY_RESULT(CallAdmin(
+                             consumer_cluster(), "verify_xcluster_slice", producer_table_->id(),
+                             consumer_table_->id(), producer_cluster()->GetMasterAddresses()));
+    LOG(INFO) << "verify_xcluster_slice output: " << out;
+    JsonDocument doc;
+    RETURN_NOT_OK(doc.Parse(out));
+    return doc;
+  };
+
+  // The capped source scan ends before the target-only row, so the matching prefix also verifies
+  // that the schemas and corresponding key range agree.
+  auto capped_out = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_slice", producer_table_->id(), consumer_table_->id(),
+      producer_cluster()->GetMasterAddresses(), "", "", "", "5"));
+  JsonDocument capped_doc;
+  auto capped = ASSERT_RESULT(capped_doc.Parse(capped_out));
+  ASSERT_EQ(ASSERT_RESULT(capped["result"].GetString()), "kMatch");
+  ASSERT_EQ(ASSERT_RESULT(capped["source"]["row_count"].GetUint64()), 5);
+  ASSERT_EQ(ASSERT_RESULT(capped["target"]["row_count"].GetUint64()), 5);
+
+  const auto read_ht = ASSERT_RESULT(TargetXClusterSafeTime());
+  auto doc = ASSERT_RESULT(verify_slice(read_ht.ToUint64()));
+  auto root = doc.Root();
+  ASSERT_EQ(ASSERT_RESULT(root["result"].GetString()), "kDiverged");
+
+  // Both sides hashed, so both totals have to be in the output: kDiverged is the one verdict that
+  // claims data loss, and an operator cannot act on it without the two numbers it rests on.
+  ASSERT_EQ(ASSERT_RESULT(root["source"]["row_count"].GetUint64()), kNumRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(root["target"]["row_count"].GetUint64()), kNumRows + kExtraTargetRows);
+  ASSERT_NE(
+      ASSERT_RESULT(root["source"]["xor_hash"].GetUint64()),
+      ASSERT_RESULT(root["target"]["xor_hash"].GetUint64()));
+  ASSERT_EQ(ASSERT_RESULT(root["source"]["read_ht"].GetUint64()), read_ht.ToUint64());
+  ASSERT_EQ(ASSERT_RESULT(root["target"]["read_ht"].GetUint64()), read_ht.ToUint64());
+}
+
+TEST_F(XClusterDBScopedTest, VerifyXClusterGroupRejectsNonAutomaticMode) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto run = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+  ASSERT_NOK(run.status);
+  ASSERT_STR_CONTAINS(run.error, "requires automatic-mode xCluster");
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupRejectsLegacyMasterResponse) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_legacy_universe_replication_info) = true;
+  auto run = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_legacy_universe_replication_info) = false;
+
+  ASSERT_NOK(run.status);
+  ASSERT_STR_CONTAINS(run.error, "does not report structured source master addresses");
+  ASSERT_STR_CONTAINS(run.error, "upgrade the target masters");
+}
+
+// Every other verify test runs both universes without TLS, where
+// --xcluster_source_certs_dir_name has no observable effect. Only here does naming the source's
+// certificates decide whether the source connection is established at all.
+TEST_F(XClusterDBScopedAutomaticModeTlsTest, VerifyXClusterGroupUsesSourceCertsDir) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 10;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto out = ASSERT_RESULT(CallAdminVec(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "--certs_dir_name", GetCertsDir(), "--xcluster_source_certs_dir_name", SourceCertsDir(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()}));
+  LOG(INFO) << "verify_xcluster_group output: " << out;
+  JsonDocument doc;
+  auto summary = ASSERT_RESULT(doc.Parse(JsonLines(out).back()));
+  ASSERT_EQ(ASSERT_RESULT(summary["result"].GetString()), "kMatch");
+  ASSERT_GE(ASSERT_RESULT(summary["tables"].GetInt32()), 1);
+
+  // The same sweep against an unrelated certificate authority. Only the source connection carries
+  // these certificates, so the target is still reached and the failure names the source.
+  auto rejected = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "--certs_dir_name", GetCertsDir(), "--xcluster_source_certs_dir_name", OtherCaCertsDir(),
+       "--yb_client_admin_rpc_timeout_sec", "10",
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+  ASSERT_NOK(rejected.status);
+  ASSERT_STR_CONTAINS(rejected.error, "Unable to connect to source masters");
+}
+
+// Pair discovery from a group id needs a real group, so it can only be tested here.
+//
+// Covering a table exactly once is the other subject. Capping the scan splits a table across
+// several slices, so the sweep walks it by the continuation keys a real capped scan produces,
+// within ranges taken from real tablet boundaries. Summing the source rows hashed is what separates
+// a correct walk from one that skipped rows (sums low) or re-hashed them (sums high). Running it
+// again with ranges in flight together asserts the same of the concurrent path. The unit tests
+// drive the sweep with a fake and the slice test covers one scan, so neither shows this.
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupSweepsEveryRowOnce) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 20;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // No table ids: the pairs come from the group.
+  auto whole_group = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId));
+  LOG(INFO) << "verify_xcluster_group output: " << whole_group;
+  JsonDocument summary_doc;
+  auto summary = ASSERT_RESULT(summary_doc.Parse(JsonLines(whole_group).back()));
+  ASSERT_EQ(ASSERT_RESULT(summary["result"].GetString()), "kMatch");
+  ASSERT_GE(ASSERT_RESULT(summary["tables"].GetInt32()), 1);
+  // A sweep runs to completion, so a table left partly unverified is the only thing that would be
+  // reported here, and it is absent rather than empty.
+  ASSERT_FALSE(summary["unfinished"].IsValid());
+
+  // Five rows a slice over twenty needs at least four slices, so the table is walked rather than
+  // hashed in one go.
+  auto capped = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId, "5"));
+  LOG(INFO) << "capped verify_xcluster_group output: " << capped;
+  ASSERT_EQ(ASSERT_RESULT(SumSourceRows(capped, producer_table_->id())), kNumRows);
+
+  // The same sweep with ranges verified concurrently. Splitting the work must not change what was
+  // covered: a range walked with the wrong bounds shows up here as a row sum that is no longer
+  // exactly the table.
+  auto concurrent = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId, "5", "4"));
+  LOG(INFO) << "concurrent verify_xcluster_group output: " << concurrent;
+  ASSERT_EQ(ASSERT_RESULT(SumSourceRows(concurrent, producer_table_->id())), kNumRows);
+}
+
+// Ranges are cut from the source's tablet boundaries and handed to both sides, which rests on a
+// range being a logical key interval rather than a tablet: the target resolves the same interval
+// against a different set of tablets. Every other sweep test has the two sides split alike, so that
+// assumption is never actually loaded. Here the source has three tablets and the target one,
+// and the row sum catches a range that only resolves correctly when the boundaries line up.
+//
+// The scan is capped as well, so continuation keys crossing tablet boundaries on the source have
+// to land inside the target's single tablet.
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupSweepsWhenSidesAreSplitDifferently) {
+  SetupParams param;
+  param.num_producer_tablets = {3};
+  param.num_consumer_tablets = {1};
+  ASSERT_OK(SetUpClusters(param));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 30;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto capped = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId, "4"));
+  ASSERT_EQ(ASSERT_RESULT(SumSourceRows(capped, producer_table_->id())), kNumRows);
+
+  auto concurrent = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId, "4", "3"));
+  ASSERT_EQ(ASSERT_RESULT(SumSourceRows(concurrent, producer_table_->id())), kNumRows);
+}
+
+// The capped walk over a range-partitioned table. Its continuation keys are encoded row keys in the
+// key's own ordering, where a hash table's are a hash prefix, so the two orderings are what the
+// walk's comparisons run on -- and the sweep compares a continuation key against range bounds taken
+// from tablet boundaries. A hash table is the only shape the walk is otherwise tested on.
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupSweepsRangePartitionedTable) {
+  SetupParams param;
+  param.ranged_partitioned = true;
+  param.num_producer_tablets = {3};
+  param.num_consumer_tablets = {3};
+  ASSERT_OK(SetUpClusters(param));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 30;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto capped = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId, "4"));
+  ASSERT_EQ(ASSERT_RESULT(SumSourceRows(capped, producer_table_->id())), kNumRows);
+
+  auto concurrent = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId, "4", "3"));
+  ASSERT_EQ(ASSERT_RESULT(SumSourceRows(concurrent, producer_table_->id())), kNumRows);
+}
+
+// skip_source_table_ids exists for a table whose column types cannot be compared by hash, so the
+// thing to get right is that a skip is loud. A silently ignored skip argument would have an
+// operator believe a table was left alone while it was verified anyway, and a silently accepted
+// stale id would have them believe a table was skipped while the argument matched nothing.
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupSkipsNamedTables) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto admin = GetAdminToolPath();
+  const auto target_addrs = consumer_cluster()->GetMasterAddresses();
+  auto sweep = [&](const std::string& skip) {
+    return RunAdminKeepingOutput(
+        {admin, "--master_addresses", target_addrs, "verify_xcluster_group",
+         kReplicationGroupId.ToString(), "", "", skip});
+  };
+
+  // A stale or mistyped id is warned about rather than rejected: a cron naming a table that has
+  // since been dropped should keep verifying the rest of the group.
+  auto bogus = sweep("0000ffff0000ffff0000ffff0000ffff");
+  ASSERT_OK(bogus.status);
+  ASSERT_STR_CONTAINS(bogus.error, "it skipped nothing");
+  auto bogus_summary = JsonLines(bogus.output);
+  ASSERT_FALSE(bogus_summary.empty());
+  JsonDocument bogus_doc;
+  auto bogus_root = ASSERT_RESULT(bogus_doc.Parse(bogus_summary.back()));
+  ASSERT_EQ(ASSERT_RESULT(bogus_root["result"].GetString()), "kMatch");
+
+  // Skipping every table leaves nothing to verify. Naming that as the reason matters: "no tables"
+  // alone sends an operator to inspect a group that is fine. The list is taken from the sweep above
+  // rather than written out, because an automatic mode group carries the overhead streams' tables
+  // besides the user one and this case needs all of them named.
+  std::vector<std::string> group_source_tables;
+  for (size_t i = 0; i + 1 < bogus_summary.size(); ++i) {
+    JsonDocument slice_doc;
+    auto slice = ASSERT_RESULT(slice_doc.Parse(bogus_summary[i]));
+    auto source_table_id = ASSERT_RESULT(slice["source_table_id"].GetString());
+    if (std::find(group_source_tables.begin(), group_source_tables.end(), source_table_id) ==
+        group_source_tables.end()) {
+      group_source_tables.push_back(source_table_id);
+    }
+  }
+  ASSERT_FALSE(group_source_tables.empty());
+  auto everything = sweep(JoinStrings(group_source_tables, ","));
+  ASSERT_NOK(everything.status);
+  ASSERT_STR_CONTAINS(everything.error, "was skipped by skip_source_table_ids");
+  // A skip that matched is not warned about, which is the other half of the warning being useful.
+  ASSERT_STR_NOT_CONTAINS(everything.error, "it skipped nothing");
+}
+
+// kDiverged reached through the group command, which is the verdict an operator is least able to
+// dismiss and the one whose exit status a cron acts on.
+//
+// The divergence has to exist while the group still does, so it cannot be made the way
+// VerifyXClusterSliceReportsRealDivergence makes it -- that deletes the group to get a writable
+// target, and the group is what the sweep discovers its pairs from. The window used instead is
+// between checkpointing and creating the inbound group: the target is not a replication target yet,
+// so it still takes writes, and setup checks that the tables match rather than that they are empty.
+// Rows written there are never reconciled, so the two sides stay apart afterwards.
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupReportsDivergenceAndExitsNonZero) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+
+  // Keys well clear of the ones replication will carry, so the target ends up with rows the source
+  // never had rather than with conflicting versions of the same rows.
+  constexpr uint32_t kExtraTargetRows = 5;
+  ASSERT_OK(WriteWorkload(1000, 1000 + kExtraTargetRows, &consumer_cluster_,
+                          consumer_table_->name()));
+
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 20;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto run = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+
+  // A cron reads $? and nothing else, so the exit status is as much the subject as the summary.
+  ASSERT_NOK(run.status);
+  auto lines = JsonLines(run.output);
+  ASSERT_FALSE(lines.empty());
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(lines.back()));
+  ASSERT_EQ(ASSERT_RESULT(root["result"].GetString()), "kDiverged");
+  ASSERT_TRUE(root["counts"].IsValid());
+  ASSERT_GE(ASSERT_RESULT(root["counts"]["kDiverged"].GetInt32()), 1);
+
+  // The verdict alone does not say the sweep read the whole table, and the row counts are what an
+  // operator acts on. Ranges follow source tablet boundaries, so each slice covers one tablet and
+  // only the ranges the extra rows landed in disagree; the totals are what have to add up.
+  uint64_t source_rows = 0, target_rows = 0;
+  bool any_diverged = false;
+  for (size_t i = 0; i + 1 < lines.size(); ++i) {
+    JsonDocument slice_doc;
+    auto slice = ASSERT_RESULT(slice_doc.Parse(lines[i]));
+    if (ASSERT_RESULT(slice["source_table_id"].GetString()) != producer_table_->id()) {
+      continue;
+    }
+    source_rows += ASSERT_RESULT(slice["source"]["row_count"].GetUint64());
+    target_rows += ASSERT_RESULT(slice["target"]["row_count"].GetUint64());
+    any_diverged |= ASSERT_RESULT(slice["result"].GetString()) == "kDiverged";
+  }
+  ASSERT_TRUE(any_diverged) << "no diverged slice for the table in the sweep's output";
+  ASSERT_EQ(source_rows, kNumRows);
+  ASSERT_EQ(target_rows, kNumRows + kExtraTargetRows);
+}
+
+// A table on one side and not the other is the divergence comparing pairs cannot see: it is in no
+// pair, so every slice can match while the two databases plainly differ. A colocated database is
+// where this is reachable -- the group carries one stream on the colocation parent, and the sweep
+// enumerates the tables under it on each side, so a source-only table is found there and nowhere
+// else.
+//
+// This is also the one place the group command's exit status is asserted. Anything but kMatch
+// has to exit non-zero, because a cron's whole reading of a sweep is $?.
+TEST_F(
+    XClusterDBScopedAutomaticModeTest,
+    VerifyXClusterGroupReportsAnUnpairedTableAndExitsNonZero) {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+  ASSERT_OK(SetUpClusters(param));
+
+  // A colocated database cannot join replication with no colocated table in it, and both sides need
+  // the pair before the group is checkpointed. Colocation ids are pinned so the two universes agree
+  // on them, which the expansion's matching then relies on.
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const std::string kPairedTable =
+      "CREATE TABLE coloc_tbl (k int PRIMARY KEY, v text) WITH (colocation_id = 44444)";
+  ASSERT_OK(p_conn.Execute(kPairedTable));
+  ASSERT_OK(c_conn.Execute(kPairedTable));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Created after replication is running and on the source alone, which is what leaves it unpaired.
+  // Automatic mode would otherwise carry the CREATE to the target through its DDL queue and pair
+  // the table, so the handler is wedged for as long as the table has to stay unpaired. Safe time
+  // stops advancing with it, which costs nothing here: the rows the sweep compares replicated
+  // above, and the sweep reads at the safe time rather than at now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(p_conn.Execute(
+      "CREATE TABLE source_only_tbl (k int PRIMARY KEY, v text) WITH (colocation_id = 44446)"));
+
+  auto run = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+
+  // The sweep itself found nothing wrong -- every pair it compared matched -- so the exit status
+  // and the summary rest entirely on the unpaired table.
+  ASSERT_NOK(run.status);
+  auto lines = JsonLines(run.output);
+  ASSERT_FALSE(lines.empty());
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(lines.back()));
+  ASSERT_EQ(ASSERT_RESULT(root["result"].GetString()), "kSchemaMismatch");
+  ASSERT_STR_CONTAINS(lines.back(), "source_only_tbl");
+  ASSERT_STR_CONTAINS(lines.back(), "not the target");
+  // The per-verdict breakdown an operator reads to see how much of the sweep was clean.
+  ASSERT_TRUE(root["counts"].IsValid());
+  ASSERT_GE(ASSERT_RESULT(root["counts"]["kMatch"].GetInt32()), 1);
+}
+
+// A colocated database replicates through a single stream on its colocation parent, so expanding
+// the parent is the only way the sweep reaches the tables holding the rows.
+//
+// The check is on row counts, not on how many tables were verified: a sweep that never expanded the
+// parent still reports kMatch, because everything it did compare matched. Summing the rows actually
+// hashed is what separates those two outcomes.
+//
+// The colocated index is the sharper case -- it gets no stream of its own and lives in the parent's
+// tablet, so the expansion is the only thing that reaches it.
+TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupExpandsColocatedTablesAndIndexes) {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+  // Creates the colocated database plus one non-colocated table, which stays in the sweep as an
+  // ordinary pair and keeps this from only testing the colocated path.
+  ASSERT_OK(SetUpClusters(param));
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  auto execute_on_both = [&p_conn, &c_conn](const std::string& stmt) -> Status {
+    RETURN_NOT_OK(p_conn.Execute(stmt));
+    return c_conn.Execute(stmt);
+  };
+  // Colocation ids are pinned so both universes agree on them, which xCluster setup requires of a
+  // colocated pair and which the expansion's name matching then relies on.
+  ASSERT_OK(execute_on_both(
+      "CREATE TABLE coloc_tbl (k int PRIMARY KEY, v text) WITH (colocation_id = 44444)"));
+  ASSERT_OK(execute_on_both("CREATE INDEX coloc_idx ON coloc_tbl(v) WITH (colocation_id = 44445)"));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const int kColocatedRows = 30;
+  const uint32_t kPlainRows = 10;
+  ASSERT_OK(InsertRowsInProducer(0, kPlainRows));
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO coloc_tbl SELECT x, 'v' || x FROM generate_series(1, $0) x", kColocatedRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Resolved by name because the ids are what the sweep is being asked to discover on its own.
+  master::NamespaceIdentifierPB ns;
+  ns.set_id(ASSERT_RESULT(GetNamespaceId(producer_client())));
+  ns.set_database_type(YQL_DATABASE_PGSQL);
+  const auto producer_tables =
+      ASSERT_RESULT(producer_client()->ListUserTables(ns, /*include_indexes=*/true));
+  TableId colocated_table_id, colocated_index_id;
+  for (const auto& table : producer_tables) {
+    if (table.table_name() == "coloc_tbl") {
+      colocated_table_id = table.table_id();
+    } else if (table.table_name() == "coloc_idx") {
+      colocated_index_id = table.table_id();
+    }
+  }
+  ASSERT_FALSE(colocated_table_id.empty());
+  ASSERT_FALSE(colocated_index_id.empty());
+
+  auto out = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId));
+  LOG(INFO) << "verify_xcluster_group output: " << out;
+
+  std::unordered_map<TableId, uint64_t> rows_by_table;
+  std::string summary_line;
+  for (const auto& line : StringSplit(out, '\n')) {
+    if (line.empty() || line[0] != '{') {
+      continue;
+    }
+    summary_line = line;
+    JsonDocument doc;
+    auto obj = ASSERT_RESULT(doc.Parse(line));
+    if (!obj["source_table_id"].IsValid()) {
+      continue;  // The summary, which is the last line and carries no table.
+    }
+    const auto id = ASSERT_RESULT(obj["source_table_id"].GetString());
+    // The parent has no rows of its own, only a placeholder schema, so verifying it directly would
+    // compare that placeholder and hash nothing.
+    ASSERT_FALSE(IsColocationParentTableId(id)) << "sweep tried to verify a colocation parent";
+    rows_by_table[id] += ASSERT_RESULT(obj["source"]["row_count"].GetUint64());
+  }
+
+  JsonDocument summary_doc;
+  auto summary = ASSERT_RESULT(summary_doc.Parse(summary_line));
+  ASSERT_EQ(ASSERT_RESULT(summary["result"].GetString()), "kMatch");
+  // Both universes hold the same tables, so nothing is left over on either side.
+  ASSERT_FALSE(summary["unpaired"].IsValid());
+
+  ASSERT_EQ(rows_by_table[colocated_table_id], kColocatedRows);
+  // One index entry per row of its base table.
+  ASSERT_EQ(rows_by_table[colocated_index_id], kColocatedRows);
+  ASSERT_EQ(rows_by_table[producer_table_->id()], kPlainRows);
+}
+
+// An automatic mode group replicates sequence data under a synthetic table id no row in either
+// catalog answers to. Pairing it fails the schema fetch and condemns the group, so every automatic
+// mode group would report a failing verdict over two universes that agree completely.
+//
+// kMatch is the assertion; the row count is here so the sweep cannot pass by verifying nothing,
+// which is the other way to never touch the alias.
+TEST_F_EX(XClusterDBScopedTest, VerifyXClusterGroupSkipsSequencesData,
+          XClusterDBScopedAutomaticModeTest) {
+  ASSERT_OK(SetUpClusters());
+  // Automatic mode reports bootstrap required even for an empty database, so the checkpoint is
+  // taken without insisting otherwise. Bootstrapping an empty database would copy nothing, and the
+  // rows below are written after replication is live.
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 10;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto out = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId));
+  LOG(INFO) << "verify_xcluster_group output: " << out;
+
+  std::string summary_line;
+  uint64_t user_table_rows = 0;
+  for (const auto& line : StringSplit(out, '\n')) {
+    if (line.empty() || line[0] != '{') {
+      continue;
+    }
+    summary_line = line;
+    JsonDocument doc;
+    auto obj = ASSERT_RESULT(doc.Parse(line));
+    if (!obj["source_table_id"].IsValid()) {
+      continue;  // The summary, which is the last line and carries no table.
+    }
+    const auto id = ASSERT_RESULT(obj["source_table_id"].GetString());
+    ASSERT_FALSE(xcluster::IsSequencesDataAlias(id))
+        << "sweep tried to verify the sequences_data alias " << id;
+    if (id == producer_table_->id()) {
+      user_table_rows += ASSERT_RESULT(obj["source"]["row_count"].GetUint64());
+    }
+  }
+
+  JsonDocument summary_doc;
+  auto summary = ASSERT_RESULT(summary_doc.Parse(summary_line));
+  ASSERT_EQ(ASSERT_RESULT(summary["result"].GetString()), "kMatch");
+  ASSERT_FALSE(summary["unpaired"].IsValid());
+  ASSERT_EQ(user_table_rows, kNumRows);
+}
+
+TEST_F_EX(XClusterDBScopedTest, VerifyXClusterGroupSkipsVectorIndexes,
+          XClusterDBScopedAutomaticModeTest) {
+  namespace_name = "colocated_db";
+  SetupParams param{
+      .is_colocated = true,
+      .create_vector_extension = true,
+  };
+  ASSERT_OK(SetUpClusters(param));
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const std::string kVectorTable =
+      "CREATE TABLE vector_tbl (id int PRIMARY KEY, embedding vector(3)) "
+      "WITH (colocation_id = 44444)";
+  ASSERT_OK(p_conn.Execute(kVectorTable));
+  ASSERT_OK(c_conn.Execute(kVectorTable));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(p_conn.Execute(
+      "CREATE INDEX vec_idx ON vector_tbl USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto run = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+  ASSERT_OK(run.status);
+  ASSERT_STR_CONTAINS(run.error, "Skipping vector index");
+  ASSERT_STR_CONTAINS(run.output, R"#("result":"kMatch")#");
+}
+
+// The source attaches the replaced vector ids of a whole write batch to the batch's last row only.
+// With the target table cut into more tablets than the source's, every target tablet holding rows
+// of the batch has to tombstone them, or its index keeps returning rows at their old vectors.
+void XClusterDBScopedAutomaticModeTest::TestVectorIndexUpdatesWithDifferentTabletLayouts() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ASSERT_OK(SetUpClusters(SetupParams{.create_vector_extension = true}));
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  constexpr auto kCreateTable =
+      "CREATE TABLE vec_tbl (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO $0 TABLETS";
+  ASSERT_OK(p_conn.ExecuteFormat(kCreateTable, 1));
+  ASSERT_OK(c_conn.ExecuteFormat(kCreateTable, 4));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(p_conn.Execute(
+      "CREATE INDEX vec_idx ON vec_tbl USING ybhnsw (embedding vector_l2_ops)"));
+  constexpr int kNumRows = 200;
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO vec_tbl SELECT i, ARRAY[i, i, i]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Even rows are moved or deleted and odd rows stay put, so the two nearest rows to an even row's
+  // old vector are its odd neighbours.
+  constexpr auto kMove = "UPDATE vec_tbl SET embedding = ARRAY[id + 1000, id, id]::vector";
+  ASSERT_OK(p_conn.Execute("BEGIN"));
+  ASSERT_OK(p_conn.ExecuteFormat("$0 WHERE id <= 100 AND id % 2 = 0", kMove));
+  ASSERT_OK(p_conn.Execute("DELETE FROM vec_tbl WHERE id > 100 AND id <= 140 AND id % 2 = 0"));
+  ASSERT_OK(p_conn.Execute("COMMIT"));
+  // Single-row autocommit statements.
+  for (int id = 142; id < kNumRows; id += 2) {
+    ASSERT_OK(p_conn.ExecuteFormat("$0 WHERE id = $1", kMove, id));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_EQ(AsString(ASSERT_RESULT(WrongVectorSearches(p_conn, kNumRows))), "[]");
+  auto stale_ids = ASSERT_RESULT(WrongVectorSearches(c_conn, kNumRows));
+  ASSERT_TRUE(stale_ids.empty()) << "Stale on the target: " << AsString(stale_ids);
+
+  // A restarted tablet restores its vector deletions from the regular DB's flushed frontier. A
+  // restart would not test it: bootstrap replays the ops after the earliest flushed op id among the
+  // DBs, which can include the ones that marked the deletions.
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  for (const auto& peer :
+       ASSERT_RESULT(ListTabletPeersForTableName(consumer_cluster(), "vec_tbl"))) {
+    auto frontier = ASSERT_RESULT(peer->shared_tablet())->regular_db()->GetFlushedFrontier();
+    ASSERT_TRUE(
+        frontier && down_cast<docdb::ConsensusFrontier&>(*frontier).has_vector_deletion())
+        << peer->LogPrefix() << "flushed frontier: " << AsString(frontier);
+  }
+}
+
+TEST_F_EX(XClusterDBScopedTest, VectorIndexUpdatesWithDifferentTabletLayouts,
+          XClusterDBScopedAutomaticModeTest) {
+  TestVectorIndexUpdatesWithDifferentTabletLayouts();
+}
+
+// A table which writes no reverse mapping sends empty delete_vector_ids, which only mark the
+// vector deletion. Every target tablet holding rows of the batch has to mark it too, or its
+// searches skip the row check and return rows at the vectors left in the index.
+TEST_F_EX(XClusterDBScopedTest, VectorIndexStoredPayloadUpdatesWithDifferentTabletLayouts,
+          XClusterDBScopedAutomaticModeTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  TestVectorIndexUpdatesWithDifferentTabletLayouts();
+}
+
+// A single-row autocommit update of a table without secondary indexes takes the fast path, so the
+// source replicates it without a transaction. A vector index created on the target first still has
+// to learn about the vectors replaced by such writes, at the time of each write.
+void XClusterDBScopedTest::TestNonTransactionalVectorUpdates() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ASSERT_OK(SetUpClusters(SetupParams{.create_vector_extension = true}));
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  constexpr auto kCreateTable =
+      "CREATE TABLE vec_tbl (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS";
+  ASSERT_OK(p_conn.Execute(kCreateTable));
+  ASSERT_OK(c_conn.Execute(kCreateTable));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(c_conn.Execute(
+      "CREATE INDEX vec_idx ON vec_tbl USING ybhnsw (embedding vector_l2_ops)"));
+  constexpr int kNumRows = 40;
+  // Single-row inserts, so the target stores no intents and the regular DB flush below can advance
+  // the intents DB flushed OpId, see Tablet::MayModifyIntentsDbFlushedOpId.
+  for (int id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(p_conn.ExecuteFormat("INSERT INTO vec_tbl VALUES ($0, '[$0, $0, $0]')", id));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Paused, so the target applies the writes below in one request. Its hybrid time is the one of
+  // the first record, the insert of row 0, so tombstones written at that time would precede the
+  // updates.
+  auto producer_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_tbl"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({tablets[0].tablet_id()}));
+  ASSERT_OK(p_conn.Execute("INSERT INTO vec_tbl VALUES (0, '[-1000, -1000, -1000]')"));
+  const auto before_updates = producer_cluster()->mini_master()->Now();
+  for (int id = 2; id < kNumRows; id += 2) {
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "UPDATE vec_tbl SET embedding = '[$0, $1, $1]' WHERE id = $1", id + 1000, id));
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Returns the even rows whose search for [id + shift, id, id] does not find them first.
+  auto rows_not_found = [&c_conn](int32_t shift) -> Result<std::vector<int32_t>> {
+    std::vector<int32_t> result;
+    for (int32_t id = 2; id < kNumRows; id += 2) {
+      auto nearest = VERIFY_RESULT(c_conn.FetchRow<int32_t>(Format(
+          "SELECT id FROM vec_tbl ORDER BY embedding <-> '[$0, $1, $1]' LIMIT 1", id + shift, id)));
+      if (nearest != id) {
+        result.push_back(id);
+      }
+    }
+    return result;
+  };
+
+  auto stale_ids = ASSERT_RESULT(WrongVectorSearches(c_conn, kNumRows));
+  ASSERT_TRUE(stale_ids.empty()) << "Stale on the target: " << AsString(stale_ids);
+
+  // Before the updates, every even row is still nearest to its original vector.
+  ASSERT_OK(c_conn.ExecuteFormat("SET yb_read_time TO '$0 ht'", before_updates.ToUint64()));
+  auto missing_ids = ASSERT_RESULT(rows_not_found(0));
+  ASSERT_TRUE(missing_ids.empty()) << "Missing on the target before the updates: "
+                                   << AsString(missing_ids);
+
+  // The ops of the updates carry external intents, so bootstrap replays them only while they are
+  // unflushed in the intents DB. They write no intents, so the regular DB flush advances its
+  // flushed OpId, but only up to the vector index's, which has not flushed them (GH#34699).
+  ASSERT_OK(consumer_cluster()->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  for (const auto& peer :
+       ASSERT_RESULT(ListTabletPeersForTableName(consumer_cluster(), "vec_tbl"))) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto state = ASSERT_RESULT(tablet->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1) << AsString(state);
+    // The regular DB flush listener advances the intents DB flushed OpId, and may run after the
+    // flush returns.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      state = VERIFY_RESULT(tablet->GetPersistentState());
+      return state.intents == state.vector_indexes[0].op_id;
+    }, kTimeout, "Intents DB flushed OpId to match the vector index"));
+    ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
+  }
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  ASSERT_OK(consumer_cluster()->RestartSync());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  stale_ids = ASSERT_RESULT(WrongVectorSearches(c_conn, kNumRows));
+  ASSERT_TRUE(stale_ids.empty()) << "Stale on the target after restart: " << AsString(stale_ids);
+  missing_ids = ASSERT_RESULT(rows_not_found(1000));
+  ASSERT_TRUE(missing_ids.empty()) << "Missing on the target after restart: "
+                                   << AsString(missing_ids);
+}
+
+TEST_F(XClusterDBScopedTest, VectorIndexNonTransactionalUpdates) {
+  TestNonTransactionalVectorUpdates();
+}
+
+TEST_F(XClusterDBScopedTest, VectorIndexStoredPayloadNonTransactionalUpdates) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  TestNonTransactionalVectorUpdates();
+}
+
+// The source deletes a row or updates its vector while the transaction that inserted it is
+// committed but not applied (GH#38070), so the target receives the reverse mapping tombstone of
+// the old vector first. The target applies a replicated transaction, and writes its reverse
+// mapping entries, only when the apply record arrives. If the target tablet is split in between,
+// its post-split compaction must keep the tombstone.
+void XClusterDBScopedAutomaticModeTest::TestVectorIndexChangeOfUnappliedInsert(
+    const std::string& statement, bool split_target) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The statement has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  ASSERT_OK(SetUpClusters(SetupParams{.create_vector_extension = true}));
+  // The poller recreated for the split children resumes from the cdc_state checkpoint. Keep it
+  // current, so the statement is not replicated again after the split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  constexpr auto kCreateTable =
+      "CREATE TABLE vec_tbl (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS";
+  ASSERT_OK(p_conn.Execute(kCreateTable));
+  ASSERT_OK(c_conn.Execute(kCreateTable));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(p_conn.Execute(
+      "CREATE INDEX vec_idx ON vec_tbl USING ybhnsw (embedding vector_l2_ops)"));
+  constexpr int kNumRows = 10;
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO vec_tbl SELECT i, ARRAY[i, i, i]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto producer_table_id = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_tbl")).table_id();
+  auto producer_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(producer_cluster(), "vec_tbl", ListPeersFilter::kLeaders));
+  ASSERT_EQ(producer_peers.size(), 1);
+  auto producer_tablet = ASSERT_RESULT(producer_peers.front()->shared_tablet());
+  auto consumer_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(consumer_cluster(), "vec_tbl", ListPeersFilter::kLeaders));
+  ASSERT_EQ(consumer_peers.size(), 1);
+  const auto consumer_tablet_id = consumer_peers.front()->tablet_id();
+
+  // A refresh of the source's apply safe time waits for the committed insert to be applied, which
+  // holds back the replication of the statement. Refresh it only when no transaction is running.
+  const auto safe_time_frequency_ms = FLAGS_xcluster_consistent_wal_safe_time_frequency_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms) =
+      std::numeric_limits<uint32_t>::max();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin. The flag
+  // holds the applies of the target cluster too, which runs no transactions of its own here.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(p_conn.Execute("BEGIN"));
+  ASSERT_OK(p_conn.Execute("INSERT INTO vec_tbl VALUES (100, '[0.5, 0.5, 0.5]')"));
+  ASSERT_OK(p_conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The statement reads the row from the intents, and is applied on both sides.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(p_conn.Execute(statement));
+  ASSERT_OK(WaitFor([&producer_tablet]() {
+    return producer_tablet->transaction_participant()->GetNumRunningTransactions() == 1;
+  }, 10s * kTimeMultiplier, "Statement applied on the source"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto statement_op_id = producer_peers.front()->GetLatestLogEntryOpId();
+  ASSERT_OK(WaitFor([this, &producer_table_id, &producer_tablet, statement_op_id]()
+                        -> Result<bool> {
+    auto checkpoints = VERIFY_RESULT(GetProducerStreamCheckpoints(producer_table_id));
+    auto it = checkpoints.find(producer_tablet->tablet_id());
+    return it != checkpoints.end() && it->second.index >= statement_op_id.index;
+  }, kTimeout, "Statement applied on the target"));
+  ASSERT_EQ(producer_tablet->transaction_participant()->GetNumRunningTransactions(), 1);
+
+  if (split_target) {
+    ASSERT_OK(consumer_cluster()->FlushTablets());
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(consumer_cluster(), consumer_tablet_id));
+  }
+  // Still not applied, so the target has not received the apply record.
+  ASSERT_EQ(producer_tablet->transaction_participant()->GetNumRunningTransactions(), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitFor([&producer_tablet]() {
+    return producer_tablet->transaction_participant()->GetNumRunningTransactions() == 0;
+  }, MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier, "Insert applied"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms) =
+      safe_time_frequency_ms;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // A deleted row is back with a far vector, an updated one has it already. Either way, the old
+  // vector of the row would come first if its reverse mapping were live.
+  ASSERT_OK(p_conn.Execute(
+      "INSERT INTO vec_tbl VALUES (100, '[100, 100, 100]') ON CONFLICT DO NOTHING"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  constexpr auto kSearch = "SELECT id FROM vec_tbl ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5";
+  ASSERT_EQ(AsString(ASSERT_RESULT(p_conn.FetchRows<int32_t>(kSearch))), "[1, 2, 3, 4, 5]");
+  ASSERT_EQ(AsString(ASSERT_RESULT(c_conn.FetchRows<int32_t>(kSearch))), "[1, 2, 3, 4, 5]");
+}
+
+constexpr auto kDeleteUnappliedRow = "DELETE FROM vec_tbl WHERE id = 100";
+constexpr auto kUpdateUnappliedRow =
+    "UPDATE vec_tbl SET embedding = '[100, 100, 100]' WHERE id = 100";
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VectorIndexDeleteOfUnappliedInsert) {
+  TestVectorIndexChangeOfUnappliedInsert(kDeleteUnappliedRow, /* split_target= */ false);
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VectorIndexDeleteOfUnappliedInsertTargetSplit) {
+  TestVectorIndexChangeOfUnappliedInsert(kDeleteUnappliedRow, /* split_target= */ true);
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VectorIndexUpdateOfUnappliedInsertTargetSplit) {
+  TestVectorIndexChangeOfUnappliedInsert(kUpdateUnappliedRow, /* split_target= */ true);
+}
+
+// yb_xcluster_ddl_replication.replicated_ddls records the DDL each universe executed locally, and
+// xCluster deliberately does not replicate it, so its two sides hold different rows by design and
+// only the target carries a safe time row.
+//
+// It is reachable only here. The group never names it, since it has no stream, but expanding a
+// colocation parent lists by namespace rather than by tablet, which is wider than the colocated set
+// and picks up this table. Hashing it would report kDiverged -- not a spurious warning but the one
+// verdict that asserts data has been lost.
+TEST_F_EX(XClusterDBScopedTest, VerifyXClusterGroupExcludesReplicatedDdls,
+          XClusterDBScopedAutomaticModeTest) {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+  ASSERT_OK(SetUpClusters(param));
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(p_conn.Execute(
+      "CREATE TABLE coloc_tbl (k int PRIMARY KEY, v text) WITH (colocation_id = 44444)"));
+  ASSERT_OK(c_conn.Execute(
+      "CREATE TABLE coloc_tbl (k int PRIMARY KEY, v text) WITH (colocation_id = 44444)"));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const int kColocatedRows = 20;
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO coloc_tbl SELECT x, 'v' || x FROM generate_series(1, $0) x", kColocatedRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Looked up on both universes. The two hold unrelated table IDs for the same table, so a single
+  // ID would only ever match one side of an outcome and the assertion against the other side would
+  // be unfalsifiable.
+  auto find_tables = [this](client::YBClient* client) -> Result<std::pair<TableId, TableId>> {
+    master::NamespaceIdentifierPB ns;
+    ns.set_id(VERIFY_RESULT(GetNamespaceId(client)));
+    ns.set_database_type(YQL_DATABASE_PGSQL);
+    TableId replicated_ddls_id, colocated_id;
+    for (const auto& table : VERIFY_RESULT(client->ListUserTables(ns, /*include_indexes=*/true))) {
+      if (table.table_name() == "replicated_ddls") {
+        replicated_ddls_id = table.table_id();
+      } else if (table.table_name() == "coloc_tbl") {
+        colocated_id = table.table_id();
+      }
+    }
+    return std::make_pair(replicated_ddls_id, colocated_id);
+  };
+  const auto [source_replicated_ddls_id, colocated_table_id] =
+      ASSERT_RESULT(find_tables(producer_client()));
+  const auto [target_replicated_ddls_id, target_colocated_id] =
+      ASSERT_RESULT(find_tables(consumer_client()));
+  // If this table stopped being listed as a user table, the exclusion would still hold while
+  // testing nothing, so its presence in the listing is asserted rather than assumed.
+  ASSERT_FALSE(source_replicated_ddls_id.empty()) << "replicated_ddls not found on the source";
+  ASSERT_FALSE(target_replicated_ddls_id.empty()) << "replicated_ddls not found on the target";
+  ASSERT_FALSE(colocated_table_id.empty());
+  ASSERT_FALSE(target_colocated_id.empty());
+
+  auto out = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "verify_xcluster_group", kReplicationGroupId));
+  LOG(INFO) << "verify_xcluster_group output: " << out;
+
+  std::string summary_line;
+  uint64_t colocated_rows = 0;
+  for (const auto& line : StringSplit(out, '\n')) {
+    if (line.empty() || line[0] != '{') {
+      continue;
+    }
+    summary_line = line;
+    JsonDocument doc;
+    auto obj = ASSERT_RESULT(doc.Parse(line));
+    if (!obj["source_table_id"].IsValid()) {
+      continue;
+    }
+    const auto id = ASSERT_RESULT(obj["source_table_id"].GetString());
+    ASSERT_NE(id, source_replicated_ddls_id) << "sweep tried to verify replicated_ddls";
+    ASSERT_NE(ASSERT_RESULT(obj["target_table_id"].GetString()), target_replicated_ddls_id)
+        << "sweep paired something against replicated_ddls";
+    if (id == colocated_table_id) {
+      colocated_rows += ASSERT_RESULT(obj["source"]["row_count"].GetUint64());
+    }
+  }
+
+  JsonDocument summary_doc;
+  auto summary = ASSERT_RESULT(summary_doc.Parse(summary_line));
+  ASSERT_EQ(ASSERT_RESULT(summary["result"].GetString()), "kMatch");
+  // The excluded table must not resurface as a table one universe has and the other does not, which
+  // would trade a false kDiverged for a false kSchemaMismatch.
+  ASSERT_FALSE(summary["unpaired"].IsValid());
+  // The expansion still has to reach the colocated data it exists to reach.
+  ASSERT_EQ(colocated_rows, kColocatedRows);
+}
+
+// A target that is merely behind has to be kTryAgain, never kDiverged. The contrast with the
+// divergence test above: the sides hold different rows in both cases, and the command must not
+// confuse the causes.
+//
+// Only an explicit read time reaches this state, since a resolved one is the target's safe time and
+// cannot be ahead of it. A driver gets here by replaying a checkpointed read time.
+//
+// DumpTabletData's tablet-level wait does not catch it: that wait is on the tablet's own MVCC safe
+// time, which on a consumer moves forward with local Raft activity even when xCluster has applied
+// nothing, so the target hash would succeed over a genuinely incomplete row set.
+TEST_F(XClusterDBScopedTest, VerifyXClusterSliceReportsTryAgainWhenTargetIsBehind) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 20;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Freeze apply. Replication stays configured, so the target keeps a safe time; it just stops
+  // moving, which is what makes the read time below reproducibly ahead of it. The waits inside are
+  // what let the rows written next be known not to have reached the target, and the returned time
+  // be known to still be the safe time when it is used further down.
+  const auto frozen_safe_time = ASSERT_RESULT(FreezeXClusterApply());
+  ASSERT_OK(InsertRowsInProducer(kNumRows, 2 * kNumRows, producer_table_));
+
+  auto verify_at = [this](uint64_t read_ht) -> Result<JsonDocument> {
+    auto out = VERIFY_RESULT(CallAdmin(
+        consumer_cluster(), "verify_xcluster_slice", producer_table_->id(), consumer_table_->id(),
+        producer_cluster()->GetMasterAddresses(), read_ht));
+    LOG(INFO) << "verify_xcluster_slice output: " << out;
+    JsonDocument doc;
+    RETURN_NOT_OK(doc.Parse(out));
+    return doc;
+  };
+
+  const auto ahead =
+      consumer_cluster_.mini_cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  auto try_again_doc = ASSERT_RESULT(verify_at(ahead.ToUint64()));
+  auto try_again = try_again_doc.Root();
+  ASSERT_EQ(ASSERT_RESULT(try_again["result"].GetString()), "kTryAgain");
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(try_again["detail"].GetString()), "ahead of the target's xCluster safe time");
+  // Neither side may be hashed at all: a target hash here would return the rows it has applied so
+  // far, and comparing those against a complete source is exactly the false kDiverged this refuses.
+  ASSERT_FALSE(try_again["source"].IsValid());
+  ASSERT_FALSE(try_again["target"].IsValid());
+
+  // The guard rejects only read times the target has not reached. At the safe time itself -- its
+  // boundary -- the same still-lagging pair verifies normally, so this is not a blanket refusal to
+  // honour an explicit read time.
+  ASSERT_EQ(ASSERT_RESULT(TargetXClusterSafeTime()), frozen_safe_time);
+  ASSERT_LT(frozen_safe_time.ToUint64(), ahead.ToUint64());
+  auto matched_doc = ASSERT_RESULT(verify_at(frozen_safe_time.ToUint64()));
+  auto matched = matched_doc.Root();
+  ASSERT_EQ(ASSERT_RESULT(matched["result"].GetString()), "kMatch");
+  // Only the rows that had replicated before the freeze; the ones written after it are not part of
+  // this instant on either side.
+  ASSERT_EQ(ASSERT_RESULT(matched["source"]["row_count"].GetUint64()), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(matched["target"]["row_count"].GetUint64()), kNumRows);
+
+  ResumeXClusterApply();
 }
 
 TEST_F(XClusterDBScopedTest, CreateTable) {
@@ -452,6 +1905,50 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
   ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
 }
 
+// The first colocated table of a tablespace creates a colocation parent table. The target accepts
+// one only at setup, so the source refuses it once the database is replicated.
+void XClusterDBScopedTest::TestColocationParentCreatedAfterSetup() {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+  ASSERT_OK(SetUpClusters(param));
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  for (auto* conn : {&p_conn, &c_conn}) {
+    ASSERT_OK(conn->Execute("CREATE TABLESPACE tsp1 LOCATION '/data'"));
+    ASSERT_OK(conn->Execute(
+        "CREATE TABLE coloc_tbl (k int PRIMARY KEY) WITH (colocation_id = 44444)"));
+  }
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.Execute("CREATE TABLE coloc_tsp_tbl (k int PRIMARY KEY) TABLESPACE tsp1"),
+      "Cannot create a new colocation tablegroup");
+  ASSERT_EQ(ASSERT_RESULT(p_conn.FetchRow<int64_t>("SELECT count(*) FROM pg_yb_tablegroup")), 1);
+
+  // The database keeps replicating, and a tablegroup that was there at setup takes new tables.
+  constexpr auto kNewTable =
+      "CREATE TABLE coloc_tbl2 (k int PRIMARY KEY) WITH (colocation_id = 44445)";
+  ASSERT_OK(p_conn.Execute(kNewTable));
+  if (!UseAutomaticMode()) {
+    ASSERT_OK(c_conn.Execute(kNewTable));
+  }
+  ASSERT_OK(p_conn.Execute("INSERT INTO coloc_tbl2 SELECT generate_series(1, 10)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(c_conn.FetchRow<int64_t>("SELECT count(*) FROM coloc_tbl2")), 10);
+}
+
+TEST_F(XClusterDBScopedTest, ColocationParentCreatedAfterSetup) {
+  ASSERT_NO_FATALS(TestColocationParentCreatedAfterSetup());
+}
+
+TEST_F_EX(XClusterDBScopedTest, ColocationParentCreatedAfterSetupAutomaticMode,
+          XClusterDBScopedAutomaticModeTest) {
+  ASSERT_NO_FATALS(TestColocationParentCreatedAfterSetup());
+}
+
 // When disable_xcluster_db_scoped_new_table_processing is set make sure we do not checkpoint new
 // tables or add them to replication.
 TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
@@ -670,6 +2167,10 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
     ASSERT_OK(consumer_cluster()->StartSync());
   }
 
+  // The source deleted the streams of namespace2, so the target pollers for it fail. The
+  // replication group stays unhealthy until namespace2 is removed from the target as well.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = true;
+
   // It should still have both namespaces.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
@@ -686,6 +2187,9 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
 
   ASSERT_OK(target_xcluster_client.RemoveNamespaceFromUniverseReplication(
       kReplicationGroupId, source_namespace2_id_, UniverseUuid::Nil()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = false;
+
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
@@ -1079,9 +2583,7 @@ TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndexConcurrentDDL) {
   // Disable auto analyze becauses the query plan changes
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());

@@ -788,7 +788,7 @@ Status ApplyJsonbOperatorToArray(
     Slice jsonb, const Op& json_op, const JsonbHeader& jsonb_header,
     Slice* result, JEntry* element_metadata) {
   if(!json_op.operand().value().has_varint_value()) {
-    return STATUS_SUBSTITUTE(NotFound, "Couldn't apply json operator");
+    return STATUS_FORMAT(NotFound, "Couldn't apply json operator");
   }
 
   // For arrays, the argument needs to be an integer.
@@ -800,8 +800,8 @@ Status ApplyJsonbOperatorToArray(
   int64_t array_index = VERIFY_RESULT(varint.ToInt64());
 
   if (array_index < 0 || implicit_cast<size_t>(array_index) >= num_array_entries) {
-    return STATUS_SUBSTITUTE(NotFound, "Array index: $0 out of bounds [0, $1)",
-                             array_index, num_array_entries);
+    return STATUS_FORMAT(NotFound, "Array index: $0 out of bounds [0, $1)",
+                         array_index, num_array_entries);
   }
 
   RETURN_NOT_OK(GetArrayElement(array_index, jsonb, sizeof(jsonb_header),
@@ -815,7 +815,7 @@ Status ApplyJsonbOperatorToObject(
     Slice jsonb, const Op& json_op, const JsonbHeader& jsonb_header,
     Slice* result, JEntry* element_metadata) {
   if (!json_op.operand().value().has_string_value()) {
-    return STATUS_SUBSTITUTE(NotFound, "Couldn't apply json operator");
+    return STATUS_FORMAT(NotFound, "Couldn't apply json operator");
   }
 
   size_t num_kv_pairs = GetCount(jsonb_header);

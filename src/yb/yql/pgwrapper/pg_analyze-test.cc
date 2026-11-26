@@ -26,6 +26,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver.messages.h"
@@ -44,6 +45,7 @@
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(TEST_refresh_partitions_after_fetched_sample_blocks);
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
@@ -910,6 +912,79 @@ TEST_F(PgAnalyzeTest, AnalyzeSamplingNonColocatedWithConcurrentSplits) {
   for (const auto partitioning : test::PartitioningList()) {
     ASSERT_OK(TestAnalyzeWithConcurrentSplits(partitioning));
   }
+}
+
+// Block-based sampling should only scan rows inside the sample blocks. Rows that are deleted but
+// not compacted yet must not be scanned past the sample block end: before the fix, every fetch
+// scanned forward until the next visible row, so a large deleted range was fully scanned.
+// See https://github.com/yugabyte/yugabyte-db/issues/34946.
+TEST_F(PgAnalyzeTest, AnalyzeSamplingSkipsDeletedRowsOutsideSampleBlocks) {
+  constexpr auto kNumRows = ReleaseVsDebugVsAsanVsTsanVsApple(100000, 50000, 50000, 20000, 50000);
+  constexpr auto kNumDeletedRows = kNumRows * 4 / 5;
+  constexpr auto kTableName = "t";
+  // Sample size is 300 rows/blocks per statistics target unit.
+  constexpr auto kSampleStatisticsTarget = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Keep deleted rows in SST files.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  SetupSstParams();
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT, v TEXT, PRIMARY KEY (k ASC))", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, repeat('x', 32) FROM generate_series(1, $1) i",
+      kTableName, kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Delete a contiguous range of rows in the middle of the table.
+  const auto first_deleted = (kNumRows - kNumDeletedRows) / 2 + 1;
+  ASSERT_OK(conn.ExecuteFormat(
+      "DELETE FROM $0 WHERE k >= $1 AND k < $2",
+      kTableName, first_deleted, first_deleted + kNumDeletedRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  const auto num_data_blocks = ASSERT_RESULT(GetNumDataBlocks(table_id));
+  constexpr auto kNumSampleBlocks = kRowsInDefaultStatisticsTargetUnit * kSampleStatisticsTarget;
+  // Sample blocks have to cover a small part of the table for the check below to make sense.
+  ASSERT_GT(num_data_blocks, 10 * kNumSampleBlocks);
+
+  auto get_obsolete_keys_found = [this, &table_id] {
+    int64_t result = 0;
+    for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (tablet) {
+        result += tablet->metrics()->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound);
+      }
+    }
+    return result;
+  };
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_sampling_algorithm = $0",
+      GetYbSamplingAlgorithm(YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING)));
+  ASSERT_OK(conn.ExecuteFormat("SET default_statistics_target = $0", kSampleStatisticsTarget));
+
+  const auto obsolete_keys_found_before = get_obsolete_keys_found();
+  ASSERT_OK(conn.ExecuteFormat("ANALYZE $0", kTableName));
+  const auto obsolete_keys_found = get_obsolete_keys_found() - obsolete_keys_found_before;
+  LOG(INFO) << "num_data_blocks: " << num_data_blocks
+            << " obsolete_keys_found: " << obsolete_keys_found;
+
+  // With sample-block bounds, only deleted rows inside the sample blocks are scanned. That is
+  // well below the number of deleted rows, which were all scanned without the bounds.
+  ASSERT_LT(obsolete_keys_found, kNumDeletedRows / 4);
+
+  // Statistics are still collected from the rows that are left.
+  constexpr auto kNumLiveRows = kNumRows - kNumDeletedRows;
+  const auto reltuples = ASSERT_RESULT(conn.FetchRow<float>(Format(
+      "SELECT reltuples FROM pg_class WHERE relname = '$0'", kTableName)));
+  LOG(INFO) << "reltuples: " << reltuples << " live rows: " << kNumLiveRows;
+  ASSERT_GT(reltuples, 0.5 * kNumLiveRows);
+  ASSERT_LT(reltuples, 2.0 * kNumLiveRows);
 }
 
 } // namespace yb::pgwrapper

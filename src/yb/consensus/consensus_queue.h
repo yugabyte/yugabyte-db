@@ -157,8 +157,24 @@ class PeerMessageQueue {
     // movement.
     OpId last_received = yb::OpId::Min();
 
+    // The WAL pin metadata requested by this peer, applicable to PRE_VOTERs alone.
+    struct RequestedWalPinInfo {
+      OpId op_id = OpId::Max();
+      // Voter majority-replicated op id at last_pinned_time.
+      OpId majority_replicated_op_id = OpId::Max();
+      MonoTime last_pinned_time = MonoTime::kUninitialized;
+
+      std::string ToString() const {
+        return YB_STRUCT_TO_STRING(op_id, majority_replicated_op_id, last_pinned_time);
+      }
+    };
+    RequestedWalPinInfo requested_wal_pin_info;
+
     // The last committed index this peer knows about.
     int64_t last_known_committed_idx;
+
+    // The committed index sent to this peer in the last request built for it.
+    int64_t last_sent_committed_idx = OpId::Min().index;
 
     // The ID of the operation last applied by this peer.
     OpId last_applied;
@@ -166,9 +182,9 @@ class PeerMessageQueue {
     // Whether the last exchange with this peer was successful.
     bool is_last_exchange_successful = false;
 
-    // The time of the last communication with the peer.
-    // Defaults to the time of construction, so does not necessarily mean that
-    // successful communication ever took place.
+    // Last time we heard from this peer (RPC response or NotifyPeerIsResponsiveDespiteError).
+    // Defaults to construction time, so a just-tracked peer is treated as live. Not reset when
+    // SetLeaderMode re-enters LEADER mode on a config change.
     MonoTime last_successful_communication_time;
 
     // Leader lease expiration from this follower's point of view.
@@ -192,6 +208,10 @@ class PeerMessageQueue {
     PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
 
     uint64_t num_sst_files = 0;
+
+    // On the leader's own entry, only valid while picking a remote bootstrap source, which sets it.
+    // Local appends reset it to false.
+    bool pending_post_split_compaction = false;
 
     std::optional<CloudInfoPB> cloud_info;
 
@@ -294,7 +314,23 @@ class PeerMessageQueue {
       LWReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
       PeerMemberType* member_type = nullptr,
-      bool* last_exchange_successful = nullptr);
+      bool* last_exchange_successful = nullptr,
+      // Set when the packed UpdateConsensus batch would advance this peer through the current
+      // majority_replicated_op_id (used to gate PRE_VOTER / PRE_OBSERVER promotion).
+      bool* batch_reaches_majority_replicated = nullptr);
+
+  struct WalGcPeerRetentionInfo {
+    OpId majority_replicated_op_id = OpId::Max();
+    OpId min_progressing_pre_voter_op_id = OpId::Max();
+  };
+
+  // Recomputes WAL-GC retention components from current queue state without mutating cached
+  // majority_replicated_op_id or notifying observers.
+  // - majority_replicated_op_id is the live voter majority watermark when available.
+  // - min_progressing_pre_voter_op_id is the min last_received among PRE_VOTER peers that are
+  //   either within retain_wal_secs_for_progressing_prevoter of their last WAL pin, or have
+  //   advanced at least as far as the voter majority since that pin (which renews the pin).
+  WalGcPeerRetentionInfo GetWalGcPeerRetentionInfo();
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
   // bootstrap, returns a non-OK status.  On success, also internally resets
@@ -303,7 +339,8 @@ class PeerMessageQueue {
       const std::string& uuid,
       StartRemoteBootstrapRequestPB* req);
 
-  // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer.
+  // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer,
+  // preferring one without pending post-split compaction.
   // Reutrns NULL if all tracked peers in the peers_map_ don't have CloudInfoPB specified.
   Result<const TrackedPeer*> FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
       REQUIRES(queue_lock_);
@@ -337,6 +374,9 @@ class PeerMessageQueue {
 
   OpId TEST_GetCommittedIndex() const;
 
+  // Returns the last op replicated to all tracked peers, or OpId::Min() if not in leader mode.
+  OpId GetAllReplicatedOpId() const;
+
   OpId GetAllAppliedOpId() const;
 
   // Returns the current majority replicated OpId, for tests.
@@ -360,9 +400,15 @@ class PeerMessageQueue {
 
   Status UnRegisterObserver(PeerMessageQueueObserver* observer);
 
-  bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
+  virtual bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
-  OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
+  // True if we have heard from this peer within follower_unavailable_considered_failed_sec.
+  // Based on last_successful_communication_time, which is not reset on config change.
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  bool IsPeerLive(const std::string& peer_uuid) const;
+
+  virtual OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
 
   // Choose an up-to-date peer for leader elections that do not specify a new_leader_uuid. Any VOTER
   // would be valid, but we pick from those with the highest op id to minimize how long the leader
@@ -423,6 +469,8 @@ class PeerMessageQueue {
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  Result<OpId> LookupOpId(int64_t op_index) const;
+
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
 
@@ -482,6 +530,9 @@ class PeerMessageQueue {
     // The index of the last operation replicated to a majority.  This is usually the same as
     // 'committed_op_id' but might not be if the terms changed.
     OpId majority_replicated_op_id = OpId::Min();
+
+    // The majority-replicated op id observed during the previous WAL-GC retention pass.
+    OpId previous_wal_gc_majority_replicated_op_id = OpId::Max();
 
     // The index of the last operation to be considered committed.
     OpId committed_op_id = OpId::Min();
@@ -665,9 +716,6 @@ struct MajorityReplicatedData {
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
   uint64_t num_sst_files;
-
-  // Update was caused by the following peer, that received all operations.
-  TabletServerId peer_got_all_ops;
 
   std::string ToString() const;
 };

@@ -16,6 +16,7 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
@@ -25,8 +26,8 @@
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(disable_global_object_locks);
 DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb::tserver {
 
@@ -107,6 +108,8 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
   Status InitPGConnection() override { return Status::OK(); }
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace() override { return safe_time_ht_; }
+
+  Result<HybridTime> GetPublishedXClusterSafeTime() override { return HybridTime::kInvalid; }
 
   Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
       const HybridTime& commit_time) override {
@@ -401,7 +404,7 @@ class XClusterTransactionalDDLQueueHandlerMockedTest
   void SetUp() override {
     XClusterDDLQueueHandlerMockedTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_enable_transactional_ddl) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
   }
 };
 
@@ -538,6 +541,29 @@ TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLSingleDDL
   ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 1);
   ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_TRUE(ddl_queue_handler.txn_control_queries_.empty());
+}
+
+// With global object locks off, the backend that replays the DDLs cannot run them as one
+// transaction, so the batch must not be wrapped in BEGIN/COMMIT either.
+TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, NoWrappingWithGlobalObjectLocksOff) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_global_object_locks) = true;
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  const auto ht1 = HybridTime(1, 1);
+  const auto ddl_end_time1 = HybridTime(1, 0).ToUint64();
+  const auto ddl_end_time2 = HybridTime(1, 0).ToUint64() + 1;
+  int query_id = 1;
+
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1, query_id, ConstructJson(1, kDDLCommandCreateTable));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time2, query_id + 1, ConstructJson(1, kDDLCommandCreateIndex));
+  ddl_queue_handler.safe_time_ht_ = ht1;
+
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 2);
   ASSERT_TRUE(ddl_queue_handler.txn_control_queries_.empty());
 }
 

@@ -49,7 +49,6 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -403,7 +402,8 @@ YB_DEFINE_ENUM(StateChangeReason,
     (FOLLOWER_NO_OP_COMPLETE)
     (LEADER_CONFIG_CHANGE_COMPLETE)
     (FOLLOWER_CONFIG_CHANGE_COMPLETE)
-    (DELETE_TABLET_CAS_FAILED));
+    (DELETE_TABLET_CAS_FAILED)
+    (TIER_MIGRATION_STATE_CHANGED));
 
 class Consensus::ConsensusFaultHooks {
  public:

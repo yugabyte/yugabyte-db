@@ -1,4 +1,5 @@
 (() => {
+  const activeGroups = window.OnetrustActiveGroups || '';
   const bannerClosed = browserCookieUtils.getCookie('closeAISearchBanner');
   const crossButton = document.querySelector('.search-banner .cross-btn');
 
@@ -12,7 +13,14 @@
   if (crossButton) {
     crossButton.addEventListener('click', (event) => {
       event.currentTarget.parentNode.classList.add('hidden');
-      browserCookieUtils.setCookie('closeAISearchBanner', 1);
+      if (activeGroups.indexOf('C0003') > -1) {
+        browserCookieUtils.setCookie('closeAISearchBanner', 1, {
+          timeToLive: 1,
+          unit: 'month',
+          sameSite: 'Strict',
+          secure: true,
+        });
+      }
     });
   }
 })();

@@ -69,10 +69,11 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
 
   @Override
   protected void freezeUniverseInTxn(Universe universe) {
-    super.freezeUniverseInTxn(universe);
+    // Set before the parent persists the task params, so that a retry resolves the same cluster.
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     taskParams().azUuid = currentNode.azUuid;
     taskParams().placementUuid = currentNode.placementUuid;
+    super.freezeUniverseInTxn(universe);
   }
 
   @Override
@@ -126,6 +127,15 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       // is down externally for >15 minutes and the master leader then marks the node down for
       // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Configure cross-cloud federated IAM on the cluster's nodes (so the replacement is set up)
+      // only if the universe is already federated.
+      if (isUniverseFederationConfigured()) {
+        createConfigureCloudFederationTasks(
+            taskParamsCluster.userIntent,
+            taskParams().getNodesInCluster(taskParamsCluster.uuid),
+            true);
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

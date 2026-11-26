@@ -160,7 +160,8 @@ extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 										 TupleTableSlot *slot,
 										 ExprState *eqcomp,
 										 FmgrInfo *hashfunctions,
-										 AttrNumber *keyColIdx);
+										 AttrNumber *keyColIdx,
+										 ExprState **yb_keyColExprs);
 extern void ResetTupleHashTable(TupleHashTable hashtable);
 
 /*
@@ -209,6 +210,7 @@ extern void ExecutorEnd(QueryDesc *queryDesc);
 extern void standard_ExecutorEnd(QueryDesc *queryDesc);
 extern void ExecutorRewind(QueryDesc *queryDesc);
 extern bool ExecCheckRTPerms(List *rangeTable, bool ereport_on_violation);
+extern bool ExecCheckRTEPerms(RangeTblEntry *rte);
 extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation);
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  Relation resultRelationDesc,
@@ -694,7 +696,7 @@ extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
 											   ExprContext *expr_cxt,
 											   bool use_variable_hash_iv);
 extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
-								  EState *estate);
+								  bool persist_missing_row, EState *estate);
 extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 									 TupleTableSlot *slot,
 									 Datum ybctid,

@@ -7,6 +7,7 @@
 \i :filename
 
 CREATE INDEX NONCONCURRENTLY bkt_tbl_expr_idx ON bkt_tbl ((yb_hash_code(r3, r2, r4, r5, r1) % 3) ASC, r1, r2, r3, r4, r5);
+ANALYZE bkt_tbl;
 
 CREATE ROLE regress_merge_scan_rls_user;
 GRANT SELECT ON bkt_tbl TO regress_merge_scan_rls_user;
@@ -51,7 +52,67 @@ RESET ROLE;
 -- the clause, and merge scan engages.
 \i :run_query
 
+-- A policy that breaks an EquivalenceClass.  d = t uses the date = timestamp
+-- operator, which is not leakproof, so under RLS the planner cannot derive a
+-- constant for d from the query's t = 2020-01-02.  It still treats d as
+-- constant for the sort order, but d has no index condition, so it is not a
+-- stream key, and the merge sorts on d as well.  Here, d = t and the query's t
+-- filter both run as storage filters within each stream, so the comparisons on
+-- d always tie.
+CREATE TABLE rls_ec_tbl (s int, d date, c int, t timestamp,
+    PRIMARY KEY (s ASC, d ASC, c ASC));
+INSERT INTO rls_ec_tbl
+    SELECT i % 3, date '2020-01-01' + (i % 4), i,
+        timestamp '2020-01-01' + (i % 4) * interval '1 day'
+    FROM generate_series(1, 300) i;
+INSERT INTO rls_ec_tbl VALUES
+    (1, date '2020-01-02', 1000, timestamp '2020-01-05'),
+    (2, date '2020-01-01', 1001, timestamp '2020-01-02');
+ANALYZE rls_ec_tbl;
+GRANT SELECT ON rls_ec_tbl TO regress_merge_scan_rls_user;
+ALTER TABLE rls_ec_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rls_ec_tbl_policy ON rls_ec_tbl
+    FOR SELECT TO regress_merge_scan_rls_user USING (d = t);
+
+SET ROLE regress_merge_scan_rls_user;
+-- Third hint turns sort off so that the merge scan is chosen.
+\set Q1 ':off'
+\set Q2 ':on'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
+\i :run_query
+-- The same broken EquivalenceClass, with the query also holding d at
+-- 2020-01-02.  date = date is leakproof, so that clause binds d as an index
+-- condition, and d is a stream key.
+\set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
+\i :run_query
+RESET ROLE;
+
+-- A policy operator that cannot be pushed down.  rls_tz_tbl is rls_ec_tbl with
+-- d timestamp and t timestamptz.  timestamp = timestamptz is not leakproof, so
+-- under RLS it breaks the class like date = timestamp.  It is also stable, so
+-- the policy's filter stays local with expression pushdown on.  The row (2,
+-- 2020-01-01, 1001, 2020-01-02) fails it and comes first in stream s = 2, so
+-- the merge must sort on d.
+SET TimeZone = 'UTC';
+CREATE TABLE rls_tz_tbl (s int, d timestamp, c int, t timestamptz,
+    PRIMARY KEY (s ASC, d ASC, c ASC));
+INSERT INTO rls_tz_tbl SELECT s, d, c, t FROM rls_ec_tbl;
+ANALYZE rls_tz_tbl;
+GRANT SELECT ON rls_tz_tbl TO regress_merge_scan_rls_user;
+ALTER TABLE rls_tz_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rls_tz_tbl_policy ON rls_tz_tbl
+    FOR SELECT TO regress_merge_scan_rls_user USING (d = t);
+
+SET ROLE regress_merge_scan_rls_user;
+\set query ':P :Q SELECT c, s, d FROM rls_tz_tbl WHERE s IN (1, 2) AND t = timestamptz \'2020-01-02 00:00:00+00\' ORDER BY c LIMIT 4;'
+\i :run_query
+\unset Q3
+RESET ROLE;
+RESET TimeZone;
+
 -- Cleanup
+DROP TABLE rls_ec_tbl, rls_tz_tbl;
 DROP POLICY bkt_tbl_rls_policy ON bkt_tbl;
 ALTER TABLE bkt_tbl DISABLE ROW LEVEL SECURITY;
 REVOKE SELECT ON bkt_tbl FROM regress_merge_scan_rls_user;

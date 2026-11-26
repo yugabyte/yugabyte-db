@@ -25,12 +25,15 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -63,13 +66,16 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
   }
 
   private final OperatorStatusUpdater kubernetesStatus;
+  private final PerfAdvisorService perfAdvisorService;
 
   @Inject
   protected CreateKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      PerfAdvisorService perfAdvisorService) {
     super(baseTaskDependencies);
     this.kubernetesStatus = operatorStatusUpdaterFactory.create();
+    this.perfAdvisorService = perfAdvisorService;
   }
 
   @Override
@@ -103,6 +109,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                         "Error while checking preview flags on cluster: " + cluster.uuid);
                   }
                 });
+        // Fail before any pods are created rather than leave the universe up but unregistered.
+        perfAdvisorService.validateAutoRegistrationMemory(universe);
       }
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       boolean cacheYCQLAuthPass =
@@ -240,6 +248,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                 .collect(Collectors.toSet());
       }
 
+      // WaitForServer builds its client once, so the cert must exist before it starts.
+      createWaitForRpcClientCertTask(getUniverse());
+
       // Wait for new tablet servers to be responsive.
       Set<NodeDetails> allTserversAdded = new HashSet<>();
       allTserversAdded.addAll(tserversAdded);
@@ -297,11 +308,20 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     stableYbcVersion);
       }
 
+      createRecordNodeExporterTlsTask(primaryCluster.userIntent.ybSoftwareVersion);
+
       createConfigureUniverseTasks(
           primaryCluster,
           null /* masterNodes */,
           allTserversAdded /* newTservers */,
           nonRestartMasterGflagUpgrade);
+
+      if (confGetter.getConfForScope(
+          Customer.get(universe.getCustomerId()), CustomerConfKeys.paAutoRegistrationEnabled)) {
+        createRegisterUniverseWithPaCollectorTask(universe.getUniverseUUID())
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       // This also flips universeDetails.creationSucceeded to true (see UniverseUpdateSucceeded)
       // which is what gates health checks and alert definition creation for this universe.

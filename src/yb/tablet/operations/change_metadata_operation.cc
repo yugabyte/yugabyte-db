@@ -161,6 +161,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     REMOVE_TABLE,
     BACKFILL_DONE,
     ADD_MULTIPLE_TABLES,
+    NON_CONCURRENT_INDEX_DONE,
   };
 
   MetadataChange metadata_change = MetadataChange::NONE;
@@ -169,6 +170,17 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
   if (request()->has_schema()) {
     const auto& schema = request()->schema();
     metadata_change = MetadataChange::SCHEMA;
+    // The table could have been removed by an earlier op, e.g. hidden table cleanup after PITR
+    // racing with a heartbeat-triggered alter. Same lookup as Tablet::AlterSchema.
+    auto table_info = tablet->metadata()->GetTableInfo(
+        request()->has_alter_table_id() ? request()->alter_table_id().ToBuffer() : "");
+    if (!table_info.ok()) {
+      if (!table_info.status().IsNotFound()) {
+        return table_info.status();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Skipping alter of removed table: " << table_info.status();
+      return Status::OK();
+    }
     if (schema.has_colocated_table_id()) {
       switch (schema.colocated_table_id().value_case()) {
         case ColocatedTableIdentifierPB::kCotableId: {
@@ -215,6 +227,13 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     }
   }
 
+  if (request()->has_mark_non_concurrent_index_done()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::NON_CONCURRENT_INDEX_DONE;
+    }
+  }
+
   if (!request()->add_multiple_tables().empty()) {
     metadata_change = MetadataChange::NONE;
     if (++num_operations == 1) {
@@ -252,12 +271,34 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
                                    << num_operations;
       RETURN_NOT_OK(tablet->RemoveTable(request()->remove_table_id().ToBuffer(), id));
       break;
-    case MetadataChange::BACKFILL_DONE:
+    // For BACKFILL_DONE and NON_CONCURRENT_INDEX_DONE, the index table could have been removed by
+    // an earlier op, e.g. a DROP INDEX on a colocated table racing with the master's RPC. Nothing
+    // is left to update then, and failing a replicated op is fatal, so skip it.
+    case MetadataChange::BACKFILL_DONE: {
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->MarkBackfillDone(
-          id, request()->backfill_done_table_id().ToBuffer()));
+      auto status = tablet->MarkBackfillDone(
+          id, request()->backfill_done_table_id().ToBuffer(), request()->birth_time());
+      if (status.IsNotFound()) {
+        LOG_WITH_PREFIX(WARNING) << "Skipping backfill done of removed table: " << status;
+        break;
+      }
+      RETURN_NOT_OK(status);
       break;
+    }
+    case MetadataChange::NON_CONCURRENT_INDEX_DONE: {
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      auto status = tablet->MarkNonConcurrentIndexDone(
+          id, request()->backfill_done_table_id().ToBuffer(), request()->birth_time());
+      if (status.IsNotFound()) {
+        LOG_WITH_PREFIX(WARNING) << "Skipping non-concurrent index done of removed table: "
+                                 << status;
+        break;
+      }
+      RETURN_NOT_OK(status);
+      break;
+    }
     case MetadataChange::ADD_MULTIPLE_TABLES:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;

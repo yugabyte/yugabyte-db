@@ -5,7 +5,7 @@ package com.yugabyte.yw.forms;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.datadoghq.com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,6 +39,38 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   public Map<String, String> tserverGFlags;
 
   @JsonIgnore GFlagsValidation gFlagsValidation;
+
+  @Override
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
+    super.verifyParams(universe, nodeState, isFirstTry);
+    if (upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
+      Set<String> changedNonRollingOnlyGFlags = getChangedNonRollingOnlyGFlags(universe);
+      if (!changedNonRollingOnlyGFlags.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "GFlags %s can only be changed using NON_ROLLING_UPGRADE",
+                String.join(", ", changedNonRollingOnlyGFlags)));
+      }
+    }
+    if (isFirstTry
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth) {
+      Collection<Cluster> newClusters = getNewVersionsOfClusters(universe).values();
+      if (!GFlagsUtil.getChangedGFlags(
+                  universe.getUniverseDetails().clusters, newClusters, GFlagsUtil.YSQL_HBA_GFLAGS)
+              .isEmpty()
+          && GFlagsUtil.hasYsqlHbaGFlags(newClusters)) {
+        throw new PlatformServiceException(BAD_REQUEST, GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
+  }
+
+  public Set<String> getChangedNonRollingOnlyGFlags(Universe universe) {
+    return GFlagsUtil.getChangedGFlags(
+        universe.getUniverseDetails().clusters,
+        getNewVersionsOfClusters(universe).values(),
+        GFlagsUtil.GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE);
+  }
 
   protected boolean verifyGFlagsHasChanges(Universe universe) {
     if (isUsingSpecificGFlags(universe)) {
@@ -99,8 +132,12 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
       }
+      GFlagsUtil.validateGFlagValues(newCluster.userIntent);
       GFlagsUtil.validateFipsCompliancy(
           newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(
+          newCluster.userIntent,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useNodeToNodeClientCerts);
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
         for (NodeDetails nodeDetails : universe.getNodesInCluster(curCluster.uuid)) {
@@ -150,6 +187,12 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
           Http.Status.BAD_REQUEST, "Cannot delete gFlags through non-restart upgrade option.");
     }
     GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
+    GFlagsUtil.checkNoLineBreaks(masterGFlags);
+    GFlagsUtil.checkNoLineBreaks(tserverGFlags);
+    if (universe.getUniverseDetails().fipsEnabled) {
+      GFlagsUtil.checkFipsGFlagNotDisabled("master gflags", masterGFlags);
+      GFlagsUtil.checkFipsGFlagNotDisabled("tserver gflags", tserverGFlags);
+    }
     return true;
   }
 

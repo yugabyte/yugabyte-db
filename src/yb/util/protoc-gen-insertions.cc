@@ -39,7 +39,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
 
 using std::string;
 
@@ -60,7 +60,7 @@ class InsertAnnotations : public ::google::protobuf::compiler::CodeGenerator {
     // Determine the file name we will substitute into.
     string path_no_extension;
     if (!TryStripSuffixString(file->name(), kProtoExtension, &path_no_extension)) {
-      *error = strings::Substitute("file name $0 did not end in $1", file->name(), kProtoExtension);
+      *error = Format("file name $0 did not end in $1", file->name(), kProtoExtension);
       return false;
     }
     string pb_file = path_no_extension + ".pb.cc";

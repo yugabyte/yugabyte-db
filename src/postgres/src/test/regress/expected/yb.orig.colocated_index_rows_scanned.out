@@ -1,0 +1,50 @@
+--
+-- Rows scanned of a secondary index scan of a colocated table, where DocDB
+-- reads the index and the table in one request.  A row that the condition of
+-- the index filters out never reaches the table, so it is not a row scanned in
+-- the table.
+--
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set _echo_parameterized_query :ECHO
+\set ECHO none
+CREATE DATABASE colo_rows_scanned WITH COLOCATION = true;
+\c colo_rows_scanned
+CREATE TABLE t (k INT PRIMARY KEY, a INT, b INT, c INT);
+INSERT INTO t SELECT i, 1, i, i FROM generate_series(1, 1000) AS i;
+CREATE INDEX idx ON t (a ASC, b ASC);
+-- Only the plan is of interest, so every iteration explains rather than runs.
+-- The first condition on the second index column is pushed down to the index,
+-- which filters out half of its rows, so the table is read for the other half
+-- only.  The second reads the table for every index row.
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)'
+\set Q1 'a = 1 AND b % 2 = 0'
+\set Q2 'a = 1'
+\set query ':explain /*+ IndexScan(t idx) */ SELECT c FROM t WHERE :Q;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t idx) */ SELECT c FROM t WHERE a = 1 AND b % 2 = 0;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Index Scan using idx on t (actual rows=500 loops=1)
+   Index Cond: (a = 1)
+   Storage Index Filter: ((b % 2) = 0)
+   Storage Table Rows Scanned: 500
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 1000
+(7 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t idx) */ SELECT c FROM t WHERE a = 1;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Scan using idx on t (actual rows=1000 loops=1)
+   Index Cond: (a = 1)
+   Storage Table Rows Scanned: 1000
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 1000
+(6 rows)
+

@@ -1,0 +1,421 @@
+# Copyright (c) YugabyteDB, Inc.
+#
+# Azure data disk discovery helpers.
+#
+# New Azure VM families expose remote OS/data disks through the
+# "MSFT NVMe Accelerator v1.0" controller and local temporary disks through
+# separate "Microsoft NVMe Direct Disk" controllers.  Kernel NVMe names are
+# not stable, so data disks must be selected by their Azure LUN.
+#
+# The caller defines:
+#   DEV_ROOT            (normally /dev)
+#   AZURE_DISK_ROOT     (normally /dev/disk/azure)
+#   SYS_CLASS_NVME      (normally /sys/class/nvme)
+#   SYS_CLASS_BLOCK     (normally /sys/class/block)
+#
+# AZURE_NVME_ID_COMMAND can optionally name azure-nvme-id. Set it to
+# "disabled" to force the sysfs fallback (used by tests).
+
+get_azure_nvme_id_command() {
+  local candidate=""
+
+  azure_nvme_id_command_rv=""
+
+  if [[ ${AZURE_NVME_ID_COMMAND+x} ]]; then
+    if [[ -n "$AZURE_NVME_ID_COMMAND" && "$AZURE_NVME_ID_COMMAND" != "disabled" ]]; then
+      azure_nvme_id_command_rv=$AZURE_NVME_ID_COMMAND
+      return 0
+    fi
+    return 1
+  fi
+
+  for candidate in /usr/sbin/azure-nvme-id /usr/bin/azure-nvme-id; do
+    if [[ -x "$candidate" ]]; then
+      azure_nvme_id_command_rv=$candidate
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Return values:
+#   0: azure-nvme-id positively matched this data disk and LUN.
+#   1: azure-nvme-id positively identified a different disk type or LUN.
+#   2: azure-nvme-id is unavailable or returned no identification metadata.
+azure_nvme_id_matches_lun() {
+  local device_path=$1
+  local expected_lun=$2
+  local output=""
+  local disk_type=""
+  local disk_lun=""
+  local key=""
+  local value=""
+
+  if ! get_azure_nvme_id_command; then
+    return 2
+  fi
+  if ! output=$(DEVNAME="$device_path" "$azure_nvme_id_command_rv" --udev 2>/dev/null); then
+    return 2
+  fi
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      AZURE_DISK_TYPE)
+        disk_type=$value
+        ;;
+      AZURE_DISK_LUN)
+        disk_lun=$value
+        ;;
+    esac
+  done <<< "$output"
+
+  if [[ -z "$disk_type" ]]; then
+    return 2
+  fi
+  if [[ "$disk_type" == "data" && "$disk_lun" == "$expected_lun" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+get_nvme_namespace_id() {
+  local controller_name=$1
+  local device_name=$2
+  local nsid_path=""
+
+  nvme_namespace_id_rv=""
+  for nsid_path in \
+    "$SYS_CLASS_NVME/$controller_name/$device_name/nsid" \
+    "$SYS_CLASS_BLOCK/$device_name/nsid" \
+    "$SYS_CLASS_BLOCK/$device_name/device/nsid"; do
+    if [[ -r "$nsid_path" ]]; then
+      IFS= read -r nvme_namespace_id_rv < "$nsid_path" || true
+      if [[ "$nvme_namespace_id_rv" =~ ^[0-9]+$ ]]; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+# Positively identify an Azure remote NVMe data disk for the requested LUN.
+# Local NVMe controllers never match this function.
+azure_nvme_device_matches_lun() {
+  local device_path=$1
+  local expected_lun=$2
+  local device_name=${device_path##*/}
+  local controller_index=""
+  local controller_name=""
+  local controller_path=""
+  local model=""
+  local vendor=""
+  local nvme_id_status=0
+
+  if ! [[ "$device_name" =~ ^nvme([0-9]+)n[0-9]+$ ]]; then
+    return 1
+  fi
+  controller_index=${BASH_REMATCH[1]}
+  controller_name="nvme${controller_index}"
+  controller_path="$SYS_CLASS_NVME/$controller_name"
+  if [[ ! -r "$controller_path/model" || ! -r "$controller_path/device/vendor" ]]; then
+    return 1
+  fi
+
+  IFS= read -r model < "$controller_path/model" || return 1
+  IFS= read -r vendor < "$controller_path/device/vendor" || return 1
+  model="${model%"${model##*[![:space:]]}"}"
+  vendor="${vendor%"${vendor##*[![:space:]]}"}"
+  vendor=${vendor,,}
+
+  if [[ "$vendor" != "0x1414" && "$vendor" != "1414" ]]; then
+    return 1
+  fi
+  # Local Azure NVMe disks are never managed YugabyteDB data disks, even if
+  # an incorrect udev link or utility output claims otherwise.
+  if [[ "$model" == "Microsoft NVMe Direct Disk" || \
+        "$model" == "Microsoft NVMe Direct Disk v2" ]]; then
+    return 1
+  fi
+
+  if azure_nvme_id_matches_lun "$device_path" "$expected_lun"; then
+    return 0
+  else
+    nvme_id_status=$?
+  fi
+  # Identification metadata is authoritative. Do not reinterpret a disk that
+  # azure-nvme-id explicitly classified as OS, local, or a different LUN.
+  if [[ $nvme_id_status -eq 1 ]]; then
+    return 1
+  fi
+
+  # azure-vm-utils derives LUNs for this controller in the same way:
+  # namespace 1 is the OS disk and namespace 2+ maps to LUN (namespace - 2).
+  # Keep this aligned with Azure/azure-vm-utils udev/80-azure-disk.rules.
+  if [[ "$model" != "MSFT NVMe Accelerator v1.0" ]]; then
+    return 1
+  fi
+  if ! get_nvme_namespace_id "$controller_name" "$device_name"; then
+    return 1
+  fi
+  if (( nvme_namespace_id_rv < 2 )); then
+    return 1
+  fi
+  (( nvme_namespace_id_rv - 2 == expected_lun ))
+}
+
+azure_device_is_known_non_data_disk() {
+  local device_path=$1
+  local canonical_device=""
+  local candidate=""
+  local canonical_candidate=""
+
+  canonical_device=$(readlink -e -- "$device_path" 2>/dev/null) || return 1
+  for candidate in \
+    "$AZURE_DISK_ROOT/os" \
+    "$AZURE_DISK_ROOT/root" \
+    "$AZURE_DISK_ROOT/resource" \
+    "$AZURE_DISK_ROOT"/local/by-index/* \
+    "$AZURE_DISK_ROOT"/local/by-name/* \
+    "$AZURE_DISK_ROOT"/local/by-serial/*; do
+    if [[ -e "$candidate" ]]; then
+      canonical_candidate=$(readlink -e -- "$candidate" 2>/dev/null || true)
+      if [[ -n "$canonical_candidate" && "$canonical_candidate" == "$canonical_device" ]]; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+azure_device_matches_lun() {
+  local device_path=$1
+  local expected_lun=$2
+  local device_name=${device_path##*/}
+
+  if azure_device_is_known_non_data_disk "$device_path"; then
+    return 1
+  fi
+  if [[ "$device_name" =~ ^nvme[0-9]+n[0-9]+$ ]]; then
+    azure_nvme_device_matches_lun "$device_path" "$expected_lun"
+    return
+  fi
+  # A SCSI device is accepted only after it was reached through an Azure
+  # data/scsi by-LUN link. Whole-disk validation is performed by the caller.
+  [[ "$device_name" =~ ^sd[a-z]+$ ]]
+}
+
+add_azure_data_disk_candidate() {
+  local candidate=$1
+  local expected_lun=$2
+  local canonical_candidate=""
+  local existing=""
+
+  [[ -e "$candidate" ]] || return 0
+  canonical_candidate=$(readlink -e -- "$candidate" 2>/dev/null || true)
+  [[ -n "$canonical_candidate" ]] || return 0
+
+  if ! azure_device_matches_lun "$canonical_candidate" "$expected_lun"; then
+    echo >&2 "Rejecting $candidate: it is not Azure data disk LUN $expected_lun."
+    return 0
+  fi
+
+  for existing in "${AZURE_DATA_DISK_CANDIDATES[@]}"; do
+    if [[ "$existing" == "$canonical_candidate" ]]; then
+      return 0
+    fi
+  done
+  AZURE_DATA_DISK_CANDIDATES+=("$canonical_candidate")
+}
+
+# Resolve one Azure LUN to exactly one current block-device path. Stable Azure
+# links are preferred. The sysfs scan is a fallback for images which predate
+# azure-vm-utils and therefore have no /dev/disk/azure NVMe links.
+resolve_azure_data_disk() {
+  local expected_lun=$1
+  local candidate=""
+  local candidate_count=0
+
+  AZURE_DATA_DISK=""
+  AZURE_DATA_DISK_CANDIDATES=()
+
+  add_azure_data_disk_candidate \
+    "$AZURE_DISK_ROOT/data/by-lun/$expected_lun" "$expected_lun"
+
+  for candidate in "$AZURE_DISK_ROOT"/scsi[1-9]*/lun"$expected_lun"; do
+    add_azure_data_disk_candidate "$candidate" "$expected_lun"
+  done
+
+  for candidate in "$DEV_ROOT"/nvme*n*; do
+    if [[ "${candidate##*/}" =~ ^nvme[0-9]+n[0-9]+$ ]]; then
+      add_azure_data_disk_candidate "$candidate" "$expected_lun"
+    fi
+  done
+
+  for candidate in "${AZURE_DATA_DISK_CANDIDATES[@]}"; do
+    candidate_count=$((candidate_count + 1))
+  done
+  if [[ $candidate_count -eq 0 ]]; then
+    echo >&2 "Unable to identify an Azure data disk for LUN $expected_lun."
+    echo >&2 "No valid Azure by-LUN link or remote NVMe namespace mapping was found."
+    return 1
+  fi
+  if [[ $candidate_count -ne 1 ]]; then
+    echo >&2 "Ambiguous Azure data disk mapping for LUN $expected_lun: ${AZURE_DATA_DISK_CANDIDATES[*]}"
+    return 1
+  fi
+
+  AZURE_DATA_DISK=${AZURE_DATA_DISK_CANDIDATES[0]}
+}
+
+# Atomically replace the fstab entry for a YBA-managed mount path. This keeps
+# the persisted UUID in sync after a disk replacement or filesystem creation
+# instead of allowing a direct mount to mask a stale reboot configuration.
+replace_fstab_mount_entry() {
+  local fstab_path=$1
+  local mount_path=$2
+  local device_uuid=$3
+  local file_system=$4
+  local fs_options=$5
+  local marker="#$mount_path"
+  local temp_fstab=""
+  local existing_fstab_entries=0
+
+  if [[ ! -f "$fstab_path" || -z "$device_uuid" ]]; then
+    echo >&2 "Cannot update $fstab_path for $mount_path without a filesystem UUID."
+    return 1
+  fi
+  existing_fstab_entries=$(awk -v mount_path="$mount_path" '
+      !/^[[:space:]]*#/ && NF >= 2 && $2 == mount_path { count++ }
+      END { print count + 0 }
+    ' "$fstab_path")
+  if [[ $existing_fstab_entries -gt 0 ]] && \
+     ! grep -Fqx -- "$marker" "$fstab_path"; then
+    echo >&2 "Refusing to replace a non-YBA fstab entry for $mount_path."
+    return 1
+  fi
+  temp_fstab=$(mktemp "${fstab_path}.ynp.XXXXXX") || return 1
+
+  if ! awk -v marker="$marker" -v mount_path="$mount_path" '
+      $0 == marker { next }
+      /^[[:space:]]*#/ { print; next }
+      NF >= 2 && $2 == mount_path { next }
+      { print }
+    ' "$fstab_path" > "$temp_fstab"; then
+    rm -f -- "$temp_fstab"
+    return 1
+  fi
+
+  printf '#%s\nUUID=%s %s %s %s 0 2\n' \
+    "$mount_path" "$device_uuid" "$mount_path" "$file_system" "$fs_options" \
+    >> "$temp_fstab"
+  chmod --reference="$fstab_path" "$temp_fstab"
+  if [[ $(id -u) -eq 0 ]]; then
+    chown --reference="$fstab_path" "$temp_fstab"
+  fi
+  if ! mv -f -- "$temp_fstab" "$fstab_path"; then
+    rm -f -- "$temp_fstab"
+    return 1
+  fi
+}
+
+validate_mount_paths() {
+  local mount_path=""
+  local canonical_mount_path=""
+  local existing=""
+  local existing_fstab_entries=0
+  local -a seen_mount_paths=()
+
+  if [[ ! -f "$FSTAB_PATH" ]]; then
+    echo >&2 "Cannot validate mount paths without $FSTAB_PATH."
+    return 1
+  fi
+  for mount_path in "${mounts[@]}"; do
+    case "$mount_path" in
+      /|/mnt|/mnt/resource|/mnt/resource/*|\
+      /bin|/bin/*|/boot|/boot/*|/dev|/dev/*|/etc|/etc/*|\
+      /home|/lib|/lib/*|/lib64|/lib64/*|/proc|/proc/*|\
+      /root|/root/*|/run|/run/*|/sbin|/sbin/*|/sys|/sys/*|\
+      /tmp|/tmp/*|/usr|/usr/*|/var)
+        echo >&2 "Refusing protected mount path: $mount_path"
+        return 1
+        ;;
+    esac
+    if ! [[ "$mount_path" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+      echo >&2 "Unsafe mount path: $mount_path"
+      return 1
+    fi
+
+    canonical_mount_path=$(realpath -m -- "$mount_path" 2>/dev/null || true)
+    if [[ -z "$canonical_mount_path" || "$canonical_mount_path" != "$mount_path" ]]; then
+      echo >&2 "Mount path is not canonical or traverses a symbolic link: $mount_path"
+      return 1
+    fi
+    if [[ "$mount_path" != "/data" && "$mount_path" != /data/* && \
+          "$mount_path" != /mnt/* ]]; then
+      echo >&2 "Cloud mount path is outside the approved /data and /mnt roots: $mount_path"
+      return 1
+    fi
+    for existing in "${seen_mount_paths[@]}"; do
+      if [[ "$existing" == "$mount_path" ]]; then
+        echo >&2 "Duplicate mount path: $mount_path"
+        return 1
+      fi
+      if [[ "$mount_path" == "$existing/"* || "$existing" == "$mount_path/"* ]]; then
+        echo >&2 "Overlapping mount paths are not allowed: $existing and $mount_path"
+        return 1
+      fi
+    done
+    seen_mount_paths+=("$mount_path")
+
+    existing_fstab_entries=$(awk -v mount_path="$mount_path" '
+        !/^[[:space:]]*#/ && NF >= 2 && $2 == mount_path { count++ }
+        END { print count + 0 }
+      ' "$FSTAB_PATH")
+    if [[ $existing_fstab_entries -gt 0 ]] && \
+       ! grep -Fqx -- "#$mount_path" "$FSTAB_PATH"; then
+      echo >&2 "Refusing to replace a non-YBA fstab entry for $mount_path."
+      return 1
+    fi
+  done
+}
+
+# If a requested Azure target is already a mount point, it must be backed by
+# the exact managed disk selected for that target before formatting can begin.
+validate_azure_mount_targets() {
+  local index=0
+  local mount_count=0
+  local mount_path=""
+  local mounted_device_id=""
+  local expected_device_id=""
+
+  for mount_path in "${mounts[@]}"; do
+    mount_count=$((mount_count + 1))
+  done
+  for (( index=0; index<mount_count; ++index )); do
+    mount_path=${mounts[index]}
+    mounted_device_id=$(findmnt -rn -M "$mount_path" -o MAJ:MIN 2>/dev/null || true)
+    if [[ -n "$mounted_device_id" ]]; then
+      expected_device_id=$(lsblk -dnro MAJ:MIN "${ephemerals[index]}" 2>/dev/null || true)
+      if [[ -z "$expected_device_id" || "$mounted_device_id" != "$expected_device_id" ]]; then
+        echo >&2 "$mount_path is mounted from a device other than Azure LUN ${AZURE_DEVICE_LUNS[index]}."
+        return 1
+      fi
+    fi
+  done
+}
+
+# Re-resolve immediately before filesystem operations so a selected Azure
+# device cannot be replaced by generic device-name enumeration.
+validate_azure_data_disk() {
+  local device_path=$1
+  local expected_lun=$2
+  local canonical_device=""
+
+  canonical_device=$(readlink -e -- "$device_path" 2>/dev/null) || return 1
+  resolve_azure_data_disk "$expected_lun" || return 1
+  if [[ "$canonical_device" != "$AZURE_DATA_DISK" ]]; then
+    echo >&2 "Azure LUN $expected_lun changed from $canonical_device to $AZURE_DATA_DISK."
+    return 1
+  fi
+  azure_device_matches_lun "$canonical_device" "$expected_lun"
+}

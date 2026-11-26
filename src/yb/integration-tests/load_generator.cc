@@ -33,10 +33,10 @@
 #include "yb/dockv/partial_row.h"
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug/leakcheck_disabler.h"
+#include "yb/util/format.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -49,7 +49,6 @@ using namespace std::literals;
 using std::atomic;
 using std::unique_ptr;
 
-using strings::Substitute;
 
 using std::shared_ptr;
 using std::string;
@@ -82,7 +81,7 @@ DEFINE_NON_RUNTIME_int32(load_gen_wait_time_increment_step_ms,
 namespace {
 
 string FormatWithSize(const string& s) {
-  return strings::Substitute("'$0' ($1 bytes)", s, s.size());
+  return yb::Format("'$0' ($1 bytes)", s, s.size());
 }
 
 }  // namespace
@@ -213,8 +212,8 @@ MultiThreadedAction::MultiThreadedAction(
 MultiThreadedAction::~MultiThreadedAction() {}
 
 string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
-  string key_index_str(Substitute("key$0", key_index));
-  return Substitute(
+  string key_index_str(Format("key$0", key_index));
+  return Format(
       "$0_$1_$2", FormatHexForLoadTestKey(std::hash<string>()(key_index_str)), key_index_str,
       client_id_);
 }

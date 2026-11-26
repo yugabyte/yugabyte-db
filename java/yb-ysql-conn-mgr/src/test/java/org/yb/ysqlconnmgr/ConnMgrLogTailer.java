@@ -13,6 +13,8 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.fail;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -124,6 +126,20 @@ public class ConnMgrLogTailer implements LogErrorListener {
         lock.wait(waitMs);
       }
     }
+  }
+
+  // Fails if any buffered line matches, i.e. if the connection manager complained.
+  public void assertNoMatch(String regex) {
+    Pattern pattern = Pattern.compile(regex);
+    synchronized (lock) {
+      for (String line : lines) {
+        if (pattern.matcher(line).find()) {
+          fail("Expected no connection manager log line matching '" + regex
+              + "', found: " + line);
+        }
+      }
+    }
+    LOG.info("assertNoMatch: no line matched '{}'", regex);
   }
 
   private static MiniYBDaemon findDaemonForIndex(MiniYBCluster cluster, int tserverIndex)

@@ -45,6 +45,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -58,9 +59,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
@@ -81,6 +85,9 @@ public class NodeAgent extends Model {
 
   private static final Set<State> INACTIVE_STATES =
       ImmutableSet.of(State.REGISTERING, State.REGISTERED);
+  private static final Set<State> UPGRADE_STATES = ImmutableSet.of(State.UPGRADE, State.UPGRADED);
+
+  public static final Duration INITIAL_SERVER_CERT_EXPIRY = Duration.ofDays(356);
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -183,10 +190,36 @@ public class NodeAgent extends Model {
   @Setter
   public static class Config {
     private String certPath;
-    private String serverCert;
-    private String serverKey;
-    private boolean offloadable;
-    private String compressor;
+    @Nullable private String serverCert;
+    @Nullable private String serverKey;
+    @Nullable private String serverCertLocalPath;
+    @Nullable private String serverKeyLocalPath;
+    @Nullable private String signerPublicKey;
+    @Nullable private String signerPrivateKey;
+    @Nullable private String compressor;
+    private long serverCertExpirySecs;
+  }
+
+  /** Deployment type for node agent deployment */
+  public enum DeployType {
+    FULL,
+    CERTS_ONLY,
+    BINARY_ONLY,
+  }
+
+  @Builder(toBuilder = true)
+  @Getter
+  @ToString
+  /** DeploymentContext represent both new install and upgrade input params */
+  public static class DeployContext {
+    // UUID of the certificate info for custom certs.
+    private UUID certificateUuid;
+    private DeployType deployType;
+
+    @JsonIgnore
+    public boolean isCustomCert() {
+      return certificateUuid != null;
+    }
   }
 
   public static final Finder<UUID, NodeAgent> finder =
@@ -196,7 +229,11 @@ public class NodeAgent extends Model {
   public static final String ROOT_CA_KEY_NAME = "ca.key.pem";
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
+  public static final String NODE_AGENT_CERT_NAME = "node_agent.crt";
+  public static final String NODE_AGENT_KEY_NAME = "node_agent.key";
   public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
+  public static final String SIGNER_PUBLIC_KEY_NAME = "signer.pub";
+  public static final String SIGNER_PRIVATE_KEY_NAME = "signer.key";
 
   @Id
   @ApiModelProperty(value = "Node agent UUID", accessMode = READ_ONLY)
@@ -255,6 +292,13 @@ public class NodeAgent extends Model {
   @Column(columnDefinition = "TEXT")
   @DbJson
   private YBAError lastError;
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Custom certificate UUID.",
+      accessMode = READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.7")
+  @Column(nullable = true)
+  private UUID certificateUuid;
 
   public enum SortBy implements PagedQuery.SortByIF {
     uuid("uuid"),
@@ -399,6 +443,7 @@ public class NodeAgent extends Model {
         .append("state", getState())
         .append("home", getHome())
         .append("version", getVersion())
+        .append("certificate", getCertificateUuid())
         .build();
   }
 
@@ -419,31 +464,51 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public byte[] getServerCert() {
-    Path serverCertPath = getCertDirPath().resolve(SERVER_CERT_NAME);
-    Objects.requireNonNull(serverCertPath, "Server cert must exist");
+  private byte[] getFileContent(String filename) {
+    Path filePath = getCertDirPath().resolve(filename);
+    Objects.requireNonNull(filePath, filename + " must exist");
     try {
-      return Files.readAllBytes(serverCertPath);
+      return Files.readAllBytes(filePath);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
+  /**
+   * @deprecated This should not be used for reading.
+   */
   @JsonIgnore
-  public byte[] getServerKey() {
-    Path serverKeyPath = getCertDirPath().resolve(SERVER_KEY_NAME);
-    Objects.requireNonNull(serverKeyPath, "Server key must exist");
-    try {
-      return Files.readAllBytes(serverKeyPath);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+  @Deprecated
+  public byte[] getServerKeyContent() {
+    if (getCertificateUuid() != null) {
+      throw new IllegalStateException("Server key content is not available for custom certs");
     }
+    return getFileContent(SERVER_KEY_NAME);
+  }
+
+  @JsonIgnore
+  public byte[] getSignerPublicKeyContent() {
+    return getFileContent(SIGNER_PUBLIC_KEY_NAME);
+  }
+
+  @JsonIgnore
+  public byte[] getSignerPrivateKeyContent() {
+    return getFileContent(SIGNER_PRIVATE_KEY_NAME);
   }
 
   public void saveState(State state) {
     updateInTxn(
         n -> {
           n.setState(state);
+          n.update();
+        });
+  }
+
+  public void finalizeRegistration(DeployContext deployContext) {
+    updateInTxn(
+        n -> {
+          n.setState(State.REGISTERED);
+          n.setCertificateUuid(deployContext.getCertificateUuid());
           n.update();
         });
   }
@@ -487,15 +552,21 @@ public class NodeAgent extends Model {
     delete();
   }
 
+  /**
+   * @deprecated This should not be used for reading.
+   */
   @JsonIgnore
-  public PrivateKey getPrivateKey() {
-    return CertificateHelper.getPrivateKey(new String(getServerKey()));
-  }
-
-  @JsonIgnore
-  public PublicKey getPublicKey() {
+  @Deprecated
+  public PublicKey getServerPublicKey() {
     try {
-      X509Certificate cert = getServerX509Cert();
+      if (getCertificateUuid() != null) {
+        throw new IllegalStateException("Server cert content is not available for custom certs");
+      }
+      CertificateFactory factory = CertificateFactory.getInstance("X.509");
+      X509Certificate cert =
+          (X509Certificate)
+              factory.generateCertificate(
+                  new ByteArrayInputStream(getFileContent(SERVER_CERT_NAME)));
       return cert.getPublicKey();
     } catch (RuntimeException e) {
       throw e;
@@ -505,24 +576,25 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public X509Certificate getServerX509Cert() {
-    try {
-      CertificateFactory factory = CertificateFactory.getInstance("X.509");
-      return (X509Certificate)
-          factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
-    } catch (RuntimeException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new RuntimeException(e.getMessage(), e);
+  public PrivateKey getSignerPrivateKey() {
+    Path signerPrivateKeyPath = getCertDirPath().resolve(SIGNER_PRIVATE_KEY_NAME);
+    if (!Files.exists(signerPrivateKeyPath) || getServerCertExpirySecs() <= 0L) {
+      // Capability check to detect older version for backward compatibility.
+      // Not a clean solution but this will go away.
+      return CertificateHelper.getPrivateKey(new String(getServerKeyContent()));
     }
+    return CertificateHelper.getPrivateKey(new String(getSignerPrivateKeyContent()));
   }
 
   @JsonIgnore
-  public Date getServerCertExpiry() {
-    // TODO Cache this to avoid doing expensive work in periodic calls.
-    return CertificateHelper.extractDatesFromCertBundle(
-            Collections.singletonList(getServerX509Cert()))
-        .getRight();
+  public PublicKey getSignerPublicKey() {
+    Path signerPublicKeyPath = getCertDirPath().resolve(SIGNER_PUBLIC_KEY_NAME);
+    if (!Files.exists(signerPublicKeyPath) || getServerCertExpirySecs() <= 0L) {
+      // Capability check to detect older version for backward compatibility.
+      // Not a clean solution but this will go away.
+      return getServerPublicKey();
+    }
+    return CertificateHelper.getPublicKey(new String(getSignerPublicKeyContent()));
   }
 
   @JsonIgnore
@@ -535,8 +607,16 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
+  public Path getServerKeyFilePath() {
+    return getCertDirPath().resolve(SERVER_KEY_NAME);
+  }
+
+  @JsonIgnore
   public Path getCaCertFilePath() {
-    return getCertDirPath().resolve(ROOT_CA_CERT_NAME);
+    UUID certificateUuid = getCertificateUuid();
+    return certificateUuid == null
+        ? getCertDirPath().resolve(ROOT_CA_CERT_NAME)
+        : Path.of(CertificateInfo.getOrBadRequest(certificateUuid).getCertificate());
   }
 
   @JsonIgnore
@@ -545,13 +625,8 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public Path getServerCertFilePath() {
-    return getCertDirPath().resolve(SERVER_CERT_NAME);
-  }
-
-  @JsonIgnore
-  public Path getServerKeyFilePath() {
-    return getCertDirPath().resolve(SERVER_KEY_NAME);
+  public long getServerCertExpirySecs() {
+    return getConfig().getServerCertExpirySecs();
   }
 
   @JsonIgnore
@@ -559,28 +634,41 @@ public class NodeAgent extends Model {
     return !INACTIVE_STATES.contains(getState());
   }
 
-  public void updateCertDirPath(Path certDirPath) {
-    updateCertDirPath(certDirPath, null);
+  @JsonIgnore
+  public boolean isUpgrading() {
+    return UPGRADE_STATES.contains(getState());
   }
 
-  public void updateCertDirPath(Path certDirPath, State state) {
+  @JsonIgnore
+  public boolean isCustomCert() {
+    return getCertificateUuid() != null;
+  }
+
+  public void updateCertDirPath(Path certDirPath) {
     updateInTxn(
         n -> {
-          if (state != null) {
-            n.setState(state);
-          }
+          n.getConfig().setCertPath(certDirPath.toString());
+          n.update();
+        });
+  }
+
+  public void rolloverCertInfo(Path certDirPath, State state, @Nullable UUID certificateUuid) {
+    updateInTxn(
+        n -> {
+          n.setState(state);
+          n.setCertificateUuid(certificateUuid);
           n.getConfig().setCertPath(certDirPath.toString());
           n.update();
         });
   }
 
   public void updateServerInfo(ServerInfo serverInfo) {
-    if (getConfig().isOffloadable() != serverInfo.getOffloadable()
+    if (getConfig().getServerCertExpirySecs() != serverInfo.getCertExpirySecs()
         || !Objects.equals(getConfig().getCompressor(), serverInfo.getCompressor())) {
       updateInTxn(
           n -> {
-            n.getConfig().setOffloadable(serverInfo.getOffloadable());
             n.getConfig().setCompressor(serverInfo.getCompressor());
+            n.getConfig().setServerCertExpirySecs(serverInfo.getCertExpirySecs());
             n.update();
           });
     }

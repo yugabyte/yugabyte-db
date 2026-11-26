@@ -28,6 +28,8 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -578,14 +580,20 @@ Status ReadPgAttributeWithReadTime(
   *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
   return Status::OK();
 }
+
+// The master's clock: CatalogManager::Clock() is only public through SnapshotCoordinatorContext.
+server::Clock* MasterClock(CatalogManager& catalog_manager) {
+  return static_cast<SnapshotCoordinatorContext&>(catalog_manager).Clock();
+}
 } // namespace
 
 PollTransactionStatusBase::PollTransactionStatusBase(
     const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
-    const std::string& description)
+    const std::string& description, server::Clock* clock)
     : transaction_(transaction),
       description_(description),
-      client_future_(std::move(client_future)) {
+      client_future_(std::move(client_future)),
+      clock_(clock) {
   sync_.StatusCB(Status::OK());
 }
 
@@ -633,7 +641,6 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
 
   RETURN_NOT_OK(sync_.Wait());
-  sync_.Reset();
 
   std::lock_guard l(rpc_mutex_);
   SCHECK(
@@ -649,6 +656,9 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
+  // Clear sync_ only once this rpc is certain to be sent, so that every path returning above leaves
+  // it signaled and a concurrent Shutdown() is not left waiting for a callback that never runs.
+  sync_.Reset();
   auto sync_cb = sync_.AsStdStatusCallback();
   auto callback = [this, rpc_handle, user_cb = std::move(sync_cb)](
                       Status status, const tserver::GetTransactionStatusResponsePB& resp) {
@@ -675,6 +685,9 @@ void PollTransactionStatusBase::TransactionReceived(
                              << ") failed with status " << txn_status;
     TransactionPending();
     return;
+  }
+  if (clock_ && resp.has_propagated_hybrid_time()) {
+    clock_->Update(HybridTime(resp.propagated_hybrid_time()));
   }
   if (resp.has_error()) {
     const Status s = StatusFromPB(resp.error().status());
@@ -714,7 +727,8 @@ NamespaceVerificationTask::NamespaceVerificationTask(
     rpc::Messenger& messenger, const LeaderEpoch& epoch)
     : MultiStepNamespaceTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, *ns, epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future), ns->ToString()),
+      PollTransactionStatusBase(
+          transaction, std::move(client_future), ns->ToString(), MasterClock(catalog_manager)),
       sys_catalog_(*sys_catalog) {
   completion_callback_ = [this,
                           complete_callback = std::move(complete_callback)](const Status& status) {
@@ -807,7 +821,9 @@ TableSchemaVerificationTask::TableSchemaVerificationTask(
     rpc::Messenger& messenger, const LeaderEpoch& epoch, bool ddl_atomicity_enabled)
     : MultiStepTableTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table), epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future), table_info_->ToString()),
+      PollTransactionStatusBase(
+          transaction, std::move(client_future), table_info_->ToString(),
+          MasterClock(catalog_manager)),
       sys_catalog_(*sys_catalog),
       ddl_atomicity_enabled_(ddl_atomicity_enabled) {
   completion_callback_ = [this,
@@ -938,7 +954,9 @@ DdlRequesterLivenessTask::DdlRequesterLivenessTask(
     const LeaderEpoch& epoch)
     : MultiStepTableTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table), epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future), table_info_->ToString()),
+      PollTransactionStatusBase(
+          transaction, std::move(client_future), table_info_->ToString(),
+          MasterClock(catalog_manager)),
       callbacks_(std::move(callbacks)) {}
 
 std::shared_ptr<DdlRequesterLivenessTask> DdlRequesterLivenessTask::CreateAndStartTask(

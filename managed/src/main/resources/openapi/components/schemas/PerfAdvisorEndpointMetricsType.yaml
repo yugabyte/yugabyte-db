@@ -1,0 +1,10 @@
+title: PerfAdvisorEndpointMetricsType
+description: |
+  PerfAdvisorEndpointMetricsType
+
+  The protocol the collector uses to send metrics to this destination.
+type: string
+enum:
+  - otlphttp
+  - remotewrite
+example: otlphttp

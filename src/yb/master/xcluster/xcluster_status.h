@@ -17,6 +17,7 @@
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/common_net.pb.h"
 
 namespace yb {
 
@@ -40,6 +41,7 @@ struct XClusterInboundReplicationGroupStatus {
   std::string state;
   XClusterReplicationType replication_type = XClusterReplicationType::XCLUSTER_NON_TRANSACTIONAL;
   std::string master_addrs;
+  google::protobuf::RepeatedPtrField<HostPortPB> source_master_addrs;
   bool disable_stream = false;
   uint32 compatible_auto_flag_config_version = 0;
   uint32 validated_remote_auto_flags_config_version = 0;
@@ -67,6 +69,7 @@ class XClusterOutboundReplicationGroupTableStatus : public XClusterOutboundTable
   }
   bool is_checkpointing = false;
   bool is_part_of_initial_bootstrap = false;
+  bool is_wal_anchor = false;
 };
 
 struct XClusterOutboundReplicationGroupNamespaceStatus {

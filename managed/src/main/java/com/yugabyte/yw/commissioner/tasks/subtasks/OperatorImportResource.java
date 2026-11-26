@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Release;
@@ -61,6 +62,7 @@ public class OperatorImportResource extends UniverseTaskBase {
       BACKUP_SCHEDULE,
       BACKUP,
       CERTIFICATE,
+      KMS_CONFIG,
     }
 
     public ResourceType resourceType;
@@ -91,6 +93,9 @@ public class OperatorImportResource extends UniverseTaskBase {
 
     // For certificate type
     public UUID certificateUUID;
+
+    // For KMS config type
+    public UUID kmsConfigUUID;
 
     // For secret type
     public String secretName;
@@ -171,6 +176,12 @@ public class OperatorImportResource extends UniverseTaskBase {
         // Validate certificate parameters
         log.warn("Certificate validation not implemented");
         break;
+      case KMS_CONFIG:
+        if (taskParams().kmsConfigUUID == null) {
+          throw new IllegalArgumentException("KMS config UUID must be provided");
+        }
+        KmsConfig.getOrBadRequest(taskParams().kmsConfigUUID);
+        break;
       default:
         throw new IllegalArgumentException("Unknown resource type: " + taskParams().resourceType);
     }
@@ -205,6 +216,9 @@ public class OperatorImportResource extends UniverseTaskBase {
           break;
         case CERTIFICATE:
           importCertificate();
+          break;
+        case KMS_CONFIG:
+          importKmsConfig();
           break;
         default:
           throw new IllegalArgumentException("Unknown resource type: " + taskParams().resourceType);
@@ -445,6 +459,23 @@ public class OperatorImportResource extends UniverseTaskBase {
     log.info("Backup {} imported successfully", backup.getBackupUUID());
   }
 
+  private void importKmsConfig() {
+    log.info("Importing KMS config: {}", taskParams().kmsConfigUUID);
+
+    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(taskParams().kmsConfigUUID);
+
+    // Unlike providers and storage configs, a KMS config shared with non-operator universes is
+    // still safe to import: the reconciler refuses to delete a config that is in use, so bringing
+    // it under the operator cannot break the universes that are not being imported.
+    try {
+      operatorUtils.createKMSConfigCr(kmsConfig, getNamespace(), taskParams().secretMap);
+    } catch (Exception e) {
+      log.error("Failed to create KMS config: {}", kmsConfig.getConfigUUID(), e);
+      throw new RuntimeException("Failed to create KMS config", e);
+    }
+    log.info("KMS config {} imported successfully", kmsConfig.getConfigUUID());
+  }
+
   private void importCertificate() {
     log.info("Importing certificate: {}", taskParams().certificateUUID);
 
@@ -502,6 +533,10 @@ public class OperatorImportResource extends UniverseTaskBase {
       case SECRET:
         return taskParams().secretName != null
             ? "name: " + taskParams().secretName
+            : "name: unknown";
+      case KMS_CONFIG:
+        return taskParams().kmsConfigUUID != null
+            ? "UUID: " + taskParams().kmsConfigUUID
             : "name: unknown";
       default:
         return "unknown";

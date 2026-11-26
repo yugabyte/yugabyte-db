@@ -30,11 +30,10 @@
 // under the License.
 //
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -76,7 +75,7 @@ class TSStressTest : public TabletServerTestBase {
   void StartThreads() {
     for (int i = 0; i < FLAGS_num_inserter_threads; i++) {
       scoped_refptr<yb::Thread> new_thread;
-      CHECK_OK(yb::Thread::Create("test", strings::Substitute("test$0", i),
+      CHECK_OK(yb::Thread::Create("test", Format("test$0", i),
                                     &TSStressTest::InserterThread, this, i, &new_thread));
       threads_.push_back(new_thread);
     }

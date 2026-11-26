@@ -29,5 +29,6 @@
 extern YbBatchedNestLoopState *ExecInitYbBatchedNestLoop(YbBatchedNestLoop *node, EState *estate, int eflags);
 extern void ExecEndYbBatchedNestLoop(YbBatchedNestLoopState *node);
 extern void ExecReScanYbBatchedNestLoop(YbBatchedNestLoopState *node);
+extern bool YbBnlUseHash(const YbBatchedNestLoop *plan);
 
 #endif							/* NODEYBBATCHEDNESTLOOP_H */

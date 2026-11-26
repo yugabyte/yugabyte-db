@@ -8,10 +8,11 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Provides a safe interface into Postgres' Configuration System (GUC)
-use crate::{pg_sys, PgMemoryContexts};
+use crate::pg_sys;
 use core::ffi::CStr;
 pub use pgrx_macros::PostgresGucEnum;
 use std::cell::Cell;
+use std::ffi::CString;
 
 /// Defines at what level this GUC can be set
 pub enum GucContext {
@@ -95,7 +96,7 @@ bitflags! {
         const UNIT_MIN = pg_sys::GUC_UNIT_MIN as i32;
         /// Include in `EXPLAIN` output
         const EXPLAIN = pg_sys::GUC_EXPLAIN as i32;
-        #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17"))]
+        #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))]
         /// `RUNTIME_COMPUTED` is intended for runtime-computed GUCs that are only available via
         /// `postgres -C` if the server is not running
         const RUNTIME_COMPUTED = pg_sys::GUC_RUNTIME_COMPUTED as i32;
@@ -104,128 +105,138 @@ bitflags! {
 
 /// A trait that can be derived using [`PostgresGucEnum`] on enums, such that they can be
 /// used as a GUC.
-pub trait GucEnum<T>
-where
-    T: Copy,
-{
-    fn from_ordinal(ordinal: i32) -> T;
+///
+/// # Safety
+///
+/// [`GucEnum::CONFIG_ENUM_ENTRY`] must be a valid pointer to the config enum entry.
+pub unsafe trait GucEnum: Copy + Send + Sync {
+    fn from_ordinal(ordinal: i32) -> Self;
     fn to_ordinal(&self) -> i32;
-    unsafe fn config_matrix(&self) -> *const pg_sys::config_enum_entry;
+    const CONFIG_ENUM_ENTRY: *const pg_sys::config_enum_entry;
+}
+
+/// A trait that indicates that the type can be used as a GUC value.
+///
+/// # Safety
+///
+/// [`GucValue::Raw`] must be `Send` and `Sync`, or it's a pointer type.
+pub unsafe trait GucValue {
+    type Raw: Copy;
+    unsafe fn from_raw(raw: Self::Raw) -> Self;
+    type BootVal: Copy + Send + Sync;
 }
 
 /// A safe wrapper around a global variable that can be edited through a GUC
-pub struct GucSetting<T> {
-    value: Cell<usize>,
-    boot_val: T,
+pub struct GucSetting<T: GucValue> {
+    value: Cell<T::Raw>,
+    boot_val: T::BootVal,
 }
 
-unsafe impl Sync for GucSetting<bool> {}
+unsafe impl<T: GucValue> Sync for GucSetting<T> {}
+
+impl<T: GucValue> GucSetting<T> {
+    pub fn get(&self) -> T {
+        pg_sys::submodules::thread_check::check_active_thread();
+        unsafe { GucValue::from_raw(self.value.get()) }
+    }
+
+    pub const fn as_ptr(&self) -> *mut T::Raw {
+        self.value.as_ptr()
+    }
+}
+
+unsafe impl GucValue for bool {
+    type Raw = bool;
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        raw
+    }
+    type BootVal = ();
+}
 impl GucSetting<bool> {
     pub const fn new(value: bool) -> Self {
-        GucSetting { value: Cell::new(value as usize), boot_val: value }
-    }
-
-    pub fn get(&self) -> bool {
-        self.value.get() == 1
-    }
-
-    fn as_ptr(&self) -> *mut bool {
-        self.value.as_ptr() as *mut _
+        GucSetting { value: Cell::new(value), boot_val: () }
     }
 }
 
-unsafe impl Sync for GucSetting<i32> {}
+unsafe impl GucValue for i32 {
+    type Raw = i32;
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        raw
+    }
+    type BootVal = ();
+}
 impl GucSetting<i32> {
     pub const fn new(value: i32) -> Self {
-        GucSetting { value: Cell::new(value as usize), boot_val: value }
-    }
-
-    pub fn get(&self) -> i32 {
-        self.value.get() as i32
-    }
-
-    fn as_ptr(&self) -> *mut i32 {
-        self.value.as_ptr() as *mut _
+        GucSetting { value: Cell::new(value), boot_val: () }
     }
 }
 
-unsafe impl Sync for GucSetting<f64> {}
+unsafe impl GucValue for f64 {
+    type Raw = f64;
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        raw
+    }
+    type BootVal = ();
+}
 impl GucSetting<f64> {
     pub const fn new(value: f64) -> Self {
-        unsafe {
-            GucSetting {
-                value: Cell::new(std::mem::transmute::<f64, u64>(value) as usize),
-                boot_val: value,
-            }
-        }
-    }
-
-    pub fn get(&self) -> f64 {
-        f64::from_bits(self.value.get() as u64)
-    }
-
-    fn as_ptr(&self) -> *mut f64 {
-        self.value.as_ptr() as *mut _
+        GucSetting { value: Cell::new(value), boot_val: () }
     }
 }
 
-unsafe impl Sync for GucSetting<Option<&'static CStr>> {}
-impl GucSetting<Option<&'static CStr>> {
+unsafe impl GucValue for Option<CString> {
+    type Raw = *mut std::ffi::c_char;
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        if raw.is_null() { None } else { Some(CStr::from_ptr(raw).to_owned()) }
+    }
+    type BootVal = ();
+}
+impl GucSetting<Option<CString>> {
     pub const fn new(value: Option<&'static CStr>) -> Self {
-        GucSetting { value: Cell::new(0), boot_val: value }
-    }
-
-    pub fn get(&self) -> Option<&CStr> {
-        unsafe {
-            if self.value.get() == 0 {
-                None
+        GucSetting {
+            value: Cell::new(if let Some(value) = value {
+                value.as_ptr().cast_mut()
             } else {
-                Some(CStr::from_ptr(self.value.get() as *const _))
-            }
+                std::ptr::null_mut()
+            }),
+            boot_val: (),
         }
-    }
-
-    fn as_ptr(&self) -> *mut *mut std::os::raw::c_char {
-        self.value.as_ptr() as *mut *mut std::os::raw::c_char
     }
 }
 
-unsafe impl<T> Sync for GucSetting<T> where T: GucEnum<T> + Copy {}
-impl<T> GucSetting<T>
-where
-    T: GucEnum<T> + Copy,
-{
+unsafe impl<T: GucEnum> GucValue for T {
+    type Raw = i32;
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        T::from_ordinal(raw)
+    }
+    type BootVal = T;
+}
+impl<T: GucEnum> GucSetting<T> {
     pub const fn new(value: T) -> Self {
         GucSetting { value: Cell::new(0), boot_val: value }
-    }
-
-    pub fn get(&self) -> T {
-        T::from_ordinal(self.value.get() as _)
-    }
-
-    pub fn as_ptr(&self) -> *mut i32 {
-        self.value.as_ptr() as *mut _
     }
 }
 
 /// A struct that has associated functions to register new GUCs
 pub struct GucRegistry {}
+
 impl GucRegistry {
+    // GUC Registration functions that do not expose hooks
     pub fn define_bool_guc(
-        name: &str,
-        short_description: &str,
-        long_description: &str,
-        setting: &GucSetting<bool>,
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<bool>,
         context: GucContext,
         flags: GucFlags,
     ) {
         unsafe {
             pg_sys::DefineCustomBoolVariable(
-                PgMemoryContexts::TopMemoryContext.pstrdup(name),
-                PgMemoryContexts::TopMemoryContext.pstrdup(short_description),
-                PgMemoryContexts::TopMemoryContext.pstrdup(long_description),
-                setting.as_ptr(),
-                setting.get(),
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
                 context as isize as _,
                 flags.bits(),
                 None,
@@ -236,10 +247,10 @@ impl GucRegistry {
     }
 
     pub fn define_int_guc(
-        name: &str,
-        short_description: &str,
-        long_description: &str,
-        setting: &GucSetting<i32>,
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<i32>,
         min_value: i32,
         max_value: i32,
         context: GucContext,
@@ -247,11 +258,11 @@ impl GucRegistry {
     ) {
         unsafe {
             pg_sys::DefineCustomIntVariable(
-                PgMemoryContexts::TopMemoryContext.pstrdup(name),
-                PgMemoryContexts::TopMemoryContext.pstrdup(short_description),
-                PgMemoryContexts::TopMemoryContext.pstrdup(long_description),
-                setting.as_ptr(),
-                setting.get(),
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
                 min_value,
                 max_value,
                 context as isize as _,
@@ -264,22 +275,20 @@ impl GucRegistry {
     }
 
     pub fn define_string_guc(
-        name: &str,
-        short_description: &str,
-        long_description: &str,
-        setting: &GucSetting<Option<&'static CStr>>,
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<Option<CString>>,
         context: GucContext,
         flags: GucFlags,
     ) {
         unsafe {
-            let boot_val = setting.boot_val.map_or(std::ptr::null(), |s| s.as_ptr());
-            *setting.as_ptr() = boot_val as *mut _;
             pg_sys::DefineCustomStringVariable(
-                PgMemoryContexts::TopMemoryContext.pstrdup(name),
-                PgMemoryContexts::TopMemoryContext.pstrdup(short_description),
-                PgMemoryContexts::TopMemoryContext.pstrdup(long_description),
-                setting.as_ptr(),
-                boot_val,
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
                 context as isize as _,
                 flags.bits(),
                 None,
@@ -290,10 +299,10 @@ impl GucRegistry {
     }
 
     pub fn define_float_guc(
-        name: &str,
-        short_description: &str,
-        long_description: &str,
-        setting: &GucSetting<f64>,
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<f64>,
         min_value: f64,
         max_value: f64,
         context: GucContext,
@@ -301,11 +310,11 @@ impl GucRegistry {
     ) {
         unsafe {
             pg_sys::DefineCustomRealVariable(
-                PgMemoryContexts::TopMemoryContext.pstrdup(name),
-                PgMemoryContexts::TopMemoryContext.pstrdup(short_description),
-                PgMemoryContexts::TopMemoryContext.pstrdup(long_description),
-                setting.as_ptr(),
-                setting.boot_val,
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
                 min_value,
                 max_value,
                 context as isize as _,
@@ -317,31 +326,216 @@ impl GucRegistry {
         }
     }
 
-    pub fn define_enum_guc<T>(
-        name: &str,
-        short_description: &str,
-        long_description: &str,
-        setting: &GucSetting<T>,
+    pub fn define_enum_guc<T: GucEnum>(
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<T>,
         context: GucContext,
         flags: GucFlags,
-    ) where
-        T: GucEnum<T> + Copy,
-    {
+    ) {
+        setting.value.set(setting.boot_val.to_ordinal());
         unsafe {
-            let boot_val = setting.boot_val.to_ordinal();
-            (*setting.as_ptr()) = boot_val;
             pg_sys::DefineCustomEnumVariable(
-                PgMemoryContexts::TopMemoryContext.pstrdup(name),
-                PgMemoryContexts::TopMemoryContext.pstrdup(short_description),
-                PgMemoryContexts::TopMemoryContext.pstrdup(long_description),
-                setting.as_ptr(),
-                boot_val,
-                setting.get().config_matrix(),
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
+                T::CONFIG_ENUM_ENTRY,
                 context as isize as _,
                 flags.bits(),
                 None,
                 None,
                 None,
+            );
+        }
+    }
+
+    /// Define a boolean GUC with custom hooks.
+    ///
+    /// # Hooks
+    ///
+    /// * `check_hook` - Validates new values. Return false to reject.
+    /// * `assign_hook` - Called after value is set. Use for side effects.
+    /// * `show_hook` - Returns custom display string for SHOW commands.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because hook functions must be properly guarded against Rust panics.
+    /// Any hook function that might panic must be marked with `#[pg_guard]` to ensure proper
+    /// conversion of Rust panics into PostgreSQL errors.
+    ///
+    pub unsafe fn define_bool_guc_with_hooks(
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<bool>,
+        context: GucContext,
+        flags: GucFlags,
+        check_hook: pg_sys::GucBoolCheckHook,
+        assign_hook: pg_sys::GucBoolAssignHook,
+        show_hook: pg_sys::GucShowHook,
+    ) {
+        unsafe {
+            pg_sys::DefineCustomBoolVariable(
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
+                context as isize as _,
+                flags.bits(),
+                check_hook,
+                assign_hook,
+                show_hook,
+            );
+        }
+    }
+
+    /// Define an integer GUC with custom hooks.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because hook functions must be properly guarded against Rust panics.
+    /// Any hook function that might panic must be marked with `#[pg_guard]` to ensure proper
+    /// conversion of Rust panics into PostgreSQL errors.
+    pub unsafe fn define_int_guc_with_hooks(
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<i32>,
+        min_value: i32,
+        max_value: i32,
+        context: GucContext,
+        flags: GucFlags,
+        check_hook: pg_sys::GucIntCheckHook,
+        assign_hook: pg_sys::GucIntAssignHook,
+        show_hook: pg_sys::GucShowHook,
+    ) {
+        unsafe {
+            pg_sys::DefineCustomIntVariable(
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
+                min_value,
+                max_value,
+                context as isize as _,
+                flags.bits(),
+                check_hook,
+                assign_hook,
+                show_hook,
+            )
+        }
+    }
+
+    /// Define a string GUC with custom hooks.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because hook functions must be properly guarded against Rust panics.
+    /// Any hook function that might panic must be marked with `#[pg_guard]` to ensure proper
+    /// conversion of Rust panics into PostgreSQL errors.
+    pub unsafe fn define_string_guc_with_hooks(
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<Option<CString>>,
+        context: GucContext,
+        flags: GucFlags,
+        check_hook: pg_sys::GucStringCheckHook,
+        assign_hook: pg_sys::GucStringAssignHook,
+        show_hook: pg_sys::GucShowHook,
+    ) {
+        unsafe {
+            pg_sys::DefineCustomStringVariable(
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
+                context as isize as _,
+                flags.bits(),
+                check_hook,
+                assign_hook,
+                show_hook,
+            );
+        }
+    }
+
+    /// Define a float GUC with custom hooks.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because hook functions must be properly guarded against Rust panics.
+    /// Any hook function that might panic must be marked with `#[pg_guard]` to ensure proper
+    /// conversion of Rust panics into PostgreSQL errors.
+    ///
+    pub fn define_float_guc_with_hooks(
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<f64>,
+        min_value: f64,
+        max_value: f64,
+        context: GucContext,
+        flags: GucFlags,
+        check_hook: pg_sys::GucRealCheckHook,
+        assign_hook: pg_sys::GucRealAssignHook,
+        show_hook: pg_sys::GucShowHook,
+    ) {
+        unsafe {
+            pg_sys::DefineCustomRealVariable(
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
+                min_value,
+                max_value,
+                context as isize as _,
+                flags.bits(),
+                check_hook,
+                assign_hook,
+                show_hook,
+            );
+        }
+    }
+
+    /// Define an enum GUC with custom hooks.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because hook functions must be properly guarded against Rust panics.
+    /// Any hook function that might panic must be marked with `#[pg_guard]` to ensure proper
+    /// conversion of Rust panics into PostgreSQL errors.
+    pub unsafe fn define_enum_guc_with_hooks<T: GucEnum>(
+        name: &'static CStr,
+        short_description: &'static CStr,
+        long_description: &'static CStr,
+        setting: &'static GucSetting<T>,
+        context: GucContext,
+        flags: GucFlags,
+        check_hook: pg_sys::GucEnumCheckHook,
+        assign_hook: pg_sys::GucEnumAssignHook,
+        show_hook: pg_sys::GucShowHook,
+    ) {
+        setting.value.set(setting.boot_val.to_ordinal());
+        unsafe {
+            pg_sys::DefineCustomEnumVariable(
+                name.as_ptr(),
+                short_description.as_ptr(),
+                long_description.as_ptr(),
+                setting.value.as_ptr(),
+                setting.value.get(),
+                T::CONFIG_ENUM_ENTRY,
+                context as isize as _,
+                flags.bits(),
+                check_hook,
+                assign_hook,
+                show_hook,
             );
         }
     }

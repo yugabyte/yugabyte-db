@@ -8,10 +8,13 @@ import static org.hamcrest.Matchers.emptyCollectionOf;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -23,6 +26,7 @@ import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterResizeStorageSpec;
 import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
@@ -48,7 +52,9 @@ import com.yugabyte.yba.v2.client.models.UniverseUpdateProxyConfigClustersInner;
 import com.yugabyte.yba.v2.client.models.UpdateProxyConfigSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -533,6 +539,36 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   }
 
   @Test
+  public void testV2KubernetesOverridesWithBatchSize() {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeKubernetesOverrides(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    String path =
+        String.format(
+            "/api/v2/customers/%s/universes/%s/kubernetes-overrides",
+            customer.getUuid(), universe.getUniverseUUID());
+    ObjectNode body = Json.newObject();
+    body.put("overrides", "my_overrides");
+    body.put("rolling_upgrade", true);
+    body.set(
+        "roll_max_batch_size",
+        Json.newObject().put("primary_batch_size", 2).put("read_replica_batch_size", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", path, authToken, body);
+    assertEquals(200, result.status());
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeKubernetesOverrides(captor.capture(), eq(customer), eq(universe));
+    KubernetesOverridesUpgradeParams params = captor.getValue();
+    assertEquals("my_overrides", params.universeOverrides);
+    assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertNotNull(params.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getReadReplicaBatchSize());
+  }
+
+  @Test
   public void testV2UniverseUpdateProxyConfig() throws ApiException {
     UUID taskUUID = UUID.randomUUID();
     String httpProxy = "httpProxy";
@@ -669,7 +705,12 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   @Test
   public void testV2UniverseUpdateProxyConfigProviderProxySpecsRequiresMulticloud() {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .maybeGetSingleProviderUUID()
+            .get();
     UniverseUpdateProxyConfig req =
         new UniverseUpdateProxyConfig()
             .addClustersItem(
@@ -754,7 +795,12 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   @Test
   public void testV2ResizeNodesProviderNodesSpecsRequiresMulticloud() {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .maybeGetSingleProviderUUID()
+            .get();
     UniverseResizeNodes req =
         new UniverseResizeNodes()
             .addClustersItem(
@@ -777,5 +823,32 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
             () -> apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req));
     assertEquals(422, ex.getCode());
     assertThat(ex.getResponseBody(), containsString("multicloud"));
+  }
+
+  @Test
+  public void testV2ResizeNodesDoesNotEmptyOmittedMasterGFlags() {
+    UniverseResizeNodes req =
+        new UniverseResizeNodes()
+            .addClustersItem(
+                new UniverseResizeNodesCluster()
+                    .uuid(universe.getUniverseDetails().getPrimaryCluster().uuid)
+                    .gflags(new ClusterGFlags().tserver(Map.of("tflag", "tval"))));
+
+    // The request may be rejected, but it must not reach the resize task with an empty master map,
+    // which would replace the stored master gflags.
+    try {
+      apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req);
+    } catch (ApiException e) {
+      // Rejected before the resize task.
+    }
+    verify(mockUpgradeUniverseHandler, never())
+        .resizeNode(argThat(UniverseApiControllerUpgradeTest::hasEmptyMasterGFlags), any(), any());
+  }
+
+  private static boolean hasEmptyMasterGFlags(ResizeNodeParams params) {
+    SpecificGFlags specificGFlags = params.getPrimaryCluster().userIntent.specificGFlags;
+    return specificGFlags != null
+        && specificGFlags.getPerProcessFlags() != null
+        && Map.of().equals(specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER));
   }
 }

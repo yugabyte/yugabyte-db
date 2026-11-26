@@ -68,11 +68,13 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "access/transam.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_type.h"
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
@@ -127,8 +129,20 @@ static void update_relispartition(Oid relationId, bool newval);
 static inline void set_indexsafe_procflags(void);
 
 /* YB function declarations. */
-static void YbWaitForBackendsCatalogVersion();
+static void YbWaitForBackendsCatalogVersion(bool error_on_timeout);
+static void YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
+													 LOCKMODE lockmode);
 static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
+static bool YbIndexReuseIsSafe(Relation irel, Oid heapRelid,
+							   IndexInfo *newIndexInfo, Oid *newClassObjectId,
+							   Node *newWhereClause);
+static bool YbChildIndexesMatch(Relation rootIrel, TupleDesc rootHeapDesc);
+
+/* Defined in publicationcmds.c. */
+extern bool YbIsSimpleRowFilterExpr(Node *node);
+
+static void YbCheckDerivedNameHeldByInvalidIndex(const char *relname,
+												 Oid namespaceid);
 
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
@@ -185,12 +199,18 @@ typedef struct ReindexErrorInfo
  *
  * We do not yet implement a test to verify compatibility of expression
  * columns or predicates, so assume any such index is incompatible.
+ *
+ * YB: For a YB secondary index, reusability of expressions and predicates are
+ * assessed by YbIndexReuseIsSafe.
+ * Reusability is gated by the GUC yb_alter_type_reuse_expr_and_partial_indexes.
+ * 'yb_where_clause' is the transformed predicate of the prospective index.
  */
 bool
 CheckIndexCompatible(Oid oldId,
 					 const char *accessMethodName,
 					 List *attributeList,
-					 List *exclusionOpNames)
+					 List *exclusionOpNames,
+					 Node *yb_where_clause)
 {
 	bool		isconstraint;
 	Oid		   *typeObjectId;
@@ -270,6 +290,13 @@ CheckIndexCompatible(Oid oldId,
 		elog(ERROR, "cache lookup failed for index %u", oldId);
 	indexForm = (Form_pg_index) GETSTRUCT(tuple);
 
+	/* YB: Carved out from the expression index check below to keep the code flow simple. */
+	if (!indexForm->indisvalid)
+	{
+		ReleaseSysCache(tuple);
+		return false;
+	}
+
 	/*
 	 * We don't assess expressions or predicates; assume incompatibility.
 	 * Also, if the index is invalid for any reason, treat it as incompatible.
@@ -278,8 +305,20 @@ CheckIndexCompatible(Oid oldId,
 		  heap_attisnull(tuple, Anum_pg_index_indexprs, NULL) &&
 		  indexForm->indisvalid))
 	{
-		ReleaseSysCache(tuple);
-		return false;
+		/*
+		 * YB: expressions and predicates of YB secondary indexes are assessed
+		 * by YbIndexReuseIsSafe below.
+		 */
+
+		/* YB: a primary key cannot have expressions or a predicate. */
+		Assert(!indexForm->indisprimary);
+
+		/* YB: Skip further checks for temp table or if the flag is not enabled. */
+		if (!yb_alter_type_reuse_expr_and_partial_indexes || !IsYBRelationById(oldId))
+		{
+			ReleaseSysCache(tuple);
+			return false;
+		}						/* YB */
 	}
 
 	/* Any change in operator class or collation breaks compatibility. */
@@ -357,6 +396,11 @@ CheckIndexCompatible(Oid oldId,
 			}
 		}
 	}
+
+	/* YB */
+	if (ret)
+		ret = YbIndexReuseIsSafe(irel, relationId, indexInfo, classObjectId,
+								 yb_where_clause);
 
 	index_close(irel, NoLock);
 	return ret;
@@ -603,6 +647,9 @@ DefineIndex(Oid relationId,
 	Oid			colocation_id = InvalidOid;
 	bool		is_colocated = false;
 	bool		yb_skip_index_creation;
+	/* Use PG catalog snapshot for catalog reads */
+	const bool 	yb_should_run_in_autonomous_transaction =
+		!YBCUsingObjectLocksGloballyForCurrentTxn();
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1111,7 +1158,7 @@ DefineIndex(Oid relationId,
 
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+			yb_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
@@ -1129,21 +1176,26 @@ DefineIndex(Oid relationId,
 			is_colocated_via_database && !MyColocatedDatabaseLegacy)
 		{
 			char	   *tablegroup_name = NULL;
+			Oid			grp_tablespace_id = tablespaceId;
 
-			if (OidIsValid(tablespaceId))
+			/* The database's default tablespace means no tablespace. */
+			if (grp_tablespace_id == MyDatabaseTableSpace)
+				grp_tablespace_id = InvalidOid;
+
+			if (OidIsValid(grp_tablespace_id))
 			{
 				/*
 				 * We look in pg_shdepend rather than directly use the derived name,
 				 * as later we might need to associate an existing implicit tablegroup to a tablespace
 				 */
-				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+				tablegroupId = YbLockImplicitTablegroup(grp_tablespace_id);
 
 				/*
 				 * If we do not find a tablegroup corresponding to the given tablespace, we
 				 * would have to create one. We derive the name from tablespace OID.
 				 */
 				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
-					get_implicit_tablegroup_name(tablespaceId);
+					get_implicit_tablegroup_name(grp_tablespace_id);
 
 			}
 			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
@@ -1209,11 +1261,11 @@ DefineIndex(Oid relationId,
 			else
 			{
 				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				tablegroupId = YbLockImplicitTablegroup(InvalidOid);
 			}
 
-			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
-										   get_tablespace_name(tablespaceId) :
+			char	   *tablespace_name = (OidIsValid(grp_tablespace_id) ?
+										   get_tablespace_name(grp_tablespace_id) :
 										   NULL);
 
 			/* Tablegroup doesn't exist, so create it. */
@@ -1743,7 +1795,7 @@ DefineIndex(Oid relationId,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
 					 !concurrent, is_colocated, tablegroupId, colocation_id,
-					 yb_skip_index_creation);
+					 yb_skip_index_creation, stmt->yb_index_old_relfilenode);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -1916,6 +1968,9 @@ DefineIndex(Oid relationId,
 								continue;
 							}
 						}
+
+						/* YB: xCluster source cannot adopt an invalid index. */
+						YbCheckAttachedIndexIsValid(cldidx);
 
 						/* Attach index to parent and we're done. */
 						IndexSetParentIndex(cldidx, indexRelationId);
@@ -2098,8 +2153,7 @@ DefineIndex(Oid relationId,
 
 	/* save lockrelid and locktag for below, then close rel */
 	heaprelid = rel->rd_lockInfo.lockRelId;
-	if (!IsYBRelation(rel))
-		SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
+	SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
 	table_close(rel, NoLock);
 
 	/*
@@ -2298,7 +2352,7 @@ DefineIndex(Oid relationId,
 		volatile bool yb_type_changed = false;
 		PG_TRY();
 		{
-			if (!YBCIsLegacyModeForCatalogOps() &&
+			if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
 				GetCurrentTransactionNestLevel() == 1 &&
 				YbGetTriggerDepth() == 0)
 			{
@@ -2308,6 +2362,67 @@ DefineIndex(Oid relationId,
 				yb_type_changed = true;
 			}
 			YbDefineIndexHelper(relationId, indexRelationId, databaseId);
+
+			/*
+			 * YB: With object locking on, execute a timed wait on backends
+			 * with older snapshots, similar to PG's WaitForOlderSnapshots
+			 * before marking the index as valid.
+			 *
+			 * If backends with older snapshots exist after the timed wait,
+			 * ignore them and continue with the index creation, as docdb has
+			 * logic to reject reads arriving at index with a read time earlier
+			 * than the index birth time.
+			 *
+			 * On xCluster automatic-mode target, WaitForLockers optimization
+			 * is disabled until GH #33155 is addressed, as a result of which
+			 * YbWaitForLockersOrBackendsCatalogVersion falls back to
+			 * WaitForBackendsCatalogVersion. Hence this additional phase
+			 * isn't necessary on the target.
+			 */
+			if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+				!yb_xcluster_automatic_mode_target_ddl)
+			{
+				/*
+				 * YB: Invalidate the relcache for the parent table as backfill
+				 * does a schema version increment on the base table. Otherwise
+				 * existing sessions might face schema version mismatch.
+				 * TODO(#33037): Cache invalidation can be removed once we get
+				 * rid of schema version increments for the base table.
+				 */
+				CacheInvalidateRelcacheByRelid(relationId);
+				YbForceSendInvalMessages();
+
+				/*
+				 * YB: No need to break (abort) ongoing txns since this is an
+				 * online schema change.
+				 * TODO(jason): handle nested CREATE INDEX (this assumes we're
+				 * at nest level 1).
+				 */
+				if (yb_should_run_in_autonomous_transaction)
+					YBDecrementDdlNestingLevel();
+
+				/* YB: Commit this phase/txn so as to release all held object
+				 * locks before executing timed wait for backends in the next
+				 * phase/txn.
+				 */
+				CommitTransactionCommand();
+				StartTransactionCommand();
+
+				/* YB: Short wait for backends on older catalog versions. */
+				YbWaitForBackendsCatalogVersion(false);
+
+				if (yb_should_run_in_autonomous_transaction)
+					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+				else
+					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+				/*
+				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
+				 * further prevent concurrent schema changes until the end of
+				 * this txn, as the session object lock is released early.
+				 */
+				LockRelationOid(relationId, ShareUpdateExclusiveLock);
+			}
 		}
 		PG_FINALLY();
 		{
@@ -2322,6 +2437,10 @@ DefineIndex(Oid relationId,
 		PG_END_TRY();
 	}
 
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indisvalid",
+									"index state change indisvalid=true");
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
 	 */
@@ -2352,7 +2471,11 @@ YbDefineIndexHelper(Oid relationId,
 					Oid indexRelationId,
 					Oid databaseId)
 {
-	bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	LOCKTAG		heaplocktag;
+	bool		yb_should_run_in_autonomous_transaction =
+		!YBCUsingObjectLocksGloballyForCurrentTxn();
+
+	SET_LOCKTAG_RELATION(heaplocktag, MyDatabaseId, relationId);
 
 	elog(LOG, "committing pg_index tuple with indislive=true");
 	if (yb_test_block_index_phase[0] != '\0')
@@ -2365,7 +2488,7 @@ YbDefineIndexHelper(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	 if (yb_should_run_in_autonomous_transaction)
+	if (yb_should_run_in_autonomous_transaction)
 		YBDecrementDdlNestingLevel();
 
 	CommitTransactionCommand();
@@ -2385,13 +2508,12 @@ YbDefineIndexHelper(Oid relationId,
 
 	StartTransactionCommand();
 
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-	/* Wait for all backends to have up-to-date version. */
-	YbWaitForBackendsCatalogVersion();
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2421,13 +2543,12 @@ YbDefineIndexHelper(Oid relationId,
 
 	StartTransactionCommand();
 
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-	/* Wait for all backends to have up-to-date version. */
-	YbWaitForBackendsCatalogVersion();
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);
@@ -2565,6 +2686,44 @@ YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
 						opclassname, collname),
 				 errhint("Use the COLLATE clause to set \"C\" collation explicitly.")));
 		ReleaseSysCache(collationtup);
+	}
+	ReleaseSysCache(classtup);
+}
+
+/*
+ * YbCheckOpClassInputType
+ *		An lsm key is stored in the encoding of the column type, so DocDB orders
+ *		and compares it as the column type's default lsm operator class would.
+ * Disallow an operator class if its input type and the column type have
+ * different default lsm operator classes, such as bpchar_ops on a text column
+ * or oid_ops on an int4 column. A type that cannot be an lsm key keeps its
+ * existing "not yet supported" error.
+ */
+static void
+YbCheckOpClassInputType(Oid atttype, Oid opclassoid)
+{
+	HeapTuple	classtup;
+	Form_pg_opclass classform;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	if (classform->opcintype != getBaseType(atttype) &&
+		GetDefaultOpClass(atttype, LSM_AM_OID) !=
+		GetDefaultOpClass(classform->opcintype, LSM_AM_OID) &&
+		YbDataTypeIsValidForKey(atttype))
+	{
+		/* Print bpchar, not "character", which means char(1) in a cast. */
+		char	   *opctypename = format_type_extended(classform->opcintype, -1,
+													   FORMAT_TYPE_TYPEMOD_GIVEN);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column type %s",
+						NameStr(classform->opcname), format_type_be(atttype)),
+				 errhint("Use a column or an index expression of type %s instead.",
+						 opctypename)));
 	}
 	ReleaseSysCache(classtup);
 }
@@ -2874,6 +3033,16 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		if (IsYugaByteEnabled() && YBIsCollationValidNonC(attcollation))
 			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
 
+		/*
+		 * YB: binary upgrade and restore recreate indexes that already hold
+		 * data, and an xCluster target replays DDL its source already ran, so
+		 * do not reject those.
+		 */
+		if (IsYugaByteEnabled() && accessMethodId == LSM_AM_OID &&
+			!IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_xcluster_automatic_mode_target_ddl)
+			YbCheckOpClassInputType(atttype, classOidP[attn]);
+
 		if (OidIsValid(ddl_userid))
 		{
 			SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -3106,6 +3275,77 @@ ResolveOpClass(List *opclass, Oid attrType,
 }
 
 /*
+ * State accumulated while scanning pg_opclass in GetDefaultOpClass().
+ */
+typedef struct YbDefaultOpClassScanState
+{
+	Oid			type_id;		/* target type (base type) */
+	TYPCATEGORY tcategory;		/* its type category */
+	Oid			result;			/* best opclass found so far */
+	int			nexact;
+	int			ncompatible;
+	int			ncompatiblepreferred;
+} YbDefaultOpClassScanState;
+
+/*
+ * Fold one pg_opclass tuple into the default-opclass search state.  Shared by
+ * the two ways GetDefaultOpClass() enumerates the candidate opclasses (YB's
+ * syscache-list lookup and the upstream systable scan) so the matching rules
+ * stay identical.
+ */
+static void
+YbConsiderDefaultOpClass(YbDefaultOpClassScanState *state, HeapTuple tup)
+{
+	Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
+
+	/* ignore altogether if not a default opclass */
+	if (!opclass->opcdefault)
+		return;
+	if (opclass->opcintype == state->type_id)
+	{
+		state->nexact++;
+		state->result = opclass->oid;
+	}
+	else if (state->nexact == 0 &&
+			 IsBinaryCoercible(state->type_id, opclass->opcintype))
+	{
+		if (IsPreferredType(state->tcategory, opclass->opcintype))
+		{
+			state->ncompatiblepreferred++;
+			state->result = opclass->oid;
+		}
+		else if (state->ncompatiblepreferred == 0)
+		{
+			state->ncompatible++;
+			state->result = opclass->oid;
+		}
+	}
+}
+
+/*
+ * YB: Resolve the accumulated scan state to the final GetDefaultOpClass
+ * result.  This is the tail of the upstream function, shared by the YB
+ * syscache-list path and the upstream systable-scan path.
+ */
+static Oid
+YbDefaultOpClassFromState(const YbDefaultOpClassScanState *state, Oid type_id)
+{
+	/* raise error if pg_opclass contains inconsistent data */
+	if (state->nexact > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("there are multiple default operator classes for data type %s",
+						format_type_be(type_id))));
+
+	if (state->nexact == 1 ||
+		state->ncompatiblepreferred == 1 ||
+		(state->ncompatiblepreferred == 0 && state->ncompatible == 1))
+		return state->result;
+
+	return InvalidOid;
+}
+
+/*
  * GetDefaultOpClass
  *
  * Given the OIDs of a datatype and an access method, find the default
@@ -3114,20 +3354,18 @@ ResolveOpClass(List *opclass, Oid attrType,
 Oid
 GetDefaultOpClass(Oid type_id, Oid am_id)
 {
-	Oid			result = InvalidOid;
-	int			nexact = 0;
-	int			ncompatible = 0;
-	int			ncompatiblepreferred = 0;
+	YbDefaultOpClassScanState yb_state = {0};
 	Relation	rel;
 	ScanKeyData skey[1];
 	SysScanDesc scan;
 	HeapTuple	tup;
-	TYPCATEGORY tcategory;
 
 	/* If it's a domain, look at the base type instead */
 	type_id = getBaseType(type_id);
 
-	tcategory = TypeCategory(type_id);
+	yb_state.type_id = type_id;
+	yb_state.tcategory = TypeCategory(type_id);
+	yb_state.result = InvalidOid;
 
 	/*
 	 * We scan through all the opclasses available for the access method,
@@ -3141,6 +3379,27 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 	 * we need a tiebreaker.)  If we find more than one exact match, then
 	 * someone put bogus entries in pg_opclass.
 	 */
+	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
+	{
+		/*
+		 * YB: Enumerate the opclasses for this access method through the
+		 * CLAAMNAMENSP syscache list rather than a direct systable scan.  When
+		 * pg_opclass is preloaded the list is built from the local cache with
+		 * no master read, and the built list is cached per access method so
+		 * repeated lookups (e.g. lookup_type_cache probing lsm then hash for
+		 * many types) don't rescan the catalog.
+		 */
+		CatCList   *opclist = SearchSysCacheList1(CLAAMNAMENSP,
+												  ObjectIdGetDatum(am_id));
+
+		for (int i = 0; i < opclist->n_members; i++)
+			YbConsiderDefaultOpClass(&yb_state, &opclist->members[i]->tuple);
+
+		ReleaseSysCacheList(opclist);
+
+		return YbDefaultOpClassFromState(&yb_state, type_id);
+	}
+
 	rel = table_open(OperatorClassRelationId, AccessShareLock);
 
 	ScanKeyInit(&skey[0],
@@ -3152,50 +3411,13 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 							  NULL, 1, skey);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
-
-		/* ignore altogether if not a default opclass */
-		if (!opclass->opcdefault)
-			continue;
-		if (opclass->opcintype == type_id)
-		{
-			nexact++;
-			result = opclass->oid;
-		}
-		else if (nexact == 0 &&
-				 IsBinaryCoercible(type_id, opclass->opcintype))
-		{
-			if (IsPreferredType(tcategory, opclass->opcintype))
-			{
-				ncompatiblepreferred++;
-				result = opclass->oid;
-			}
-			else if (ncompatiblepreferred == 0)
-			{
-				ncompatible++;
-				result = opclass->oid;
-			}
-		}
-	}
+		YbConsiderDefaultOpClass(&yb_state, tup);
 
 	systable_endscan(scan);
 
 	table_close(rel, AccessShareLock);
 
-	/* raise error if pg_opclass contains inconsistent data */
-	if (nexact > 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("there are multiple default operator classes for data type %s",
-						format_type_be(type_id))));
-
-	if (nexact == 1 ||
-		ncompatiblepreferred == 1 ||
-		(ncompatiblepreferred == 0 && ncompatible == 1))
-		return result;
-
-	return InvalidOid;
+	return YbDefaultOpClassFromState(&yb_state, type_id);
 }
 
 /*
@@ -3328,6 +3550,9 @@ ChooseRelationName(const char *name1, const char *name2,
 				!ConstraintNameExists(relname, namespaceid))
 				break;
 		}
+
+		/* YB: an xCluster source must not skip a name the target would use. */
+		YbCheckDerivedNameHeldByInvalidIndex(relname, namespaceid);
 
 		/* found a conflict, so try a new name component */
 		pfree(relname);
@@ -5311,13 +5536,24 @@ set_indexsafe_procflags(void)
 	LWLockRelease(ProcArrayLock);
 }
 
+/*
+ * Wait for backends to catch up to the desired catalog version.
+ *
+ * When error_on_timeout is true, retry until all backends catch up or
+ * yb_wait_for_backends_catalog_version_timeout expires (then ERROR).
+ * When false (short wait), retry retryable errors until
+ * wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms expires,
+ * then return without ERROR.  Non-retryable failures after exhausting retries
+ * also free the status and return, a genuine issue surfaces on a subsequent
+ * commit.
+ */
 static void
-YbWaitForBackendsCatalogVersion()
+YbWaitForBackendsCatalogVersion(bool error_on_timeout)
 {
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
-	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
 	uint64_t	new_catalog_version =
 		enable_inval_messages ? YbGetNewCatalogVersion() : YbGetMasterCatalogVersion();
 
@@ -5332,14 +5568,20 @@ YbWaitForBackendsCatalogVersion()
 	int			num_lagging_backends = -1;
 	int			retries_left = 10;
 	const TimestampTz start = GetCurrentTimestamp();
+	const int	timeout_ms = error_on_timeout
+		? yb_wait_for_backends_catalog_version_timeout
+		: (int) *YBCGetGFlags()->wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
 
 	while (num_lagging_backends != 0)
 	{
-		if (yb_wait_for_backends_catalog_version_timeout > 0 &&
+		if (timeout_ms > 0 &&
 			TimestampDifferenceExceeds(start,
 									   GetCurrentTimestamp(),
-									   yb_wait_for_backends_catalog_version_timeout))
+									   timeout_ms))
 		{
+			if (!error_on_timeout)
+				return;
+
 			if (num_lagging_backends > 0)
 				/*
 				 * Note: keep the errhint query in sync with the actual query
@@ -5411,6 +5653,328 @@ YbWaitForBackendsCatalogVersion()
 				continue;
 			}
 		}
+		if (!error_on_timeout)
+		{
+			YBCFreeStatus(s);
+			return;
+		}
 		HandleYBStatus(s);
 	}
+}
+
+static void
+YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
+										 LOCKMODE lockmode)
+{
+	if (yb_disable_wait_for_backends_catalog_version)
+		return;
+
+	/*
+	 * YB: Skip WaitForLockers optimization on xCluster automatic-mode target
+	 * until GH #33155 is addressed.
+	 */
+	if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		!yb_xcluster_automatic_mode_target_ddl)
+		WaitForLockers(*heaplocktag, lockmode, false);
+	else
+		YbWaitForBackendsCatalogVersion(true);	/* error on timeout */
+}
+
+/*
+ * Returns a copy of 'node' in which every Var takes the typmod of its table
+ * column from 'context' (the post-ALTER heap tuple descriptor).
+ *
+ * A Var is the only node that copies its typmod directly from the column.
+ * Other typmods are either fixed by the expression (cast targets, Consts) or
+ * derived from the inputs. When a derived one changes, the patched tree no
+ * longer equals the reparsed one and the index is rebuilt.
+ */
+static Node *
+YbSetVarTypmodsMutator(Node *node, void *context)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, Var))
+	{
+		TupleDesc	heapDesc = (TupleDesc) context;
+		Var		   *var = (Var *) copyObject(node);
+
+		/* Var must reference the index's base table and must not be from a subquery */
+		Assert(var->varno == 1 && var->varlevelsup == 0);
+
+		/* Var must point to a valid attribute in the base table */
+		Assert(var->varattno > 0 && var->varattno <= heapDesc->natts);
+		var->vartypmod = TupleDescAttr(heapDesc, AttrNumberGetAttrOffset(var->varattno))->atttypmod;
+		return (Node *) var;
+	}
+
+	return expression_tree_mutator(node, YbSetVarTypmodsMutator, context);
+}
+
+/*
+ * CheckIndexCompatible rejects indexes with expressions or predicates. This
+ * function contains extra checks to enable reuse of such indexes.
+ * A compatible YB index keeps its OID and DocDB table and only has its catalog
+ * entries updated in place, so its stored expressions and predicate, built
+ * against the pre-ALTER column types, must compute the same values as the ones
+ * reparsed against the new types. With no table rewrite the column datums are
+ * unchanged, and the reparsed expression trees must be exactly the stored ones
+ * with their Vars' typmods updated.
+ *
+ * An index with expressions or a predicate is reused only if they are "simple
+ * expressions": a limited set of node types using only built-in immutable
+ * functions, operators, types and collations. Any key column must also use a
+ * built-in opclass. User-defined code could in theory inspect its arguments'
+ * typmods and is disallowed.
+ */
+static bool
+YbIndexReuseIsSafe(Relation irel, Oid heapRelid, IndexInfo *newIndexInfo,
+				   Oid *newClassObjectId, Node *newWhereClause)
+{
+	Relation	heapRel;
+	TupleDesc	heapDesc;
+	List	   *oldExprs;
+	List	   *newExprs;
+	List	   *oldPred;
+	List	   *newPred;
+	bool		safe = true;
+	int			i;
+
+	oldExprs = YbRelationGetUnConstifiedIndexExpressions(irel);
+	oldPred = make_ands_implicit((Expr *) YbRelationGetUnConstifiedIndexPredicate(irel));
+
+	newExprs = newIndexInfo->ii_Expressions;
+	newPred = make_ands_implicit((Expr *) newWhereClause);
+
+	if (oldExprs == NIL && oldPred == NIL)
+		return true;
+
+	/* The op-classes for the index keys must not be user-defined */
+	for (i = 0; i < irel->rd_index->indnkeyatts; i++)
+	{
+		if (newClassObjectId[i] >= FirstNormalObjectId)
+			return false;
+	}
+
+	/* There must be no user-defined functions in the expressions or predicates */
+	if (!YbIsSimpleRowFilterExpr((Node *) newExprs) ||
+		!YbIsSimpleRowFilterExpr((Node *) newPred))
+		return false;
+
+	/*
+	 * The expressions used by the index are "safe". Validate that pre ALTER
+	 * COLUMN and post ALTER COLUMN expressions are identical except for typemod
+	 * changes.
+	 */
+	heapRel = table_open(heapRelid, NoLock);
+	heapDesc = RelationGetDescr(heapRel);
+
+	/* In case of a partitioned index, each child must also be compatible. */
+	if (irel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
+		safe = YbChildIndexesMatch(irel, heapDesc);
+
+	safe &= equal(YbSetVarTypmodsMutator((Node *) oldExprs, heapDesc), newExprs) &&
+			equal(YbSetVarTypmodsMutator((Node *) oldPred, heapDesc), newPred);
+
+	table_close(heapRel, NoLock);
+	return safe;
+}
+
+/*
+ * Returns the index expressions from the ALTER TABLE 'stmt' in a form that's
+ * compatible with indexprs in pg_index.
+ */
+List *
+YbComputeIndexExpressions(Oid heapRelid, IndexStmt *stmt)
+{
+	int			natts = list_length(stmt->indexParams);
+	HeapTuple	tuple;
+	Form_pg_am	accessMethodForm;
+	Oid			accessMethodId;
+	IndexAmRoutine *amRoutine;
+	IndexInfo  *indexInfo;
+
+	Assert(stmt->transformed);
+
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(stmt->accessMethod));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("access method \"%s\" does not exist",
+						stmt->accessMethod)));
+	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+	accessMethodId = accessMethodForm->oid;
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+	ReleaseSysCache(tuple);
+
+	indexInfo = makeIndexInfo(natts, natts, accessMethodId, NIL, NIL,
+							  false, false, false, false);
+	ComputeIndexAttrs(indexInfo,
+					  palloc(natts * sizeof(Oid)),
+					  palloc(natts * sizeof(Oid)),
+					  palloc(natts * sizeof(Oid)),
+					  palloc(natts * sizeof(int16)),
+					  stmt->indexParams, stmt->excludeOpNames, heapRelid,
+					  stmt->accessMethod, accessMethodId,
+					  amRoutine->amcanorder, false, InvalidOid, 0, NULL);
+
+	return indexInfo->ii_Expressions;
+}
+
+/*
+ * In partitioned scenarios, a root index partition and its child partitions
+ * must reach the same decision on whether to reuse or rebuild the entire index.
+ * The decision is taken top-down (root decides for itself, the child partitions
+ * decide independently later). A child partition index that chooses to rebuild
+ * itself, cannot be dropped while it is attached to a reused parent. This
+ * causes the ALTER to fail.
+ * CompareIndexInfo() lets a child index partition be attached when its
+ * expressions and predicate equal the parent's after eval_const_expressions(),
+ * and when its operator classes share a family. This is in contrast to
+ * YbIndexReuseIsSafe() which examines the unsimplified trees that can still
+ * differ.
+ * This function requires every partition of an index, at any depth, to
+ * match its parent's stored (unsimplified) trees and operator classes exactly.
+ * Otherwise the parent is rebuilt, which recreates all child partitions from
+ * their definition.
+ * This function must be called from the parent partition.
+ *
+ * rootHeapDesc already has the altered column types of the root, while the
+ * child partitions are altered later, so the attribute map ignores type
+ * differences. The stored trees on both sides still carry the old typmods.
+ */
+static bool
+YbChildIndexesMatch(Relation rootIrel, TupleDesc rootHeapDesc)
+{
+	List	   *rootExprs = YbRelationGetUnConstifiedIndexExpressions(rootIrel);
+	Node	   *rootPred = YbRelationGetUnConstifiedIndexPredicate(rootIrel);
+	int			rootNkeyatts = IndexRelationGetNumberOfKeyAttributes(rootIrel);
+	oidvector  *rootIndclass;
+	bool		isnull;
+	bool		match = true;
+	List	   *descendants;
+	ListCell   *lc;
+
+	rootIndclass = (oidvector *) DatumGetPointer(SysCacheGetAttr(INDEXRELID,
+																 rootIrel->rd_indextuple,
+																 Anum_pg_index_indclass,
+																 &isnull));
+	Assert(!isnull);
+
+	/* The ALTER already holds locks on every partitioned table. */
+	descendants = find_all_inheritors(RelationGetRelid(rootIrel), NoLock, NULL);
+	foreach(lc, descendants)
+	{
+		Oid			childOid = lfirst_oid(lc);
+		Relation	childIrel;
+		Relation	childHeap;
+		AttrMap    *attmap;
+		Node	   *childExprs;
+		Node	   *childPred;
+		oidvector  *childIndclass;
+		bool		exprs_whole_row;
+		bool		pred_whole_row;
+
+		/* find_all_inheritors() includes the root itself. */
+		if (childOid == RelationGetRelid(rootIrel))
+			continue;
+
+		childIrel = index_open(childOid, AccessShareLock);
+		childHeap = table_open(childIrel->rd_index->indrelid, NoLock);
+		attmap = build_attrmap_by_name(rootHeapDesc, RelationGetDescr(childHeap),
+									   true /* yb_ignore_type_mismatch */ );
+		childExprs = map_variable_attnos((Node *) YbRelationGetUnConstifiedIndexExpressions(childIrel),
+										 1, 0, attmap, InvalidOid,
+										 &exprs_whole_row);
+		childPred = map_variable_attnos(YbRelationGetUnConstifiedIndexPredicate(childIrel),
+										1, 0, attmap, InvalidOid,
+										&pred_whole_row);
+		childIndclass = (oidvector *) DatumGetPointer(SysCacheGetAttr(INDEXRELID,
+																	  childIrel->rd_indextuple,
+																	  Anum_pg_index_indclass,
+																	  &isnull));
+		Assert(!isnull);
+
+		/*
+		 * CompareIndexInfo() rejects a whole-row reference and a different
+		 * number of key columns, and cloning a partition index rejects a
+		 * whole-row reference, so neither can occur in an attached index.
+		 */
+		Assert(!exprs_whole_row && !pred_whole_row);
+		Assert(IndexRelationGetNumberOfKeyAttributes(childIrel) == rootNkeyatts);
+
+		/*
+		 * Validate that parent and child have identical operator classes.
+		 * CompareIndexInfo() compares operator families, not classes.
+		 */
+		if (memcmp(rootIndclass->values, childIndclass->values, rootNkeyatts * sizeof(Oid)) != 0)
+			match = false;
+
+		/* Validate that parent and child have identical trees before simplification. */
+		match &= equal(rootExprs, childExprs) && equal(rootPred, childPred);
+
+		table_close(childHeap, NoLock);
+		index_close(childIrel, NoLock);
+		if (!match)
+			break;
+	}
+
+	return match;
+}
+
+/*
+ * An invalid leaf index on an xCluster automatic mode source is left over
+ * from a failed CREATE INDEX and does not exist on the target. A DDL whose
+ * outcome depends on it would replay differently on the target and halt DDL
+ * replication, so the two checks below reject it.
+ */
+
+/* Reject skipping a derived name held by an invalid leaf index. */
+static void
+YbCheckDerivedNameHeldByInvalidIndex(const char *relname, Oid namespaceid)
+{
+	Oid			relid = get_relname_relid(relname, namespaceid);
+
+	if (!OidIsValid(relid) ||
+		get_rel_relkind(relid) != RELKIND_INDEX ||
+		get_index_isvalid(relid))
+		return;
+
+	if (!IsYugaByteEnabled() || !yb_xcluster_invalid_index_ddl_check ||
+		YBCGetXClusterRole(MyDatabaseId) != XCLUSTER_ROLE_AUTOMATIC_SOURCE)
+		return;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_DUPLICATE_OBJECT),
+			 errmsg("default name \"%s\" is already used by an invalid index", relname),
+			 errdetail("The xCluster target does not have this index and would choose "
+					   "a different name."),
+			 errhint("Drop the invalid index first, or specify a name explicitly.")));
+}
+
+/*
+ * Reject attaching an invalid leaf index to a partitioned index, whether
+ * CREATE INDEX adopts it or ALTER INDEX ... ATTACH PARTITION names it. An
+ * invalid partitioned index (CREATE INDEX ... ON ONLY) exists on the target
+ * too, since the DDL that created it succeeded and was replicated, so
+ * attaching one is fine.
+ */
+void
+YbCheckAttachedIndexIsValid(Relation cldidx)
+{
+	if (cldidx->rd_index->indisvalid ||
+		cldidx->rd_rel->relkind != RELKIND_INDEX)
+		return;
+
+	if (!IsYugaByteEnabled() || !yb_xcluster_invalid_index_ddl_check ||
+		YBCGetXClusterRole(MyDatabaseId) != XCLUSTER_ROLE_AUTOMATIC_SOURCE)
+		return;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+			 errmsg("cannot attach invalid index \"%s\" to a partitioned index",
+					RelationGetRelationName(cldidx)),
+			 errdetail("The xCluster target does not have this index."),
+			 errhint("Drop the invalid index first.")));
 }

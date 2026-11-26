@@ -17,6 +17,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -74,7 +75,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -90,7 +91,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YbcPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  string job = Format("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
@@ -118,7 +119,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
-    job = strings::Substitute("Job_title_$0", seed);
+    job = Format("Job_title_$0", seed);
     CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
   }
 
@@ -128,7 +129,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   // Allocate new update.
   CHECK_YBC_STATUS(YBCPgNewUpdate(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, YB_TRANSACTIONAL,
-      false /* skip_intents_write */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -139,7 +140,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 77 + 100 + seed, false, &expr_projcnt));
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, 77 + seed + 1.0*seed/10.0, false,
                                             &expr_salary));
-  job = strings::Substitute("Job_title_$0", seed + 77);
+  job = Format("Job_title_$0", seed + 77);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   attr_num = 0;
@@ -170,7 +171,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, 77 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 77 + 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, 77 + seed + 1.0*seed/10.0, false));
-    job = strings::Substitute("Job_title_$0", 77 + seed);
+    job = Format("Job_title_$0", 77 + seed);
     CHECK_YBC_STATUS(YBCPgUpdateConstBinary(expr_job, job.c_str(), job.size(), false));
   }
 
@@ -180,7 +181,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   LOG(INFO) << "Test SELECTing from non-partitioned table";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -238,7 +239,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
       CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
       string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-      string expected_job_name = strings::Substitute("Job_title_$0", id);
+      string expected_job_name = Format("Job_title_$0", id);
       CHECK_EQ(selected_job_name, expected_job_name);
 
     } else {
@@ -252,7 +253,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
       CHECK_GE(salary, 77 + id + 1.0*id/10.0 - 0.01);
 
       string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-      string expected_job_name = strings::Substitute("Job_title_$0", 77 + id);
+      string expected_job_name = Format("Job_title_$0", 77 + id);
       CHECK_EQ(selected_job_name, expected_job_name);
     }
   }

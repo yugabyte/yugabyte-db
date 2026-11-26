@@ -26,8 +26,11 @@
 int main(int argc, char** argv) {
   rocksdb::Options options;
   yb::tablet::TabletOptions t_options;
+  // ldb can also write (e.g. compact); the DB type is not knowable here, so its output keeps the
+  // regular DB layout.
   yb::docdb::InitRocksDBOptions(
-      &options, "" /* log_prefix */, "" /* tablet_id */, nullptr /* statistics */, t_options);
+      &options, "" /* log_prefix */, "" /* tablet_id */, nullptr /* statistics */, t_options,
+      yb::docdb::StorageDbType::kRegular);
   rocksdb::LDBTool tool;
   tool.Run(argc, argv, options);
   return 0;

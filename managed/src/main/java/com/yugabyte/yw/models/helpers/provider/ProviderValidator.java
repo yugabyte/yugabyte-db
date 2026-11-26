@@ -175,7 +175,7 @@ public class ProviderValidator extends BaseBeanValidator {
       ProviderFieldsValidator providerFieldsValidator =
           providerValidatorMap.get(requestedProvider.getCode());
       if (providerFieldsValidator != null) {
-        providerFieldsValidator.validate(requestedProvider);
+        providerFieldsValidator.validate(requestedProvider, existingProvider);
       }
     } catch (RuntimeException e) {
       log.error("Failed to validate provider payload", e);

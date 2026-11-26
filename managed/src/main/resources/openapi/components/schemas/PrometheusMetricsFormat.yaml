@@ -1,0 +1,6 @@
+title: PrometheusMetricsFormat
+description: Serialization format for a Prometheus or Perf Advisor metrics dump.
+type: string
+enum:
+  - PROMQL_JSON
+  - PROM_CHUNK

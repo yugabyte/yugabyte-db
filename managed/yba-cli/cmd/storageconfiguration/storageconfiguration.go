@@ -9,7 +9,9 @@ import (
 	azure "github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/az"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/gcs"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/nfs"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/oci"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/s3"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // StorageConfigurationCmd set of commands are used to perform operations on storage
@@ -32,6 +34,11 @@ func init() {
 	StorageConfigurationCmd.AddCommand(azure.AZStorageConfigurationCmd)
 	StorageConfigurationCmd.AddCommand(s3.S3StorageConfigurationCmd)
 	StorageConfigurationCmd.AddCommand(nfs.NFSStorageConfigurationCmd)
+
+	util.PreviewCommand(
+		StorageConfigurationCmd,
+		[]*cobra.Command{oci.OCIStorageConfigurationCmd},
+	)
 
 	StorageConfigurationCmd.AddGroup(&cobra.Group{
 		ID:    "action",

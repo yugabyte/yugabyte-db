@@ -13,6 +13,9 @@
 
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
+#include <signal.h>
+#include <unistd.h>
+
 #include "yb/common/version_info.h"
 
 #include "yb/master/catalog_manager.h"
@@ -30,6 +33,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -80,6 +84,9 @@ DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
 DEFINE_test_flag(bool, ysql_block_writes_to_catalog, false,
     "Block writes to the catalog tables like we would during a ysql major upgrade");
 
+DEFINE_test_flag(bool, kill_master_before_ysql_pg_upgrade, false,
+    "SIGKILL the yb-master immediately before running the pg_upgrade binary");
+
 DEFINE_test_flag(bool, fail_ysql_pg_upgrade, false,
     "Fail PerformPgUpgrade immediately before running the pg_upgrade binary");
 
@@ -123,6 +130,16 @@ Result<std::optional<HostPort>> GetPgSocketDir(TSDescriptorPtr ts_desc) {
     return StatusFromPB(resp.error().status());
   }
   return HostPortFromPB(resp.pg_socket_dir());
+}
+
+Result<std::string> GetPgUpgradeBindAddress() {
+  const auto& bind_address =
+      FLAGS_pgsql_proxy_bind_address.empty() ? FLAGS_rpc_bind_addresses
+                                             : FLAGS_pgsql_proxy_bind_address;
+  SCHECK(
+      !bind_address.empty(), IllegalState,
+      "No bind address found. Either pgsql_proxy_bind_address or rpc_bind_addresses must be set.");
+  return bind_address;
 }
 
 }  // namespace
@@ -261,6 +278,27 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const L
   }
 
   return sync.Wait();
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::CleanupStalePgUpgradeSocketDir() {
+  if (!FLAGS_enable_ysql) {
+    return Status::OK();
+  }
+
+  auto host_port = VERIFY_RESULT(HostPort::FromString(
+      VERIFY_RESULT(GetPgUpgradeBindAddress()), pgwrapper::PgProcessConf::kDefaultPort));
+  host_port.set_port(FLAGS_ysql_upgrade_postgres_port);
+  const auto socket_dir = PgDeriveSocketDir(host_port);
+
+  auto* env = Env::Default();
+  if (!env->DirExists(socket_dir)) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(PgWrapper::CleanupLockFileAndKillHungPg(PgDeriveSocketLockFile(host_port)));
+
+  LOG(INFO) << "Removing stale pg_upgrade socket directory " << socket_dir;
+  return env->DeleteRecursively(socket_dir);
 }
 
 Result<YsqlMajorCatalogUpgradeState>
@@ -495,11 +533,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
-  auto bind_address = FLAGS_pgsql_proxy_bind_address.empty() ? FLAGS_rpc_bind_addresses
-                                                             : FLAGS_pgsql_proxy_bind_address;
-  SCHECK(
-      !bind_address.empty(), IllegalState,
-      "No bind address found. Either pgsql_proxy_bind_address or rpc_bind_addresses must be set.");
+  auto bind_address = VERIFY_RESULT(GetPgUpgradeBindAddress());
 
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
@@ -577,6 +611,17 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
     }
   }
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
+
+  if (FLAGS_TEST_kill_master_before_ysql_pg_upgrade) {
+    // postgres sets its parent-death signal before it writes postmaster.pid, so waiting for the
+    // file ensures postgres exits with us, as it would after a real kill.
+    const auto pid_file = JoinPathSegments(pg_upgrade_data_dir, "postmaster.pid");
+    auto s = WaitFor(
+        [&pid_file]() -> Result<bool> { return Env::Default()->FileExists(pid_file); },
+        MonoDelta::FromSeconds(30), "postgres to write " + pid_file);
+    LOG(INFO) << "TEST: Killing yb-master before running pg_upgrade, postmaster.pid wait: " << s;
+    kill(getpid(), SIGKILL);
+  }
 
   SCHECK(!FLAGS_TEST_fail_ysql_pg_upgrade, InternalError, "TEST: Injected pg_upgrade failure");
 

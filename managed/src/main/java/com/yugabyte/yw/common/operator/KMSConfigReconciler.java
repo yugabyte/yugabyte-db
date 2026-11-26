@@ -2,12 +2,17 @@
 
 package com.yugabyte.yw.common.operator;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.kms.KMSConfigHelper;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
@@ -25,6 +30,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -37,12 +43,15 @@ import org.apache.commons.collections4.CollectionUtils;
  * KMSConfigHelper} and tracked by task UUID. The CR status ({@code resourceUUID}, {@code state},
  * {@code message}, {@code taskUUID}) is written back from the reconciler once tasks complete.
  *
- * <p>The HASHICORP (Vault) and AZU (Azure Key Vault) providers are supported; other providers are
- * gated behind {@link UnsupportedOperationException} placeholders in {@link OperatorUtils} and
- * surface as an {@code Error} state on the CR.
+ * <p>The HASHICORP (Vault), AWS, GCP, AZU (Azure Key Vault), CIPHERTRUST and OCI providers are
+ * supported; other providers are gated behind {@link UnsupportedOperationException} placeholders in
+ * {@link OperatorUtils} and surface as an {@code Error} state on the CR.
  */
 @Slf4j
 public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
+
+  // Providers implemented by the operator (create/edit/delete). Others surface as an Error state.
+  private static final Set<KeyProvider> SUPPORTED_PROVIDERS = OperatorUtils.SUPPORTED_KMS_PROVIDERS;
 
   private final KMSConfigHelper kmsConfigHelper;
   private final Map<String, UUID> kmsConfigTaskMap;
@@ -301,6 +310,7 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
       throws Exception {
     KeyProvider provider = operatorUtils.getKMSConfigProvider(kmsConfig);
     ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+    reconcileGeneratedFields(provider, formData, model);
     UUID taskUUID =
         kmsConfigHelper.editKMSConfig(
             customer.getUuid(),
@@ -317,11 +327,29 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
     return taskUUID;
   }
 
-  // Only editable fields are compared. HASHICORP and AZU are supported; other providers report no
-  // edit.
+  // The edit replaces the stored auth config, so anything only YBA knows about must be copied
+  // over. For AWS that is cmk_id: if the CR has no cmkID, YBA created the CMK, and losing the id
+  // here would make the edit create a second one. cmk_policy only matters while creating a CMK.
+  private void reconcileGeneratedFields(
+      KeyProvider provider, ObjectNode formData, KmsConfig model) {
+    if (provider != KeyProvider.AWS) {
+      return;
+    }
+    ObjectNode current = EncryptionAtRestUtil.getAuthConfig(model.getConfigUUID());
+    if (current == null) {
+      return;
+    }
+    String cmkIdField = AwsKmsAuthConfigField.CMK_ID.fieldName;
+    if (!formData.hasNonNull(cmkIdField) && current.hasNonNull(cmkIdField)) {
+      formData.set(cmkIdField, current.get(cmkIdField));
+    }
+    formData.remove(AwsKmsAuthConfigField.CMK_POLICY.fieldName);
+  }
+
+  // Only editable fields are compared. Unsupported providers report no edit.
   private boolean requiresEdit(KMSConfig kmsConfig, KmsConfig model) {
     KeyProvider provider = operatorUtils.getKMSConfigProvider(kmsConfig);
-    if (provider != KeyProvider.HASHICORP && provider != KeyProvider.AZU) {
+    if (!SUPPORTED_PROVIDERS.contains(provider)) {
       return false;
     }
     ObjectNode desired = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
@@ -335,12 +363,36 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
             || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_ROLE_ID)
             || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_SECRET_ID)
             || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE);
+      case AWS:
+        // useIAMProfile toggles are captured via the presence/absence of the access-key fields.
+        return fieldChanged(desired, current, AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName)
+            || fieldChanged(desired, current, AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName)
+            || fieldChanged(desired, current, AwsKmsAuthConfigField.ENDPOINT.fieldName);
+      case GCP:
+        // Only the service account credentials JSON is editable for GCP. It is an object node, so
+        // it must be compared structurally rather than via fieldChanged (which uses asText()).
+        return nodeChanged(desired, current, GcpKmsAuthConfigField.GCP_CONFIG.fieldName);
       case AZU:
         // A missing client secret means managed identity is in use; the client secret field then
         // drops out of the auth config, so a toggle in either direction is a field change.
         return fieldChanged(desired, current, AzuKmsAuthConfigField.CLIENT_ID.fieldName)
             || fieldChanged(desired, current, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName)
             || fieldChanged(desired, current, AzuKmsAuthConfigField.TENANT_ID.fieldName);
+      case CIPHERTRUST:
+        // The auth type and its credentials are editable; the manager URL and key settings are not.
+        return fieldChanged(desired, current, CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName)
+            || fieldChanged(desired, current, CipherTrustKmsAuthConfigField.USERNAME.fieldName)
+            || fieldChanged(desired, current, CipherTrustKmsAuthConfigField.PASSWORD.fieldName)
+            || fieldChanged(
+                desired, current, CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName);
+      case OCI:
+        // The API-key credentials (user/tenancy/fingerprint/private key) and compartment are
+        // editable; region, vault, key name, key OCID and the auth type are not.
+        return fieldChanged(desired, current, OciKmsAuthConfigField.ociUserId.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociTenancyId.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociFingerprint.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociPrivateKeyContent.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociCompartmentId.fieldName);
       default:
         return false;
     }
@@ -360,10 +412,17 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
     return !Objects.equals(desiredVal, currentVal);
   }
 
+  // Structural comparison for object/array-valued fields (e.g. the GCP credentials JSON), where
+  // fieldChanged's asText() would collapse to an empty string.
+  private static boolean nodeChanged(ObjectNode desired, ObjectNode current, String field) {
+    JsonNode desiredVal = desired.hasNonNull(field) ? desired.get(field) : null;
+    JsonNode currentVal = current.hasNonNull(field) ? current.get(field) : null;
+    return !Objects.equals(desiredVal, currentVal);
+  }
+
   private boolean isSupportedProvider(KMSConfig kmsConfig) {
     try {
-      KeyProvider provider = operatorUtils.getKMSConfigProvider(kmsConfig);
-      return provider == KeyProvider.HASHICORP || provider == KeyProvider.AZU;
+      return SUPPORTED_PROVIDERS.contains(operatorUtils.getKMSConfigProvider(kmsConfig));
     } catch (Exception e) {
       return false;
     }

@@ -6,9 +6,14 @@ import static com.yugabyte.yw.common.Util.HTTPS_SCHEME;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.EXPECTATION_FAILED;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.MOVED_PERMANENTLY;
+import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.TOO_MANY_REQUESTS;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
@@ -33,12 +38,19 @@ import java.io.FileOutputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -50,6 +62,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -70,15 +83,21 @@ import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
 import org.yb.ybc.ProxySpec;
+import play.libs.ws.WSClient;
+import play.libs.ws.WSResponse;
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.http.apache.ProxyConfiguration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.cloudtrail.CloudTrailClient;
@@ -112,13 +131,19 @@ import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.AssumeRoleWithWebIdentityRequest;
+import software.amazon.awssdk.services.sts.model.AssumeRoleWithWebIdentityResponse;
+import software.amazon.awssdk.services.sts.model.StsException;
 
 @Singleton
 @Slf4j
 public class AWSUtil implements CloudUtil {
   @Inject CustomCAStoreManager customCAStoreManager;
+  @Inject WSClient wsClient;
   @Inject RuntimeConfGetter runtimeConfGetter;
   @Inject AWSCloudImpl awsCloudImpl;
+  @Inject HostCloudDetector hostCloudDetector;
 
   public static final String AWS_S3_LOCATION_PREFIX = "s3://";
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
@@ -130,6 +155,12 @@ public class AWSUtil implements CloudUtil {
       "^s3(?:[a-zA-Z0-9.-]+)?[.]amazonaws[.]com$";
   public static final String AWS_DEFAULT_REGION = "us-east-1";
   public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
+  // Captures the region out of a standard host base: 's3', a dot or hyphen, any intervening labels
+  // (dualstack, fips, control), then the region. The region group is deliberately narrow - a
+  // two-letter area, then words, then a digit - so that a label like 'website' in
+  // s3-website-us-west-2 cannot be mistaken for one.
+  private static final String AWS_HOST_BASE_REGION_PATTERN =
+      "^s3[.-](?:[a-z0-9-]+[.])*([a-z]{2}-[a-z-]+-\\d+)[.]amazonaws[.]com$";
 
   public static final String YBC_AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
@@ -140,6 +171,8 @@ public class AWSUtil implements CloudUtil {
   public static final String YBC_USE_AWS_IAM_FIELDNAME = "USE_AWS_IAM";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
+  private static final Pattern hostBaseRegionCompiled =
+      Pattern.compile(AWS_HOST_BASE_REGION_PATTERN);
 
   @AllArgsConstructor
   @Data
@@ -156,8 +189,10 @@ public class AWSUtil implements CloudUtil {
       s3Client.headBucket(builder -> builder.bucket(bucketName));
     } catch (S3Exception e) {
       if (e.statusCode() == play.mvc.Http.Status.NOT_FOUND) {
-        // Bucket does not exist
-        throw new RuntimeException(String.format("No S3 bucket found with name %s", bucketName));
+        // A missing or misnamed bucket is the user's to fix, like the refusals awsServiceError
+        // reports.
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, String.format("No S3 bucket found with name %s", bucketName));
       } else {
         throw e; // rethrow other errors
       }
@@ -180,20 +215,34 @@ public class AWSUtil implements CloudUtil {
       return true;
     }
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    if (isCrossCloudFederationConfig(s3Data)
+        && StringUtils.isBlank(s3Data.crossCloudFederationAudience)) {
+      // Cross-cloud federation with no audience resolved (config validation / no universe context):
+      // only the GCP node's own identity can reach the bucket, never YBA. Defer to the node/YBC.
+      return true;
+    }
     try {
       maybeDisableCertVerification();
       for (Map.Entry<String, String> entry : regionLocationsMap.entrySet()) {
         String region = entry.getKey();
         String backupLocation = entry.getValue();
+        String msg = String.format("Cannot list objects in backup location %s", backupLocation);
         try (S3Client s3Client = createS3Client(s3Data, region)) {
           CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, backupLocation);
           String bucketName = cLInfo.bucket;
           String prefix = cLInfo.cloudPath;
           tryListObjects(s3Client, bucketName, prefix);
         } catch (SdkClientException e) {
-          String msg = String.format("Cannot list objects in backup location %s", backupLocation);
+          if (isCrossCloudFederationConfig(s3Data) && isFederationIdentityFailure(e)) {
+            // YBA (expected on GCP) can't mint the web-identity credential; defer to the node/YBC.
+            log.warn("Skipping cross-cloud federation list check: {}", e.getMessage());
+            continue;
+          }
           log.error(msg, e);
           return false;
+        } catch (AwsServiceException e) {
+          // S3 answered with an error; awsServiceError says which become a clear 412.
+          throw awsServiceError(msg, e);
         }
       }
       return true;
@@ -205,6 +254,12 @@ public class AWSUtil implements CloudUtil {
   @Override
   public void checkListObjectsWithYbcSuccessMarkerCloudStore(
       CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
+    CustomerConfigStorageS3Data configS3Data = (CustomerConfigStorageS3Data) configData;
+    if (isCrossCloudFederationConfig(configS3Data)
+        && StringUtils.isBlank(configS3Data.crossCloudFederationAudience)) {
+      // No audience resolved: YBA can't list the bucket; node-side YBC validation covers it.
+      return;
+    }
     Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
         csSpec.getBucketLocationsMap();
     Map<String, String> configRegions = getRegionLocationsMap(configData);
@@ -220,16 +275,23 @@ public class AWSUtil implements CloudUtil {
           String bucketName = getCloudLocationInfo(regionPrefix.getKey(), configData, null).bucket;
           log.debug("Trying object listing with S3 bucket {} and prefix {}", bucketName, prefix);
           CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+          String msg =
+              String.format(
+                  "Cannot list objects in cloud location with bucket %s and cloud directory %s",
+                  bucketName, prefix);
           try (S3Client s3Client = createS3Client(s3Data, region)) {
             tryListObjects(s3Client, bucketName, prefix);
           } catch (SdkClientException e) {
-            String msg =
-                String.format(
-                    "Cannot list objects in cloud location with bucket %s and cloud directory %s",
-                    bucketName, prefix);
+            if (isCrossCloudFederationConfig(s3Data) && isFederationIdentityFailure(e)) {
+              // YBA (expected on GCP) can't federate; node-side YBC validation covers it.
+              log.warn("Skipping cross-cloud federation marker check: {}", e.getMessage());
+              continue;
+            }
             log.error(msg, e);
             throw new PlatformServiceException(
                 PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
+          } catch (AwsServiceException e) {
+            throw awsServiceError(msg, e);
           }
         }
       }
@@ -239,6 +301,52 @@ public class AWSUtil implements CloudUtil {
     } finally {
       maybeEnableCertVerification();
     }
+  }
+
+  /**
+   * The error to raise for an S3 error answer to a bucket listing check. The check's calls are the
+   * client's bucket region warm-up (GetBucketLocation, not made for a federated config), then
+   * HeadBucket and ListObjectsV2 (ListObjectsV2 alone for the file check). A refusal (4xx) is the
+   * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one. That
+   * message may name no action: a HEAD request (HeadBucket) gets none at all, and a cross-account
+   * refusal or an S3-compatible store may only say "Access Denied". A 403 whose message names no
+   * s3: action is therefore described without guessing its cause, with the permission listing
+   * needs. So is a 301 without a message, a bucket in another region than the client's. Anything
+   * else (an S3-side 5xx or throttling) is passed on as it is. A missing bucket is a 412 either
+   * way: the listing checks' HeadBucket 404 is reported by tryListObjects itself, and the file
+   * check's ListObjectsV2 404 (NoSuchBucket) comes here as a refusal.
+   */
+  private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
+    if (!isS3Refusal(e.statusCode()) && e.statusCode() != MOVED_PERMANENTLY) {
+      return e;
+    }
+    log.error(msg, e);
+    String s3Message = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : null;
+    String reason;
+    if (e.statusCode() == FORBIDDEN
+        && (StringUtils.isBlank(s3Message) || !s3Message.contains("s3:"))) {
+      reason =
+          (StringUtils.isBlank(s3Message) ? "access denied" : s3Message)
+              + " (HTTP 403); check the credentials and that they may list the bucket"
+              + " (s3:ListBucket on AWS S3)";
+    } else if (StringUtils.isNotBlank(s3Message)) {
+      reason = s3Message;
+    } else if (e.statusCode() == MOVED_PERMANENTLY) {
+      reason =
+          "the bucket is in another region than the client's (HTTP 301); check the host base or"
+              + " signing region";
+    } else {
+      reason = "S3 returned HTTP " + e.statusCode();
+    }
+    return new PlatformServiceException(PRECONDITION_FAILED, msg + ": " + reason);
+  }
+
+  /**
+   * Whether an S3 error status is a refusal, which is the user's to fix: a 4xx other than
+   * throttling (429), which like an S3-side 5xx is not.
+   */
+  private static boolean isS3Refusal(int status) {
+    return status >= BAD_REQUEST && status < INTERNAL_SERVER_ERROR && status != TOO_MANY_REQUESTS;
   }
 
   @Override
@@ -342,7 +450,7 @@ public class AWSUtil implements CloudUtil {
       s3Client.putObject(markerRequest, RequestBody.fromFile(markerFile));
       return true;
     } catch (Exception e) {
-      log.error("Error uploading backup: {}", e);
+      log.error("Error uploading backup", e);
     } finally {
       maybeEnableCertVerification();
       if (s3Client != null) {
@@ -457,7 +565,7 @@ public class AWSUtil implements CloudUtil {
           keyName,
           durationInSeconds);
     } catch (Exception e) {
-      log.error("Error uploading YBDB release {}: {}", release.getName(), e);
+      log.error("Error uploading YBDB release {}", release.getName(), e);
       return false;
     } finally {
       maybeEnableCertVerification();
@@ -903,7 +1011,15 @@ public class AWSUtil implements CloudUtil {
     S3Client client = null;
     var builder = S3Client.builder();
 
-    if (s3Data.isIAMInstanceProfile) {
+    if (usesCrossCloudFederationCredentials(s3Data)) {
+      // Cross-cloud federation (S3-on-GCP): YBA (on GCP) exchanges its GCE identity token for
+      // temporary AWS creds via AssumeRoleWithWebIdentity, using the role/audience resolved from
+      // the provider. Only reached at backup/delete time, once those transients are stamped. Let a
+      // metadata-unreachable SdkClientException propagate so callers can classify it (YBA not on
+      // GCP) and defer to the node; a real STS/auth error surfaces as an AwsServiceException.
+      builder.credentialsProvider(
+          StaticCredentialsProvider.create(getCrossCloudFederationCredentials(s3Data)));
+    } else if (s3Data.isIAMInstanceProfile) {
       // Using credential chaining here.
       // This first looks for K8s service account IAM role,
       // then IAM user,
@@ -915,7 +1031,8 @@ public class AWSUtil implements CloudUtil {
                     .getTemporaryCredentials(s3Data)));
       } catch (Exception e) {
         log.error("Fetching IAM credentials failed: {}", e.getMessage());
-        throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, withIamRoleAdviceOnGcp(s3Data, e.getMessage()));
       }
     } else {
       String key = s3Data.awsAccessKeyId;
@@ -990,24 +1107,80 @@ public class AWSUtil implements CloudUtil {
         }
         client = builder.build();
       }
-      // First bucket region fetch may fail, so call and skip.
+      if (client == null) {
+        throw new RuntimeException("S3 client is null. This is unexpected!");
+      }
       try {
-        if (client != null) {
-          String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
-          if (StringUtils.isNotBlank(bucket)) {
-            getBucketRegion(bucket, client);
-          }
-        } else {
-          throw new RuntimeException("S3 client is null. This is unexpected!");
-        }
-      } catch (SdkClientException e) {
-        log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
+        warmUpBucketRegion(client, s3Data, region);
+      } catch (RuntimeException e) {
+        // The caller gets no client to close.
+        client.close();
+        throw e;
       }
       return client;
     } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
+  }
+
+  /**
+   * Fetches the bucket region once and ignores the result: the first bucket region fetch may fail,
+   * so it is made here rather than by the call that needs the bucket. A client error is skipped; an
+   * S3 refusal is not, so a config whose role may not call s3:GetBucketLocation, which
+   * YB-Controller backups of a non-federated config need, is still rejected when it is saved.
+   * Skipped for a cross-cloud federation config, whose role need not allow it (its region is
+   * derived instead, as in createCredsMapYbc).
+   */
+  @VisibleForTesting
+  void warmUpBucketRegion(S3Client client, CustomerConfigStorageS3Data s3Data, String region) {
+    if (isCrossCloudFederationConfig(s3Data)) {
+      return;
+    }
+    String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
+    if (StringUtils.isBlank(bucket)) {
+      return;
+    }
+    try {
+      getBucketRegion(bucket, client);
+    } catch (SdkClientException e) {
+      log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
+    } catch (S3Exception e) {
+      if (e.statusCode() == NOT_FOUND) {
+        // A missing bucket: the call that needs it reports that, not this warm-up's permission.
+        log.trace("Skipping first bucket region fetch of a missing bucket {}", bucket);
+        return;
+      }
+      if (!isS3Refusal(e.statusCode())) {
+        // An S3-side failure or throttling: passed on as it is.
+        throw e;
+      }
+      // S3's message for this call, e.g. "Access Denied", names neither the action nor the bucket.
+      AwsErrorDetails details = e.awsErrorDetails();
+      String reason =
+          details != null && StringUtils.isNotBlank(details.errorMessage())
+              ? details.errorMessage()
+              : "HTTP " + e.statusCode();
+      String named = String.format("s3:GetBucketLocation on bucket %s: %s", bucket, reason);
+      throw (S3Exception)
+          e.toBuilder()
+              .message(named)
+              .awsErrorDetails(
+                  (details != null ? details.toBuilder() : AwsErrorDetails.builder())
+                      .errorMessage(named)
+                      .build())
+              .build();
+    }
+  }
+
+  /**
+   * Whether YBA's S3 client for this config uses federated credentials: only once the role ARN and
+   * audience have been stamped on it.
+   */
+  public static boolean usesCrossCloudFederationCredentials(CustomerConfigStorageS3Data s3Data) {
+    return isCrossCloudFederationConfig(s3Data)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience);
   }
 
   public static Map<String, AWSHostBase> getRegionHostBaseMap(CustomerConfigData configData) {
@@ -1075,6 +1248,18 @@ public class AWSUtil implements CloudUtil {
     return standardHostBaseCompiled.matcher(hostBase).matches();
   }
 
+  /**
+   * Extracts {@code <region>} from host bases like {@code s3.<region>.amazonaws.com}, or null when
+   * the host base names no region (plain {@code s3.amazonaws.com}, or a non-AWS endpoint).
+   */
+  static String extractRegionFromHostBase(String hostBase) {
+    if (StringUtils.isBlank(hostBase)) {
+      return null;
+    }
+    Matcher matcher = hostBaseRegionCompiled.matcher(hostBase);
+    return matcher.matches() ? matcher.group(1) : null;
+  }
+
   public String getOrCreateHostBase(
       CustomerConfigStorageS3Data s3Data, String bucketName, String bucketRegion, String region) {
     Map<String, AWSHostBase> hostBaseMap = getRegionHostBaseMap(s3Data);
@@ -1084,6 +1269,150 @@ public class AWSUtil implements CloudUtil {
       hostBase = createBucketRegionSpecificHostBase(bucketName, bucketRegion);
     }
     return hostBase;
+  }
+
+  // Cross-cloud federation (S3-on-GCP) helpers. A federation S3 config is marked by its own
+  // credential source (the on-node AWS_PROFILE credential_process), analogous to a GCS useGcpIam
+  // config. The role ARN and audience are not persisted on the config; they are resolved from the
+  // universe's provider at backup/delete time and stamped onto the transient fields on s3Data.
+
+  /** True when the S3 config is set up for cross-cloud federated IAM. */
+  public static boolean isCrossCloudFederationConfig(CustomerConfigStorageS3Data s3Data) {
+    return s3Data != null && s3Data.useCrossCloudFederation;
+  }
+
+  /**
+   * Builds temporary AWS credentials for a cross-cloud federation S3 config: fetches a GCP OIDC
+   * identity token for the resolved audience from the GCE metadata server, then exchanges it for
+   * AWS credentials via STS AssumeRoleWithWebIdentity using the resolved role ARN. Requires YBA to
+   * run on GCP with a service account the AWS role's trust policy accepts.
+   */
+  /**
+   * Apache client builder carrying the storage config's proxy, if one is set. STS is a public
+   * endpoint, so an install that only reaches AWS through a proxy needs it here; the GCE metadata
+   * call deliberately does not go through it, being link-local.
+   */
+  private static ApacheHttpClient.Builder apacheClientWithConfiguredProxy(
+      CustomerConfigStorageS3Data s3Data) {
+    ApacheHttpClient.Builder builder = ApacheHttpClient.builder();
+    CustomerConfigStorageS3Data.ProxySetting proxy = s3Data.proxySetting;
+    if (proxy == null || StringUtils.isBlank(proxy.proxy)) {
+      return builder;
+    }
+    StringBuilder endpoint = new StringBuilder();
+    if (!proxy.proxy.contains("://")) {
+      endpoint.append("http://");
+    }
+    endpoint.append(proxy.proxy);
+    if (proxy.port > 0) {
+      endpoint.append(":").append(proxy.port);
+    }
+    ProxyConfiguration.Builder proxyBuilder =
+        ProxyConfiguration.builder().endpoint(URI.create(endpoint.toString()));
+    if (StringUtils.isNotBlank(proxy.username)) {
+      proxyBuilder.username(proxy.username);
+      if (StringUtils.isNotBlank(proxy.password)) {
+        proxyBuilder.password(proxy.password);
+      }
+    }
+    return builder.proxyConfiguration(proxyBuilder.build());
+  }
+
+  private AwsCredentials getCrossCloudFederationCredentials(CustomerConfigStorageS3Data s3Data) {
+    String token = fetchGcpIdentityToken(s3Data.crossCloudFederationAudience);
+    try (StsClient sts =
+        StsClient.builder()
+            .region(Region.AWS_GLOBAL)
+            .credentialsProvider(AnonymousCredentialsProvider.create())
+            .httpClientBuilder(apacheClientWithConfiguredProxy(s3Data))
+            .build()) {
+      AssumeRoleWithWebIdentityResponse resp =
+          sts.assumeRoleWithWebIdentity(
+              AssumeRoleWithWebIdentityRequest.builder()
+                  .roleArn(s3Data.crossCloudFederationRoleArn)
+                  .webIdentityToken(token)
+                  .roleSessionName("yba-cross-cloud-federation")
+                  .build());
+      return AwsSessionCredentials.create(
+          resp.credentials().accessKeyId(),
+          resp.credentials().secretAccessKey(),
+          resp.credentials().sessionToken());
+    } catch (StsException e) {
+      // StsException is a service exception, so it is not an SdkClientException and would escape
+      // the credential-failure handling around createS3Client, surfacing as a 500 instead of a
+      // validation error. Re-raise it as the client-side credential failure it is from the S3
+      // client's point of view; no cause is attached, so it is not mistaken for unreachability.
+      throw SdkClientException.create(
+          "STS refused AssumeRoleWithWebIdentity for the configured role ARN: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Fetches a full-format GCP identity token for the given audience from the GCE metadata server.
+   *
+   * <p>Distinguishes two failures that must not be conflated: the metadata server being unreachable
+   * (YBA is not on GCP - callers defer to the node), versus it answering with an HTTP error (YBA
+   * <i>is</i> on GCP but the audience or the VM's service account is wrong - a real
+   * misconfiguration that must surface). {@link #isFederationIdentityFailure} tells them apart by
+   * the cause type, so only the first is ever skipped.
+   */
+  private String fetchGcpIdentityToken(String audience) {
+    String url =
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/"
+            + "default/identity?format=full&audience="
+            + URLEncoder.encode(audience, StandardCharsets.UTF_8);
+    WSResponse response;
+    try {
+      response =
+          wsClient
+              .url(url)
+              .addHeader("Metadata-Flavor", "Google")
+              .setRequestTimeout(Duration.ofSeconds(5))
+              .get()
+              .toCompletableFuture()
+              .get(10, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw SdkClientException.create("Interrupted fetching the GCP identity token", e);
+    } catch (Exception e) {
+      // Cause is preserved: isFederationIdentityFailure classifies on it.
+      throw SdkClientException.create(
+          "Unable to reach the GCE metadata server to fetch a GCP identity token: "
+              + e.getMessage()
+              + ". Cross-cloud federated IAM requires YBA itself to run on GCP for the operations"
+              + " it performs directly, such as deleting a backup.",
+          e);
+    }
+    if (response.getStatus() != 200) {
+      // The metadata server answered, so this is a misconfiguration, not an absent one. No cause
+      // is attached, so isFederationIdentityFailure will not treat it as unreachable.
+      throw SdkClientException.create(
+          "GCE metadata server rejected the identity token request (HTTP "
+              + response.getStatus()
+              + "). Check the VM's service account and the configured federation audience.");
+    }
+    return response.getBody().trim();
+  }
+
+  /**
+   * True only when a failure is YBA being unable to mint the web-identity credential (not on GCP /
+   * cannot reach the compute metadata server). Real S3 errors (NoSuchBucket, AccessDenied) do not
+   * match, so the precheck stays strict on them.
+   */
+  private static boolean isFederationIdentityFailure(Throwable t) {
+    for (Throwable c = t; c != null; c = c.getCause()) {
+      // Classified by cause type rather than message text: only a genuine connectivity failure to
+      // the metadata server means "YBA is not on GCP". An HTTP error from a metadata server that
+      // did answer is a misconfiguration (wrong audience or service account) and must surface
+      // rather than be skipped - matching on wording could not tell the two apart.
+      if (c instanceof UnknownHostException
+          || c instanceof ConnectException
+          || c instanceof NoRouteToHostException
+          || c instanceof SocketTimeoutException) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override
@@ -1231,6 +1560,12 @@ public class AWSUtil implements CloudUtil {
       String fileName,
       boolean checkExistsOnAll) {
 
+    CustomerConfigStorageS3Data fedCheckData = (CustomerConfigStorageS3Data) configData;
+    if (isCrossCloudFederationConfig(fedCheckData)
+        && StringUtils.isBlank(fedCheckData.crossCloudFederationAudience)) {
+      // Federation backups are always YBC and validated node-side; report present.
+      return true;
+    }
     // TODO: Note other invocations of this function are in the try block
     // s3Client could not be declared outside try block as it is used in the map function
     maybeDisableCertVerification();
@@ -1261,7 +1596,14 @@ public class AWSUtil implements CloudUtil {
               })
           .anyMatch(i -> checkExistsOnAll ? (i.get() == locations.size()) : (i.get() == 1));
     } catch (SdkClientException e) {
+      if (isCrossCloudFederationConfig(fedCheckData) && isFederationIdentityFailure(e)) {
+        // YBA (expected on GCP) can't federate; the backup is validated node-side. Report present.
+        log.warn("Skipping cross-cloud federation file-exists check: {}", e.getMessage());
+        return true;
+      }
       throw new RuntimeException("Error checking files on locations", e);
+    } catch (AwsServiceException e) {
+      throw awsServiceError("Cannot check files in backup locations " + locations, e);
     } finally {
       maybeEnableCertVerification();
     }
@@ -1346,7 +1688,12 @@ public class AWSUtil implements CloudUtil {
       CustomerConfigData configData, String bucket, String region, Universe universe) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     Map<String, String> s3CredsMap = new HashMap<>();
-    if (s3Data.isIAMInstanceProfile) {
+    boolean isFederation = isCrossCloudFederationConfig(s3Data);
+    if (isFederation) {
+      // GCP DB node -> S3 federation: YBC uses the node's AWS credential chain (the AWS_PROFILE
+      // credential_process deployed by node-agent), so route it to IAM rather than static keys.
+      s3CredsMap.put(YBC_USE_AWS_IAM_FIELDNAME, "true");
+    } else if (s3Data.isIAMInstanceProfile) {
       boolean useDbIAM =
           runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.useDBNodesIAMRoleForBackup);
       if (useDbIAM) {
@@ -1359,13 +1706,32 @@ public class AWSUtil implements CloudUtil {
       s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, s3Data.awsSecretAccessKey);
     }
     String bucketRegion = null;
-    try {
-      bucketRegion = getBucketRegion(bucket, s3Data, region);
-    } catch (SdkClientException e) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          String.format(
-              "Failed to retrieve region of Bucket %s, error: %s", bucket, e.getMessage()));
+    if (isFederation) {
+      // getBucketRegion needs a signed client, which a federation config has no credentials for, so
+      // take the signing region and otherwise read it off the host base, which already carries the
+      // region for standard endpoints. YBC gets this verbatim and has no cross-region redirect
+      // handling, so the wrong region here surfaces as an opaque HTTP 301.
+      bucketRegion =
+          StringUtils.isNotBlank(s3Data.fallbackRegion)
+              ? s3Data.fallbackRegion
+              : extractRegionFromHostBase(s3Data.awsHostBase);
+      if (StringUtils.isBlank(bucketRegion)) {
+        log.warn(
+            "Host base '{}' names no region; defaulting to {}. Set SIGNING_REGION if the bucket"
+                + " is elsewhere.",
+            s3Data.awsHostBase,
+            AWS_DEFAULT_REGION);
+        bucketRegion = AWS_DEFAULT_REGION;
+      }
+    } else {
+      try {
+        bucketRegion = getBucketRegion(bucket, s3Data, region);
+      } catch (SdkClientException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Failed to retrieve region of Bucket %s, error: %s", bucket, e.getMessage()));
+      }
     }
     String hostBase = getOrCreateHostBase(s3Data, bucket, bucketRegion, region);
     s3CredsMap.put(YBC_AWS_ENDPOINT_FIELDNAME, hostBase);
@@ -1395,8 +1761,36 @@ public class AWSUtil implements CloudUtil {
     } catch (Exception e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
-          String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage()));
+          withIamRoleAdviceOnGcp(
+              s3Data,
+              String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage())));
     }
+  }
+
+  /**
+   * The error of an IAM role config whose AWS credentials could not be had, with the way out on a
+   * YBA that runs on GCP, such as an HA standby promoted there: an IAM role config made on a YBA on
+   * AWS hands that YBA's own credentials to the DB nodes, and a YBA on GCP has them only if its
+   * host is set up with some. The advice is conditional, as the error may also come from AWS
+   * refusing or throttling credentials the host has. A config already federated gets no advice:
+   * what it lacks is the aws entry that the federation error describes.
+   */
+  @VisibleForTesting
+  String withIamRoleAdviceOnGcp(CustomerConfigStorageS3Data s3Data, String error) {
+    if (isCrossCloudFederationConfig(s3Data)
+        || hostCloudDetector == null
+        || !hostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp)) {
+      return error;
+    }
+    return error
+        + ". YBA runs on GCP, where an IAM role storage config has AWS credentials only if this"
+        + " host is set up with them: an AWS profile, a web identity token or container"
+        + " credentials. If it is not, turn on Federated IAM on the storage config, and set its"
+        + " Signing Region to the bucket's region unless the host base names it: for a federated"
+        + " config YBA does not look the region up, and otherwise uses us-east-1. YBA and the GCP"
+        + " DB nodes then reach S3 through the provider's federated IAM entry for aws, whose role"
+        + " must trust this YBA's service account as well as the nodes'. The AWS DB nodes use"
+        + " their own instance role instead, which must then have access to the bucket.";
   }
 
   @Override
@@ -1535,6 +1929,16 @@ public class AWSUtil implements CloudUtil {
   public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
       throws Exception {
     CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) configData;
+    if (isCrossCloudFederationConfig(s3data)
+        && StringUtils.isBlank(s3data.crossCloudFederationAudience)) {
+      // Cross-cloud federation with no audience resolved. The audience and role ARN are stamped
+      // from the universe's provider at backup/delete time, so they are absent whenever the config
+      // itself is being saved - there is no universe to resolve them from. YBA therefore cannot
+      // mint the web-identity credential here, and falling through would drop into the default AWS
+      // chain and fail on a YBA that is not on AWS. The node/YBC does the authoritative check.
+      log.info("Skipping YBA-side validation of a cross-cloud federation S3 config");
+      return;
+    }
     if (StringUtils.isEmpty(s3data.awsAccessKeyId)
         || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
       if (!s3data.isIAMInstanceProfile) {
@@ -1683,9 +2087,16 @@ public class AWSUtil implements CloudUtil {
           EXPECTATION_FAILED,
           "Created object " + objectName + " was not found in bucket " + bucketName);
     } catch (S3Exception e) {
-      throw new PlatformServiceException(
-          EXPECTATION_FAILED,
-          "Error reading test object " + objectName + ", exception occurred: " + getStackTrace(e));
+      PlatformServiceException error =
+          new PlatformServiceException(
+              EXPECTATION_FAILED,
+              "Error reading test object "
+                  + objectName
+                  + ", exception occurred: "
+                  + getStackTrace(e));
+      // Lets the v2 storage config API classify the error by S3's answer.
+      error.initCause(e);
+      throw error;
     }
   }
 

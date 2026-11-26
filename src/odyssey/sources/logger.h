@@ -11,7 +11,13 @@
 
 typedef struct od_logger od_logger_t;
 
-typedef enum { OD_LOG, OD_ERROR, OD_DEBUG, OD_FATAL } od_logger_level_t;
+/*
+ * YB: YB_OD_QUERY and YB_OD_SESSION print at the same verbosity ("debug") as
+ * OD_DEBUG, but are gated independently by log_query/log_session instead
+ * of log_debug, so they never enable (or get enabled by) unrelated
+ * od_debug() call sites elsewhere in the codebase.
+ */
+typedef enum { OD_LOG, OD_ERROR, OD_DEBUG, OD_FATAL, YB_OD_QUERY, YB_OD_SESSION } od_logger_level_t;
 
 struct od_logger {
 	od_pid_t *pid;
@@ -74,10 +80,12 @@ extern int od_logger_reopen(od_logger_t *);
 extern int od_logger_open_syslog(od_logger_t *, char *, char *);
 extern void od_logger_close(od_logger_t *);
 extern void od_logger_write(od_logger_t *, od_logger_level_t, char *, void *,
-			    void *, char *, va_list);
+			    void *, char *, va_list)
+	__attribute__((format(printf, 6, 0)));
 extern void od_logger_write_plain(od_logger_t *, od_logger_level_t, char *,
 				  void *, void *, char *);
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_log(od_logger_t *logger, char *context, void *client,
 			  void *server, char *fmt, ...)
 {
@@ -87,6 +95,37 @@ static inline void od_log(od_logger_t *logger, char *context, void *client,
 	va_end(args);
 }
 
+/*
+ * YB: Query logs are gated by log_query at the
+ * call site (including the existing per-route rule fallback), so these
+ * wrappers don't re-check any flag here.
+ */
+__attribute__((format(printf, 5, 6)))
+static inline void yb_od_query(od_logger_t *logger, char *context, void *client,
+			    void *server, char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	od_logger_write(logger, YB_OD_QUERY, context, client, server, fmt, args);
+	va_end(args);
+}
+
+/*
+ * YB: Session logs are gated by log_session at the
+ * call site (including the existing per-route rule fallback), so these
+ * wrappers don't re-check any flag here.
+ */
+__attribute__((format(printf, 5, 6)))
+static inline void yb_od_session(od_logger_t *logger, char *context, void *client,
+			      void *server, char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	od_logger_write(logger, YB_OD_SESSION, context, client, server, fmt, args);
+	va_end(args);
+}
+
+__attribute__((format(printf, 5, 6)))
 static inline void od_debug(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {
@@ -96,6 +135,7 @@ static inline void od_debug(od_logger_t *logger, char *context, void *client,
 	va_end(args);
 }
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_error(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {
@@ -105,6 +145,7 @@ static inline void od_error(od_logger_t *logger, char *context, void *client,
 	va_end(args);
 }
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_fatal(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {

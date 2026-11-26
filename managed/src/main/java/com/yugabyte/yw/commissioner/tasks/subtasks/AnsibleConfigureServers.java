@@ -15,6 +15,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -63,6 +65,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     public UpgradeTaskType type = UpgradeTaskType.Everything;
+    // Lower-cased load balancer names in the client cert that NodeManager signed in this run.
+    @JsonIgnore @Nullable public Set<String> signedLoadBalancerCertNames;
+    // The load balancer cert reissue records the names once the tserver has restarted.
+    public boolean skipLoadBalancerCertRecord;
     public String ybSoftwareVersion = null;
 
     // Optional params.
@@ -209,9 +215,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         resetMasterState,
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
-    boolean isNodeAgentSupported =
-        NodeAgentClient.isCloudTypeSupported(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+    Common.CloudType providerType =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(nodeDetails.placementUuid)
+            .getProviderCloudType(nodeDetails);
+    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
     taskParams().resetMasterState = resetMasterState;
     taskParams().skipDownloadSoftware = isNodeAgentSupported;
     if (isNodeAgentSupported
@@ -228,6 +237,19 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
+    Set<String> certNames = taskParams().signedLoadBalancerCertNames;
+    ManagedLoadBalancerState lbState = universe.getUniverseDetails().getManagedLoadBalancerState();
+    if (certNames != null
+        && !taskParams().skipLoadBalancerCertRecord
+        && lbState != null
+        && !certNames.equals(lbState.getCertNames().get(taskParams().nodeName))) {
+      // The process loads the cert when this task (re)starts it. Dropped without a load balancer.
+      saveUniverseDetails(
+          u ->
+              u.getUniverseDetails()
+                  .updateManagedLoadBalancerState(
+                      state -> state.getCertNames().put(taskParams().nodeName, certNames)));
+    }
     String taskSubType = taskParams().getProperty("taskSubType");
     if (isNodeAgentSupported
         && (taskParams().type == UpgradeTaskType.Everything
@@ -239,6 +261,16 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), nodeAgent, taskParams().configureCgroupOverride),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      if (taskParams().type == UpgradeTaskType.Everything
+          && !taskParams().updateMasterAddrsOnly
+          && universe.isNodeExporterHttps()) {
+        // Provisioning leaves node_exporter on plain HTTP; point its web.yml at the node certs the
+        // configure command above placed, so the node serves the universe's scheme.
+        nodeAgentClient.runConfigureNodeExporter(
+            nodeAgent,
+            nodeAgentRpcPayload.setUpConfigureNodeExporterBits(universe, nodeDetails, true),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      }
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);

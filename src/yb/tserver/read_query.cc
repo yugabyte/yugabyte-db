@@ -14,12 +14,18 @@
 #include "yb/tserver/read_query.h"
 
 #include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
+#include "yb/common/txn_error_injection.h"
+#include "yb/common/ysql_utils.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/rpc/sidecars.h"
 
@@ -69,12 +75,23 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
+DEFINE_test_flag(bool, disable_index_birth_time_check, false,
+    "If set, don't reject reads at ysql index when read time < index birth time.");
+
 DECLARE_bool(backfill_index_check_snapshot_too_old);
+DECLARE_uint32(max_pending_async_write_checks_per_tablet);
 
 namespace yb {
 namespace tserver {
 
 namespace {
+
+// Whether the database of YSQL table table_id is the target of automatic mode xCluster replication.
+// The namespace id comes from the table id, since tablet metadata may not have it.
+Result<bool> IsXClusterAutomaticModeTarget(TabletServerIf& server, const TableId& table_id) {
+  return server.IsXClusterAutomaticModeTarget(
+      VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)));
+}
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
@@ -151,9 +168,19 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   // Picks read based for specified read context.
   Status DoPickReadTime(server::Clock* clock);
 
+  // Returns the tablet safe time, waiting for it to reach min_allowed if necessary.
+  Result<HybridTime> SafeTime(HybridTime min_allowed = HybridTime::kMin) const;
+
+  // Waits for the tablet safe time to reach the read time.
+  // Fails for follower reads that avoid waiting, to redirect them to the leader.
+  Status WaitForSafeTime();
+
   bool transactional() const;
 
   tablet::Tablet* tablet() const;
+
+  // Returns tablet metrics, or nullptr for system tablets.
+  tablet::TabletMetrics* metrics() const;
 
   ReadRestartInfo FormReadRestartInfo(const ReadRestartData& read_restart_data) const;
 
@@ -166,6 +193,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   // returns invalid ReadHybridTime. Otherwise returns error status.
   Result<ReadRestartInfo> DoRead();
   Result<ReadRestartInfo> DoReadImpl();
+
+  void InjectReadRestart(ReadRestartInfo* result);
 
   Status Complete();
 
@@ -194,6 +223,10 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   ReadResponseMsg* resp_;
   rpc::RpcContext context_;
 
+  // Token from ReadTabletProvider::AdmitRead. Destroying it releases this read's admission, so it
+  // must outlive the asynchronous part of the read -- hence a member rather than a local.
+  std::shared_ptr<void> admission_;
+
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet_;
   // Leader tablet peer resolved for this read, populated progressively as the read path narrows it
   // down (initial metadata lookup, leader lookup, or the serving-tablet fallback). Retained so the
@@ -221,6 +254,40 @@ bool ReadQuery::transactional() const {
 
 tablet::Tablet* ReadQuery::tablet() const {
   return down_cast<tablet::Tablet*>(abstract_tablet_.get());
+}
+
+tablet::TabletMetrics* ReadQuery::metrics() const {
+  return abstract_tablet_->system() ? nullptr : tablet()->metrics();
+}
+
+Result<HybridTime> ReadQuery::SafeTime(HybridTime min_allowed) const {
+  return abstract_tablet_->SafeTime(require_lease_, min_allowed, context_.GetClientDeadline());
+}
+
+Status ReadQuery::WaitForSafeTime() {
+  if (safe_ht_to_read_ < read_time_.read) {
+    if (!allow_retry_ && IsPgsqlFollowerReadAtAFollower() &&
+        FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) {
+      // The read time was specified by the client, so it could retry at the leader instead of
+      // waiting for the safe time to catch up, which may be better for follower reads.
+      // When the read time was picked on this tserver (allow_retry_), the client has nothing to
+      // retry with, so wait even at a follower.
+      return STATUS(IllegalState, "Requested read time is not safe at this follower.");
+    }
+    auto* metrics = this->metrics();
+    MonoTime start_time;
+    if (metrics) {
+      start_time = MonoTime::Now();
+    }
+    safe_ht_to_read_ = VERIFY_RESULT(SafeTime(read_time_.read));
+    if (metrics) {
+      auto safe_time_wait = MonoTime::Now() - start_time;
+      metrics->Increment(
+          tablet::TabletEventStats::kReadTimeWait,
+          make_unsigned(safe_time_wait.ToMicroseconds()));
+    }
+  }
+  return Status::OK();
 }
 
 ReadQuery::ReadRestartInfo ReadQuery::FormReadRestartInfo(
@@ -280,6 +347,14 @@ Status ReadQuery::DoPerform() {
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id().ToBuffer());
 
+  // Held for the life of this ReadQuery, which covers the scan and the encoding of the
+  // response -- the work an admission limit exists to bound. It does not cover sending the
+  // response, which RespondSuccess queues with the RPC layer for the reactor to write: a
+  // send that takes a long time holds an RPC buffer, not taking up an admission slot. Storing
+  // this in a local variable would release it when this function returns, which is too early,
+  // since a read can reschedule itself while waiting for safe time.
+  admission_ = VERIFY_RESULT(read_tablet_provider_.AdmitRead(*req_));
+
   IsolationLevel isolation_level;
   {
     // GetIsolationLevel looks up the tablet peer before resolving the transaction metadata, so keep
@@ -305,7 +380,12 @@ Status ReadQuery::DoPerform() {
 #endif
   }
 
-  const auto serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+  const auto force_snapshot_read = req_->force_snapshot_read();
+  if (force_snapshot_read && !req_->has_read_time()) {
+    return STATUS(IllegalState, "Forced snapshot read requires a read time");
+  }
+  const auto serializable_isolation =
+      isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && !force_snapshot_read;
 
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
@@ -322,8 +402,13 @@ Status ReadQuery::DoPerform() {
     }
   }
   const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
+  if (force_snapshot_read && has_row_mark) {
+    return STATUS(IllegalState, "Forced snapshot read can't take row locks");
+  }
 
-  if (serializable_isolation || has_row_mark || req_->has_pending_async_write_op_id()) {
+  const auto has_pending_async_writes = !req_->pending_async_write_op_ids().empty() ||
+                                        req_->has_deprecated_pending_async_write_op_id();
+  if (serializable_isolation || has_row_mark || has_pending_async_writes) {
     // At this point we expect that we don't have pure read serializable transactions, and always
     // write read intents to detect conflicts with other writes. Reuse the peer already resolved
     // above (LookupLeaderTablet looks one up itself when it is absent, e.g. when the transaction
@@ -339,10 +424,25 @@ Status ReadQuery::DoPerform() {
       RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer_.peer.get()));
     }
 
-    if (req_->has_pending_async_write_op_id()) {
-      // The client had in-flight async write(s) on this tablet - verify this leader has it.
+    // The client had in-flight async write(s) on this tablet - verify this leader has them.
+    if (!req_->pending_async_write_op_ids().empty()) {
+      const auto max_checks = FLAGS_max_pending_async_write_checks_per_tablet;
+      if (req_->pending_async_write_op_ids().size() > max_checks) {
+        return STATUS_EC_FORMAT(
+            InvalidArgument, TransactionError(TransactionErrorCode::kAborted),
+            "Tablet $0: read carries $1 pending async write checks, more than the maximum of $2",
+            leader_peer_.peer->tablet_id(), req_->pending_async_write_op_ids().size(), max_checks)
+            .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::ASYNC_WRITE_LOST));
+      }
+      for (const auto& op_id : req_->pending_async_write_op_ids()) {
+        RETURN_NOT_OK(leader_peer_.peer->VerifyAsyncWriteReceived(OpId::FromPB(op_id)));
+      }
+    } else if (req_->has_deprecated_pending_async_write_op_id()) {
+      // (DEPRECATE_EOL 2.31) Old clients send only the earliest term's fence and rely on the
+      // server rejecting a write from two or more terms ago.
       RETURN_NOT_OK(leader_peer_.peer->VerifyAsyncWriteReceived(
-          OpId::FromPB(req_->pending_async_write_op_id())));
+          OpId::FromPB(req_->deprecated_pending_async_write_op_id()),
+          tablet::AllowLogLookup::kFalse));
     }
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
@@ -516,15 +616,9 @@ Status ReadQuery::DoPerform() {
 }
 
 Status ReadQuery::DoPickReadTime(server::Clock* clock) {
-  auto* metrics = abstract_tablet_->system() ? nullptr : tablet()->metrics();
-  MonoTime start_time;
-  if (metrics) {
-    start_time = MonoTime::Now();
-  }
-
   const auto read_time_was_empty = !read_time_;
+  safe_ht_to_read_ = VERIFY_RESULT(SafeTime());
   if (read_time_was_empty) {
-    safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
     read_time_.read = safe_ht_to_read_;
@@ -537,36 +631,16 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.local_limit = read_time_.read;
       read_time_.global_limit = read_time_.read;
     }
-  } else {
-    HybridTime current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
-      require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
-    // Read query is allowed to ignore ambiguity window for writes that
-    // occur after this moment.
-    if (current_safe_time < read_time_.local_limit) {
-      read_time_.local_limit = current_safe_time;
-    }
-    if (IsPgsqlFollowerReadAtAFollower()) {
-      if (FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time &&
-          current_safe_time < read_time_.read) {
-        // We are given a read time. However, for Follower reads, it may be better
-        // to redirect the query to the Leader instead of waiting on it.
-        return STATUS(IllegalState, "Requested read time is not safe at this follower.");
-      }
-    }
-    safe_ht_to_read_ =
-        (current_safe_time > read_time_.read
-             ? current_safe_time
-             : VERIFY_RESULT(abstract_tablet_->SafeTime(
-                   require_lease_, read_time_.read, context_.GetClientDeadline())));
-  }
-  if (metrics) {
-    auto safe_time_wait = MonoTime::Now() - start_time;
-    metrics->Increment(
-         tablet::TabletEventStats::kReadTimeWait,
-         make_unsigned(safe_time_wait.ToMicroseconds()));
-    if (read_time_was_empty) {
+    if (auto* metrics = this->metrics()) {
       metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
     }
+  } else {
+    // Read query is allowed to ignore ambiguity window for writes that
+    // occur after this moment.
+    if (safe_ht_to_read_ < read_time_.local_limit) {
+      read_time_.local_limit = safe_ht_to_read_;
+    }
+    RETURN_NOT_OK(WaitForSafeTime());
   }
   return Status::OK();
 }
@@ -582,7 +656,10 @@ Status ReadQuery::Complete() {
     resp_->Clear();
     context_.sidecars().Reset();
     VLOG(1) << "Read time: " << read_time_ << ", safe: " << safe_ht_to_read_;
-    const auto result = VERIFY_RESULT(DoRead());
+    auto result = VERIFY_RESULT(DoRead());
+    if (!result.restart_time && ShouldInjectReadRestart(read_time_)) {
+      InjectReadRestart(&result);
+    }
     if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
           << __func__ << ", restarting read with the same read time: " << result.restart_time;
@@ -620,6 +697,11 @@ Status ReadQuery::Complete() {
       TRACE("Read timed out");
       return STATUS(TimedOut, "Read timed out");
     }
+
+    // The restart read time could be taken from a transaction commit time, which could be above
+    // the tablet safe time. Wait for the safe time to reach the restart read time, otherwise the
+    // retried read could miss replicated but not yet applied writes with lower hybrid times.
+    RETURN_NOT_OK(WaitForSafeTime());
   }
   // Set here since the loop above clears resp_ on each attempt.
   if (!async_write_op_id_.empty()) {
@@ -689,6 +771,12 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoRead() {
   return result;
 }
 
+void ReadQuery::InjectReadRestart(ReadRestartInfo* result) {
+  *result = FormReadRestartInfo(ReadRestartData{
+      InjectedReadRestartTime(read_time_, safe_ht_to_read_), {}});
+  VLOG(3) << "Injected read restart: " << result->restart_time;
+}
+
 Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
   docdb::ReadOperationData read_operation_data = {
     .deadline = context_.GetClientDeadline(),
@@ -729,6 +817,15 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
     read_tx = VERIFY_RESULT(
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
     read_operation_data.read_time = read_tx.read_time();
+  }
+  if (req_->has_transaction()) {
+    const auto& transaction = req_->transaction();
+    if (transaction.is_read_only_historical_committed_txn() && transaction.has_transaction_id() &&
+        !transaction.transaction_id().empty()) {
+      // Historical reads of a committed txn's own writes need the intents DB even when no
+      // transactions are currently running (MinRunningHybridTime == kMax).
+      read_operation_data.use_ht_file_filter = false;
+    }
   }
   used_read_time_ = read_operation_data.read_time;
   if (!req_->redis_batch().empty()) {
@@ -808,7 +905,62 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
   if (!req_->pgsql_batch().empty()) {
     size_t total_num_rows_read = 0;
+    auto* metadata = tablet()->metadata();
     for (const auto& pgsql_read_req : req_->pgsql_batch()) {
+      // For colocated secondary index scans, the inner nested index_request targets the index.
+      auto table_info = VERIFY_RESULT(metadata->GetTableInfo(pgsql_read_req.has_index_request()
+          ? pgsql_read_req.index_request().table_id()
+          : pgsql_read_req.table_id()));
+      if (table_info->index_info && read_time_ &&
+          PREDICT_TRUE(!FLAGS_TEST_disable_index_birth_time_check)) {
+        // Reject reads arriving at index with a read time earlier than the index birth time.
+        // TODO(#33155): birth_time of a regular index isn't set on an xCluster automatic-mode
+        // target (where backfill is replicated from the source).
+        // TODO(#38694): Such a target builds a vector index itself, but reads it at the xCluster
+        // safe time, which stays below the index birth time until the DDL is processed. So the
+        // check is skipped there too.
+        const auto birth_time = table_info->index_info->birth_time();
+        const auto birth_time_state = table_info->index_info->birth_time_state();
+        VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
+                << " birth_time=" << birth_time
+                << " retain_delete_markers="
+                << table_info->schema().table_properties().retain_delete_markers()
+                << " birth_time_state=" << IndexInfoPB::BirthTimeState_Name(birth_time_state)
+                << " read_time=" << read_time_.read;
+        if (birth_time && read_time_.read < birth_time &&
+            !(table_info->index_info->is_vector_index() &&
+              VERIFY_RESULT(IsXClusterAutomaticModeTarget(server_, table_info->table_id)))) {
+          return STATUS(
+              SnapshotTooOld,
+              Format("Query read time < index birth time: $0 < [$1] $2",
+                     read_time_.read, table_info->table_id, birth_time),
+              TransactionError(TransactionErrorCode::kSnapshotTooOld));
+        }
+        // birth_time is not set yet but is still coming: birth_time_state is a PENDING state (for
+        // both the backfill and nonconcurrent paths) from index creation until birth_time is
+        // finalized. Reject reads with a retryable error meanwhile rather than serve a
+        // possibly-incomplete index. retain_delete_markers is a legacy fallback for backfilled
+        // indexes created before birth_time_state existed (or while its AutoFlag was off).
+        //
+        // The transaction that created a nonconcurrently built index is exempt: it wrote the
+        // index, so the index is complete for it, and the index only becomes final once that
+        // transaction commits.
+        const auto retain_delete_markers =
+            table_info->schema().table_properties().retain_delete_markers();
+        const auto read_by_creating_txn =
+            birth_time_state == IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT &&
+            !retain_delete_markers && req_->has_transaction() &&
+            !table_info->index_info->birth_time_pending_txn_id().empty() &&
+            req_->transaction().transaction_id() ==
+                table_info->index_info->birth_time_pending_txn_id();
+        if (!birth_time && !read_by_creating_txn &&
+            (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL || retain_delete_markers)) {
+          return STATUS_FORMAT(
+              LeaderNotReadyToServe,
+              "Index table $0 birth time not yet finalized locally",
+              table_info->table_id);
+        }
+      }
       tablet::PgsqlReadRequestResult result(resp_->arena(), &context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(

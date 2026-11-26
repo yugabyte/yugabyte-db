@@ -337,11 +337,11 @@ yb_pgstat_report_wait_start(YbcWaitEventInfo info)
 		prev_wait_event_info = (YbcWaitEventInfo)
 		{
 			*yb_my_wait_event_info.wait_event,
-				*yb_my_wait_event_info.rpc_code
+				*yb_my_wait_event_info.aux
 		};
 
+		*(volatile uint32 *) yb_my_wait_event_info.aux = info.aux;
 		*(volatile uint32 *) yb_my_wait_event_info.wait_event = info.wait_event;
-		*(volatile uint16 *) yb_my_wait_event_info.rpc_code = info.rpc_code;
 	}
 
 	return prev_wait_event_info;

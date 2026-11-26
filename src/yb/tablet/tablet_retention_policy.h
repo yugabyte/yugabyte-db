@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <absl/synchronization/mutex.h>
+
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/server/clock.h"
@@ -25,13 +29,16 @@ namespace tablet {
 using AllowedHistoryCutoffProvider =
     std::function<docdb::HistoryCutoff(RaftGroupMetadata*)>;
 
+using IsTransactionalXClusterTargetProvider = std::function<bool(const NamespaceId&)>;
+
 // History retention policy used by a tablet. It is based on pending reads and a fixed retention
 // interval configured by the user.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
   explicit TabletRetentionPolicy(
       server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
-      RaftGroupMetadata* metadata);
+      RaftGroupMetadata* metadata,
+      const IsTransactionalXClusterTargetProvider& is_transactional_xcluster_target_provider);
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
@@ -42,6 +49,11 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // Returns new committed history cutoff value.
   docdb::HistoryCutoff UpdateCommittedHistoryCutoff(
       docdb::HistoryCutoff new_value);
+
+  // Seeds the committed history cutoff and the floor for compaction primary cutoffs from the
+  // history cutoff in the flushed frontier: the highest cutoff of a past compaction or, with
+  // propagation, of a propagated history cutoff operation.
+  void SeedHistoryCutoffFromFlushedFrontier(docdb::HistoryCutoff value);
 
   // Returns history cutoff for propagation.
   // It is used at tablet leader while creating request for peer.
@@ -68,20 +80,29 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   HybridTime GetEarliestAllowedReadHt() REQUIRES(mutex_);
 
+  void ApplyUsedHistoryCutoffFloor(docdb::HistoryCutoff* history_cutoff) REQUIRES(mutex_);
+
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
 
   const server::ClockPtr clock_;
   const AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
+  const IsTransactionalXClusterTargetProvider is_transactional_xcluster_target_provider_;
   RaftGroupMetadata& metadata_;
+  const bool is_sys_catalog_;
   const std::string log_prefix_;
+  const bool apply_history_cutoff_floor_;
 
-  mutable std::mutex mutex_;
+  mutable absl::Mutex mutex_;
   // Set of active read timestamps.
   std::multiset<HybridTime> active_readers_ GUARDED_BY(mutex_);
   docdb::HistoryCutoff committed_history_cutoff_information_ GUARDED_BY(mutex_)
       = { HybridTime::kMin, HybridTime::kMin };
+  // Highest primary cutoff handed out by GetRetentionDirective or found in the flushed frontier at
+  // open. Unlike committed_history_cutoff_information_, UpdateCommittedHistoryCutoff does not
+  // advance it, because a propagated cutoff can be above an active local reader.
+  HybridTime used_history_cutoff_floor_ GUARDED_BY(mutex_);
   CoarseTimePoint next_history_cutoff_propagation_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
   int disable_counter_ GUARDED_BY(mutex_) = 0;
 };

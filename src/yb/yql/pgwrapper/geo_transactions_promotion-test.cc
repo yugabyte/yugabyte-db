@@ -14,6 +14,8 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/master/catalog_manager.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -21,6 +23,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -54,8 +57,8 @@ DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
@@ -132,7 +135,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     std::vector<yb::tserver::TabletServerOptions> extra_tserver_options;
     for (int i = 1; i <= 3; ++i) {
       extra_tserver_options.push_back(EXPECT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", strings::Substitute("region$0", i), "zone")));
+          "cloud0", Format("region$0", i), "zone")));
     }
     return extra_tserver_options;
   }
@@ -151,7 +154,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("region$0", i));
+      cloud_info->set_placement_region(Format("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(1);
     }
@@ -189,7 +192,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     pb->set_min_num_replicas(3);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
-    WaitForStatusTabletsVersion(current_version + 1);
+    current_version = WaitForStatusTabletsVersionForCreate(current_version);
   }
 
   void StartLocalTransactionTableNodes() {
@@ -251,10 +254,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     }
 
@@ -282,19 +285,19 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
         ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
+            Format("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
             0 /* rows */, 1 /* columns */));
       }
       ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion),
+            Format("SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion),
             0 /* rows */, 1 /* columns */));
     }
   }
@@ -434,7 +437,7 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("region$0", i));
+      cloud_info->set_placement_region(Format("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(0);
     }
@@ -448,6 +451,20 @@ class GeoTransactionsFailOnConflictTest : public GeoTransactionsPromotionTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     EnableFailOnConflict();
+    GeoTransactionsPromotionTest::SetUp();
+  }
+};
+
+class GeoTransactionsPromotionShortRpcTimeoutTest : public GeoTransactionsPromotionTest {
+ public:
+  static constexpr auto kClientTimeoutMs = 30000;
+
+  void SetUp() override {
+    // Bounds the FinishTransaction rpc, which is otherwise sent without a deadline: postgres
+    // disables the statement timeout before running CommitTransactionCommand, so pggate falls back
+    // to this flag. Forwarded to the postgres process by PgWrapper as a non-default gflag.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) =
+        kClientTimeoutMs * kTimeMultiplier;
     GeoTransactionsPromotionTest::SetUp();
   }
 };
@@ -567,7 +584,7 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest 
 class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     GeoTransactionsPromotionTest::SetUp();
   }
 
@@ -607,10 +624,10 @@ class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest 
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0", kTable2Name))));
     }
 
@@ -628,20 +645,20 @@ class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest 
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0", kTable2Name))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
         ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
+            Format("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
             0 /* rows */, 1 /* columns */));
       }
       if (transaction_type == TestTransactionType::kCommit) {
         ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0", kTable2Name),
+            Format("SELECT value FROM $0", kTable2Name),
             0 /* rows */, 1 /* columns */));
       }
     }
@@ -885,6 +902,51 @@ TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestParticipantLead
   int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kLocalTable)));
   ASSERT_EQ(1, count);
+}
+
+TEST_F_EX(GeoTransactionsPromotionTest,
+          YB_DISABLE_TEST_IN_TSAN(TestCommitWithZeroBatchParticipant),
+          GeoTransactionsPromotionShortRpcTimeoutTest) {
+  constexpr auto kLocalPkTable = "local_pk_table";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+  {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0(k int PRIMARY KEY, v int) TABLESPACE tablespace$1",
+        kLocalPkTable, kLocalRegion));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kLocalPkTable));
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(WarmupTablespaceCache(conn, kLocalPkTable));
+  ASSERT_OK(WarmupTablespaceCache(conn, Format("$0$1_1", kTablePrefix, kOtherRegion)));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+
+  // Register a local participant tablet whose batch never completes: the duplicate key fails the
+  // write, so num_completed_batches stays at zero, and failing inside a savepoint leaves the
+  // transaction running.
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+  ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2)", kLocalPkTable));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp"));
+
+  // Write outside the local region to promote the transaction to global.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0$1_1(value) VALUES (1)", kTablePrefix, kOtherRegion));
+
+  // The zero-batch participant is skipped when the PROMOTING rpcs go out, so the commit must drop
+  // it rather than wait on an rpc that is never sent.
+  ASSERT_OK(conn.CommitTransaction());
+
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kOtherRegion)));
+  ASSERT_EQ(1, count);
+  auto value = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      Format("SELECT v FROM $0 WHERE k = 1", kLocalPkTable)));
+  ASSERT_EQ(1, value);
 }
 
 TEST_F_EX(GeoTransactionsPromotionTest,
@@ -1195,8 +1257,7 @@ class GeoPartitionedReadCommittedTest : public GeoTransactionsTestBase {
           table_name, i, partition_list[i - 1], num_tablets));
 
       if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
-        WaitForStatusTabletsVersion(current_version + 1);
-        ++current_version;
+        current_version = WaitForStatusTabletsVersionForCreate(current_version);
       }
     }
     ASSERT_OK(conn.ExecuteFormat(

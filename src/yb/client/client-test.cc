@@ -42,6 +42,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/client_master_rpc.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/client_error.h"
@@ -59,6 +60,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -66,11 +68,11 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -98,10 +100,13 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -322,7 +327,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2);
-    table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello %d", index));
+    table.AddStringColumnValue(req, columns[2].name(), Format("hello $0", index));
     table.AddInt32ColumnValue(req, columns[3].name(), index * 3);
     return insert;
   }
@@ -334,7 +339,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2 + 1);
-    table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello again %d", index));
+    table.AddStringColumnValue(req, columns[2].name(), Format("hello again $0", index));
     return update;
   }
 
@@ -483,7 +488,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       }
     }
     if (!ts_found) {
-      return STATUS(InvalidArgument, strings::Substitute("Could not find tablet server $1", uuid));
+      return STATUS(InvalidArgument, Format("Could not find tablet server $0", uuid));
     }
 
     return Status::OK();
@@ -695,8 +700,13 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   ASSERT_EQ(tablets.size(), kNumTabletsPerTable);
 }
 
+// FindPartitionStartIndex is a free function, so this test needs no cluster. ASSERT_DEATH forks,
+// and forking a process with the mini cluster's hundreds of threads deadlocks the child under
+// TSAN, so run it on a fixture that starts nothing.
+class ClientTestNoCluster : public YBTest {};
+
 // Test sanity checks in FindPartitionStartIndex
-TEST_F(ClientTest, TestBadKeyRanges) {
+TEST_F_EX(ClientTest, TestBadKeyRanges, ClientTestNoCluster) {
   std::vector<std::string> partition_starts;
   const std::string low_key = "1111";
   const std::string high_key = "9999";
@@ -712,6 +722,98 @@ TEST_F(ClientTest, TestBadKeyRanges) {
   ASSERT_DEATH({
     FindPartitionStartIndex(partition_starts, high_key);
   }, "Invalid table partition list");
+}
+
+namespace {
+
+std::vector<size_t> SelectedPartitions(
+    const std::vector<std::string>& partitions, const std::vector<std::string>& prefixes) {
+  boost::dynamic_bitset<> mask(partitions.size());
+  for (const auto& prefix : prefixes) {
+    CHECK_OK(SelectPartitionsForPartitionKeyPrefix(partitions, prefix, mask));
+  }
+  std::vector<size_t> result;
+  for (size_t i = 0; i != mask.size(); ++i) {
+    if (mask[i]) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
+std::string HashPartitionKey(uint16_t hash) {
+  return PartitionSchema::EncodeMultiColumnHashValue(hash);
+}
+
+std::string RangeKey(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  dockv::KeyEntryValues components;
+  for (auto value : values) {
+    components.push_back(dockv::KeyEntryValue::Int32(value, sort_order));
+  }
+  return dockv::DocKey(std::move(components)).Encode().ToStringBuffer();
+}
+
+// Encoded leading range components without the closing group end.
+std::string RangeKeyPrefix(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  auto key = RangeKey(values, sort_order);
+  key.pop_back();
+  return key;
+}
+
+} // namespace
+
+TEST_F_EX(ClientTest, SelectPartitionsForHashPartitionKeys, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "", HashPartitionKey(0x4000), HashPartitionKey(0x8000), HashPartitionKey(0xC000)};
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, {}), Partitions{});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0x3FFF)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0x4000)}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0xFFFF)}), Partitions{3});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {HashPartitionKey(0x9000), HashPartitionKey(0x9001)}),
+      Partitions{2});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {HashPartitionKey(0xC001), HashPartitionKey(0x10)}),
+      (Partitions{0, 3}));
+
+  boost::dynamic_bitset<> mask(partitions.size());
+  ASSERT_NOK(SelectPartitionsForPartitionKeyPrefix(partitions, "", mask));
+}
+
+TEST_F_EX(ClientTest, SelectPartitionsForRangePartitionKeyPrefixes, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "",
+      RangeKey({10}),
+      RangeKey({20, 5}),
+      RangeKey({30}),
+  };
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({5})}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({15})}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({40})}), Partitions{3});
+  // Keys starting with 20 are split between the partitions starting at {10} and {20, 5}.
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20, 4})}), Partitions{1});
+  // A prefix sorts before a start key that extends it, so when a split point starts with the
+  // prefix, the partition before it is selected too. That costs a search, never a row.
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20, 5})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({30})}), (Partitions{2, 3}));
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {RangeKeyPrefix({5}), RangeKeyPrefix({40})}),
+      (Partitions{0, 3}));
+
+  // A descending key: 0 encodes as 7f ff ff ff, so the prefix ends in 0xff bytes. Keys starting
+  // with 0 sort between 10 and -5 and are split by the split point (0, 5).
+  constexpr auto kDesc = SortOrder::kDescending;
+  const std::vector<std::string> desc_partitions = {
+      "", RangeKey({10}, kDesc), RangeKey({0, 5}, kDesc), RangeKey({-5}, kDesc)};
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({0}, kDesc)}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({20}, kDesc)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({-9}, kDesc)}), Partitions{3});
 }
 
 TEST_F(ClientTest, TestKeyRangeFiltering) {
@@ -1231,6 +1333,22 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
   ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
+}
+
+// The session releases the buffers holder before the flush callback, so the caller can reuse the
+// buffers right away.
+TEST_F(ClientTest, FlushReleasesBuffersHolderBeforeCallback) {
+  auto session = CreateSession();
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+  auto holder = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_holder = holder;
+  std::promise<std::pair<Status, bool>> promise;
+  session->FlushAsync([&weak_holder, &promise](FlushStatus* flush_status) {
+    promise.set_value({flush_status->status, weak_holder.expired()});
+  }, std::move(holder));
+  auto [status, released] = promise.get_future().get();
+  ASSERT_OK(status);
+  ASSERT_TRUE(released);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
@@ -2176,7 +2294,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_STR_CONTAINS(
       s.ToString(),
-      strings::Substitute(
+      Format(
           "The requested number of tablets ($0) is over the permitted maximum ($1)", many_tablets,
           FLAGS_replication_factor));
 }
@@ -2284,7 +2402,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   // rejected due to staleness. To avoid this situation, we'll wait until all followers
   // have at least 1 op from the leader.
   ASSERT_NO_FATALS(InsertTestRows(table, 1));
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), CoarseMonoClock::Now() + 5s, RequireLeaderIsReady::kFalse));
 
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
@@ -2359,7 +2478,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       ASSERT_FALSE(seen_key[key]);
       seen_key[key] = true;
       ASSERT_EQ(key * 2, row.column(1).int32_value());
-      ASSERT_EQ(StringPrintf("hello %d", key), row.column(2).string_value());
+      ASSERT_EQ(Format("hello $0", key), row.column(2).string_value());
       ASSERT_EQ(key * 3, row.column(3).int32_value());
     }
   }
@@ -2837,6 +2956,181 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   ASSERT_EQ(attempt_num, 2);
 }
 
+namespace {
+
+constexpr auto kInsertMissingPeersSyncPoint =
+    "MetaCache::DoRefreshTabletInfoWithConsensusInfo:BeforeInsertMissingPeers";
+
+// Builds a TabletConsensusInfoPB from the master's tablet locations, as a tablet server would
+// piggyback onto a response.
+tserver::TabletConsensusInfoPB MakeTabletConsensusInfo(
+    const master::TabletLocationsPB& locations, const std::string& leader_uuid,
+    int64_t committed_op_index) {
+  tserver::TabletConsensusInfoPB info;
+  info.set_tablet_id(locations.tablet_id());
+  auto& consensus_state = *info.mutable_consensus_state();
+  consensus_state.set_current_term(1);
+  consensus_state.set_leader_uuid(leader_uuid);
+  auto& config = *consensus_state.mutable_config();
+  config.set_committed_op_index(committed_op_index);
+  for (const auto& replica : locations.replicas()) {
+    const auto& ts_info = replica.ts_info();
+    auto& peer = *config.add_peers();
+    peer.set_permanent_uuid(ts_info.permanent_uuid());
+    peer.set_member_type(consensus::PeerMemberType::VOTER);
+    *peer.mutable_last_known_private_addr() = ts_info.private_rpc_addresses();
+    *peer.mutable_last_known_broadcast_addr() = ts_info.broadcast_addresses();
+    *peer.mutable_cloud_info() = ts_info.cloud_info();
+  }
+  return info;
+}
+
+struct RefreshBurstResult {
+  int num_accepted = 0;
+  // Number of threads that took the exclusive lock to cache an unknown peer.
+  int num_escalated = 0;
+};
+
+// Hands the same consensus info to num_threads threads and releases them together.
+RefreshBurstResult ApplyConsensusInfoConcurrently(
+    YBClient* client, const tserver::TabletConsensusInfoPB& info, int num_threads) {
+  std::atomic<int> num_accepted{0};
+  std::atomic<int> num_escalated{0};
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->SetCallBack(kInsertMissingPeersSyncPoint, [&num_escalated](void*) {
+    num_escalated.fetch_add(1, std::memory_order_relaxed);
+  });
+  sync_point->EnableProcessing();
+
+  {
+    CountDownLatch start(1);
+    TestThreadHolder threads;
+    for (int i = 0; i != num_threads; ++i) {
+      threads.AddThreadFunctor([client, &info, &num_accepted, &start] {
+        start.Wait();
+        if (client->RefreshTabletInfoWithConsensusInfo(info)) {
+          num_accepted.fetch_add(1, std::memory_order_relaxed);
+        }
+      });
+    }
+    start.CountDown();
+    threads.JoinAll();
+  }
+
+  sync_point->DisableProcessing();
+  sync_point->ClearAllCallBacks();
+  return {
+      .num_accepted = num_accepted.load(std::memory_order_relaxed),
+      .num_escalated = num_escalated.load(std::memory_order_relaxed)};
+}
+
+}  // namespace
+
+// A burst of identical consensus info refreshes should apply exactly once, with the rest
+// discarded without taking the exclusive lock.
+TEST_F(ClientTest, TestMetacachePartialRefreshDiscardsRedundantResponses) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(kPgsqlTableId, 0, &tablets));
+  const auto& locations = tablets.Get(0);
+  const auto& tablet_id = locations.tablet_id();
+
+  // Populates ts_cache_ with an entry for every peer of this tablet.
+  auto remote_tablet =
+      ASSERT_RESULT(GetRemoteTablet(tablet_id, /* use_cache= */ false, client_.get()));
+
+  std::vector<std::string> peer_uuids;
+  for (const auto& replica : locations.replicas()) {
+    peer_uuids.push_back(replica.ts_info().permanent_uuid());
+  }
+  ASSERT_EQ(peer_uuids.size(), 3);
+
+  // Concurrent readers that should never observe the opid index go backwards or the replica list
+  // partially rebuilt.
+  TestThreadHolder readers;
+  for (int i = 0; i != 4; ++i) {
+    readers.AddThreadFunctor([this, &tablet_id, &remote_tablet, &peer_uuids, &readers] {
+      auto last_opid_index = internal::RemoteTablet::kUnknownOpIdIndex;
+      while (!readers.stop_flag().load(std::memory_order_relaxed)) {
+        auto opid_index = client_->GetRaftConfigOpidIndex(tablet_id);
+        ASSERT_GE(opid_index, last_opid_index);
+        last_opid_index = opid_index;
+        ASSERT_EQ(remote_tablet->GetRemoteTabletServers().size(), peer_uuids.size());
+      }
+    });
+  }
+
+  const auto base_opid_index = remote_tablet->raft_config_opid_index();
+  for (size_t round = 0; round != 5; ++round) {
+    const auto& leader_uuid = peer_uuids[round % peer_uuids.size()];
+    const auto opid_index = base_opid_index + 1 + static_cast<int64_t>(round);
+    const auto info = MakeTabletConsensusInfo(locations, leader_uuid, opid_index);
+
+    const auto result =
+        ApplyConsensusInfoConcurrently(client_.get(), info, /* num_threads= */ 16);
+    ASSERT_EQ(result.num_accepted, 1) << "round " << round;
+    ASSERT_EQ(result.num_escalated, 0) << "round " << round;
+
+    ASSERT_EQ(remote_tablet->raft_config_opid_index(), opid_index);
+    ASSERT_EQ(remote_tablet->current_leader_uuid(), leader_uuid);
+    auto* leader = remote_tablet->LeaderTServer();
+    ASSERT_ONLY_NOTNULL(leader);
+    ASSERT_EQ(leader->permanent_uuid(), leader_uuid)
+        << "replicas: " << remote_tablet->ReplicasAsString();
+  }
+
+  readers.Stop();
+}
+
+// A refresh with a previously-unseen peer must escalate to the exclusive lock to cache it, then
+// retry. A burst racing through that path should still apply exactly once.
+TEST_F(ClientTest, TestMetacachePartialRefreshCachesUnknownRaftPeer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(kPgsqlTableId, 0, &tablets));
+  const auto& locations = tablets.Get(0);
+  const auto& tablet_id = locations.tablet_id();
+
+  auto remote_tablet =
+      ASSERT_RESULT(GetRemoteTablet(tablet_id, /* use_cache= */ false, client_.get()));
+
+  const auto& leader_uuid = locations.replicas(0).ts_info().permanent_uuid();
+  const auto opid_index = remote_tablet->raft_config_opid_index() + 1;
+  auto info = MakeTabletConsensusInfo(locations, leader_uuid, opid_index);
+
+  // A peer not in ts_cache_ yet.
+  const std::string kUnknownPeerUuid(32, 'a');
+  auto& config = *info.mutable_consensus_state()->mutable_config();
+  auto unknown_peer = config.peers(0);
+  unknown_peer.set_permanent_uuid(kUnknownPeerUuid);
+  *config.add_peers() = unknown_peer;
+
+  const auto result = ApplyConsensusInfoConcurrently(client_.get(), info, /* num_threads= */ 16);
+  ASSERT_EQ(result.num_accepted, 1);
+  ASSERT_GE(result.num_escalated, 1);
+
+  ASSERT_EQ(remote_tablet->raft_config_opid_index(), opid_index);
+  ASSERT_EQ(remote_tablet->current_leader_uuid(), leader_uuid);
+
+  std::vector<std::string> replica_uuids;
+  for (auto* ts : remote_tablet->GetRemoteTabletServers()) {
+    replica_uuids.push_back(ts->permanent_uuid());
+  }
+  ASSERT_EQ(replica_uuids.size(), locations.replicas_size() + 1);
+  ASSERT_EQ(std::count(replica_uuids.begin(), replica_uuids.end(), kUnknownPeerUuid), 1)
+      << "replicas: " << remote_tablet->ReplicasAsString();
+
+  // The peer is now cached, so this should not need the exclusive lock again.
+  auto next_info = info;
+  next_info.mutable_consensus_state()->mutable_config()->set_committed_op_index(opid_index + 1);
+  const auto next_result =
+      ApplyConsensusInfoConcurrently(client_.get(), next_info, /* num_threads= */ 16);
+  ASSERT_EQ(next_result.num_accepted, 1);
+  ASSERT_EQ(next_result.num_escalated, 0);
+}
+
 // Note: This class has custom initialization for postgres instead of using
 // MiniTabletServer::SetPgServerHandlers. Hence tests would not work if they restart the tserver
 // hosting the ysql connections, and try to create a new connection. Avoid inheriting this class
@@ -3255,6 +3549,48 @@ TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWith
   // master addresses currently doesn't resolve. Thus, we should be able to find the new master
   // leader and complete the request.
   ASSERT_RESULT(client_->ListTables());
+}
+
+// Supplies the response directly. Reaching ClientMasterRpcBase::Finished with a response error
+// while the client is shutting down would otherwise require the master reply to land inside the
+// window after YBClient::Shutdown sets closing_.
+class ResponseErrorRpc : public internal::ClientMasterRpc<
+    master::GetNamespaceInfoRequestPB, master::GetNamespaceInfoResponsePB> {
+ public:
+  ResponseErrorRpc(YBClient* client, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline) {
+    auto& error = *resp_.mutable_error();
+    error.set_code(master::MasterErrorPB::OBJECT_NOT_FOUND);
+    StatusToPB(STATUS(NotFound, "Keyspace not found"), error.mutable_status());
+  }
+
+  using internal::ClientMasterRpcBase::Finished;
+
+  std::string ToString() const override { return "ResponseErrorRpc"; }
+
+  const std::optional<Status>& processed_status() const { return processed_status_; }
+
+ private:
+  void CallRemoteMethod() override {}
+
+  void ProcessResponse(const Status& status) override { processed_status_ = status; }
+
+  std::optional<Status> processed_status_;
+};
+
+TEST_F(ClientTest, MasterRpcReportsResponseErrorWhileShuttingDown) {
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
+      .Build());
+  auto rpc = std::make_shared<ResponseErrorRpc>(client.get(), CoarseMonoClock::Now() + 10s);
+
+  client->Shutdown();
+  rpc->Finished(Status::OK());
+
+  ASSERT_TRUE(rpc->processed_status().has_value());
+  ASSERT_TRUE(rpc->processed_status()->IsNotFound()) << *rpc->processed_status();
+  ASSERT_EQ(master::MasterError(*rpc->processed_status()),
+            master::MasterErrorPB::OBJECT_NOT_FOUND);
 }
 
 }  // namespace client

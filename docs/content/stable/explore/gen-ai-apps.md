@@ -20,6 +20,7 @@ Generative AI has transformed how applications interact with data. While early a
 
 YugabyteDB provides the scalable, distributed data foundation required to run modern AI workloads, from simple chatbots to complex agentic workflows. By combining the familiarity of PostgreSQL with distributed scalability, you can store and query billions of vector embeddings without managing complex, separate infrastructure.
 
+
 {{<lead link="(https://www.yugabyte.com/blog/benchmarking-1-billion-vectors-in-yugabytedb/)">}}
 Learn how to [power AI at scale using YugabyteDB](https://www.yugabyte.com/blog/benchmarking-1-billion-vectors-in-yugabytedb/).
 {{</lead>}}
@@ -56,6 +57,8 @@ Using the [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/), you can:
 1. Query: Ask questions in natural language. The LLM generates and executes safe, read-only SQL queries to fetch precise answers.
 1. Analyze: Generate insights, visualizations, and summaries directly from your data without writing custom code.
 
+Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These structured skill packages give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
+
 #### MCP and RAG: Better together
 
 MCP complements RAG by providing direct access to structured relational data, while RAG excels at semantic search across unstructured content. Together, they enable comprehensive AI applications that can both find similar content (via vectors) and answer precise questions about your structured data (via MCP).
@@ -81,11 +84,11 @@ YugabyteDB combines the PostgreSQL pgvector extension APIs with [Vector LSM](htt
 
 - Build for retrieval-optimized generation (ROG): YugabyteDB enables you to build applications that find answers without expensive LLM calls, moving beyond traditional RAG to retrieval-optimized generation (ROG) that reduces costs while maintaining accuracy.
 
-- No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. YugabyteDB has a flexible vector indexing framework that supports the latest algorithms, including FAISS, HNSW_lib, USearch, ScANN, DiskAnn, and virtually any index.
+- No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. Approximate nearest neighbor search uses the `ybhnsw` index on [Vector LSM](https://www.yugabyte.com/blog/yugabytedb-vector-indexing-architecture/). See [pgvector](/stable/additional-features/pg-extensions/extension-pgvector/).
 
 - Use any embedding model: Generate embeddings from OpenAI, Cohere, local models, or custom models, and then store them in standard `VECTOR` columns. The database treats them as numeric vectors, so you can switch embedding models by regenerating embeddings and updating your table without any schema changes.
 
-- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). Internally, YugabyteDB uses a pluggable and swappable vector indexing framework. While it currently leverages USearch for high-performance vector search, the architecture is designed to be "algorithm-agnostic." This allows other leading libraries (such as hnswlib or FAISS) to be seamlessly integrated as the AI landscape evolves.
+- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). Approximate nearest neighbor search uses the distributed `ybhnsw` access method, backed by DocDB Vector LSM, instead of the USearch and HNSWLIB backends removed in v2026.1.3.0.
 
 AI applications require access to massive volumes of unstructured and diverse data (text, audio, video, and images) stored across fragmented locations like cloud buckets, local disks, and external applications. So it's a significant challenge to either get this diverse source data into YugabyteDB, or allow YugabyteDB to access this data in its original location.
 

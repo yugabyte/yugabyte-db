@@ -72,7 +72,6 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 
-using strings::Substitute;
 using yb::client::YBTableName;
 using yb::client::YBTableType;
 // DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);

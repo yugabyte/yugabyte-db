@@ -29,12 +29,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
+import com.yugabyte.yw.cloud.oci.OCICloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -55,6 +57,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.LdapUtil;
@@ -79,15 +82,19 @@ import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -115,13 +122,20 @@ import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.core.metrics.Histogram;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -131,6 +145,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot;
 import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Label;
 import io.prometheus.metrics.model.snapshots.Labels;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -159,11 +174,16 @@ import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.slf4j.LoggerFactory;
+import org.yb.WireProtocol.AppStatusPB;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.TabletServerInfo;
 import play.Application;
 import play.Environment;
@@ -183,7 +203,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ConfigHelper mockConfigHelper = mock(ConfigHelper.class);
   protected AWSInitializer mockAWSInitializer = mock(AWSInitializer.class);
   protected GCPInitializer mockGCPInitializer = mock(GCPInitializer.class);
-  protected YBClientService mockYBClient = mock(YBClientService.class);
+  protected YBClientService mockYBClient = TestHelper.mockYBClientService();
   protected NodeManager mockNodeManager = mock(NodeManager.class);
   protected DnsManager mockDnsManager = mock(DnsManager.class);
   protected TableManager mockTableManager = mock(TableManager.class);
@@ -232,6 +252,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
   protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
+  protected FileHelperService mockFileHelperService = mock(FileHelperService.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -259,12 +280,22 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected GCPProjectApiClient gcpProjectApiClient = mock(GCPProjectApiClient.class);
 
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
+  protected OCICloudImpl mockOCICloudImpl = mock(OCICloudImpl.class);
 
   protected int failsOnCapacityReservation = 0;
   protected Gauge capacityReservationGauge;
   protected Histogram capacityReservationHistogram;
   protected CapacityReservationMetrics reservationMetrics =
       Mockito.mock(CapacityReservationMetrics.class);
+
+  /** An upgraded node-agent, as the OTEL install payload requires. */
+  protected static NodeAgent upgradedNodeAgent(String ip) {
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setUuid(UUID.randomUUID());
+    nodeAgent.setIp(ip);
+    nodeAgent.setVersion(Util.getYbaVersion());
+    return nodeAgent;
+  }
 
   @Before
   public void setUpBase() {
@@ -383,9 +414,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     lenient().when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
+    lenient()
+        .when(mockNodeAgentClient.getAndUpgradeOrThrow(anyString()))
+        .thenAnswer(inv -> upgradedNodeAgent(inv.getArgument(0)));
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
+    when(mockBaseTaskDependencies.getAuditService()).thenReturn(mock(AuditService.class));
     releaseMetadata =
         ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("/fakedb-x86_64.tar.gz");
     ybcReleaseMetadata =
@@ -409,11 +444,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     builder.packagePath(Paths.get("/opt/yugabyte"));
     builder.certDir("/opt/yugabyte/certs");
     lenient()
-        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
         .thenReturn(builder.build());
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            inv ->
+                Files.createTempFile(
+                    inv.getArgument(0, String.class), inv.getArgument(1, String.class)));
     lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
     lenient()
         .doAnswer(
@@ -446,10 +487,20 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                       })
                   .when(nodeAgent)
                   .saveState(any());
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        NodeAgent.DeployContext ctx = inv1.getArgument(0);
+                        nodeAgent.setState(NodeAgent.State.REGISTERED);
+                        nodeAgent.setCertificateUuid(ctx.getCertificateUuid());
+                        return null;
+                      })
+                  .when(nodeAgent)
+                  .finalizeRegistration(any());
               return nodeAgent;
             })
         .when(mockNodeAgentManager)
-        .create(any(), anyBoolean());
+        .create(any(), any(), anyBoolean());
     Map<String, Set<String>> reservationsByGroup = new HashMap<>();
     lenient()
         .when(
@@ -575,7 +626,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(OCICloudImpl.class).toInstance(mockOCICloudImpl))
         .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
@@ -749,6 +802,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public static void clearAbortOrPausePositions() {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+  }
+
+  /** Position of the first subtask of {@code taskType} created so far by the task. */
+  public static int firstSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .min()
+        .orElseThrow();
+  }
+
+  /** Position of the last subtask of {@code taskType} created so far by the task. */
+  public static int lastSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .max()
+        .orElseThrow();
   }
 
   public void verifyTaskRetries(
@@ -1481,6 +1552,60 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     // validateMetrics(Common.CloudType.gcp, nodesCounts, 0);
   }
 
+  /**
+   * Adds the Azure LUN metadata that the devops host-info ("list") command reports for a node. YNP
+   * provisioning recovers Azure LUNs from that output (see YNPProvisioning.ensureAzureLunIndexes),
+   * so node command stubs have to model it for Azure nodes: the persisted LUNs when present,
+   * otherwise one LUN per volume in attachment order. Returns false, leaving the response
+   * untouched, when the node is not an Azure node.
+   */
+  protected boolean addAzureLunIndexes(ObjectNode respJson, NodeTaskParams params) {
+    if (params.getUniverseUUID() == null || params.nodeName == null) {
+      return false;
+    }
+    Universe universe = Universe.maybeGet(params.getUniverseUUID()).orElse(null);
+    if (universe == null) {
+      return false;
+    }
+    NodeDetails node = universe.getNode(params.nodeName);
+    if (node == null) {
+      return false;
+    }
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    if (cluster == null) {
+      return false;
+    }
+    // Resolve the provider per node like YNPProvisioning does: a cluster may mix providers and
+    // a read replica intent may not carry providerType.
+    Provider provider;
+    try {
+      provider = Util.getProviderForNode(node, cluster);
+    } catch (RuntimeException e) {
+      return false;
+    }
+    if (provider == null || provider.getCloudCode() != Common.CloudType.azu) {
+      return false;
+    }
+    ArrayNode lunIndexes = respJson.putArray("lun_indexes");
+    Integer[] persisted = node.cloudInfo == null ? null : node.cloudInfo.lun_indexes;
+    if (persisted != null && persisted.length > 0) {
+      for (Integer lun : persisted) {
+        lunIndexes.add(lun);
+      }
+      return true;
+    }
+    DeviceInfo deviceInfo =
+        params.deviceInfo != null
+            ? params.deviceInfo
+            : cluster.userIntent.evaluateDeviceInfoForNode(node);
+    int numVolumes =
+        deviceInfo != null && deviceInfo.numVolumes != null ? deviceInfo.numVolumes : 1;
+    for (int lun = 0; lun < numVolumes; lun++) {
+      lunIndexes.add(lun);
+    }
+    return true;
+  }
+
   protected void verifyNodeInteractionsCapacityReservation(
       int numberOfInvocations,
       NodeManager.NodeCommandType commandType,
@@ -1517,7 +1642,76 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
+  // Collector config rewrites run last, just before the universe update is marked successful.
+  protected void assertOtelRewritesRunLast(TaskInfo taskInfo) {
+    int firstRefresh =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int lastOther =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() != TaskType.ManageOtelCollector
+                        && t.getTaskType() != TaskType.UniverseUpdateSucceeded)
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(firstRefresh > lastOther);
+  }
+
+  // Turns on metrics export to a DataDog provider, so tasks plan ManageOtelCollector subtasks.
+  protected Universe enableMetricsExport(UUID universeUUID) {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    Universe universe =
+        Universe.saveDetails(
+            universeUUID,
+            u -> {
+              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+                  metricsExportConfig;
+              u.getUniverseDetails().otelCollectorEnabled = true;
+              // ManageOtelCollector builds its install payload from the universe architecture.
+              u.getUniverseDetails().arch = Architecture.x86_64;
+            });
+    // With an architecture set, the precheck looks for a local release package the test lacks.
+    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    return universe;
+  }
+
   Map<String, String> toLabelMap(Labels labels) {
     return labels.stream().collect(Collectors.toMap(Label::getName, Label::getValue));
+  }
+
+  protected static final String TSERVERS_NOT_UPGRADED_MESSAGE =
+      "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version";
+
+  protected static PromoteAutoFlagsResponse promoteAutoFlagsErrorResponse(
+      ErrorCode code, String message) {
+    return new PromoteAutoFlagsResponse(
+        0,
+        "uuid",
+        PromoteAutoFlagsResponsePB.newBuilder()
+            .setError(
+                MasterErrorPB.newBuilder()
+                    .setStatus(AppStatusPB.newBuilder().setCode(code).setMessage(message).build())
+                    .setCode(MasterErrorPB.Code.UNKNOWN_ERROR)
+                    .build())
+            .build());
   }
 }

@@ -53,6 +53,7 @@
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -60,6 +61,7 @@
 #include "yb/tablet/write_query_context.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/disk_space_checker.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -141,6 +143,11 @@ YB_DEFINE_ENUM(TabletObjectState,
     (kAvailable)
     (kDestroyed));
 
+// A tablet enters the quiescent mode after nothing was appended to its log for this time.
+CoarseDuration QuiescentTabletIdleTime();
+
+YB_STRONGLY_TYPED_BOOL(LockFreeRead);
+
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -148,6 +155,7 @@ YB_DEFINE_ENUM(TabletObjectState,
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
                    public consensus::ConsensusContext,
+                   public TabletContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
                    public WriteQueryContext {
@@ -156,6 +164,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Creates TabletPeer.
   // `tablet_splitter` will be used for applying split tablet Raft operation.
+  // `persistence_gate` may refuse to let stamped YSQL writes and commits replicate, and may have
+  // this tablet's transaction coordinator abort stamped pending transactions; nullptr does neither.
   TabletPeer(
       const RaftGroupMetadataPtr& meta,
       const consensus::RaftPeerPB& local_peer_pb,
@@ -164,6 +174,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
       MetricRegistry* metric_registry,
       TabletSplitter* tablet_splitter,
+      const PersistenceGate* persistence_gate,
       const std::shared_future<client::YBClient*>& client_future);
 
   ~TabletPeer() override;
@@ -181,6 +192,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
+      ThreadPool* snapshot_cleanup_pool,
       rpc::ThreadPool* raft_notifications_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
@@ -259,6 +271,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   Status GetLastReplicatedData(RemoveIntentsData* data) override;
+  Status GetLastReplicatedDataLockFree(RemoveIntentsData* data) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out);
 
@@ -277,6 +290,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool ShouldApplyWrite() override;
 
   bool AreWritesStopped() override;
+
+  consensus::PostponedApplyPtr PostponeApply(
+      const consensus::LWReplicateMsg& replicate_msg,
+      consensus::PostponedApplyPtr postponed) override;
 
   // Returns valid shared pointer to the consensus. Returns a not OK status if the consensus is not
   // in a valid state or a peer is not running (shutting down or shut down).
@@ -349,10 +366,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // the earliest index needed by the tablet itself (in-memory / in-flight / durability) and the
   // index xrepl (CDCSDK/xCluster) still needs retained. Both the Log GC path and remote bootstrap
   // consume this.
-  // If details is specified then this function appends explanation of how the index was calculated
-  // to it.
+  // If retention_details is specified then this function appends explanation of how index was
+  // calculated to it.
   Result<log::MinRetainLogIndexInfo> GetEarliestNeededLogIndex(
-      std::string* details = nullptr) const;
+      std::string* retention_details = nullptr) const;
 
   Result<OpId> MaxPersistentOpId() const override;
 
@@ -404,6 +421,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool IsLeaderAndReady() const;
   bool IsNotLeader() const;
 
+  Status CheckTransactionMayContinue(const LWOriginationInfoPB& origination_info) const override;
+
   Result<HybridTime> HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
@@ -430,6 +449,18 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // Tells the tablet's log to garbage collect.
   Status RunLogGC(bool rollover = false);
 
+  // Enters the quiescent mode if nothing was appended to the log for quiescent_tablet_idle_sec.
+  // Returns when the tablet should be checked next, always after now.
+  // Called from one thread.
+  CoarseTimePoint MaybeEnterQuiescentMode(CoarseTimePoint now);
+
+  // Flushes all storages and replaces the WAL segments with a quiescent marker at op_id, the last
+  // op in the log. Returns TryAgain if the tablet is not idle at op_id.
+  Status EnterQuiescentMode(const OpId& op_id);
+
+  // Returns true if the log has no segments and its quiescent marker is the last op.
+  bool IsQuiescent() const;
+
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().
   void RegisterMaintenanceOps(MaintenanceManager* maintenance_manager);
@@ -448,7 +479,12 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   //------------------------------------------------------------------------------------------------
   // CDC Related
 
+  // Checks staleness of the WAL and intent retention barriers, tracked together via
+  // cdc_min_replicated_index_refresh_time_.
   bool is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh = nullptr) const;
+
+  // Checks staleness of the history retention barrier, tracked via cdc_sdk_safe_time_refresh_time_.
+  bool is_cdc_sdk_safe_time_stale(double* seconds_since_last_refresh = nullptr) const;
 
   Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
@@ -470,7 +506,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool is_under_cdc_sdk_replication();
 
-  Status reset_all_cdc_retention_barriers_if_stale();
+  // Releases the WAL/intent and/or history retention barrier groups that have gone stale, and
+  // returns which groups were released (all-false if none were stale).
+  Result<CDCRetentionBarrierMoveSelector> reset_cdc_retention_barriers_if_stale();
 
   HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
@@ -483,18 +521,19 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<bool> SetAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier);
+      bool initial_retention_barrier, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Result<bool> SetAllInitialCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
-      bool require_history_cutoff);
+      bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Result<bool> SetAllInitialCDCSDKRetentionBarriers(
       OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
 
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   std::string AllCDCRetentionBarriersToString() const;
   //------------------------------------------------------------------------------------------------
@@ -548,8 +587,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
       EXCLUDES(async_write_queries_mutex_) override;
 
-  // Verifies that this peer has the op_id in its local log.
-  Status VerifyAsyncWriteReceived(const OpId& op_id);
+  // Verifies that this peer has the op_id in its local log. Without allow_log_lookup, a write from
+  // two or more terms ago is rejected.
+  Status VerifyAsyncWriteReceived(
+      const OpId& op_id, AllowLogLookup allow_log_lookup = AllowLogLookup::kTrue);
 
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
@@ -636,24 +677,39 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OperationCounter preparing_operations_counter_;
 
-  // Serializes access to set_cdc_min_replicated_index and is_cdc_min_replicated_index_stale and
-  // protects cdc_min_replicated_index_refresh_time_ for reads and writes.
-  mutable simple_spinlock cdc_min_replicated_index_lock_;
+  // Protects the CDC retention-barriers refresh times (i.e cdc_min_replicated_index_refresh_time_
+  // and cdc_sdk_safe_time_refresh_time_).
+  mutable simple_spinlock cdc_resource_refresh_time_lock_;
+  // Last time the WAL and intent retention barriers were refreshed.
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
+  // Last time the history retention barrier was refreshed.
+  MonoTime cdc_sdk_safe_time_refresh_time_ = MonoTime::Min();
 
  private:
+  Status DoGetLastReplicatedData(RemoveIntentsData* data, LockFreeRead lock_free_read);
+
+  // Checks whether the barrier last refreshed at refresh_time is stale.
+  bool is_cdc_barrier_stale(const MonoTime& refresh_time, double* seconds_since_last_refresh_ptr)
+      const REQUIRES(cdc_resource_refresh_time_lock_);
+
   Result<HybridTime> ReportReadRestart() override;
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
+
+  log::WalEntryState WalState(const OpId& op_id) override;
+
   Result<HybridTime> PreparePeerRequest() override;
   Status MajorityReplicated(const OpId& committed_op_id) override;
   void BecomeReplica() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
+  bool PendingPostSplitCompaction() override;
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
+  Status CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) override;
+  bool ShouldRelinquishLeadership() override;
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfoUnlocked() const REQUIRES(lock_);
 
@@ -674,6 +730,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   TabletSplitter* tablet_splitter_;
 
+  const PersistenceGate* const persistence_gate_;
+
   std::shared_future<client::YBClient*> client_future_;
   mutable std::atomic<client::YBClient*> client_cache_{nullptr};
 
@@ -689,12 +747,20 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // FLAGS_data_size_metric_updater_interval_sec seconds.
   std::atomic<size_t> total_on_disk_size_{0};
 
+  // Earliest time at which the next WAL retention diagnostics log line may be emitted for this
+  // tablet, used to throttle that log per-tablet.
+  mutable std::atomic<CoarseTimePoint> next_wal_retention_diag_log_time_{CoarseTimePoint::min()};
+
   std::mutex async_write_queries_mutex_;
   std::atomic<OpId> last_known_committed_op_id_;
   std::deque<std::pair<OpId, std::vector<StdStatusCallback>>> in_flight_async_write_queries_
       GUARDED_BY(async_write_queries_mutex_);
 
   rpc::ThreadPoolPtr service_thread_pool_holder_;
+
+  // Tracks the free space on the data directory. The WAL directory, which can be on a different
+  // disk, is tracked by the Log.
+  DiskSpaceChecker data_disk_space_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

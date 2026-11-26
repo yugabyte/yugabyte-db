@@ -168,11 +168,17 @@ const mapDispatchToProps = (dispatch) => {
     showConnectionPoolModal: () => {
       dispatch(openDialog('enableConnectionPooling'));
     },
+    showCrossCloudFederationModal: () => {
+      dispatch(openDialog('crossCloudFederationModal'));
+    },
     showMultiTenancyModal: () => {
       dispatch(openDialog('enableMultiTenancy'));
     },
     showInstallNodeAgentModal: () => {
       dispatch(openDialog('installNodeAgentModal'));
+    },
+    showUpdateNodeAgentModal: () => {
+      dispatch(openDialog('updateNodeAgentModal'));
     },
     showReprovisionNodesWithYnpModal: () => {
       dispatch(openDialog('reprovisionNodesWithYnpModal'));

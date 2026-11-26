@@ -20,6 +20,7 @@
 
 #include "yb/client/yb_op.h"
 
+#include "yb/common/pgsql_utils.h"
 #include "yb/common/row_mark.h"
 
 #include "yb/dockv/doc_key.h"
@@ -165,7 +166,8 @@ Result<PgDocResponse::Data> GetResponse(
   RETURN_NOT_OK(UpdateMetricOnGettingResponse(make_lw_function(
       [&result, &future = future_info.future, &metric_info, &session] () -> Status {
         auto event_watcher = session.StartWaitEvent(
-            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write));
+            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write),
+            metric_info.relation_oid);
         result = VERIFY_RESULT(future.Get(session));
         return Status::OK();
       }),
@@ -211,6 +213,26 @@ PgsqlReadOp& AsReadOp(const PgsqlOpPtr& op) {
 
 LWPgsqlReadRequestPB& AsReadReq(const PgsqlOpPtr& op) {
   return AsReadOp(op).read_request();
+}
+
+// Returns a checker telling whether a ybctid satisfies the given request bound. The bound's kind
+// is resolved once here, so the checker only compares the ybctid with the bound key.
+std::function<bool(Slice)> MakeBoundChecker(const LWPgsqlPartitionBound* bound, bool is_lower) {
+  if (!bound) {
+    return [](Slice) { return true; };
+  }
+  DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(bound->key()));
+  const auto key = bound->key();
+  if (is_lower) {
+    if (bound->is_inclusive()) {
+      return [key](Slice ybctid) { return ybctid >= key; };
+    }
+    return [key](Slice ybctid) { return ybctid > key; };
+  }
+  if (bound->is_inclusive()) {
+    return [key](Slice ybctid) { return ybctid <= key; };
+  }
+  return [key](Slice ybctid) { return ybctid < key; };
 }
 
 } // namespace
@@ -283,7 +305,7 @@ Status PgDocOp::FetchMoreResults() {
   }
 
   // Send request now in case prefetching was suppressed.
-  if (suppress_next_result_prefetching_ && !response_.Valid()) {
+  if (!response_.Valid()) {
     RETURN_NOT_OK(SendRequest());
   }
 
@@ -294,13 +316,14 @@ Status PgDocOp::FetchMoreResults() {
   // In case ProcessResponse doesn't fail with an error
   // it should return non empty rows, copy paging info from the responses into requests
   // and set end_of_data_.
-  // Prefetch next portion of data if needed.
-  if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-    AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
-    RETURN_NOT_OK(SendRequest());
+  if (end_of_data_ || suppress_next_result_prefetching_) {
+    suppress_next_result_prefetching_ = false;
+    return Status::OK();
   }
 
-  return Status::OK();
+  // Prefetch next portion of data if needed.
+  AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
+  return SendRequest();
 }
 
 PgDocOpFetchStream& PgDocOp::ResultStream() {
@@ -319,6 +342,12 @@ Result<int32_t> PgDocOp::GetRowsAffectedCount() const {
   RETURN_NOT_OK(exec_status_);
   DCHECK(end_of_data_);
   return rows_affected_count_;
+}
+
+Result<PgsqlResponsePB::PgsqlOnConflictOutcome> PgDocOp::GetOnConflictOutcome() const {
+  RETURN_NOT_OK(exec_status_);
+  DCHECK(end_of_data_);
+  return on_conflict_outcome_;
 }
 
 void PgDocOp::ResetResultStream() {
@@ -465,6 +494,8 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
 
   rows_affected_count_ = 0;
+  on_conflict_outcome_ = PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
+
   for (const auto& op : ActiveOps()) {
     auto* op_response = op->response();
     if (!op_response) {
@@ -476,6 +507,9 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
     }
 
     rows_affected_count_ += op_response->rows_affected_count();
+    if (op_response->has_on_conflict_outcome()) {
+      on_conflict_outcome_ = op_response->on_conflict_outcome();
+    }
     if (!op_response->has_rows_data_sidecar()) {
       continue;
     }
@@ -567,7 +601,7 @@ Result<PgDocResponse> PgDocOp::DefaultSender(
     const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
   PgDocResponse::MetricInfo metrics{
     ResolveRelationType(*ops.front(), table), is_write,
-    IsOpBuffered(!options.force_non_bufferable)};
+    IsOpBuffered(!options.force_non_bufferable), table.pg_table_id().object_oid};
   auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(ops, table, options)), metrics};
   if (!result.Valid()) {
     // session->RunAsync() calls PgSession::DoRunAsync() -> RunHelper::Flush().
@@ -802,7 +836,9 @@ bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
     // Executed in parallel on PgClient
     return false;
   }
-  // At this time ordered scan requires tablet scan order, so they have to be done sequentially
+  // At this time ordered scan requires tablet scan order, so they have to be done sequentially.
+  // An unset direction means row order does not matter (NoMovementScanDirection on the PG side,
+  // see create_index_path in pathnode.c).
   return !req.has_is_forward_scan();
 }
 
@@ -834,7 +870,10 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
-  } else if (CouldBeExecutedInParallel(req)) {
+  // A scan limited to one tablet by exec_params.partition_key must not go parallel: the parallel
+  // path ignores the partition boundary, so a backfill's resume key would fall outside its tablet
+  // and the backfill would never finish.
+  } else if (!exec_params_.partition_key && CouldBeExecutedInParallel(req)) {
     return PopulateParallelSelectOps();
   } else {
     // No optimization.
@@ -861,56 +900,57 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   //
   // 2- Select 1024 ybctids (prefetch limit) from INDEX.
   //
-  // 3- ONLY ONE TIME: Create a batch of operators, one per partition.
-  //    * Each operator has a clone requests from template_op_.
-  //    * We will reuse the created operators & requests for the future batches of 1024 ybctids.
-  //    * Certain fields in the protobuf requests MUST BE RESET for each batches.
+  // 3- Assign the selected ybctids to operators. A partition's operator is
+  //    cloned from template_op_ when its first ybctid is assigned, so partitions that get no
+  //    ybctids cost nothing.
   //
-  // 4- Assign the selected 1024 ybctids to the batch of operators.
+  // 4- Send requests to tablet servers to read data from <tab> associated with ybctid values.
   //
-  // 5- Send requests to tablet servers to read data from <tab> associated with ybctid values.
-  //
-  // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
+  // 5- Repeat step 2 thru 4 for the next batch of 1024 ybctids till done.
   end_of_data_ = false;
   InitializeYbctidOperators();
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
-  if (keep_order) {
-    if (!result_stream_) {
-      result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
-          [this]() { return this->FetchMoreResults(); }, pgsql_ops_, 0);
-      result_stream_->SetFetchedTargets(targets_);
-      VLOG(3) << "Created MergingPgDocOpFetchStream";
-    }
-  }
+  // The template carries the request bounds, so an out of bounds ybctid does not cause a clone.
+  const auto& template_req = GetTemplateReadReq();
+  const auto satisfies_lower_bound = MakeBoundChecker(
+      template_req.has_lower_bound() ? &template_req.lower_bound() : nullptr,
+      /* is_lower= */ true);
+  const auto satisfies_upper_bound = MakeBoundChecker(
+      template_req.has_upper_bound() ? &template_req.upper_bound() : nullptr,
+      /* is_lower= */ false);
+  // This batch's operators, by partition. Operators left in pgsql_ops_ by a previous batch are
+  // never assigned ybctids, as they may still be active.
+  std::vector<PgsqlOpPtr> partition_ops(table_->GetPartitionListSize());
+  const auto first_batch_op = pgsql_ops_.size();
   while (true) {
     const auto ybctid = generator.next();
     if (ybctid.empty()) {
       break;
     }
+    if (!satisfies_lower_bound(ybctid) || !satisfies_upper_bound(ybctid)) {
+      continue;
+    }
+
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
     const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-
     // Assign ybctids to operators.
-    auto& read_op = GetReadOp(partition);
-    auto& read_req = read_op.read_request();
-
-    // Check bounds, if set.
-    if (read_req.has_lower_bound()) {
-      const auto& lower_bound = read_req.lower_bound();
-      DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound.key()));
-      if (lower_bound.is_inclusive() ? ybctid < lower_bound.key() : ybctid <= lower_bound.key()) {
-        continue;
-      }
+    auto& partition_op = partition_ops[partition];
+    if (!partition_op) {
+      CloneOnePgsqlOp();
+      partition_op = pgsql_ops_.back();
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, DocDB will return a paging state for pggate to
+      // continue till the end of current tablet is reached.
+      // The ybctid is within both the request and the partition bounds, so they intersect.
+      const auto range_non_empty =
+          VERIFY_RESULT(SetLowerUpperBound(&AsReadReq(partition_op), partition));
+      RSTATUS_DCHECK(
+          range_non_empty, IllegalState, "Empty read range for partition $0", partition);
+      partition_op->set_active(true);
     }
-    if (read_req.has_upper_bound()) {
-      const auto& upper_bound = read_req.upper_bound();
-      DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound.key()));
-      if (upper_bound.is_inclusive() ? ybctid > upper_bound.key() : ybctid >= upper_bound.key()) {
-        continue;
-      }
-    }
+    auto& read_req = AsReadReq(partition_op);
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
@@ -930,13 +970,26 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
       read_req.mutable_ybctid_column_value()->mutable_value()
           ->ref_binary_value(arg_value->binary_value());
     }
+  }
 
-    // For every read operation set partition boundary. In case a tablet is split between
-    // preparing requests and executing them, DocDB will return a paging state for pggate to
-    // continue till the end of current tablet is reached.
-    if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
-      read_op.set_active(true);
-    }
+  // Lay out this batch's operators as when one was cloned per partition up front and
+  // MoveInactiveOpsOutside() then moved the active ones to the front. That partition is not
+  // stable, so repeat it over the per-partition slots to keep the order in which unordered reads
+  // return rows.
+  const auto used_ops = std::ranges::subrange(
+      partition_ops.begin(),
+      std::ranges::partition(partition_ops, [](const auto& op) { return op != nullptr; }).begin());
+  pgsql_ops_.erase(pgsql_ops_.begin() + first_batch_op, pgsql_ops_.end());
+  std::ranges::move(used_ops, std::back_inserter(pgsql_ops_));
+
+  parallelism_level_ = pgsql_ops_.size();
+  if (keep_order && !result_stream_) {
+    result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
+    result_stream_->SetFetchedTargets(targets_);
+    VLOG(3) << "Created MergingPgDocOpFetchStream";
+  } else {
+    AddOpsToResultStream();
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
@@ -977,8 +1030,6 @@ void PgDocReadOp::InitializeYbctidOperators() {
     pgsql_op_arena_ = SharedThreadSafeArena();
   }
   ResetInactivePgsqlOps();
-  // Make sure we have one operation per partition
-  ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
 Status PgDocReadOp::DoPopulateMergeStreamRequests(
@@ -1007,14 +1058,8 @@ Status PgDocReadOp::DoPopulateMergeStreamRequests(
   // responses.  No active ops means no execution.
   if (active_op_count > 0) {
     DCHECK(!result_stream_);
-    // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
-    // for them. So reserve space for all regular attributes.
-    auto nattrs = std::count_if(
-        table_->schema().columns().cbegin(),
-        table_->schema().columns().cend(),
-        [](const ColumnSchema& c) { return c.order() > 0; });
     result_stream_ = std::make_unique<MergingPgDocOpFetchStream<PgDocResult>>(
-        [this]() { return this->FetchMoreResults(); }, pgsql_ops_, nattrs);
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
     result_stream_->SetFetchedTargets(targets_);
     result_stream_->SetMergeSortKeys(merge_sort_keys);
   }
@@ -1074,22 +1119,29 @@ Result<bool> PgDocReadOp::BindExprsToBatch(
   auto partition = client::FindPartitionStartIndex(table_->GetPartitionList(), partition_key);
   DCHECK(partition < partition_batches.size());
   auto& partition_batch = partition_batches[partition];
+  if (partition_batch.request_range && partition_batch.request_range->IsEmpty()) {
+    return false;
+  }
   if (!partition_batch.read_op) {
+    PgReadRange request_range(table_);
+    request_range.SetRequestBounds(GetTemplateReadReq());
+    request_range.SetPartitionBounds(partition);
+    // read_op_provider clones an op, so check the request bounds before taking one.
+    if (request_range.IsEmpty()) {
+      partition_batch.request_range.emplace(std::move(request_range));
+      return false;
+    }
     partition_batch.read_op = &VERIFY_RESULT_REF(read_op_provider());
     auto& read_req = partition_batch.read_op->read_request();
+    // The clone carries the template bounds, which request_range already includes.
+    const auto applied = request_range.ApplyBounds(read_req);
+    DCHECK(applied);
+    partition_batch.rhs_values = InitHashPermutationBatch(read_req);
     PgReadRange partition_range(table_);
     partition_range.SetPartitionBounds(partition);
-    if (partition_range.ApplyBounds(read_req)) {
-      partition_batch.rhs_values = InitHashPermutationBatch(read_req);
-      PgReadRange request_range(table_);
-      request_range.SetRequestBounds(read_req);
-      if (request_range != partition_range) {
-        partition_batch.request_range.emplace(std::move(request_range));
-      }
+    if (request_range != partition_range) {
+      partition_batch.request_range.emplace(std::move(request_range));
     }
-  }
-  if (!partition_batch.rhs_values) {
-    return false;
   }
   if (partition_batch.request_range) {
     // The hash permutation key generally is a range, keys with the same hash code and the hash
@@ -1166,23 +1218,24 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   }
 
   // Setup operations
-  const auto max_op_count = std::min(hash_permutations_->Size(),
-                               IsHashBatchingEnabled() ?
-                                   table_->GetPartitionListSize() :
-                                   implicit_cast<size_t>(FLAGS_ysql_request_limit));
-  ClonePgsqlOps(max_op_count);
   if (IsHashBatchingEnabled()) {
+    DCHECK(pgsql_ops_.empty());
     PartitionBatches batches(table_->GetPartitionListSize());
-    const auto op_provider =
-        [it = pgsql_ops_.begin(), end = pgsql_ops_.end()] () mutable -> Result<PgsqlReadOp&> {
-          RSTATUS_DCHECK(it != end, IllegalState, "No more read ops available");
-          return AsReadOp(*it++);
-        };
     size_t limit = 0;
     if (exec_params_.work_mem > 0) {
       limit = pgsql_op_arena_->UsedBytes() + (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
     }
     VLOG(4) << "arena size limit: " << limit;
+    // Clone an op only when a permutation first reaches its tablet. The clones are not charged to
+    // work_mem: the limit grows by what each clone takes from the arena.
+    const auto op_provider = [this, &limit]() -> Result<PgsqlReadOp&> {
+      const auto used_before = pgsql_op_arena_->UsedBytes();
+      auto& op = CloneOnePgsqlOp();
+      if (limit > 0) {
+        limit += pgsql_op_arena_->UsedBytes() - used_before;
+      }
+      return op;
+    };
     for (; hash_permutations_->HasPermutation(); ) {
       if (VERIFY_RESULT(BindExprsToBatch(
               batches, hash_permutations_->NextPermutation(), make_lw_function(op_provider))) &&
@@ -1191,7 +1244,11 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
       }
     }
     VLOG(4) << "arena size after bind: " << pgsql_op_arena_->UsedBytes();
+    AddOpsToResultStream();
+    parallelism_level_ = pgsql_ops_.size();
   } else {
+    ClonePgsqlOps(std::min(hash_permutations_->Size(),
+                           implicit_cast<size_t>(FLAGS_ysql_request_limit)));
     for (auto it = pgsql_ops_.begin();
          it != pgsql_ops_.end() && hash_permutations_->HasPermutation(); ++it) {
       if (VERIFY_RESULT(BindExprsRegular(
@@ -1300,7 +1357,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
     // Save the backfill_spec if tablet server wants to return it.
     if (res.is_backfill_batch_done()) {
       out_param_backfill_spec_ = res.backfill_spec().ToBuffer();
-    } else if (VERIFY_RESULT(PrepareNextRequest(*table_, &read_op))) {
+    } else if (read_op.PrepareNextRequest(exec_params_.yb_fetch_row_limit)) {
       has_more_arg = true;
     }
 
@@ -1335,70 +1392,34 @@ Status PgDocReadOp::CompleteProcessResponse() {
 }
 
 Status PgDocReadOp::SetRequestPrefetchLimit() {
-  // Predict the maximum prefetch-limit using the associated gflags.
   auto& req = read_op_->read_request();
 
   // Limits: 0 means 'unlimited'.
-  uint64_t predicted_row_limit = exec_params_.yb_fetch_row_limit;
-  uint64_t predicted_size_limit = exec_params_.yb_fetch_size_limit;
+  uint64_t default_row_limit = exec_params_.yb_fetch_row_limit;
+  uint64_t size_limit = exec_params_.yb_fetch_size_limit;
+  uint64_t row_limit = default_row_limit;
+  suppress_next_result_prefetching_ = false;
 
-  // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
-  auto row_limit = exec_params_.limit_count + exec_params_.limit_offset;
-  suppress_next_result_prefetching_ = true;
-
-  // If in any of these cases we determine that the default row/size based batch size is lower
-  // than the actual requested LIMIT, we enable prefetching. If else, we try
-  // to only get the required data in one RPC without prefetching.
-  if (exec_params_.limit_use_default) {
-    row_limit = predicted_row_limit;
-    suppress_next_result_prefetching_ = false;
-  } else if (predicted_row_limit > 0 && predicted_row_limit < row_limit) {
-    row_limit = predicted_row_limit;
-    suppress_next_result_prefetching_ = false;
-  } else if (predicted_size_limit > 0) {
-    // Try to estimate the total data size of a LIMIT'd query
-    // Inaccurate in the presence of varlen targets but not possible to fix that without PG stats;
-    size_t row_width = 0;
-    for (const LWPgsqlExpressionPB& target : req.targets()) {
-      // If target is a system column, we it's probably variable size
-      // and we don't have the means to estimate its length.
-      if (target.has_column_id()) {
-        auto column_id = target.column_id();
-        if (column_id < 0) {
-            // System columns are usually variable length which we are
-            // estimating with the size of a Binary DataType for now.
-            row_width += GetTypeInfo(DataType::BINARY)->size;
-            continue;
-        }
-        const ColumnSchema &col_schema =
-          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(column_id)));
-
-        // This size is usually the computed sizeof() of the serialized datatype.
-        // Its computation can be found in yb/common/types.h
-        auto size = col_schema.type_info()->size;
-        row_width += size;
-      }
-    }
-
-    // Prefetch if we expect size limit to occur first, so there will
-    // be multiple RPCs until row_limit is reached
-    if (row_width > 0 && (predicted_size_limit / row_width) < row_limit) {
-      suppress_next_result_prefetching_ = false;
-    }
+  // If plan limit is defined and lower than the default optimistically attempt to fetch exact
+  // amount of data that the plan needs. Hence we apply the plan limit to the request and disable
+  // prefetching to avoid sending second request.
+  if (exec_params_.plan_limit > 0 &&
+      (default_row_limit == 0 || exec_params_.plan_limit < default_row_limit)) {
+    row_limit = exec_params_.plan_limit;
+    suppress_next_result_prefetching_ = true;
   }
 
   req.set_limit(row_limit);
-  req.set_size_limit(predicted_size_limit);
+  req.set_size_limit(size_limit);
 
   VLOG(3) << __func__
-          << " exec_params_.limit_count=" << exec_params_.limit_count
-          << " exec_params_.limit_offset=" << exec_params_.limit_offset
-          << " exec_params_.limit_use_default=" << exec_params_.limit_use_default
-          << " predicted_row_limit=" << predicted_row_limit
+          << " exec_params_.plan_limit=" << exec_params_.plan_limit
+          << " exec_params_.yb_fetch_row_limit=" << exec_params_.yb_fetch_row_limit
+          << " exec_params_.yb_fetch_size_limit=" << exec_params_.yb_fetch_size_limit
           << " row_limit=" << row_limit
-          << (row_limit == 0 ? " (Unlimited)" : "")
-          << " size_limit=" << predicted_size_limit
-          << (predicted_size_limit == 0 ? " (Unlimited)" : "");
+          << " size_limit=" << size_limit
+          << " suppress_next_result_prefetching_="
+          << (suppress_next_result_prefetching_ ? "true" : "false");
   return Status::OK();
 }
 
@@ -1424,10 +1445,8 @@ void PgDocReadOp::SetBackfillSpec() {
 }
 
 void PgDocReadOp::SetReadTimeForBackfill() {
-  if (exec_params_.is_index_backfill) {
+  if (exec_params_.backfill_read_time) {
     read_op_->read_request().set_is_for_backfill(true);
-    // TODO: Change to RSTATUS_DCHECK
-    DCHECK(exec_params_.backfill_read_time);
     read_op_->set_read_time(ReadHybridTime::FromUint64(exec_params_.backfill_read_time));
   }
 }
@@ -1511,17 +1530,21 @@ Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size
 void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
   // Allocate batch operator, one per partition.
   DCHECK_GT(op_count, 0);
-  DCHECK(!end_of_data_);
   pgsql_ops_.reserve(op_count);
-  const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
   while (pgsql_ops_.size() < op_count) {
-    pgsql_ops_.push_back(read_op_->DeepCopy(arena));
-    // Initialize as inactive. Turn it on when setup argument for a specific partition.
-    pgsql_ops_.back()->set_active(false);
+    CloneOnePgsqlOp();
   }
   AddOpsToResultStream();
   // Set parallelism_level_ to maximum possible of operators to be executed at one time.
   parallelism_level_ = pgsql_ops_.size();
+}
+
+PgsqlReadOp& PgDocReadOp::CloneOnePgsqlOp() {
+  DCHECK(!end_of_data_);
+  const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
+  pgsql_ops_.push_back(read_op_->DeepCopy(arena));
+  pgsql_ops_.back()->set_active(false);
+  return AsReadOp(pgsql_ops_.back());
 }
 
 //--------------------------------------------------------------------------------------------------

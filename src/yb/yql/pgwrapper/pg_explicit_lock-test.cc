@@ -116,6 +116,9 @@ class PgExplicitLockTestTxnBase : public PgExplicitLockTest {
     ASSERT_EQ(PQntuples(res.get()), 4);
     if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
       ASSERT_NOK(join_conn.Execute("COMMIT"));
+      // The abort may surface before COMMIT ends the block (e.g. while closing the previous
+      // unnamed portal), which leaves the block in aborted state until ROLLBACK.
+      ASSERT_OK(join_conn.Execute("ROLLBACK"));
     } else {
       ASSERT_OK(join_conn.Execute("COMMIT"));
     }
@@ -142,6 +145,8 @@ class PgExplicitLockTestTxnBase : public PgExplicitLockTest {
     ASSERT_EQ(PQntuples(res.get()), 2);
     if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
       ASSERT_NOK(join_conn.Execute("COMMIT"));
+      // Same as test case 1.
+      ASSERT_OK(join_conn.Execute("ROLLBACK"));
     } else {
       ASSERT_OK(join_conn.Execute("COMMIT"));
     }
@@ -496,6 +501,24 @@ TEST_F_EX(PgExplicitLockTest, SkipLockedBatchingApplicability, PgExplicitLockTes
   const auto read_ahead_sub = ASSERT_RESULT(GetLockRowsMaxReadAhead(
       join_lock["Plans"][0]["Plans"][0]["Plans"][0]));
   ASSERT_EQ(read_ahead_sub, std::nullopt);
+}
+
+// The test checks skip locked batching works as expected (with no error) in case of presence
+// multiple different lock modes.
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedMultipleLockModes, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1(k INT);" \
+      "CREATE TABLE t2(k INT);" \
+      "CREATE TABLE t3(k INT);" \
+      "INSERT INTO t1 SELECT s FROM generate_series(1, 10) AS s;" \
+      "INSERT INTO t2 SELECT s FROM generate_series(1, 10) AS s;" \
+      "INSERT INTO t3 SELECT s FROM generate_series(1, 10) AS s"));
+  ASSERT_OK(SetExplicitRowLockMaxReadAhead(conn, 4));
+  const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, int32_t>(
+      "SELECT * FROM t1 JOIN t2 ON (t1.k = t2.k) JOIN t3 ON (t1.k = t3.k) " \
+      "FOR UPDATE OF t1 SKIP LOCKED FOR SHARE OF t2 SKIP LOCKED FOR KEY SHARE OF t3")));
+  ASSERT_EQ(rows.size(), 10);
 }
 
 } // namespace yb::pgwrapper

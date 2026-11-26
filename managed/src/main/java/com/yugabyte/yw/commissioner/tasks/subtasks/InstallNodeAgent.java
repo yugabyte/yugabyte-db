@@ -6,13 +6,16 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
+import com.yugabyte.yw.common.NodeAgentManager.CopyType;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
@@ -48,6 +51,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     public String nodeAgentInstallDir;
     public String sshUser;
     public UUID customerUuid;
+    public UUID certificateUuid;
     public boolean reinstall;
     public boolean airgap;
     public boolean sudoAccess;
@@ -70,7 +74,11 @@ public class InstallNodeAgent extends NodeTaskBase {
   }
 
   private NodeAgent createNodeAgent(
-      Universe universe, NodeDetails node, String nodeAgentHome, ShellProcessContext shellContext) {
+      Universe universe,
+      NodeDetails node,
+      String nodeAgentHome,
+      DeployContext deployContext,
+      ShellProcessContext shellContext) {
     String output =
         nodeUniverseManager
             .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
@@ -93,7 +101,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     nodeAgent.setArchType(ArchType.parse(parts[1].trim()));
     nodeAgent.setVersion(nodeAgentManager.getSoftwareVersion());
     nodeAgent.setHome(nodeAgentHome);
-    return nodeAgentManager.create(nodeAgent, false);
+    return nodeAgentManager.create(nodeAgent, deployContext, false);
   }
 
   private boolean doesNodeAgentPackageExist(
@@ -144,18 +152,22 @@ public class InstallNodeAgent extends NodeTaskBase {
       task.initialize(getSetupYNPParams(taskParams()));
       task.run();
     }
+    DeployContext deployContext =
+        DeployContext.builder().certificateUuid(taskParams().certificateUuid).build();
     // Create the node agent record.
     NodeAgent nodeAgent =
-        createNodeAgent(universe, node, nodeAgentHomePath.toString(), shellContext);
+        createNodeAgent(universe, node, nodeAgentHomePath.toString(), deployContext, shellContext);
     // Get the node agent installer files.
-    InstallerFiles installerFiles =
-        nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentHomePath, false /* certsOnly */);
+    InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, deployContext);
 
     StringBuilder sb = new StringBuilder();
     // Clean up the directories except the release path.
     Set<String> deleteDirs =
         installerFiles.getCreateDirs().stream()
-            .filter(d -> !installerFiles.getPackagePath().startsWith(d))
+            .filter(
+                d ->
+                    installerFiles.getPackagePath() == null
+                        || !installerFiles.getPackagePath().startsWith(d))
             .map(d -> getTopLevelPath(nodeAgentHomePath, d).toString())
             .collect(Collectors.toSet());
     sb.append("rm -rf ").append(String.join(" ", deleteDirs));
@@ -166,7 +178,10 @@ public class InstallNodeAgent extends NodeTaskBase {
     // Create the new installation directories.
     Set<String> createDirs =
         installerFiles.getCreateDirs().stream()
-            .filter(dir -> !installerFiles.getPackagePath().startsWith(dir))
+            .filter(
+                dir ->
+                    installerFiles.getPackagePath() == null
+                        || !installerFiles.getPackagePath().startsWith(dir))
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
     sb.setLength(0);
@@ -176,22 +191,55 @@ public class InstallNodeAgent extends NodeTaskBase {
     log.info("Creating directories {} for node agent {}", createDirs, nodeAgent.getUuid());
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
 
-    // Copy the files to the already created paths.
+    // Copy the files to the already created paths with the shell context.
     installerFiles.getCopyFileInfos().stream()
         .filter(f -> !f.getTargetPath().equals(installerFiles.getPackagePath()))
         .forEach(
             f -> {
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
-              log.info(
-                  "Uploading {} to {} with perm %s on node agent {}",
-                  f.getSourcePath(), f.getTargetPath(), filePerm, nodeAgent.getUuid());
-              nodeUniverseManager.uploadFileToNode(
-                  node,
-                  universe,
-                  f.getSourcePath().toString(),
-                  f.getTargetPath().toString(),
-                  filePerm,
-                  shellContext);
+              if (f.getCopyType() == CopyType.UPLOAD) {
+                log.info(
+                    "Uploading {} to {} with perm {} on node agent {}",
+                    f.getSourcePath(),
+                    f.getTargetPath(),
+                    filePerm,
+                    nodeAgent.getUuid());
+                nodeUniverseManager.uploadFileToNode(
+                    node,
+                    universe,
+                    f.getSourcePath().toString(),
+                    f.getTargetPath().toString(),
+                    filePerm,
+                    shellContext);
+              } else if (f.getCopyType() == CopyType.REMOTE_COPY) {
+                log.info(
+                    "Remote copying file {} to {} on node agent {}",
+                    f.getSourcePath(),
+                    f.getTargetPath(),
+                    nodeAgent);
+                // Copy on the same remote node.
+                List<String> cmd =
+                    ImmutableList.of(
+                        "cp", "-f", f.getSourcePath().toString(), f.getTargetPath().toString());
+                nodeUniverseManager
+                    .runCommand(node, universe, cmd, shellContext)
+                    .processErrors(
+                        () ->
+                            String.format(
+                                "Failed to remote copy file %s to %s on node agent %s",
+                                f.getSourcePath(), f.getTargetPath(), nodeAgent));
+                cmd = ImmutableList.of("chmod", filePerm, f.getTargetPath().toString());
+                nodeUniverseManager
+                    .runCommand(node, universe, cmd, shellContext)
+                    .processErrors(
+                        () ->
+                            String.format(
+                                "Failed to set permission for file %s on node agent %s",
+                                f.getTargetPath(), nodeAgent));
+              } else {
+                throw new IllegalArgumentException(
+                    "Unknown copy type " + f.getCopyType() + " for file " + f.getSourcePath());
+              }
             });
 
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
@@ -199,6 +247,10 @@ public class InstallNodeAgent extends NodeTaskBase {
         nodeAgentHomePath.resolve(Paths.get("bin", NodeAgentManager.NODE_AGENT_INSTALLER_FILE));
 
     sb.setLength(0);
+    // Change ownership of the node agent home directory to the runner user and group.
+    if (taskParams().sudoAccess) {
+      sb.append("chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath).append(" && ");
+    }
     // Restore directory permissions.
     sb.append("chmod 755 ").append(String.join(" ", createDirs));
     // Give executable permission to the installer script.
@@ -216,6 +268,9 @@ public class InstallNodeAgent extends NodeTaskBase {
     if (taskParams().airgap) {
       sb.append(" --airgap");
     }
+    if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      sb.append(" --fips_enabled");
+    }
     command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running node agent installation command: {}", command);
 
@@ -227,7 +282,7 @@ public class InstallNodeAgent extends NodeTaskBase {
       nodeAgent.updateLastError(new YBAError(Code.INSTALLATION_ERROR, e.getMessage()));
       throw e;
     }
-    nodeAgent.saveState(State.REGISTERED);
+    nodeAgent.finalizeRegistration(deployContext);
     sb.setLength(0);
     sb.append("systemctl");
     if (!taskParams().sudoAccess) {

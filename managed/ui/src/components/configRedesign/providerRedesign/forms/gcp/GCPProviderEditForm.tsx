@@ -92,6 +92,13 @@ import {
   ImageBundle
 } from '../../types';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
+import {
+  buildFederationPayload,
+  federationFormValuesFromProvider,
+  CloudAccessHeading,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -123,6 +130,12 @@ export interface GCPProviderEditFormFieldValues {
   version: number;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
+  federationGcsCredentialFile?: File;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
 }
 
 const ProviderCredentialType = {
@@ -134,6 +147,7 @@ type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof Provide
 const YB_VPC_NAME_BASE = 'yb-gcp-network';
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -424,6 +438,12 @@ export const GCPProviderEditForm = ({
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
+              <CloudAccessHeading
+                infoTitle="Access to Google Cloud"
+                infoContent="Choose how YugabyteDB Anywhere authenticates to this Google Cloud project to create and manage universe nodes."
+              >
+                Access to Google Cloud
+              </CloudAccessHeading>
               <FormField>
                 <FieldLabel>Current Service Account</FieldLabel>
                 <YBInput value={serviceAccountIdentifer} disabled={true} fullWidth />
@@ -556,6 +576,11 @@ export const GCPProviderEditForm = ({
                   />
                 </FormField>
               )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="gcp"
+              />
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -848,6 +873,7 @@ const constructDefaultFormValues = (
 ): Partial<GCPProviderEditFormFieldValues> => ({
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId ?? '',
+  ...federationFormValuesFromProvider(providerConfig.details.cloudInfo.gcp, 'gcp'),
   editCloudCredentials: false,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
@@ -1002,7 +1028,8 @@ const constructProviderPayload = async (
                   sharedVPCProject: cloudInfo.gcp.sharedVPCProject
                 })
               }),
-          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
+          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags }),
+          ...buildFederationPayload(formValues)
         }
       },
       ntpServers: formValues.ntpServers,

@@ -37,12 +37,28 @@ var (
 
 // CommandInfo holds command information.
 type CommandInfo struct {
-	User   string
-	Desc   string
-	Cmd    string
-	Args   []string
+	User string
+	Desc string
+	Cmd  string
+	Args []string
+	// Used by RunCmd only. It cannot override HOME, PWD or the user name vars.
+	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer
+}
+
+// SetupOutputForwarding sets up output forwarding to the logOut buffer.
+func (cmdInfo *CommandInfo) SetupOutputForwarding(ctx context.Context, logOut util.Buffer) {
+	if logOut != nil {
+		// Preference is given to the first buffer for all methods.
+		// Do not pollute the StdOut and StdErr buffers with the logOut buffer
+		// because the command output is used to take subsequent actions.
+		if util.FileLogger().IsDebugEnabled(ctx) {
+			// Forward the command output only if debug logging is enabled.
+			cmdInfo.StdOut = util.NewMultiBuffer(cmdInfo.StdOut, logOut)
+		}
+		cmdInfo.StdErr = util.NewMultiBuffer(cmdInfo.StdErr, logOut)
+	}
 }
 
 // RedactCommandArgs redacts the command arguments and returns them.
@@ -66,6 +82,71 @@ func (cmdInfo *CommandInfo) RedactCommandArgs() []string {
 	return redacted
 }
 
+// RedactOutput redacts LDAP bind passwords in command output such as a server.conf. An HBA
+// ldapbindpasswd value can be quoted and contain spaces or commas, so everything after the
+// option's '=' up to the end of the line is redacted. It runs on every command's output when
+// debug logging is on, so it scans with strings.Index instead of a regexp, which is ~1000x slower
+// on output that has no LDAP options.
+func RedactOutput(output string) string {
+	var sb strings.Builder
+	// output[:copied] is already in sb.
+	copied := 0
+	for pos := 0; ; {
+		i := strings.Index(output[pos:], "passwd")
+		if i < 0 {
+			break
+		}
+		nameEnd := pos + i + len("passwd")
+		pos = nameEnd
+		if !strings.HasSuffix(output[:nameEnd], "ldapbindpasswd") &&
+			!hasYcqlLdapBindPasswdSuffix(output[:nameEnd]) {
+			continue
+		}
+		eq := nameEnd
+		for eq < len(output) && strings.IndexByte(" \t\n\f\r", output[eq]) >= 0 {
+			eq++
+		}
+		if eq == len(output) || output[eq] != '=' {
+			continue
+		}
+		valueEnd := len(output)
+		if j := strings.IndexAny(output[eq+1:], "\r\n"); j >= 0 {
+			valueEnd = eq + 1 + j
+		}
+		if sb.Len() == 0 {
+			sb.Grow(len(output))
+		}
+		sb.WriteString(output[copied : eq+1])
+		sb.WriteString("REDACTED")
+		copied = valueEnd
+		pos = valueEnd
+	}
+	if sb.Len() == 0 {
+		return output
+	}
+	sb.WriteString(output[copied:])
+	return sb.String()
+}
+
+// hasYcqlLdapBindPasswdSuffix reports whether s ends with ycql_ldap_bind_passwd, any of whose
+// underscores may be dashes: gflags reads a dash in a flag name as an underscore.
+func hasYcqlLdapBindPasswdSuffix(s string) bool {
+	const name = "ycql_ldap_bind_passwd"
+	if strings.HasSuffix(s, name) {
+		return true
+	}
+	if len(s) < len(name) {
+		return false
+	}
+	s = s[len(s)-len(name):]
+	for i := 0; i < len(name); i++ {
+		if s[i] != name[i] && (name[i] != '_' || s[i] != '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // RunCmd runs the command in the command info.
 func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	userDetail, err := util.UserInfo(cmdInfo.User)
@@ -75,6 +156,7 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
+	env = append(env, cmdInfo.Env...)
 	// Handle cancellation in runCommand. Otherwise, when the context is cancelled,
 	// the command is killed without cleaning up the process group.
 	cmd := createCmd(context.WithoutCancel(ctx), userDetail, env, cmdInfo.Cmd, cmdInfo.Args...)
@@ -164,6 +246,7 @@ func RunSteps(
 			StdOut: util.NewBuffer(MaxBufferCapacity),
 			StdErr: util.NewBuffer(MaxBufferCapacity),
 		}
+		cmdInfos[i].SetupOutputForwarding(ctx, logOut)
 	}
 	return createCmds(
 		ctx,
@@ -192,14 +275,26 @@ func RunShellCmd(
 	user, desc, cmdStr string,
 	logOut util.Buffer,
 ) (*CommandInfo, error) {
+	return RunShellCmdWithEnv(ctx, user, desc, cmdStr, nil, logOut)
+}
+
+// RunShellCmdWithEnv runs a shell command with extra env vars, which are not logged.
+func RunShellCmdWithEnv(
+	ctx context.Context,
+	user, desc, cmdStr string,
+	env []string,
+	logOut util.Buffer,
+) (*CommandInfo, error) {
 	cmdInfo := &CommandInfo{
 		User:   user,
 		Desc:   desc,
 		Cmd:    util.DefaultShell,
 		Args:   []string{"-c", cmdStr},
+		Env:    env,
 		StdOut: util.NewBuffer(MaxBufferCapacity),
 		StdErr: util.NewBuffer(MaxBufferCapacity),
 	}
+	cmdInfo.SetupOutputForwarding(ctx, logOut)
 	if logOut != nil {
 		logOut.WriteLine("Running shell command for %s", desc)
 	}

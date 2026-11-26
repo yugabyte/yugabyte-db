@@ -145,8 +145,6 @@ class PgReadRange {
     }
     return group;
   }
-  static Status CheckBoundDerivedFromHashCode(Slice bound, bool is_lower);
-  dockv::KeyBytes HashCodeToBound(uint16_t hash_code, bool is_lower) const;
   // After bounds change, check if the range is empty and update the empty flag.
   void ComputeEmpty();
   // Set the new lower bound.

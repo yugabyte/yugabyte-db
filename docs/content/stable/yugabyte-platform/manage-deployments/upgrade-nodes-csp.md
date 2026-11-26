@@ -36,7 +36,7 @@ type: docs
 -->
 </ul>
 
-You can apply operating system patches and upgrades to running universes on AWS, GCP, and Azure.
+You can apply operating system patches and upgrades to running universes on AWS, GCP, Azure, and OCI.
 
 Upgrades are performed via a rolling update, where one node in the universe is taken offline, patched, and restarted before updating the next. The universe continues to function normally during this process, however the upgrade can impact performance. For best results, do the following:
 

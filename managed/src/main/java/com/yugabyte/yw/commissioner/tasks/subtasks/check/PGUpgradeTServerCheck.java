@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,7 +31,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -82,13 +80,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    boolean isK8sUniverse =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes);
+    boolean isK8sUniverse = Util.isKubernetesBasedUniverse(universe);
     boolean isDedicatedNodeUniverse =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes;
     // For K8s and dedicated node universe, we can run the check on any node in the primary cluster.
@@ -217,9 +209,12 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           .executeCommandInPodContainer(
               podConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
-      boolean isNodeAgentSupported =
-          NodeAgentClient.isCloudTypeSupported(
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+      CloudType providerType =
+          universe
+              .getUniverseDetails()
+              .getClusterByUuid(node.placementUuid)
+              .getProviderCloudType(node);
+      boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
               universe, node, taskParams().ybSoftwareVersion);
@@ -233,6 +228,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
       }
     }
+  }
+
+  // Newest socket directory holding a live socket for this port; an empty stale dir never matches.
+  static String getSocketDirExpression(String tmpDirectory, String port) {
+    return String.format(
+        "$(dirname \"$(ls -t %s/.yb.*:%s/.s.PGSQL.%s 2>/dev/null | head -1)\")",
+        tmpDirectory, port, port);
   }
 
   private void runCheckOnPod(Universe universe, NodeDetails node) {
@@ -250,14 +252,14 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =
         String.format("%s/%s/postgres/bin/pg_upgrade", dataDirectory + "/yw-data", versionName);
-    String oldHost =
-        primaryCluster.userIntent.enableYSQLAuth
-            ? "$(ls -d -t " + tmpDirectory + "/.yb.* | head -1)"
-            : podName;
     String oldPort =
         primaryCluster.userIntent.enableConnectionPooling
             ? String.valueOf(node.internalYsqlServerRpcPort)
             : String.valueOf(node.ysqlServerRpcPort);
+    String oldHost =
+        primaryCluster.userIntent.enableYSQLAuth
+            ? getSocketDirExpression(tmpDirectory, oldPort)
+            : podName;
 
     String upgradeCheckCommand =
         String.format(
@@ -305,19 +307,19 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
               + "/pg_data";
     }
     command.add(pgDataDir);
+    String oldPort =
+        primaryCluster.userIntent.enableConnectionPooling
+            ? String.valueOf(node.internalYsqlServerRpcPort)
+            : String.valueOf(node.ysqlServerRpcPort);
     command.add("--old-host");
     boolean authEnabled = GFlagsUtil.isYsqlAuthEnabled(universe, node);
     if (authEnabled) {
-      command.add(String.format("'$(ls -d -t %s/.yb.* | head -1)'", customTmpDirectory));
+      command.add("'" + getSocketDirExpression(customTmpDirectory, oldPort) + "'");
     } else {
       command.add(node.cloudInfo.private_ip);
     }
     command.add("--old-port");
-    if (primaryCluster.userIntent.enableConnectionPooling) {
-      command.add(String.valueOf(node.internalYsqlServerRpcPort));
-    } else {
-      command.add(String.valueOf(node.ysqlServerRpcPort));
-    }
+    command.add(oldPort);
     command.add("--username");
     command.add("\"yugabyte\"");
     command.add("--check");
@@ -356,21 +358,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   }
 
   private void appendAuditDetails(ObjectNode output) {
-    Audit audit = auditService.getFromTaskUUID(getUserTaskUUID());
-    if (audit == null) {
-      return;
-    }
-    JsonNode auditDetails = audit.getAdditionalDetails();
-    ObjectNode modifiedNode;
-    if (auditDetails != null) {
-      modifiedNode = auditDetails.deepCopy();
-    } else {
-      ObjectMapper mapper = new ObjectMapper();
-      modifiedNode = mapper.createObjectNode();
-    }
-    modifiedNode.setAll(output);
-    log.debug("Software upgrade task audit details: {}", modifiedNode);
-    auditService.updateAdditionalDetails(getUserTaskUUID(), modifiedNode);
+    log.debug("Adding PG upgrade check output to the software upgrade task audit: {}", output);
+    auditService.mergeAdditionalDetails(getUserTaskUUID(), output);
   }
 
   private String extractVersionName(String ybServerPackage) {
@@ -401,12 +390,17 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     params.instanceType = node.cloudInfo.instance_type;
     params.nodeName = node.nodeName;
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
-    if (userIntent.providerType.equals(CloudType.onprem)) {
+    CloudType providerType =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(node.placementUuid)
+            .getProviderCloudType(node);
+    if (providerType.equals(CloudType.onprem)) {
       params.instanceType = node.cloudInfo.instance_type;
     }
 

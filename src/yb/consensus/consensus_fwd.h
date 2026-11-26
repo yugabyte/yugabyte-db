@@ -62,8 +62,13 @@ typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
 class PeerProxy;
 typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
 
+class PostponedApply;
+using PostponedApplyPtr = std::unique_ptr<PostponedApply>;
+
 class MultiRaftHeartbeatBatcher;
 using MultiRaftHeartbeatBatcherPtr = std::shared_ptr<MultiRaftHeartbeatBatcher>;
+
+using RaftConsensusPtr = std::shared_ptr<RaftConsensus>;
 
 struct LeaderElectionData;
 
@@ -84,6 +89,7 @@ using ReplicateMsgs = std::vector<ReplicateMsgPtr>;
 
 YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 YB_STRONGLY_TYPED_BOOL(PreElection);
+YB_STRONGLY_TYPED_BOOL(FlushConsensusMeta);
 YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
 
 // Temporary typedef for lightweight protobuf migration

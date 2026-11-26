@@ -35,6 +35,8 @@
 
 #include "yb/common/transaction.pb.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -42,6 +44,7 @@
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -57,6 +60,24 @@ class PgTypeInfo;
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
+// Returns the OID which every element of the range projects to, or kPgInvalidOid when the range
+// is empty or its elements project to more than one OID.
+template<class Range, class Projection>
+[[nodiscard]] PgOid SingleRelationOid(const Range& range, const Projection& projection) {
+  auto i = std::begin(range);
+  const auto end = std::end(range);
+  if (i == end) {
+    return kPgInvalidOid;
+  }
+  const auto oid = projection(*i);
+  for (++i; i != end; ++i) {
+    if (projection(*i) != oid) {
+      return kPgInvalidOid;
+    }
+  }
+  return oid;
+}
+
 struct Bound {
   uint16_t value;
   bool is_inclusive;
@@ -70,7 +91,7 @@ class PgWaitEventWatcher {
   using Starter = YbcWaitEventInfo (*)(YbcWaitEventInfo info);
 
   PgWaitEventWatcher(
-      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
+      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux);
   ~PgWaitEventWatcher();
 
  private:
@@ -168,6 +189,12 @@ struct YbctidBatch {
 
 Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid);
 
+// Builds the DocKey of the rows whose key columns have the given values. hashed_values are the
+// values of hashed_components, the hash code is computed from them.
+Result<dockv::DocKey> BuildDocKey(
+    const dockv::PartitionSchema& partition_schema, dockv::KeyEntryValues hashed_components,
+    const LWQLValuePB* const* hashed_values, dockv::KeyEntryValues range_components);
+
 struct BufferingSettings {
   size_t max_batch_size;
   size_t max_in_flight_operations;
@@ -214,5 +241,45 @@ class TableLocalityMap {
 };
 
 bool SkipIntents(const PgsqlOp& op);
+
+// The skip intents decisions for the request to an index, given the ones taken for its table.
+//
+// A read of an index never skips the intents db, so that it carries the transaction's metadata:
+// while an index created in a transaction block is not committed, the tserver serves it only to
+// the transaction that created it (IndexInfoPB.birth_time_pending_txn_id), and the metadata is
+// how it tells. The read still sees the rows a skip intents write left in the regular db,
+// because that depends on read_at_in_txn_limit alone.
+inline YbcPgSkipIntentsOptimizationInfo IndexSkipIntentsInfo(
+    const YbcPgSkipIntentsOptimizationInfo& table_info) {
+  return {.skip_intents = false, .read_at_in_txn_limit = table_info.read_at_in_txn_limit};
+}
+
+// Records both skip intents optimization decisions on a read or write request.
+template <class ReqPB>
+Status ApplySkipIntentsOptimizationInfo(
+    const YbcPgSkipIntentsOptimizationInfo& info, ReqPB& req) {
+  // An operation that bypasses the intents db leaves its rows in the regular db above the
+  // transaction read time, so it can only be correct if the operation also reads at
+  // in_txn_limit. YbGetSkipIntentsOptimizationInfo establishes this by construction;
+  // check it here because the struct crosses the C boundary between the two.
+  RSTATUS_DCHECK(
+      !info.skip_intents || info.read_at_in_txn_limit, IllegalState,
+      "Skipping the intents db requires reading at in_txn_limit");
+
+  if (info.skip_intents) {
+    if constexpr (requires { req.set_skip_intents_write(true); }) {
+      req.set_skip_intents_write(true);
+    } else {
+      static_assert(requires { req.set_skip_intents_read(true); });
+      req.set_skip_intents_read(true);
+    }
+  }
+  if (info.read_at_in_txn_limit) {
+    req.set_read_at_in_txn_limit(true);
+  }
+  return Status::OK();
+}
+
+Status CheckForPgInterrupts();
 
 } // namespace yb::pggate

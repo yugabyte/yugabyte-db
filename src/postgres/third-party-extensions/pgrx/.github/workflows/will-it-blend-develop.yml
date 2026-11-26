@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false # We want all of them to run, even if one fails
       matrix:
-        pg_version: [ "pg13", "pg14", "pg15", "pg16", "pg17" ]
+        pg_version: [ "pg13", "pg14", "pg15", "pg16", "pg17", "pg18" ]
         container: [ "fedora", "debian_bullseye", "alpine" ]
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false # We want all of them to run, even if one fails
       matrix:
-        pg_version: [ "pg13", "pg14", "pg15", "pg16", "pg17" ]
+        pg_version: [ "pg13", "pg14", "pg15", "pg16", "pg17", "pg18" ]
         container: [ "debian_bullseye" ]
     steps:
       # See above for logic details here

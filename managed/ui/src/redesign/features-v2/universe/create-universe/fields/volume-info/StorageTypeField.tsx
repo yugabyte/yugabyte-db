@@ -21,6 +21,7 @@ import {
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { StorageType, CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isStorageTypeSelectableCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { isEphemeralOciStorageInstance } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import {
@@ -44,6 +45,7 @@ const menuProps = {
 
 interface StorageTypeFieldProps {
   disabled: boolean;
+  isEditMode?: boolean;
   provider?: ProviderType;
 }
 
@@ -58,7 +60,11 @@ const StyledLink = styled(Link)(({ theme }) => ({
   }
 }));
 
-export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider }) => {
+export const StorageTypeField: FC<StorageTypeFieldProps> = ({
+  disabled,
+  isEditMode = false,
+  provider
+}) => {
   const { t } = useTranslation();
 
   //fetch run time configs
@@ -111,8 +117,10 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
     );
   };
 
-  // Update storage type to persistent when instance is changed in either TServer or Master
+  // Create universe only: instance-type change can leave Master/TServer storage
+  // types diverged; force Persistent to keep the shared GCP control in sync.
   useUpdateEffect(() => {
+    if (isEditMode) return;
     const storageType: StorageType = StorageType.Persistent;
     const throughput = getThroughputByStorageType(storageType);
     const diskIops = getIopsByStorageType(storageType);
@@ -139,6 +147,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
       });
     }
   }, [
+    isEditMode,
     fieldValue?.storageType,
     masterFieldValue?.storageType,
     fieldValue?.throughput,
@@ -188,7 +197,11 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
   };
 
   const renderStorageType = () => {
-    if (provider && isStorageTypeSelectableCloudType(provider?.code)) {
+    if (
+      provider &&
+      isStorageTypeSelectableCloudType(provider?.code) &&
+      !isEphemeralOciStorageInstance(instance)
+    ) {
       const isPremiumV2Storage = fieldValue?.storageType === StorageType.PremiumV2_LRS;
       const isHyperdisk =
         fieldValue?.storageType === StorageType.Hyperdisk_Balanced ||

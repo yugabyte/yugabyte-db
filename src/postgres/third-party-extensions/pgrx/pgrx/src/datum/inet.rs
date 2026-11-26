@@ -7,12 +7,12 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::{direct_function_call, direct_function_call_as_datum, pg_sys, FromDatum, IntoDatum};
+use crate::{FromDatum, IntoDatum, direct_function_call, direct_function_call_as_datum, pg_sys};
 use core::ffi::CStr;
-use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use pgrx_pg_sys::PgTryBuilder;
+use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -124,10 +124,10 @@ impl From<String> for Inet {
 }
 
 unsafe impl SqlTranslatable for Inet {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("inet"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("inet")))
-    }
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(Inet);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::literal("inet"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("inet")));
 }

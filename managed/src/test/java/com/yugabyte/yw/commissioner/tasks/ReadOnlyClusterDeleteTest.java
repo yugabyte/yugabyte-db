@@ -8,8 +8,12 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,7 +25,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -31,8 +39,11 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -73,10 +84,14 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.provider = defaultProvider.getUuid().toString();
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -109,13 +124,22 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    UUID providerUUID = curIntent.maybeGetSingleProviderUUID().get();
+    ProviderInitializer providerInitializer =
+        Util.newProviderInitializer(
+                userIntent,
+                providerUUID,
+                curIntent.getAllCloudTypes().iterator().next(),
+                confGetter)
+            .setAccessCode(curIntent.getAccessKeyCodeForProvider(providerUUID));
+
+    DeviceInfo deviceInfo = curIntent.getBaseDeviceInfo(providerUUID).clone();
+    deviceInfo.numVolumes = 2;
+    providerInitializer.setDeviceInfo(deviceInfo);
+
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = curIntent.providerType;
-    userIntent.provider = curIntent.provider;
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 2;
+
     PlacementInfo pi = new PlacementInfo();
     for (AvailabilityZone az : region.getAllZones()) {
       PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, 1, 1, false);
@@ -185,6 +209,99 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     assertEquals(3, univUTP.nodeDetailsSet.size());
   }
 
+  private ManagedLoadBalancer managedLb(Cluster cluster, String regionCode, String name) {
+    return new ManagedLoadBalancer(
+        cluster.uuid,
+        Region.getByCode(defaultProvider, regionCode).getUuid(),
+        ManagedLoadBalancer.Scheme.PRIVATE,
+        List.of(),
+        name,
+        name + ".elb.example.com");
+  }
+
+  private TaskInfo deleteReadReplica(boolean forceDelete) {
+    ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusterUUID = readOnlyCluster.uuid;
+    taskParams.isForceDelete = forceDelete;
+    return submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
+  }
+
+  @Test
+  public void testClusterDeleteDeletesOnlyItsManagedLoadBalancersAfterNodes() {
+    Cluster primary = defaultUniverse.getUniverseDetails().getPrimaryCluster();
+    String readReplicaLb = ManagedLoadBalancerUtil.getPrivateName(readOnlyCluster.uuid);
+    String primaryLb = ManagedLoadBalancerUtil.getPrivateName(primary.uuid);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(managedLb(readOnlyCluster, "region-2", readReplicaLb));
+          // A takeover that did not finish: the zone still names the user's load balancer.
+          state.put(managedLb(readOnlyCluster, "region-2", "byo-lb"));
+          state.put(managedLb(primary, "region-1", primaryLb));
+          u.getUniverseDetails().setManagedLoadBalancerState(state);
+          u.getUniverseDetails()
+              .getClusterByUuid(readOnlyCluster.uuid)
+              .placementInfo
+              .azStream()
+              .forEach(az -> az.lbName = "byo-lb");
+        });
+
+    TaskInfo taskInfo = deleteReadReplica(false);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(cloudAPI).deleteManagedLoadBalancer(any(), eq("region-2"), eq(readReplicaLb));
+    verify(cloudAPI, times(1)).deleteManagedLoadBalancer(any(), any(), any());
+    List<TaskType> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int destroyServer = subTasks.lastIndexOf(TaskType.AnsibleDestroyServer);
+    int deleteLb = subTasks.indexOf(TaskType.DeleteManagedLoadBalancer);
+    int deleteCluster = subTasks.indexOf(TaskType.DeleteClusterFromUniverse);
+    assertTrue(subTasks.toString(), destroyServer < deleteLb && deleteLb < deleteCluster);
+    // The user's load balancer leaves the state with its cluster, so a destroy can't delete it.
+    assertEquals(
+        List.of(primaryLb),
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getManagedLoadBalancerState()
+            .getLoadBalancers()
+            .stream()
+            .map(ManagedLoadBalancer::getName)
+            .collect(Collectors.toList()));
+  }
+
+  @Test
+  public void testForceClusterDeleteKeepsALoadBalancerWhoseDeleteFailedForTheDestroy() {
+    ManagedLoadBalancer lb =
+        managedLb(
+            readOnlyCluster,
+            "region-2",
+            ManagedLoadBalancerUtil.getPrivateName(readOnlyCluster.uuid));
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(lb);
+          u.getUniverseDetails().setManagedLoadBalancerState(state);
+        });
+    doThrow(new RuntimeException("DependencyViolation"))
+        .when(cloudAPI)
+        .deleteManagedLoadBalancer(any(), any(), any());
+
+    TaskInfo taskInfo = deleteReadReplica(true);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(1, details.clusters.size());
+    // A universe destroy deletes every entry, so the load balancer isn't stranded in the cloud.
+    assertEquals(List.of(lb), details.getManagedLoadBalancerState().getLoadBalancers());
+  }
+
   @Test
   public void testClusterDeleteFailure() {
     UniverseDefinitionTaskParams univUTP =
@@ -197,6 +314,57 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(6, univUTP.nodeDetailsSet.size());
+  }
+
+  private void freezeWithFailedTask(TaskType failedTaskType) {
+    TaskInfo failed = new TaskInfo(failedTaskType, null);
+    failed.setOwner("test");
+    failed.setTaskState(Failure);
+    failed.setTaskParams(Json.newObject());
+    failed.save();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.updatingTaskUUID = failed.getUuid();
+          details.placementModificationTaskUuid = failed.getUuid();
+          details.updateSucceeded = false;
+          u.setUniverseDetails(details);
+        });
+  }
+
+  private ReadOnlyClusterDelete.Params readReplicaDeleteParams() {
+    ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusterUUID = readOnlyCluster.uuid;
+    return taskParams;
+  }
+
+  @Test
+  public void testClusterDeleteAfterFailedCreate() {
+    freezeWithFailedTask(TaskType.ReadOnlyClusterCreate);
+    TaskInfo taskInfo = submitTask(readReplicaDeleteParams(), TaskType.ReadOnlyClusterDelete, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+    // The basic prechecks are skipped on a universe broken by the failed create.
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckLeaderlessTablets));
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(1, details.clusters.size());
+    assertEquals(3, details.nodeDetailsSet.size());
+    assertNull(details.placementModificationTaskUuid);
+    assertNull(details.updatingTaskUUID);
+  }
+
+  @Test
+  public void testClusterDeleteRefusedAfterOtherFailedPlacementTask() {
+    freezeWithFailedTask(TaskType.ReplaceNodeInUniverse);
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> submitTask(readReplicaDeleteParams(), TaskType.ReadOnlyClusterDelete, -1));
+    assertTrue(e.getMessage().contains("Please retry the previous task first"));
   }
 
   @Test

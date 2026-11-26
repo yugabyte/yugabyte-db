@@ -36,6 +36,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -646,6 +647,22 @@ TEST_F(CDCServiceTest, TestDeleteXClusterStream) {
   }
 }
 
+TEST_F(CDCServiceTest, TestCleanupStaleCDCStreamsWithoutCDCStateTable) {
+  master::MasterReplicationProxy master_proxy(
+      &client_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+
+  master::CleanupStaleCDCStreamsRequestPB req;
+  req.set_dry_run(true);
+  master::CleanupStaleCDCStreamsResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(10));
+
+  ASSERT_OK(master_proxy.CleanupStaleCDCStreams(req, &resp, &rpc));
+  ASSERT_TRUE(resp.has_error());
+  EXPECT_EQ(resp.error().code(), master::MasterErrorPB::OBJECT_NOT_FOUND);
+  ASSERT_STR_CONTAINS(resp.error().status().message(), "cdc_state table does not exist");
+}
+
 TEST_F(CDCServiceTest, TestSafeTime) {
   docdb::DisableYcqlPackedRow();
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
@@ -815,7 +832,7 @@ TEST_F(CDCServiceTest, TestGetChangesFromGCedCheckpointWithNewerWal) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
   ASSERT_OK(peer->log()->WaitUntilAllFlushed());
   log::SegmentSequence segs;
-  auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+  auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segs));
   ASSERT_EQ(segs.size(), 3u);
   const auto& oldest = ASSERT_RESULT(segs.front()).get();
@@ -1009,8 +1026,11 @@ TEST_F(CDCServiceTest, YB_DISABLE_TEST_ON_MACOS(TestGetChangesWithDeadline)) {
   {
     // Get CDC changes. Note that the timeout value and read delay
     // should ensure that some, but not all records are read.
+    // The timeout also has to stay well clear of what answering one GetChanges costs: the server
+    // only reserves cdc_read_safe_deadline_ratio of it to stop reading, post-process and respond,
+    // which at 50ms left 15ms -- less than a cold call needs, so every attempt timed out.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_get_changes_read_loop_delay_ms) = 10 * kTimeMultiplier;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 50 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 500 * kTimeMultiplier;
 
     ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
         FLAGS_cdc_read_rpc_timeout_ms));
@@ -2292,6 +2312,9 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    // On fast hardware the segments are younger than log_min_seconds_to_retain when the test asks
+    // what can be GCed; skip time-based retention so only the CDC and min-space policies apply.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     // We want the logs to be GCed because of space, not because they exceeded the maximum time to
@@ -2345,14 +2368,10 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
       std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
-  // Sit just below the log_stop_retaining_min_disk_mb threshold so that only the first few
-  // segments violate the min space policy: each one adds its size to the reclaimed space that
-  // ViolatesMinSpacePolicy() credits against the threshold, which closes the gap after a handful
-  // of segments. Staying near the threshold rather than at a few bytes also keeps the simulated
-  // free space above the WAL pre-allocation size, which consults the same flag and would
-  // otherwise fail every segment allocation in the process with ENOSPC.
+  // Just below the threshold. Not lower: WAL pre-allocation also reads this flag, and a value below
+  // the segment size fails it with ENOSPC, which DFATALs on the next append.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) =
-      FLAGS_log_stop_retaining_min_disk_mb * 1_MB - 1_KB;
+      FLAGS_log_stop_retaining_min_disk_mb * 1_KB - 1;
 
   ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
       std::numeric_limits<int64_t>::max(), &segment_sequence));

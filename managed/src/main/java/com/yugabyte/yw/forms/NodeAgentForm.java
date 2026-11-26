@@ -18,6 +18,7 @@ public class NodeAgentForm {
   @Constraints.Required public String home;
   public String state;
   @Constraints.Required public int port;
+  public String certificateName;
 
   // Helper method to create NodeAgent.
   public NodeAgent toNodeAgent(UUID customerUuid) {

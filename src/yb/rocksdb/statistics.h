@@ -203,11 +203,7 @@ enum Tickers : uint32_t {
   NO_TABLE_CACHE_ITERATORS,
 
   // Single-touch and multi-touch statistics.
-  BLOCK_CACHE_SINGLE_TOUCH_HIT,
-  BLOCK_CACHE_SINGLE_TOUCH_ADD,
   BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE,
-  BLOCK_CACHE_MULTI_TOUCH_HIT,
-  BLOCK_CACHE_MULTI_TOUCH_ADD,
   BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
 
   // Files filtered during compaction due to TTL expiration

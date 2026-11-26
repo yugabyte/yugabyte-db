@@ -39,6 +39,7 @@ int main() {
 #include "yb/rocksdb/util/arena.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/test_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
@@ -175,9 +176,10 @@ TEST_F(BloomTest, VaryingLengths) {
     // Check false positive rate
     double rate = FalsePositiveRate();
     if (kVerbose >= 1) {
-      LOG(INFO) << StringPrintf(
-          "False positives: %5.2f%% @ length = %6zu ; bytes = %6zu\n", rate * 100.0, length,
-          FilterSize());
+      LOG(INFO) << yb::Format(
+          "False positives: $0% @ length = $1 ; bytes = $2\n",
+          yb::PadLeft(yb::FixedPoint(rate * 100.0, 2), 5), yb::PadLeft(yb::ToString(length), 6),
+          yb::PadLeft(yb::ToString(FilterSize()), 6));
     }
     ASSERT_LE(rate, 0.02);   // Must not be over 2%
     if (rate > 0.0125)
@@ -186,7 +188,7 @@ TEST_F(BloomTest, VaryingLengths) {
       good_filters++;
   }
   if (kVerbose >= 1) {
-    LOG(INFO) << StringPrintf("Filters: %zu good, %zu mediocre\n", good_filters, mediocre_filters);
+    LOG(INFO) << yb::Format("Filters: $0 good, $1 mediocre\n", good_filters, mediocre_filters);
   }
   ASSERT_LE(mediocre_filters, good_filters/5);
 }
@@ -356,9 +358,10 @@ TEST_P(BuilderReaderBloomTest, FullVaryingLengths) {
     // Check false positive rate
     double rate = FalsePositiveRate();
     if (kVerbose >= 1) {
-      LOG(INFO) << StringPrintf(
-          "False positives: %5.2f%% @ length = %6zu ; bytes = %6zu\n", rate * 100.0, length,
-          FilterSize());
+      LOG(INFO) << yb::Format(
+          "False positives: $0% @ length = $1 ; bytes = $2\n",
+          yb::PadLeft(yb::FixedPoint(rate * 100.0, 2), 5), yb::PadLeft(yb::ToString(length), 6),
+          yb::PadLeft(yb::ToString(FilterSize()), 6));
     }
     ASSERT_LE(rate, 0.02);   // Must not be over 2%
     if (rate > 0.0125)
@@ -367,7 +370,7 @@ TEST_P(BuilderReaderBloomTest, FullVaryingLengths) {
       good_filters++;
   }
   if (kVerbose >= 1) {
-    LOG(INFO) << StringPrintf("Filters: %zu good, %zu mediocre\n", good_filters, mediocre_filters);
+    LOG(INFO) << yb::Format("Filters: $0 good, $1 mediocre\n", good_filters, mediocre_filters);
   }
   ASSERT_LE(mediocre_filters, good_filters/5);
 }

@@ -20,6 +20,9 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -129,6 +132,9 @@ public class ImportUniverse extends UniverseTaskBase {
         new ConcurrentHashMap<>();
     private final Map<ServerType, InstanceType> serverInstanceTypes = new ConcurrentHashMap<>();
     private Architecture architecture;
+    // IP to the node_exporter layout found on that node; absent if no unit was found.
+    private final Map<String, NodeDetails.NodeExporterSystemdLevel> nodeExporterLevels =
+        new ConcurrentHashMap<>();
     private DBVersionInfo dbVersionInfo;
     private Set<String> masterHosts;
     private Set<String> tserverHosts;
@@ -300,8 +306,10 @@ public class ImportUniverse extends UniverseTaskBase {
                           log.error(
                               "Some servers have different common {} gflags - {} vs {}",
                               serverType,
-                              prev.gflags,
-                              curr.gflags);
+                              RedactingService.filterSecretFields(
+                                  Json.toJson(prev.gflags), RedactionTarget.LOGS),
+                              RedactingService.filterSecretFields(
+                                  Json.toJson(curr.gflags), RedactionTarget.LOGS));
                           throw new PlatformServiceException(
                               BAD_REQUEST,
                               "Some servers have different common gflags for " + serverType);
@@ -319,6 +327,7 @@ public class ImportUniverse extends UniverseTaskBase {
     }
     // Start further discovery.
     discoverServerArchitecture();
+    discoverNodeExporterLayout();
     discoverDBVersion();
     discoverInstanceTypes(provider);
   }
@@ -362,6 +371,18 @@ public class ImportUniverse extends UniverseTaskBase {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  // YBA did not provision these nodes, so record the node_exporter layout each one has. Nodes may
+  // differ; exporter TLS stays off until every node is USER.
+  private void discoverNodeExporterLayout() {
+    for (String ip : context.serverConfs.keySet()) {
+      NodeAgent nodeAgent = NodeAgent.maybeGetByIp(ip).orElseThrow();
+      nodeAgentClient
+          .detectNodeExporterSystemdLevel(nodeAgent)
+          .ifPresent(level -> context.nodeExporterLevels.put(ip, level));
+    }
+    log.info("Discovered node_exporter layouts: {}", context.nodeExporterLevels);
   }
 
   private void discoverServerArchitecture() {
@@ -619,22 +640,28 @@ public class ImportUniverse extends UniverseTaskBase {
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = taskParams().universeName;
     userIntent.ybSoftwareVersion = dbVersion;
-    userIntent.providerType = provider.getCloudCode();
-    userIntent.provider = provider.getUuid().toString();
+
+    ProviderInitializer providerInitializer =
+        Util.newProviderInitializer(
+                userIntent, provider.getUuid(), provider.getCloudCode(), confGetter)
+            .setProviderType(provider.getCloudCode())
+            .setInstanceType(
+                context.serverInstanceTypes.get(ServerType.TSERVER).getInstanceTypeCode())
+            .setInstanceTags(taskParams().instanceTags)
+            .setDeviceInfo(createDeviceInfo(provider, ServerType.TSERVER));
+
     userIntent.useSystemd = true;
-    userIntent.instanceType =
-        context.serverInstanceTypes.get(ServerType.TSERVER).getInstanceTypeCode();
     userIntent.replicationFactor =
         Integer.parseInt(masterConfOutput.gflags.get("replication_factor"));
     userIntent.dedicatedNodes = taskParams().dedicatedNodes;
-    userIntent.instanceTags = taskParams().instanceTags;
     userIntent.numNodes = Sets.union(context.masterHosts, context.tserverHosts).size();
     userIntent.enableExposingService = UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
-    userIntent.deviceInfo = createDeviceInfo(provider, ServerType.TSERVER);
+
     if (taskParams().dedicatedNodes) {
-      userIntent.masterDeviceInfo = createDeviceInfo(provider, ServerType.MASTER);
-      userIntent.masterInstanceType =
-          context.serverInstanceTypes.get(ServerType.MASTER).getInstanceTypeCode();
+      providerInitializer
+          .setMasterDeviceInfo(createDeviceInfo(provider, ServerType.MASTER))
+          .setMasterInstanceType(
+              context.serverInstanceTypes.get(ServerType.MASTER).getInstanceTypeCode());
     }
     // Record the migration config to be used later in migration.
     userIntent.setMigrationConfig(context.createUniverseMigrationConfig(taskParams()));
@@ -741,11 +768,14 @@ public class ImportUniverse extends UniverseTaskBase {
                                   node.cloudInfo.cloud = provider.getCloudCode().toString();
                                   node.cloudInfo.instance_type = nodeInstance.getInstanceTypeCode();
                                   node.cloudInfo.mount_roots =
-                                      cluster.userIntent.deviceInfo.mountPoints;
+                                      cluster.userIntent.getBaseDeviceInfo(provider.getUuid())
+                                          .mountPoints;
                                   node.placementUuid = cluster.uuid;
                                   node.azUuid = z.zone.getUuid();
                                   node.state = NodeState.Live;
                                   node.nodeUuid = nodeInstance.getNodeUuid();
+                                  node.nodeExporterSystemdLevel =
+                                      context.nodeExporterLevels.get(ip);
                                   node.disksAreMountedByUUID = true;
                                   node.cronsActive = false;
                                   node.isMaster = false;
@@ -758,7 +788,9 @@ public class ImportUniverse extends UniverseTaskBase {
                                     node.dedicatedTo = ServerType.MASTER;
                                     // This will get corrected on migration.
                                     node.cloudInfo.mount_roots =
-                                        cluster.userIntent.masterDeviceInfo.mountPoints;
+                                        cluster.userIntent.getBaseDeviceInfo(
+                                                provider.getUuid(), ServerType.MASTER)
+                                            .mountPoints;
                                     node.isMaster = true;
                                   } else {
                                     node.dedicatedTo = ServerType.TSERVER;

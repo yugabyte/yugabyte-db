@@ -83,6 +83,7 @@ YRPC_GENERATE(
   PROTO_FILES remote_bootstrap.proto)
 set(REMOTE_BOOTSTRAP_YRPC_LIBS
   consensus_proto
+  log_proto
   yrpc
   protobuf
   rpc_header_proto
@@ -110,6 +111,24 @@ ADD_YB_LIBRARY(pg_client_proto
   SRCS ${PG_CLIENT_YRPC_SRCS}
   DEPS ${PG_CLIENT_YRPC_LIBS}
   NONLINK_DEPS ${PG_CLIENT_YRPC_TGTS})
+
+#########################################
+# thin_client_proto
+#########################################
+
+YRPC_GENERATE(
+  THIN_CLIENT_YRPC_SRCS THIN_CLIENT_YRPC_HDRS THIN_CLIENT_YRPC_TGTS
+  MESSAGES TRUE
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES thin_client.proto)
+set(THIN_CLIENT_YRPC_LIBS
+  pg_client_proto
+  yrpc)
+ADD_YB_LIBRARY(thin_client_proto
+  SRCS ${THIN_CLIENT_YRPC_SRCS}
+  DEPS ${THIN_CLIENT_YRPC_LIBS}
+  NONLINK_DEPS ${THIN_CLIENT_YRPC_TGTS})
 
 #########################################
 # tserver_admin_proto
@@ -242,11 +261,14 @@ set(TSERVER_SRCS
   heartbeater_factory.cc
   master_leader_poller.cc
   metrics_snapshotter.cc
+  pg_cache_util.cc
   pg_client_service.cc
   pg_client_session.cc
+  pg_client_session_util.cc
   pg_create_table.cc
   pg_db_cache.cc
   pg_mutation_counter.cc
+  pg_request_sequencer.cc
   pg_response_cache.cc
   pg_session_guard.cc
   pg_sequence_cache.cc
@@ -254,6 +276,7 @@ set(TSERVER_SRCS
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   pg_txn_snapshot_manager.cc
+  tier_migration_reconciler.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
@@ -266,12 +289,16 @@ set(TSERVER_SRCS
   remote_bootstrap_snapshots.cc
   remote_snapshot_transfer_client.cc
   service_util.cc
+  session_registry.cc
+  snapshot_preflush.cc
+  tablet_flusher.cc
   tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
   tablet_validator.cc
+  thin_client_service.cc
   ts_data_size_metrics.cc
   ts_local_lock_manager.cc
   ts_snapshots_page_handler.cc
@@ -318,6 +345,7 @@ set(TSERVER_DEPS
   server_common
   server_process
   tablet
+  thin_client_proto
   tserver_admin_proto
   tserver_proto
   tserver_service_proto
@@ -326,7 +354,7 @@ set(TSERVER_DEPS
   yb_client
   pq_utils
   yb_pggate_flags
-  yb_pgresult_util
+  yb_pggate_util
   yb_ysql_binary_runner
   yrpc
   ysql_upgrade
@@ -418,16 +446,19 @@ ADD_YB_LIBRARY(tserver_mock
 set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
+  yb_common_test_util
   tserver_mock
   tserver_test_util
   yb_client # yb::client::YBTableName
   yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_response_cache-test)
 ADD_YB_TEST(remote_bootstrap_file_downloader-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)
+ADD_YB_TEST(session_registry-test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
@@ -450,3 +481,6 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
 ADD_YB_TEST(xcluster_consumer_replication_error-test)
 ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
 ADD_YB_TEST(xcluster_ddl_queue_handler-test)
+
+ADD_YB_TEST(pg_request_sequencer-test)
+ADD_YB_TEST(pg_sequence_cache-test)

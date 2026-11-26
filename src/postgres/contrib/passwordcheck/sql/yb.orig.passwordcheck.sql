@@ -1,0 +1,12 @@
+LOAD 'passwordcheck';
+CREATE USER regress_user1;
+
+-- Pre-hashed SCRAM passwords, as a ysql_dumpall script sets them
+
+-- encrypted ok (password is "secret")
+ALTER USER regress_user1 PASSWORD 'SCRAM-SHA-256$4096:eWItcmVncmVzcy1zYWx0IQ==$1u+NSwBmQ2sI2tROw57JW0jT2oTy8xoL81985X/Vg5Y=:2ZkNYmIzpykurJaUthlcQtl0hC1AsG+DMig4z4p3glA=';
+
+-- error: password is user name
+ALTER USER regress_user1 PASSWORD 'SCRAM-SHA-256$4096:eWItcmVncmVzcy1zYWx0IQ==$1Tnlet73stV3gHFDoXaTQWwmH7EatQLKeN1tVEW1QVs=:1Cw4KCJILJ66ej5C/ZHjn6LLFFlOAevbPawDllwYrmU=';
+
+DROP USER regress_user1;

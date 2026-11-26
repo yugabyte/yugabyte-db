@@ -67,4 +67,4 @@ ycqlsh:example> SELECT * FROM messages;
 
 ## See also
 
-- [Data types](..#data-types)
+- [Data types](../#data-types)

@@ -103,10 +103,37 @@ KIWI_API static inline int kiwi_fe_read_auth(char *data, uint32_t size,
 		return 0;
 	/* AuthenticationSASL */
 	case 10:
-		/* SCRAM-SHA-256 is the only implemented SASL mechanism in
-			 * PostgreSQL, at the moment */
-		if (strcmp(pos, "SCRAM-SHA-256") != 0)
-			return -1;
+		/* YB: Copied from upstream Odyssey; drop this comment on upstream merge. */
+		/* PostgreSQL sends a list of SASL mechanisms as null-terminated
+		 * strings. When TLS is enabled, PostgreSQL sends the list:
+		 * ["SCRAM-SHA-256-PLUS", "SCRAM-SHA-256", ""].
+		 * We need to iterate through the list to find SCRAM-SHA-256. */
+		{
+			char *mechanism = pos;
+			int found = 0;
+			size_t offset = 0;
+			while (offset < pos_size && mechanism[0] != '\0') {
+				/* Find the end of this mechanism string safely */
+				size_t len = 0;
+				while (offset + len < pos_size &&
+				       mechanism[len] != '\0') {
+					len++;
+				}
+				/* Check if we found null terminator within bounds */
+				if (offset + len >= pos_size) {
+					break;
+				}
+				if (strcmp(mechanism, "SCRAM-SHA-256") == 0) {
+					found = 1;
+					break;
+				}
+				offset += len + 1;
+				mechanism += len + 1;
+			}
+			if (!found) {
+				return -1;
+			}
+		}
 		return 0;
 	/* AuthenticationSASLContinue */
 	case 11:
@@ -261,9 +288,7 @@ KIWI_API static inline int kiwi_fe_read_yb_server_keyhash(char *data, uint32_t s
 	int rc = kiwi_read(&len, &data, &size);
 	if (kiwi_unlikely(rc != 0))
 		return -1;
-	if (kiwi_unlikely(header->type != YB_BE_PARSE_PREPARE_ERROR_RESPONSE) &&
-		kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) &&
-		kiwi_unlikely(header->type != YB_BE_FORCE_PARSE_COMPLETE))
+	if (kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);
@@ -273,6 +298,49 @@ KIWI_API static inline int kiwi_fe_read_yb_server_keyhash(char *data, uint32_t s
 	if (kiwi_unlikely(rc == -1))
 		return -1;
 	*keyhash_len = pos - *keyhash;
+	return 0;
+}
+
+KIWI_API static inline int
+kiwi_fe_read_yb_parse_complete(char *data, uint32_t size, char *yb_parse_type,
+			       char **stmt_hash, char **description,
+			       uint32_t *description_len, char **stmt_name,
+			       uint32_t *stmt_name_len)
+{
+	kiwi_header_t *header = (kiwi_header_t *)data;
+	uint32_t len;
+	int rc = kiwi_read(&len, &data, &size);
+	if (kiwi_unlikely(rc != 0))
+		return -1;
+	if (kiwi_unlikely(header->type != YB_BE_YB_PARSE_COMPLETE))
+		return -1;
+	uint32_t pos_size = len;
+	char *pos = kiwi_header_data(header);
+	rc = kiwi_read8(yb_parse_type, &pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*stmt_hash = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*description = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	uint16_t typec;
+	rc = kiwi_read16(&typec, &pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	if (kiwi_unlikely((uint32_t)typec * sizeof(uint32_t) > pos_size))
+		return -1;
+	pos += typec * sizeof(uint32_t);
+	pos_size -= typec * sizeof(uint32_t);
+	*description_len = pos - *description;
+	*stmt_name = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*stmt_name_len = pos - *stmt_name;
 	return 0;
 }
 

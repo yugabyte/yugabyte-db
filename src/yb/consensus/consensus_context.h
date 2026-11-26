@@ -23,6 +23,12 @@
 namespace yb {
 namespace consensus {
 
+// State that ConsensusContext::PostponeApply keeps for the operation it postponed.
+class PostponedApply {
+ public:
+  virtual ~PostponedApply() = default;
+};
+
 class ConsensusContext {
  public:
   // Factory for replica transactions.
@@ -55,6 +61,13 @@ class ConsensusContext {
   // when a DB is stalled. See #30728.
   virtual bool AreWritesStopped() = 0;
 
+  // Returns non-null if a follower should postpone applying the non-write operation, without
+  // holding ReplicaState's lock, until a later update from the leader. The result is passed back to
+  // the next call for the same operation. Leaders do not postpone.
+  // Called under ReplicaState's lock, so it must not block.
+  virtual PostponedApplyPtr PostponeApply(
+      const LWReplicateMsg& replicate_msg, PostponedApplyPtr postponed) = 0;
+
   // Performs steps to prepare request for peer.
   // For instance it could enqueue some operations to the Raft.
   //
@@ -82,9 +95,41 @@ class ConsensusContext {
   // Listener could be set only once and then reset.
   virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
 
+  // Whether post-split compaction is still pending on this tablet.
+  virtual bool PendingPostSplitCompaction() = 0;
+
   // Checks whether operation with provided op id and type could be added to the log.
   virtual Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) = 0;
+
+  // Checks whether the leader may replicate replicate_msg, which already has its op id and hybrid
+  // time.  Called only on the leader, under the Raft lock, before the op is added as pending.  Not
+  // called for a client's resend of a write that has already been replicated: Raft answers that
+  // resend AlreadyPresent before reaching this check, so the client learns its write succeeded
+  // even if this check would now reject it.
+  //
+  // A non-OK status rejects the op: Raft rolls back its op id and fails its round with that
+  // status.  Unlike CheckOperationAllowed, which runs before the hybrid time is assigned, this
+  // check can judge an op by the time it would commit at.
+  //
+  // Every op type reaches this check, including those Raft and the tablet rely on for their own
+  // operation, e.g., the NO_OP a new leader appends, CHANGE_CONFIG_OP and SPLIT_OP.  Rejecting one
+  // of those can stall the tablet or break its invariants, so reject only op types for which that
+  // has been shown to be safe.
+  //
+  // Runs for every op the leader appends while holding the Raft lock, so it must be cheap and must
+  // not block.
+  //
+  // May modify an op it allows, e.g., to drop fields only the check needs: the op has not yet
+  // reached the log cache, the WAL, or any follower, all of which see the modified op.
+  virtual Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) = 0;
+
+  // Whether this replica must give up leadership and not seek it.  While this holds, this replica
+  // starts no elections, including pre-elections; the server steps down its leaders on its own.
+  //
+  // Called on every election start, under the Raft lock, so it must be cheap: it may take only
+  // briefly held locks, and none that is held while taking the Raft lock.
+  virtual bool ShouldRelinquishLeadership() = 0;
 
   virtual ~ConsensusContext() = default;
 };

@@ -86,7 +86,32 @@ func (p postgresCheck) Execute() Result {
 		return res
 	}
 
+	if viper.GetBool("perfAdvisor.enabled") {
+		if err := p.testPerfAdvisorDatabase(); err != nil {
+			log.Error("failed subtest 'testPerfAdvisorDatabase': " + err.Error())
+			res.Status = StatusCritical
+			res.Error = err
+			return res
+		}
+	}
+
 	return res
+}
+
+// testPerfAdvisorDatabase checks that the existing postgres server can hold Perf Advisor's
+// database: it is already there, or the configured user may create it.
+func (p postgresCheck) testPerfAdvisorDatabase() error {
+	exists, canCreate, err := common.ExistingPostgresDatabaseState(common.PerfAdvisorDBName)
+	if err != nil {
+		return err
+	}
+	if exists || canCreate {
+		return nil
+	}
+	return fmt.Errorf("perfAdvisor.enabled needs a database named %s on the existing postgres "+
+		"server, and it does not exist and user %s may not create databases. Create it, grant the "+
+		"user CREATEDB, or set perfAdvisor.enabled to false", common.PerfAdvisorDBName,
+		viper.GetString("postgres.useExisting.username"))
 }
 
 // If the user has specified their own postgres db endpoint, this method attempts to
@@ -124,16 +149,44 @@ func (p postgresCheck) testExistingPostgres() error {
 	return nil
 }
 
+// testPgcryptoAvailable checks that YBA's V195 migration will be able to create pgcrypto. It must
+// not create the extension itself: pgcrypto is a trusted extension on PG 13+, so when a
+// non-superuser creates it, public.gen_random_uuid() is owned by the bootstrap superuser, and
+// V93's CREATE OR REPLACE FUNCTION gen_random_uuid() then fails with "must be owner of function
+// gen_random_uuid".
 func (p postgresCheck) testPgcryptoAvailable() error {
 	db, nonPwdConnStr, err := common.GetPostgresConnection("yugaware")
 	if err != nil {
 		return fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
 	}
+	defer db.Close()
 	log.Debug("checking pgcrypto is an available extension")
-	_, err = db.Query("create extension if not exists pgcrypto;")
+	var available, installed, canCreate bool
+	err = db.QueryRow(`SELECT
+		EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pgcrypto'),
+		EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto'),
+		has_database_privilege(current_database(), 'CREATE')`).
+		Scan(&available, &installed, &canCreate)
 	if err != nil {
-		log.Error("could not create pgcrypto extension: " + err.Error())
+		return fmt.Errorf("could not check for the pgcrypto extension: %w", err)
 	}
-	log.Debug("found and loaded pgcrypto module")
-	return err
+	return pgcryptoError(available, installed, canCreate,
+		viper.GetString("postgres.useExisting.username"))
+}
+
+// pgcryptoError says why YBA could not create pgcrypto in the yugaware database, or returns nil if
+// it can or the extension is already there.
+func pgcryptoError(available, installed, canCreate bool, user string) error {
+	if installed {
+		return nil
+	}
+	if !available {
+		return fmt.Errorf("the pgcrypto extension is not available on the postgres server. " +
+			"Install the server's contrib package")
+	}
+	if !canCreate {
+		return fmt.Errorf("user %s needs the CREATE privilege on database yugaware to create the "+
+			"pgcrypto extension. Grant it, or make the user the owner of the database", user)
+	}
+	return nil
 }

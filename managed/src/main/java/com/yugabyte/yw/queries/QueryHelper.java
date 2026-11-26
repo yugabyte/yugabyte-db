@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -196,6 +197,10 @@ public class QueryHelper {
     }
     Boolean supportsLatencyHistogram = supportsLatencyHistogram(universe);
     boolean usePG15Fields = isPgVersionHigherThan11(universe);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    boolean ysqlAuthEnabled = userIntent.isYSQLAuthEnabled();
+    boolean cpEnabled = userIntent.enableConnectionPooling;
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
     boolean fetchResetTimeSubmitted = false;
@@ -207,6 +212,8 @@ public class QueryHelper {
 
     ysqlJson.putArray("queries");
     ycqlJson.putArray("queries");
+    boolean slowQueryDisableCommandLogging =
+        confGetter.getConfForScope(universe, UniverseConfKeys.slowQueryDisableCommandLogging);
     for (NodeDetails node : universe.getNodes()) {
       if (node.isActive() && node.isTserver) {
         String ip = null;
@@ -244,7 +251,10 @@ public class QueryHelper {
                           ysqlQuery,
                           node,
                           confGetter.getConfForScope(
-                              universe, UniverseConfKeys.slowQueryTimeoutSecs));
+                              universe, UniverseConfKeys.slowQueryTimeoutSecs),
+                          ysqlAuthEnabled,
+                          cpEnabled,
+                          !slowQueryDisableCommandLogging);
                     };
                 Future<JsonNode> future = threadPool.submit(callable);
                 futures.add(future);
@@ -260,8 +270,10 @@ public class QueryHelper {
                         universe,
                         ysqlQuery,
                         node,
-                        confGetter.getConfForScope(
-                            universe, UniverseConfKeys.slowQueryTimeoutSecs));
+                        confGetter.getConfForScope(universe, UniverseConfKeys.slowQueryTimeoutSecs),
+                        ysqlAuthEnabled,
+                        cpEnabled,
+                        !slowQueryDisableCommandLogging);
                   };
 
               Future<JsonNode> future = threadPool.submit(callable);
@@ -299,7 +311,8 @@ public class QueryHelper {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
                     ysqlQuery.setQuery(RESET_QUERY_SQL);
                     ysqlQuery.setDbName("postgres");
-                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                    return ysqlQueryExecutor.executeQueryInNodeShell(
+                        universe, ysqlQuery, node, !slowQueryDisableCommandLogging);
                   };
               Future<JsonNode> future = threadPool.submit(callable);
               futures.add(future);

@@ -9,20 +9,27 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -34,13 +41,18 @@ import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtilTest;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -51,10 +63,11 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
@@ -81,6 +94,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -137,14 +151,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
+    TestUtils.copyProviderFields(curIntent, userIntent, confGetter);
+
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = curIntent.providerType;
-    userIntent.provider = curIntent.provider;
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 2;
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
@@ -209,6 +220,221 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .verifyTasks(taskInfo.getSubTasks());
 
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRejectedForRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "true");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(
+        exception.getMessage(),
+        containsString(
+            "GFlags emergency_repair_mode can only be changed using NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRejectedForNonRestartUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "true");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testSpecificNonRollingOnlyGFlagRejectedForRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("emergency_repair_mode", "true"), ImmutableMap.of());
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testPerAZNonRollingOnlyGFlagRejectedForRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
+    SpecificGFlags.PerProcessFlags perProcessFlags = new SpecificGFlags.PerProcessFlags();
+    perProcessFlags.value =
+        ImmutableMap.of(MASTER, ImmutableMap.of("emergency_repair_mode", "true"));
+    specificGFlags.setPerAZ(ImmutableMap.of(az1.getUuid(), perProcessFlags));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRemovalRejectedForRollingUpgrade() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags =
+                    new HashMap<>(ImmutableMap.of("emergency_repair_mode", "true")));
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagDisableRejectedForRollingUpgrade() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags =
+                    new HashMap<>(ImmutableMap.of("emergency_repair_mode", "true")));
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "false");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagAllowedForNonRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "true");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testYsqlHbaGFlagRejectedWhenYsqlAuthDisabled() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR));
+  }
+
+  @Test
+  public void testExistingYsqlHbaGFlagKeptWhenYsqlAuthDisabled() {
+    setUniverseYsqlHbaGFlag();
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testExistingYsqlHbaGFlagRemovedWhenYsqlAuthDisabled() {
+    setUniverseYsqlHbaGFlag();
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testYsqlHbaGFlagAllowedWhenYsqlAuthEnabled() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true);
+    expectedUniverseVersion++;
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  private void setUniverseYsqlHbaGFlag() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags =
+                    new HashMap<>(
+                        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5")));
+    expectedUniverseVersion++;
+  }
+
+  @Test
+  public void testSkipConfiguredPrechecksForNonRollingGFlagsUpgrade() {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.skipPrechecksForNonRollingGFlagsUpgrade.getKey(), "true");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    "2024.2.0.0-b1");
+    expectedUniverseVersion++;
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    Set<TaskType> precheckTaskTypes =
+        Set.of(
+            TaskType.CheckForClusterServers,
+            TaskType.CheckNodeDataDirDiskSpace,
+            TaskType.UpdateConsistencyCheck,
+            TaskType.ValidateGFlags);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(subTask -> precheckTaskTypes.contains(subTask.getTaskType())));
   }
 
   @Test
@@ -1116,6 +1342,193 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testGFlagsUpgradeNonRestartLogsNoGFlagValues() {
+    String ycqlSecret = "dummy-ycql-bind-secret";
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"),
+            ImmutableMap.of("ycql_ldap_bind_passwd", ycqlSecret));
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    Logger setFlagLogger = (Logger) LoggerFactory.getLogger(SetFlagInMemory.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    setFlagLogger.addAppender(appender);
+    TaskInfo taskInfo;
+    try {
+      taskInfo = submitTask(taskParams);
+    } finally {
+      setFlagLogger.detachAppender(appender);
+    }
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<String> setFlagLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.contains("via non-restart rpc"))
+            .toList();
+    assertTrue(setFlagLogs.stream().anyMatch(m -> m.contains("ycql_ldap_bind_passwd")));
+    setFlagLogs.forEach(m -> assertFalse(m, m.contains(ycqlSecret)));
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartKeepsNewInstallYsqlPgConfCsv() throws Exception {
+    Map<String, String> userTserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of(), userTserverGFlags);
+              Map<String, String> cboFlags =
+                  ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on");
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(MASTER, cboFlags);
+              newInstallGFlags.value.put(TSERVER, cboFlags);
+              universe.setNewInstallGFlags(newInstallGFlags);
+            });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Map<String, String> tserverGFlags = new HashMap<>(userTserverGFlags);
+    tserverGFlags.put("enable_automatic_tablet_splitting", "false");
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("enable_automatic_tablet_splitting", "false"), tserverGFlags);
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    int numTservers = defaultUniverse.getTServers().size();
+    verify(mockClient, times(numTservers))
+        .setFlag(
+            any(),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq("log_statement=DDL,yb_enable_cbo=on"),
+            anyBoolean());
+    // Masters have no user ysql_pg_conf_csv, so they get only the new install entries, as in
+    // their gflags file.
+    int numMasters = defaultUniverse.getMasters().size();
+    verify(mockClient, times(numMasters))
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), eq("yb_enable_cbo=on"), anyBoolean());
+    verify(mockClient, times(numTservers + numMasters))
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean());
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartTelemetryPgConfWinsOverUserPgConf() throws Exception {
+    verifyNonRestartTelemetryPgConfWinsOverUserPgConf("log_statement=DDL");
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartTelemetryPgConfWinsOverUserPgConfCaseVariant()
+      throws Exception {
+    verifyNonRestartTelemetryPgConfWinsOverUserPgConf("Log_Statement=all");
+  }
+
+  private void verifyNonRestartTelemetryPgConfWinsOverUserPgConf(String userPgConfCsv)
+      throws Exception {
+    Map<String, String> userTserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, userPgConfCsv);
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of(), userTserverGFlags);
+              userIntent.queryLogConfig = queryLogConfig;
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(
+                  TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+              universe.setNewInstallGFlags(newInstallGFlags);
+            });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Map<String, String> tserverGFlags = new HashMap<>(userTserverGFlags);
+    tserverGFlags.put("enable_automatic_tablet_splitting", "false");
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("enable_automatic_tablet_splitting", "false"), tserverGFlags);
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    // Same order as the server's gflags file: the user entries, with the query log value
+    // replacing the user one in place, then the new install entry, then the other query log keys.
+    int numTservers = defaultUniverse.getTServers().size();
+    verify(mockClient, times(numTservers))
+        .setFlag(
+            any(),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq(GFlagsUtilTest.USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV),
+            anyBoolean());
+    verify(mockClient, never())
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), contains(userPgConfCsv), anyBoolean());
+  }
+
+  @Test
+  public void testValidateGFlagsSkippedOnRetry() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    "2024.2.0.0-b1");
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams firstTry = newGFlagsPrecheckParams();
+    TaskInfo firstInfo = submitTask(firstTry);
+    assertEquals(Success, firstInfo.getTaskState());
+    assertTrue(
+        firstInfo.getSubTasks().stream().anyMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeDataDirDiskSpace));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+
+    GFlagsUpgradeParams retry = newGFlagsPrecheckParams();
+    retry.setPreviousTaskUUID(firstInfo.getUuid());
+    TaskInfo retryInfo = submitTask(retry);
+    assertEquals(Success, retryInfo.getTaskState());
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeDataDirDiskSpace));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+  }
+
+  private GFlagsUpgradeParams newGFlagsPrecheckParams() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    taskParams.runOnlyPrechecks = true;
+    return taskParams;
+  }
+
+  @Test
   public void testGFlagsUpgradePrimaryWithRRRetries() {
     addReadReplica();
 
@@ -1176,6 +1589,61 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
     taskInfo = submitTask(taskParams, -1);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagsUpgradeRetryAppliesSensitiveGFlags() throws InterruptedException {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true);
+    doAnswer(
+            inv -> {
+              ServerControlInput input = (ServerControlInput) inv.getArgument(1);
+              if (input.getControlType() == ServerControlType.STOP
+                  && input.getServerName().contains("tserver")) {
+                throw new RuntimeException("Stop failed");
+              }
+              return ServerControlOutput.newBuilder().build();
+            })
+        .when(mockNodeAgentClient)
+        .runServerControl(any(), any(), any());
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags =
+        ImmutableMap.of(
+            "ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    TaskInfo taskInfo = submitTask(taskParams, -1);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    doAnswer(inv -> ServerControlOutput.newBuilder().build())
+        .when(mockNodeAgentClient)
+        .runServerControl(any(), any(), any());
+    // submitTask goes straight to the commissioner, so there is no CustomerTask for the retry yet.
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.GFlagsUpgrade,
+        defaultUniverse.getName());
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    assertEquals(Success, waitForTask(retry.getTaskUUID()).getTaskState());
+
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    Map<String, String> tserverGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null,
+            TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    assertEquals("ycql-ldap-secret", tserverGFlags.get("ycql_ldap_bind_passwd"));
+    assertEquals(hba, tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV));
   }
 
   @Test

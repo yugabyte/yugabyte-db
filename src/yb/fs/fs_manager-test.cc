@@ -40,10 +40,12 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/metrics.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/fs/fs.pb.h"
@@ -54,6 +56,8 @@ using std::vector;
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 DECLARE_bool(TEST_fail_write_pb_container);
+DECLARE_bool(export_drive_io_metrics);
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 
@@ -221,6 +225,32 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_EQ(1, tablet_ids.size()) << tablet_ids;
 }
 
+// Pins down the CURRENT behavior a manual `cp` of a tablet's metadata directory produces (the
+// duplicate the field recovery for swapped mounts tends to leave behind): startup fails with an
+// instruction to remove one copy by hand. Nothing picks a winner and nothing cleans up, which is
+// part of what motivates the data-root pinning above -- catching the swap before duplicates are
+// created is the only version of this without manual surgery.
+TEST_F(FsManagerTestBase, DuplicateTabletMetadataFailsStartupTabletEnumeration) {
+  const string wal_path = GetTestPath("wal");
+  const string data_path_1 = GetTestPath("data1");
+  const string data_path_2 = GetTestPath("data2");
+  ReinitFsManager({ wal_path }, { data_path_1, data_path_2 });
+  ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
+
+  const auto meta_dirs = fs_manager()->GetRaftGroupMetadataDirs();
+  ASSERT_EQ(2, meta_dirs.size());
+  const char* const kTabletId = "0123456789abcdef0123456789abcdef";
+  for (const auto& dir : meta_dirs) {
+    std::unique_ptr<WritableFile> writer;
+    ASSERT_OK(env_->NewWritableFile(JoinPathSegments(dir, kTabletId), &writer));
+  }
+
+  const auto result = fs_manager()->ListTabletIds(CleanupTemporaryFiles::kFalse);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsIllegalState()) << result.status();
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Remove the duplicate one");
+}
+
 TEST_F(FsManagerTestBase, TestCannotUseNonEmptyFsRoot) {
   string path = GetTestPath("new_fs_root");
   ReinitFsManager({ path }, { path });
@@ -366,6 +396,7 @@ class StorageTierTest : public YBTest {
  public:
   void SetUp() override {
     YBTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   }
 
   // Build a FsManager directly from explicit paths + tiers without going
@@ -465,14 +496,35 @@ TEST_F(StorageTierTest, DuplicatePaths) {
   ASSERT_EQ(1u, dirs.size());
 }
 
-// Unknown root returns "ssd" (kDefaultStorageTier) from GetTierForDataRoot.
-TEST_F(StorageTierTest, UnknownRootReturnsDefault) {
-  auto path_e = GetTestPath("path_e");
-  ASSERT_OK(env_->CreateDir(path_e));
+// A WAL-only root is not a data root, so it has no tier: a node whose data dirs are all hdd must
+// not advertise its WAL disk as an ssd data disk.
+TEST_F(StorageTierTest, WalOnlyRootHasNoTier) {
+  auto data_path = GetTestPath("hdd0");
+  auto wal_path = GetTestPath("wal0");
+  ASSERT_OK(env_->CreateDir(data_path));
+  ASSERT_OK(env_->CreateDir(wal_path));
 
-  auto mgr = MakeFsManager({path_e}, {{path_e, "ssd"}});
+  auto mgr = MakeFsManager({data_path}, {{data_path, "hdd"}}, {wal_path});
 
-  ASSERT_EQ("ssd", mgr->GetTierForDataRoot("/nonexistent/root"));
+  const auto& by_tier = mgr->GetDataRootsByTier();
+  ASSERT_EQ(1u, by_tier.size());
+  ASSERT_EQ(1u, by_tier.count("hdd"));
+
+  size_t hdd_roots = 0;
+  size_t untiered_roots = 0;
+  for (const auto& fs_root : mgr->GetFsRootDirs()) {
+    const auto& tier = mgr->GetTierForDataRoot(fs_root);
+    if (tier == "hdd") {
+      ++hdd_roots;
+    } else if (tier.empty()) {
+      ++untiered_roots;
+    } else {
+      FAIL() << "Unexpected tier for root " << fs_root << ": " << tier;
+    }
+  }
+  ASSERT_EQ(1u, hdd_roots);
+  ASSERT_EQ(1u, untiered_roots);
+  ASSERT_EQ("", mgr->GetTierForDataRoot("/nonexistent/root"));
 }
 
 // A label outside the static set {ssd, hdd} is rejected at init time.
@@ -493,15 +545,49 @@ TEST_F(StorageTierTest, InvalidTierRejected) {
   ASSERT_STR_CONTAINS(s.ToString(), "Invalid storage tier");
 }
 
+// With tiered storage disabled (the default), a non-default tier label is rejected at init time.
+// An explicit default-tier label changes nothing and is still accepted.
+TEST_F(StorageTierTest, NonDefaultTierRejectedWhenTieredStorageDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  auto hdd_path = GetTestPath("disabled_hdd");
+  auto ssd_path = GetTestPath("disabled_ssd");
+  ASSERT_OK(env_->CreateDir(hdd_path));
+  ASSERT_OK(env_->CreateDir(ssd_path));
+
+  {
+    FsManagerOpts opts;
+    opts.data_paths = {hdd_path};
+    opts.tier_by_path = {{hdd_path, "hdd"}};
+    opts.wal_paths = {hdd_path};
+    opts.server_type = kServerType;
+    auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+    Status s = mgr->CreateInitialFileSystemLayout();
+    ASSERT_NOK(s);
+    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+    ASSERT_STR_CONTAINS(s.ToString(), "enable_tiered_storage");
+  }
+  {
+    FsManagerOpts opts;
+    opts.data_paths = {ssd_path};
+    opts.tier_by_path = {{ssd_path, kDefaultStorageTier}};
+    opts.wal_paths = {ssd_path};
+    opts.server_type = kServerType;
+    auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+    ASSERT_OK(mgr->CreateInitialFileSystemLayout());
+    ASSERT_OK(mgr->CheckAndOpenFileSystemRoots());
+    ASSERT_EQ(1u, mgr->GetDataRootDirsForTier(kDefaultStorageTier).size());
+  }
+}
+
 // IsValidStorageTier / ValidStorageTiers reflect the static set.
 TEST_F(StorageTierTest, ValidStorageTierSet) {
-  ASSERT_TRUE(FsManager::IsValidStorageTier("ssd"));
-  ASSERT_TRUE(FsManager::IsValidStorageTier("hdd"));
-  ASSERT_FALSE(FsManager::IsValidStorageTier("gold"));
-  ASSERT_FALSE(FsManager::IsValidStorageTier(""));
+  ASSERT_TRUE(IsValidStorageTier("ssd"));
+  ASSERT_TRUE(IsValidStorageTier("hdd"));
+  ASSERT_FALSE(IsValidStorageTier("gold"));
+  ASSERT_FALSE(IsValidStorageTier(""));
 
   // The default tier must always be a valid tier.
-  ASSERT_TRUE(FsManager::IsValidStorageTier(FsManager::kDefaultStorageTier));
+  ASSERT_TRUE(IsValidStorageTier(kDefaultStorageTier));
 }
 
 // ParseDataDirSpec edge cases exercised via FLAGS_fs_data_dirs.
@@ -653,5 +739,68 @@ TEST_F(FsManagerTestDriveFault, SingleDriveFault) {
   EXPECT_TRUE(Slice(dirs[0]).starts_with(Slice(GetTestPath(kOkDrive))));
 }
 
+// A drive that failed the startup write check must not be registered for IO metrics: it has been
+// dropped from the root lists, nothing will be written to it, and it already reports drive_fault.
+TEST_F(FsManagerTestDriveFault, FaultyDriveIsNotRegisteredForIoMetrics) {
+  // The fixture's SetUp only gets as far as creating the layout; the first
+  // CheckAndOpenFileSystemRoots returns NotFound and returns before reaching registration. Real
+  // startup re-opens after creating (server_base.cc), so do the same here.
+  ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
+
+  ASSERT_NE(nullptr, DriveIoStatsRegistry::Instance().Find(GetTestPath(kOkDrive)));
+  ASSERT_EQ(nullptr, DriveIoStatsRegistry::Instance().Find(GetTestPath(kFailedDrive)));
+}
+
+// Coverage for FsManager::SetUpDriveIoMetrics: which roots get registered, and the flag that
+// turns the whole thing off. Roots are GetTestPath-derived and so unique per test, which is what
+// lets these tests share the process-global registry.
+class FsManagerTestDriveIoMetrics : public YBTest {
+ public:
+  void ReinitFsManager(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    fs_manager_.reset();
+    FsManagerOpts opts;
+    opts.wal_paths = wal_paths;
+    opts.data_paths = data_paths;
+    opts.server_type = kServerType;
+    opts.metric_registry = &metric_registry_;
+    fs_manager_ = std::make_unique<FsManager>(env_.get(), opts);
+  }
+
+  Status OpenFileSystem(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    ReinitFsManager(wal_paths, data_paths);
+    RETURN_NOT_OK(fs_manager_->CreateInitialFileSystemLayout());
+    return fs_manager_->CheckAndOpenFileSystemRoots();
+  }
+
+  const char* kServerType = "tserver_test";
+
+ private:
+  std::unique_ptr<FsManager> fs_manager_;
+  MetricRegistry metric_registry_;
+};
+
+// The WAL and data roots can be different devices, and both must be attributed.
+TEST_F(FsManagerTestDriveIoMetrics, RegistersWalAndDataRoots) {
+  const auto wal = GetTestPath("wal_root");
+  const auto data = GetTestPath("data_root");
+  ASSERT_OK(OpenFileSystem({ wal }, { data }));
+
+  auto& registry = DriveIoStatsRegistry::Instance();
+  ASSERT_NE(nullptr, registry.Find(wal)) << "WAL root should be registered";
+  ASSERT_NE(nullptr, registry.Find(data)) << "data root should be registered";
+  ASSERT_NE(registry.Find(wal), registry.Find(data)) << "and they are distinct drives";
+
+  // A file under a root resolves to that root's counters, which is the whole attribution path.
+  ASSERT_EQ(registry.Find(wal), registry.Find(wal + "/yb-data/tserver_test/wals/x/wal-000001"));
+}
+
+TEST_F(FsManagerTestDriveIoMetrics, FlagOffRegistersNothing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_export_drive_io_metrics) = false;
+  const auto root = GetTestPath("fs_root");
+  ASSERT_OK(OpenFileSystem({ root }, { root }));
+
+  ASSERT_EQ(nullptr, DriveIoStatsRegistry::Instance().Find(root))
+      << "with --export_drive_io_metrics off, the write path must see no drive at all";
+}
 
 } // namespace yb

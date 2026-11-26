@@ -28,6 +28,7 @@
 #include "datatype/timestamp.h"
 #include "executor/instrument.h"
 #include "funcapi.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -75,6 +76,7 @@ typedef enum YbStatementType
 	AggregatePushdown,
 	CatCacheRefresh,
 	CatCacheDeltaRefresh,
+	StaleCatalogPrefetch,
 	CatCacheMisses,
 	HintCacheRefresh,
 	HintCacheHits,
@@ -157,6 +159,7 @@ extern int	MaxConnections;
 
 static long last_catcache_refresh_val = 0;
 static long last_catcache_delta_refresh_val = 0;
+static long last_stale_catalog_prefetch_val = 0;
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
 static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
@@ -228,6 +231,21 @@ isTopLevelStatement(void)
 	return statement_nesting_level == 0;
 }
 
+/*
+ * True for connections the tserver opens to its own postgres (index backfill,
+ * WaitForBackendsCatalogVersion polling, auto-analyze, ...). Those statements
+ * are internal bookkeeping, not client SQL: counting them inflates the
+ * SQLProcessor metrics at times unrelated to any client statement. Connection
+ * manager server connections also authenticate with yb-tserver-key, but they do
+ * carry client SQL.
+ */
+static bool
+ybpgm_IsTserverInternalConn(void)
+{
+	return IsYugaByteEnabled() && MyProcPort != NULL &&
+		MyProcPort->yb_is_tserver_auth_method && !YbIsClientYsqlConnMgr();
+}
+
 static void
 IncStatementNestingLevel(void)
 {
@@ -288,6 +306,8 @@ set_metric_names(void)
 		   YSQL_METRIC_PREFIX "CatCacheRefresh");
 	strcpy(ybpgm_table[CatCacheDeltaRefresh].name,
 		   YSQL_METRIC_PREFIX "CatCacheDeltaRefresh");
+	strcpy(ybpgm_table[StaleCatalogPrefetch].name,
+		   YSQL_METRIC_PREFIX "StaleCatalogPrefetch");
 	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
 
 	strcpy(ybpgm_table[HintCacheRefresh].name,
@@ -377,6 +397,10 @@ set_metric_names(void)
 	strcpy(ybpgm_table[CatCacheDeltaRefresh].count_help,
 		   "Number of incremental catalog cache refreshes");
 	strcpy(ybpgm_table[CatCacheDeltaRefresh].sum_help,
+		   "Not applicable");
+	strcpy(ybpgm_table[StaleCatalogPrefetch].count_help,
+		   "Number of connections started from a stale catalog prefetch on this node");
+	strcpy(ybpgm_table[StaleCatalogPrefetch].sum_help,
 		   "Not applicable");
 
 
@@ -1065,7 +1089,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	 * - The design for this metric module for using global state variables is
 	 *   very flawed, so we use this not-null check for now.
 	 */
-	if (isTopLevelStatement() && queryDesc->totaltime)
+	if (isTopLevelStatement() && queryDesc->totaltime &&
+		!ybpgm_IsTserverInternalConn())
 	{
 		InstrEndLoop(queryDesc->totaltime);
 		const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
@@ -1098,6 +1123,12 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 		last_catcache_delta_refresh_val = current_count;
 		/* Set the time parameter to 0 as we don't have metrics for that. */
 		ybpgm_StoreCount(CatCacheDeltaRefresh, 0, total_delta);
+
+		current_count = YbGetStaleCatalogPrefetches();
+		total_delta = current_count - last_stale_catalog_prefetch_val;
+		last_stale_catalog_prefetch_val = current_count;
+		/* Set the time parameter to 0 as we don't have metrics for that. */
+		ybpgm_StoreCount(StaleCatalogPrefetch, 0, total_delta);
 
 		long		current_cache_misses = YbGetCatCacheMisses();
 		long	   *current_cache_id_misses = YbGetCatCacheIdMisses();
@@ -1223,7 +1254,8 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	if (isTopLevelBlock() &&
 		!IsA(pstmt->utilityStmt, ExecuteStmt) &&
 		!IsA(pstmt->utilityStmt, PrepareStmt) &&
-		!IsA(pstmt->utilityStmt, DeallocateStmt))
+		!IsA(pstmt->utilityStmt, DeallocateStmt) &&
+		!ybpgm_IsTserverInternalConn())
 	{
 		instr_time	start;
 		instr_time	end;

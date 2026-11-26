@@ -13,10 +13,14 @@
 
 #include "yb/tablet/transaction_loader.h"
 
+#include <mutex>
+#include <vector>
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
@@ -25,7 +29,7 @@
 
 #include "yb/tablet/transaction_status_resolver.h"
 
-#include "yb/util/callsite_profiling.h"
+#include "yb/util/async_util.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -64,6 +68,13 @@ docdb::BoundedRocksDbIterator CreateFullScanIterator(
       /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse));
 }
 
+void ReleaseWaiters(
+    const std::vector<std::shared_ptr<Synchronizer>>& waiters, const Status& status) {
+  for (const auto& waiter : waiters) {
+    waiter->StatusCB(status);
+  }
+}
+
 } // namespace
 
 class TransactionLoader::Executor {
@@ -88,6 +99,10 @@ class TransactionLoader::Executor {
         CreateFullScanIterator(db.regular, nullptr /* filter */));
     intents_iterator_ = CreateFullScanIterator(db.intents,
         docdb::CreateIntentHybridTimeFileFilter(min_replay_txn_first_write_ht));
+    // The loader starts at tablet open, before WAL replay, and the regular DB has no RocksDB WAL,
+    // so every apply state it reads comes from a flushed file. LoadPendingApplies relies on that.
+    DCHECK_EQ(db.regular->GetFlushAbility(), storage::FlushAbility::kNoNewData);
+    regular_db_ = db.regular;
     loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
@@ -168,26 +183,7 @@ class TransactionLoader::Executor {
 
     RETURN_NOT_OK(CheckForShutdown());
 
-    loader_.state_ = TransactionLoaderState::kCompleted;
-
-    {
-      // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
-      // and WaitAllLoaded. The waiting loop in those functions is equivalent to the following,
-      // after locking the mutex (and of course wait(...) releases the mutex while waiting):
-      //
-      // 1 while (!all_loaded_) {
-      // 2   load_cond_.wait(lock);
-      // 3 }
-      //
-      // If we did not have the lock/unlock here, it would be possible that all_loaded_ would be set
-      // to true and notify_all() would be called between lines 1 and 2, and we would miss the
-      // notification and wait indefinitely at line 2. With lock/unlock this is no longer possible
-      // because if we set all_loaded_ to true between lines 1 and 2, the next opportunity for this
-      // thread to send a notification would be at line 2 after wait(...) releases the mutex, but
-      // after that we would check all_loaded_ and exit the loop at line 1.
-      std::lock_guard lock(loader_.mutex_);
-    }
-    YB_PROFILE(loader_.load_cond_.notify_all());
+    loader_.SetFinalStateAndReleaseWaiters(TransactionLoaderState::kCompleted, Status::OK());
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
     return Status::OK();
   }
@@ -230,6 +226,8 @@ class TransactionLoader::Executor {
           continue;
         }
 
+        FillMissingApplyOpId(*txn_id, state.get_ptr());
+
         auto it = loader_.pending_applies_.emplace(*txn_id, *state).first;
 
         VLOG_WITH_PREFIX(4) << "Loaded pending apply for " << *txn_id << ": "
@@ -245,6 +243,34 @@ class TransactionLoader::Executor {
       ROCKSDB_SEEK(regular_iterator_, Slice(seek_buffer));
     }
     return regular_iterator_->status();
+  }
+
+  // Older releases stored the apply state without the apply op id, but the remaining batches
+  // still need a valid op id in their frontier. The state was read from a flushed file (see
+  // Start), so the regular DB flushed op id is not less than the real apply op id, and using it
+  // claims nothing the regular DB does not already cover.
+  void FillMissingApplyOpId(const TransactionId& txn_id, docdb::ApplyStateWithCommitInfo* state) {
+    if (!state->apply_op_id.empty()) {
+      return;
+    }
+    if (!regular_flushed_op_id_) {
+      regular_flushed_op_id_ = docdb::MaxPersistentOpIdForDb(
+          regular_db_, /* invalid_if_no_new_data= */ false);
+    }
+    if (regular_flushed_op_id_->empty()) {
+      // Not expected: the file holding the state has a frontier. Without an op id the remaining
+      // batches cannot be written safely, so stop here.
+      LOG_WITH_PREFIX(FATAL)
+          << "Pending apply of " << txn_id << " has no apply op id, and the regular DB has no "
+          << "flushed op id to resume it with. Finish the apply on the release that wrote it "
+          << "before upgrading.";
+    } else {
+      state->apply_op_id = *regular_flushed_op_id_;
+      // A test waits for this message.
+      LOG_WITH_PREFIX(INFO)
+          << "Pending apply of " << txn_id << " has no apply op id, resuming it with op id "
+          << state->apply_op_id;
+    }
   }
 
   // id - transaction id to load.
@@ -301,11 +327,13 @@ class TransactionLoader::Executor {
         std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
         pending_apply ? &*pending_apply : nullptr,
         HybridTime::FromPB(metadata_pb.first_write_ht()));
+    std::vector<std::shared_ptr<Synchronizer>> reached;
     {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
+      reached = loader_.ExtractReachedWaiters();
     }
-    YB_PROFILE(loader_.load_cond_.notify_all());
+    ReleaseWaiters(reached, Status::OK());
     return Status::OK();
   }
 
@@ -331,6 +359,13 @@ class TransactionLoader::Executor {
            intents_iterator_.key()[current_key_.size()] !=
                dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime &&
            intents_iterator_.key().starts_with(current_key_)) {
+      // The delete list record of a batch holds vector ids, not an intent key.
+      // With the inverted key it sorts after the strong write intents of its batch, with the old
+      // plain key before all intents of the transaction.
+      if (dockv::IsVectorIndexRecord(intents_iterator_.value())) {
+        intents_iterator_.Prev();
+        continue;
+      }
       auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
           << "Failed to decode intent while loading transaction " << id << ", "
@@ -397,6 +432,9 @@ class TransactionLoader::Executor {
 
   docdb::OptimizedRocksDbIterator<docdb::BoundedRocksDbIterator> regular_iterator_;
   docdb::BoundedRocksDbIterator intents_iterator_;
+  rocksdb::DB* regular_db_ = nullptr;
+  // Read on first need, for apply states stored without an apply op id.
+  std::optional<OpId> regular_flushed_op_id_;
 
   // Buffer that contains key of current record, i.e. value type + transaction id.
   dockv::KeyBytes current_key_;
@@ -411,6 +449,8 @@ TransactionLoader::TransactionLoader(
     : context_(*context), entity_(entity) {}
 
 TransactionLoader::~TransactionLoader() {
+  std::lock_guard lock(mutex_);
+  DCHECK(waiters_.empty());
 }
 
 void TransactionLoader::Start(
@@ -422,21 +462,14 @@ void TransactionLoader::Start(
   }
 }
 
-namespace {
-
-// Waiting threads will only wake up on a timeout if there is still an uncaught race condition that
-// causes us to miss a notification on the condition variable.
-constexpr auto kWaitLoadedWakeUpInterval = 10s;
-
-}  // namespace
-
-Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
+Status TransactionLoader::WaitLoaded(const TransactionId& id, CoarseTimePoint deadline) {
   // ::WaitLoaded seems to executed in the following paths -
   // 1. transaction handling - add/ apply/cleanup etc
   // 2. tablet shutdown - to abort active transactions
+  // 3. ResolveIntents, from the backup, xCluster and CDCSDK RPC handlers on a leader
   //
   // It looks like state_ != TransactionLoaderState::kNotStarted would always hold true here.
-  // In case of 1, tablet open would have succeeded => loader was successfully started.
+  // In case of 1 and 3, tablet open would have succeeded => loader was successfully started.
   // In 2, we only abort transactions in TransactionParticipant::Impl::transactions_. If tablet
   // open failed before launching loader => transactions_ would be empty. Else loader would have
   // been launched => state_ != TransactionLoaderState::kNotStarted.
@@ -446,15 +479,18 @@ Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_A
   if (RSTATUS_DCHECK_RESULT(Completed())) {
     return Status::OK();
   }
-  std::unique_lock<std::mutex> lock(mutex_);
-  // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
-  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoading) {
-    if (last_loaded_ >= id) {
-      break;
+  auto synchronizer = std::make_shared<Synchronizer>();
+  {
+    std::lock_guard lock(mutex_);
+    if (state_.load(std::memory_order_acquire) != TransactionLoaderState::kLoading ||
+        last_loaded_ >= id) {
+      return load_status_;
     }
-    load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
+    waiters_.emplace(id, synchronizer);
   }
-  return load_status_;
+  RETURN_NOT_OK_PREPEND(
+      synchronizer->WaitUntil(ToSteady(deadline)), "Waiting for transactions to be loaded");
+  return Status::OK();
 }
 
 Status TransactionLoader::WaitLoaded(const TransactionIdApplyOpIdMap& txns) {
@@ -468,22 +504,8 @@ Status TransactionLoader::WaitLoaded(const TransactionIdApplyOpIdMap& txns) {
   return WaitLoaded(max_txn->first);
 }
 
-// Disable thread safety analysis because std::unique_lock is used.
-Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
-  // WaitAllLoaded is only invoked when opening a tablet.
-  //
-  // It appears like the loader would never be in TransactionLoaderState::kNotStarted here. If we
-  // face a FATAL in the below 'if', it should be investigated and RSTATUS_DCHECK_RESULT should be
-  // replaced with VERIFY_RESULT.
-  if (RSTATUS_DCHECK_RESULT(Completed())) {
-    return Status::OK();
-  }
-  // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
-  std::unique_lock<std::mutex> lock(mutex_);
-  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoading) {
-    load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
-  }
-  return load_status_;
+Status TransactionLoader::WaitAllLoaded(CoarseTimePoint deadline) {
+  return WaitLoaded(TransactionId::Max(), deadline);
 }
 
 std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingApply(
@@ -499,6 +521,31 @@ std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingAppl
   return it->second;
 }
 
+std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::TakePendingApply(
+    const TransactionId& id) {
+  DCHECK_EQ(state_.load(std::memory_order_acquire), TransactionLoaderState::kCompleted);
+  if (pending_applies_removed_.load(std::memory_order_acquire)) {
+    return std::nullopt;
+  }
+  std::lock_guard lock(pending_applies_mtx_);
+  auto node = pending_applies_.extract(id);
+  if (!node) {
+    return std::nullopt;
+  }
+  return std::move(node.mapped());
+}
+
+void TransactionLoader::AddPendingApply(
+    const TransactionId& id, const docdb::ApplyStateWithCommitInfo& apply) {
+  LOG_IF(DFATAL, pending_applies_removed_.load(std::memory_order_acquire))
+      << "Pending apply added after pending applies were taken: " << id;
+  std::lock_guard lock(pending_applies_mtx_);
+  auto [it, inserted] = pending_applies_.try_emplace(id, apply);
+  LOG_IF(DFATAL, !inserted)
+      << "Pending apply already exists: " << id << ", existing: " << it->second.ToString()
+      << ", new: " << apply.ToString();
+}
+
 void TransactionLoader::StartShutdown() {
   std::lock_guard lock(mutex_);
   shutdown_requested_ = true;
@@ -510,17 +557,39 @@ void TransactionLoader::CompleteShutdown() {
   }
 }
 
+std::vector<std::shared_ptr<Synchronizer>> TransactionLoader::ExtractReachedWaiters() {
+  const auto end = waiters_.upper_bound(last_loaded_);
+  std::vector<std::shared_ptr<Synchronizer>> result;
+  for (auto it = waiters_.begin(); it != end; ++it) {
+    result.push_back(std::move(it->second));
+  }
+  waiters_.erase(waiters_.begin(), end);
+  return result;
+}
+
+void TransactionLoader::SetFinalStateAndReleaseWaiters(
+    TransactionLoaderState state, const Status& status) {
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  {
+    std::lock_guard lock(mutex_);
+    load_status_ = status;
+    state_.store(state, std::memory_order_release);
+    for (auto& [id, synchronizer] : waiters_) {
+      waiters.push_back(std::move(synchronizer));
+    }
+    waiters_.clear();
+  }
+  ReleaseWaiters(waiters, status);
+}
+
 void TransactionLoader::FinishLoad(Status status) {
-  context_.LoadFinished(status);
+  if (!status.ok()) {
+    SetFinalStateAndReleaseWaiters(TransactionLoaderState::kFailed, status);
+  }
   // context_.LoadFinished unblocks tablet shutdown by resetting participant's' shutdown_latch_'.
   // Hence, it is not safe to access 'context_' after this point since the corresponding transaction
   // participant instance might be destroyed.
-  if (status.ok()) {
-    return;
-  }
-  std::lock_guard lock(mutex_);
-  load_status_ = status;
-  state_.store(TransactionLoaderState::kFailed, std::memory_order_release);
+  context_.LoadFinished(status);
 }
 
 ApplyStatesMap TransactionLoader::MovePendingApplies() {

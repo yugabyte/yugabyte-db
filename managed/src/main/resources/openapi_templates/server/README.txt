@@ -96,13 +96,13 @@ Description:
       additionalDetails: Adding this property generates the GFlags additionalDetails to be logged.
           Can be omitted.
 
-4. x-yba-multipart (at operation level)
+4. x-yba-api-multipart (at operation level)
 This is a boolean extension used to trigger the code generation flow for multipart form data manually.
 Added this because code generation in multipart form data was not being triggered automatically based
 on the yamls.
 
 Example:
-x-yba-multipart: true
+x-yba-api-multipart: true
 
 5. x-yba-file-setter (at requestBody level)
 This is a string extension to generate the setter for files in multipart form data. Added because the
@@ -145,3 +145,78 @@ Example (thin split sources — only vendor keys and optional x-data-entities-de
 Thin PagedResp sources declare x-data-container / x-data-item (and optional x-data-entities-description) only;
 openapi/redocly.yaml loads a preprocessor plugin (plugins/x-data-container-expand.cjs) that injects
 allOf + properties.entities $refs in memory during `redocly bundle`, so split YAML is never patched on disk.
+
+9. x-yba-api-stream-response (at operation level)
+Boolean, valid only on an operation whose success response is binary. It makes the generated Go
+client hand the response body back to the caller unread instead of buffering it, so on a JSON
+operation it would drop the response model from the client signature altogether.
+scripts/openapi_process_vendor_ext.py rejects it on a non-binary operation.
+
+The streaming contract also reaches the Stoplight docs and the Java and Python clients, so
+describe it in the operation's "description" in the spec too, not only in these READMEs.
+
+Consumed only by the Go client templates - see client/go/templates/README.txt for the generated
+signature and the caller's obligation to close the body.
+
+Example:
+x-yba-api-stream-response: true
+
+10. x-yba-api-block-operator-resource (at operation level)
+Adds @BlockOperatorResource to the generated controller method so requests for resources owned by
+the Kubernetes operator are rejected before request-body parsing. Valid values are universe and
+provider.
+
+Example:
+x-yba-api-block-operator-resource: universe
+
+11. x-yba-api-conditional-get
+Optional. When present on a GET operation, the generated Play controller method is annotated with
+@ConditionalGet so HTTP conditional GET (If-None-Match → 304) runs via ConditionalGetAction after
+auth/RBAC and before the Imp body is built.
+
+Example:
+
+x-yba-api-conditional-get:
+  provider: com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider
+  resourcePathSegment: universes
+
+generates:
+
+@ConditionalGet(
+    value = com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider.class,
+    resourcePathSegment = "universes")
+
+provider: Fully-qualified ResourceRevisionProvider implementation (required).
+resourcePathSegment: Path segment before the resource UUID (optional; defaults to "universes" on the
+  annotation if omitted).
+
+Gating by yb.api.conditional_get.enabled is handled inside ConditionalGetAction.
+
+12. x-yba-api-idempotent
+Optional, boolean. When true on a mutating, authenticated operation, the generated
+*ImpInterface.<operationId>Http method runs the operation through
+IdempotencyService (ApiControllerUtils.idempotent), which honours the Idempotency-Key request
+header: a successful response is stored and replayed to retries with the same key, a concurrent
+retry gets 409 and a key reused for a different request gets 422. See IdempotencyService.
+
+Example:
+
+x-yba-api-idempotent: true
+
+openapi_process_vendor_ext.py expands it in the bundled openapi.yaml: it adds the Idempotency-Key
+header parameter (components/parameters/IdempotencyKey.yaml), so that generated clients can send
+the key, and documents the 409 and 422 responses. Don't declare the parameter on the operation
+yourself; the script rejects that. The parameter carries "x-yba-api-idempotency-key: true", which
+keeps it out of the generated server method signatures: the controller implementation never sees
+it.
+
+If the operation submits a task, the first task it submits without an explicit UUID gets the UUID
+derived from the key (IdempotencyService.taskUuidFor, picked up in Commissioner.submit), so that
+clients can follow it without the response. A retry that finds the task started (it has a
+CustomerTask, or hasn't failed) gets 409 pointing at it, and at its newest retry if YBA retried it
+after a restart, instead of running the operation twice. Only a task that failed while being
+submitted lets the retry run again.
+
+Do not mark an operation whose response carries a secret (a generated API token, a private key):
+the response is stored as is for the retention period (yb.api.idempotency.retention), and a stored
+secret would defeat YBA's hash-only storage of credentials.

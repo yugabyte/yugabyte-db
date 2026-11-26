@@ -20,6 +20,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/common.fwd.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/deadlock_detector.h"
@@ -70,6 +71,10 @@ class TransactionCoordinatorContext {
       std::shared_ptr<LWTransactionStatePB> request) = 0;
   virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) = 0;
+
+  // Returns an error if the pending transaction stamped with origination_info must be aborted
+  // because StopPersisting or StartPersisting blocked its database.
+  virtual Status CheckTransactionMayContinue(const LWOriginationInfoPB& origination_info) const = 0;
 
   server::Clock& clock() const {
     return *clock_ptr();

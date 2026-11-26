@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.util.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 public class CheckGlibc extends UniverseTaskBase {
@@ -56,7 +56,7 @@ public class CheckGlibc extends UniverseTaskBase {
       Universe universe = getUniverse();
       UniverseDefinitionTaskParams.Cluster cluster =
           universe.getUniverseDetails().getPrimaryCluster();
-      if (cluster.userIntent.providerType == Common.CloudType.local) {
+      if (cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.local)) {
         log.info("Skipping check for local provider");
         return;
       }

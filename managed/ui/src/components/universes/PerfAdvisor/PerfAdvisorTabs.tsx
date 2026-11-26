@@ -1,132 +1,53 @@
-import { useEffect, useState } from 'react';
-import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
-import { withRouter } from 'react-router';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { PerfAdvisorOverviewDashboard } from '../AttachUniverseToPerfAdvisor/PerfAdvisorOverviewDashboard';
+import { PaRegistrationMode } from '../../../redesign/features/PerfAdvisor/api';
 import { isPaDrilldownUrl } from '../AttachUniverseToPerfAdvisor/perfAdvisorUrlHelpers';
-import { YBTabsPanel } from '../../../components/panels';
 
 interface PerfAdvisorTabsProps {
   universeUuid: string;
   timezone: string;
   apiUrl: string;
   registrationStatus: boolean;
-  location?: any;
-  router?: any;
+  registrationMode?: PaRegistrationMode;
 }
 
-export const ConfigTabKey = {
-  CLUSTER_LOAD: 'clusterLoad',
-  METRICS: 'metricsNew',
-  ANOMALIES: 'anomalies'
-} as const;
-export type ConfigTabKey = (typeof ConfigTabKey)[keyof typeof ConfigTabKey];
-
-const PerfAdvisorTabsComponent = ({
+export const PerfAdvisorTabs = ({
   universeUuid,
   timezone,
   apiUrl,
   registrationStatus,
-  location,
-  router
+  registrationMode
 }: PerfAdvisorTabsProps) => {
   const { t } = useTranslation();
 
-  // Get tab from URL query params (react-router v3 style)
-  const tabFromUrl = (location?.query?.tab as ConfigTabKey) || ConfigTabKey.CLUSTER_LOAD;
-  const [tabToDisplay, setTabToDisplay] = useState<ConfigTabKey>(tabFromUrl);
-
-  useEffect(() => {
-    // Update state when URL tab changes
-    if (location?.query?.tab) {
-      setTabToDisplay(location.query.tab as ConfigTabKey);
-    }
-  }, [location?.query?.tab]);
-
-  // Handle initial tab setup and subtab cleanup
-  useEffect(() => {
-    if (!router || !location) return;
-
-    const currentTab = location.query?.tab as ConfigTabKey;
-    const currentQuery = location.query || {};
-
-    // If no tab is specified in the URL, set default tab with subTab
-    if (!currentTab) {
-      const currentLocation = { ...location };
-      currentLocation.query = {
-        ...currentQuery, // Preserve all existing params (duration, etc.)
-        tab: ConfigTabKey.CLUSTER_LOAD
-      };
-      router.replace(currentLocation);
-      return;
-    }
-
-    // Build new query object, removing subtab params that don't belong to current tab
-    const newQuery = { ...currentQuery };
-    let needsUpdate = false;
-
-    // Remove subTab if current tab doesn't use it (or if it's not clusterLoad)
-    if (currentTab !== ConfigTabKey.CLUSTER_LOAD && currentQuery.subTab) {
-      delete newQuery.subTab;
-      needsUpdate = true;
-    }
-
-    // Update URL if we removed any subtab params
-    if (needsUpdate) {
-      const currentLocation = { ...location };
-      currentLocation.query = newQuery;
-      router.replace(currentLocation);
-    }
-  }, [location?.query?.tab, location?.query?.metricsTab, router, location]);
-
-  const tabConfig = [
-    {
-      key: ConfigTabKey.CLUSTER_LOAD,
-      title: t('clusterDetail.troubleshoot.perfAdvisorClusterLoadTab')
-    },
-    {
-      key: ConfigTabKey.METRICS,
-      title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
-    }
-  ];
-
-  // On a query/anomaly drilldown, hide the horizontal Cluster Load / Metrics
-  // tabs and render only the drilldown content.
-  if (isPaDrilldownUrl()) {
+  // In online mode this collector scrapes the universe but keeps nothing - every view below reads
+  // local data, so they would all render empty. Say where the data went instead.
+  if (registrationMode === PaRegistrationMode.ONLINE) {
     return (
-      <Box>
-        <PerfAdvisorOverviewDashboard
-          apiUrl={apiUrl}
-          timezone={timezone}
-          universeUuid={universeUuid}
-          registrationStatus={registrationStatus}
-        />
+      <Box p={4} data-testid="PerfAdvisorTabs-OnlineMode">
+        <Typography variant="body1">{t('clusterDetail.troubleshoot.onlineModeTitle')}</Typography>
+        <Box mt={1}>
+          <Typography variant="body2" color="textSecondary">
+            {t('clusterDetail.troubleshoot.onlineModeSubText')}
+          </Typography>
+        </Box>
       </Box>
     );
   }
 
+  // Key a drilldown apart from the dashboard: going Back from a drilldown then remounts the
+  // dashboard, which reads its state from the URL again instead of keeping the drilldown open.
   return (
     <Box>
-      <YBTabsPanel
-        defaultTab={tabToDisplay}
-        activeTab={tabToDisplay}
-        id="perf-advisor-config-tab-panel"
-      >
-        {tabConfig.map((tab) => (
-          <Tab eventKey={tab.key} title={tab.title} key={tab.key} unmountOnExit={true}>
-            <PerfAdvisorOverviewDashboard
-              universeUuid={universeUuid}
-              timezone={timezone}
-              apiUrl={apiUrl}
-              registrationStatus={registrationStatus}
-            />
-          </Tab>
-        ))}
-      </YBTabsPanel>
+      <PerfAdvisorOverviewDashboard
+        key={isPaDrilldownUrl() ? 'drilldown' : 'dashboard'}
+        universeUuid={universeUuid}
+        timezone={timezone}
+        apiUrl={apiUrl}
+        registrationStatus={registrationStatus}
+        registrationMode={registrationMode}
+      />
     </Box>
   );
 };
-
-// Export with withRouter to get location and router props
-export const PerfAdvisorTabs = withRouter(PerfAdvisorTabsComponent);

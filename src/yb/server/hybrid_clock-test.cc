@@ -31,8 +31,11 @@
 //
 
 #include <algorithm>
+#include <string>
+#include <vector>
 
 #include "yb/util/logging.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "yb/server/hybrid_clock.h"
@@ -41,6 +44,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
@@ -216,6 +220,52 @@ TEST_F(HybridClockTest, CompareHybridClocksToDelta) {
       HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
       HybridTime::FromMicrosecondsAndLogicalValue(1000, 9),
       MonoDelta::FromMicroseconds(1)));
+}
+
+namespace {
+
+size_t CountOccurrences(
+    const std::string& haystack, const std::string& needle) {
+  size_t count = 0;
+  for (auto pos = haystack.find(needle); pos != std::string::npos;
+       pos = haystack.find(needle, pos + needle.size())) {
+    ++count;
+  }
+  return count;
+}
+
+} // anonymous namespace
+
+// Regression test for #33606.
+TEST(ClockDiagnosticsTest, CollectedOnceWhenClockUnsynchronized) {
+  auto read_clock_concurrently = [] {
+    FLAGS_logtostderr = true;
+    MockClock mock_clock;
+    mock_clock.Set(STATUS(ServiceUnavailable, "Clock unsynchronized"));
+    scoped_refptr<HybridClock> clock(new HybridClock(mock_clock.AsClock()));
+    CHECK_OK(clock->Init());
+
+    constexpr int kNumClockReaders = 8;
+    std::vector<scoped_refptr<Thread>> readers;
+    for (int i = 0; i < kNumClockReaders; ++i) {
+      scoped_refptr<Thread> reader;
+      CHECK_OK(Thread::Create("test", "clock_reader", [&clock]() {
+        HybridTime hybrid_time;
+        uint64_t max_error_usec;
+        clock->NowWithError(&hybrid_time, &max_error_usec);
+      }, &reader));
+      readers.push_back(reader);
+    }
+    for (const auto& reader : readers) {
+      reader->Join();
+    }
+  };
+
+  auto collected_once = [](const std::string& output) {
+    return CountOccurrences(output, "chronyc tracking") == 1;
+  };
+
+  ASSERT_DEATH(read_clock_concurrently(), ::testing::Truly(collected_once));
 }
 
 }  // namespace server

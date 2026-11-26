@@ -12,6 +12,7 @@
 //
 #include "yb/common/consistent_read_point.h"
 
+#include <algorithm>
 #include <mutex>
 #include <type_traits>
 #include <utility>
@@ -40,9 +41,19 @@ void ConsistentReadPoint::SetReadTimeUnlocked(
 }
 
 void ConsistentReadPoint::SetCurrentReadTimeUnlocked(ClampUncertaintyWindow clamp) {
+  // Picking a fresh read time must not discard the statement's in_txn_limit if one was set via
+  // SetInTxnLimit: callers such as PgClientSession's clamping and Batcher's fan-out read time
+  // picking run after the limit was chosen for the statement. The ReadHybridTime constructors
+  // default in_txn_limit to kMax ("no cutoff, see all own intents"), which is only correct when
+  // no statement limit exists. This is equivalent on the wire when the preserved value is
+  // invalid, because ReadHybridTime::ToPB collapses an invalid in_txn_limit to kMax.
+  const auto in_txn_limit = read_time_.in_txn_limit;
   SetReadTimeUnlocked(
       clamp ? ReadHybridTime::SingleTime(clock_->Now())
             : ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
+  if (in_txn_limit) {
+    read_time_.in_txn_limit = in_txn_limit;
+  }
 }
 
 void ConsistentReadPoint::SetReadTime(
@@ -128,6 +139,37 @@ void ConsistentReadPoint::Restart() {
   local_limits_.swap(restarts_);
   restarts_.clear();
   read_time_.read = restart_read_ht_;
+}
+
+void ConsistentReadPoint::CapGlobalLimit(HybridTime cap) {
+  std::lock_guard lock(mutex_);
+  if (!read_time_ || read_time_.global_limit <= cap) {
+    return;
+  }
+  read_time_.global_limit = std::max(read_time_.read, cap);
+  read_time_.local_limit = std::min(read_time_.local_limit, read_time_.global_limit);
+  for (auto& [_, local_limit] : local_limits_) {
+    local_limit = std::min(local_limit, read_time_.global_limit);
+  }
+}
+
+void ConsistentReadPoint::CapLocalLimit(TabletIdView tablet, HybridTime cap) {
+  std::lock_guard lock(mutex_);
+  if (!read_time_) {
+    return;
+  }
+  UpdateLimitsMapUnlocked(
+      tablet, std::min(read_time_.global_limit, std::max(read_time_.read, cap)), &local_limits_);
+}
+
+ConsistentReadPoint::HybridTimeMap ConsistentReadPoint::RestartLocalLimits() const {
+  std::lock_guard lock(mutex_);
+  return IsRestartRequiredUnlocked() ? restarts_ : local_limits_;
+}
+
+HybridTime ConsistentReadPoint::GetRestartReadHt() const {
+  std::lock_guard lock(mutex_);
+  return restart_read_ht_;
 }
 
 void ConsistentReadPoint::Defer() {

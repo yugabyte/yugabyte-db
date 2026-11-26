@@ -28,9 +28,9 @@ pub enum ParallelOption {
 impl ToSql for ParallelOption {
     fn to_sql(&self, _context: &PgrxSql) -> eyre::Result<String> {
         let value = match self {
-            ParallelOption::Safe => String::from("SAFE"),
-            ParallelOption::Restricted => String::from("RESTRICTED"),
-            ParallelOption::Unsafe => String::from("UNSAFE"),
+            Self::Safe => String::from("SAFE"),
+            Self::Restricted => String::from("RESTRICTED"),
+            Self::Unsafe => String::from("UNSAFE"),
         };
         Ok(value)
     }
@@ -47,9 +47,9 @@ pub enum FinalizeModify {
 impl ToSql for FinalizeModify {
     fn to_sql(&self, _context: &PgrxSql) -> eyre::Result<String> {
         let value = match self {
-            FinalizeModify::ReadOnly => String::from("READ_ONLY"),
-            FinalizeModify::Shareable => String::from("SHAREABLE"),
-            FinalizeModify::ReadWrite => String::from("READ_WRITE"),
+            Self::ReadOnly => String::from("READ_ONLY"),
+            Self::Shareable => String::from("SHAREABLE"),
+            Self::ReadWrite => String::from("READ_WRITE"),
         };
         Ok(value)
     }

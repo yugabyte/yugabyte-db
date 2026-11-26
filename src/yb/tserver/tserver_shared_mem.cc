@@ -50,8 +50,6 @@ DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
 
 DECLARE_bool(pg_client_use_shared_memory);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(enable_object_lock_fastpath);
 
 using namespace std::literals;
 
@@ -231,7 +229,7 @@ class SharedExchangeHeader {
 namespace {
 
 struct PgSessionSharedHeader {
-  PgSessionLockOwnerTagShared object_locking_data;
+  PgSessionObjectLockData object_locking_data;
 
   // Oldest live PG snapshot read-point serial published by the backend (0 = none).
   // Written by postgres via pggate; read by tserver when resolving history retention pins.
@@ -259,11 +257,6 @@ TServerSharedData::TServerSharedData() {
 TServerSharedData::~TServerSharedData() = default;
 
 Status TServerSharedData::AllocatorsInitialized(SharedMemoryBackingAllocator& allocator) {
-  if (FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks) {
-    object_lock_state_ =
-        VERIFY_RESULT(allocator.MakeUnique<docdb::ObjectLockSharedState>(allocator));
-  }
-
   fully_initialized_ = true;
   return Status::OK();
 }
@@ -472,6 +465,10 @@ void SharedExchange::ResetBusy() {
   return header_.ResetBusy();
 }
 
+bool SharedExchange::busy() const {
+  return header_.busy();
+}
+
 void SharedExchange::Respond(size_t size) {
   header_.Respond(size);
 }
@@ -533,7 +530,9 @@ void SharedExchangeRunnable::CompleteShutdown() {
 }
 
 bool SharedExchangeRunnable::ReadyToShutdown() const {
-  return !stop_future_.valid() || stop_future_.wait_for(0s) == std::future_status::ready;
+  // Busy means an in-flight request; do not destroy the session under it (GH #33616).
+  return (!stop_future_.valid() || stop_future_.wait_for(0s) == std::future_status::ready) &&
+         !exchange_.busy();
 }
 
 class PgSessionSharedMemoryManager::Impl {
@@ -586,7 +585,7 @@ class PgSessionSharedMemoryManager::Impl {
     return *exchange_;
   }
 
-  PgSessionLockOwnerTagShared& object_locking_data() {
+  PgSessionObjectLockData& object_locking_data() {
     return header().object_locking_data;
   }
 
@@ -685,7 +684,7 @@ SharedExchange& PgSessionSharedMemoryManager::exchange() {
   return impl_->exchange();
 }
 
-PgSessionLockOwnerTagShared& PgSessionSharedMemoryManager::object_locking_data() {
+PgSessionObjectLockData& PgSessionSharedMemoryManager::object_locking_data() {
   return impl_->object_locking_data();
 }
 
@@ -697,10 +696,15 @@ uint64_t PgSessionSharedMemoryManager::session_id() const {
   return impl_->session_id();
 }
 
-bool TServerSharedData::IsCronLeader() const {
+bool TServerSharedData::HasCronLease() const {
   // We are the leader if we have a valid lease time that has not expired.
-  auto lease_end = cron_leader_lease_.load();
+  auto lease_end = cron_lease_end_.load();
   return lease_end.Initialized() && lease_end > MonoTime::Now();
+}
+
+bool TServerSharedData::CanCronStartJobs() const {
+  // We are the active leader only if we have not stepped down and still hold a valid lease.
+  return cron_can_start_jobs_.load() && HasCronLease();
 }
 
 std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id) {

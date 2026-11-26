@@ -15,6 +15,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { useToggle } from 'react-use';
 import { Typography, makeStyles } from '@material-ui/core';
+
+import { retryTask } from '@app/v2/api/task/task';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
 import { AlertVariant, YBAlert, YBButton } from '../../../../components';
 import { DBRollbackModal } from '../../../universe/universe-actions/rollback-upgrade/DBRollbackModal';
@@ -22,7 +24,6 @@ import { YBProgress, YBProgressBarState } from '../../../../components/YBProgres
 import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
 import { useBannerCommonStyles } from './BannerStyles';
 import { useRefetchTasks } from '../../TaskUtils';
-import { retryTasks } from '../drawerComp/api';
 import { TaskBannerCompProps } from './dtos';
 import ErrorIcon from '../../../../assets/error.svg?img';
 
@@ -87,7 +88,7 @@ export const TaskFailedSoftwareUpgradeBanner: FC<TaskBannerCompProps> = ({
       return dispatch(fetchUniverseInfoResponse(response.payload));
     });
   };
-  const doRetryTask = useMutation(() => retryTasks(currentTask?.id), {
+  const doRetryTask = useMutation(() => retryTask(currentTask.id, {}), {
     onSuccess: () => {
       toast.success(t('messages.taskRetrySuccess', { keyPrefix: 'taskDetails.actions' }));
     },

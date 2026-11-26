@@ -9,6 +9,8 @@ menu:
     identifier: retry-task
     parent: manage-deployments
     weight: 75
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -71,7 +73,7 @@ Note that some operations, such as taking [universe backups](../../back-up-resto
 
 For some failures, a retry of the task might continue to fail indefinitely. For example, an incorrect flag value might have been specified during a flag update operation. In such cases, run a new flag update operation with the corrected flag value instead of retrying the failed operation. You can fix the operation parameters instead of retrying for the following operations:
 
-- [Flag updates](../edit-config-flags/)
+- [Flag updates](../../scale-deployments/edit-config-flags/)
 - [Upgrade Linux Version](../upgrade-nodes/)
-- [Update Kubernetes overrides](../edit-helm-overrides/)
-- [Changing the instance configuration](../edit-universe/) of a Kubernetes universe
+- [Update Kubernetes overrides](../../scale-deployments/edit-helm-overrides/)
+- [Changing the instance configuration](../../scale-deployments/edit-universe/#vertical-scaling) of a Kubernetes universe

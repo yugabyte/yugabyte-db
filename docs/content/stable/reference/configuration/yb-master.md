@@ -688,6 +688,17 @@ Default: `50`
 
 Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
+##### --load_balancer_min_free_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Minimum percentage of a YB-TServer's total disk capacity, summed across all of its data and WAL directories, that must remain free after hosting a new tablet replica. The cluster balancer rejects a YB-TServer as the destination for a replica if hosting it would leave less than this percentage of disk free. Disk usage is estimated from the usage the YB-TServer reported in its last heartbeat, plus the full size of every replica it is already starting. YB-TServers that have not reported their disk capacity are never rejected. The default matches the [--reject_writes_min_disk_space_pct](../yb-tserver/#reject-writes-min-disk-space-pct) threshold past which a YB-TServer rejects writes. Set to `0` to disable the check. This flag can be changed at runtime without restarting the server.
+
 ##### --load_balancer_num_idle_runs
 
 {{% tags/wrap %}}
@@ -952,10 +963,14 @@ Limits the number of total outstanding tablet splits. Limitation is disabled if 
 
 {{% tags/wrap %}}
 
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
-Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
+Limits the number of outstanding tablet splits per node. Limit includes tablets that are performing post-split compactions.
+
+- `-1` (default): the limit is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise).
+- `0`: limitation is disabled.
+- A positive value is used as-is.
 
 ##### --enable_tablet_split_of_pitr_tables
 
@@ -965,6 +980,19 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
+
+##### --enable_tablet_split_of_uncommitted_ysql_tables
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Enables tablet splitting of a YSQL table whose creating DDL transaction has not committed.
+
+When `false`, YB-Master refuses automatic splits and splits you start manually until that transaction commits. A table that is still being created can grow quickly when the [new-relation fast path](../../../explore/transactions/new-table-writes/) writes its rows to the main store immediately, and splitting it during that load creates extra tablets. Each new tablet reserves memory from a tablet-server-wide budget, and the forced flushes can block writes past the client deadline.
 
 ##### --prevent_split_for_ttl_tables_for_seconds
 
@@ -1142,10 +1170,10 @@ Number of seconds to retain log files. Log files older than this value will be d
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `100`
+Default: `102400`
 {{% /tags/wrap %}}
 
-Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+Stop retaining logs if the space available for the logs falls below this limit, specified in kilobytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
 ##### --cdc_max_stream_intent_records
 
@@ -1247,6 +1275,41 @@ When set to `true`, CDC does not block DDLs that cause table rewrites on tables 
 When set to `false`, any DDL that causes a table rewrite is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1).
 
 For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
+
+##### --cdc_create_stream_alter_table_dispatch_batch_size
+
+{{% tags/wrap %}}
+
+Default: `10`
+{{% /tags/wrap %}}
+
+Number of tables processed in each batch when YB-Master sets CDC retention barriers on the tablets of a namespace during CDC stream creation. A value less than or equal to `0` disables batching, and all tables are processed in a single batch.
+
+This flag can be changed at runtime without restarting YB-Master.
+
+##### --max_concurrent_alter_table_rpcs
+
+{{% tags/wrap %}}
+
+Default: `10`
+{{% /tags/wrap %}}
+
+Maximum number of AlterTable RPCs that YB-Master can have in flight at once when setting CDC retention barriers during CDC stream creation. A value of `0` disables throttling. A positive value sets a global cap. A negative value derives the cap from [max_concurrent_alter_table_rpcs_per_tserver](#max-concurrent-alter-table-rpcs-per-tserver) multiplied by the number of live YB-TServers.
+
+On releases that contain the fix for {{<issue 33260>}}, the default is `0`, so throttling is disabled by default. The default of `10` applies to the affected releases; see [TA-19066](../../../releases/techadvisories/ta-19066/).
+
+This flag can be changed at runtime without restarting YB-Master.
+
+##### --max_concurrent_alter_table_rpcs_per_tserver
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Maximum number of AlterTable RPCs that YB-Master can have in flight at once per YB-TServer. Used only when [max_concurrent_alter_table_rpcs](#max-concurrent-alter-table-rpcs) is negative, in which case this value is multiplied by the number of live YB-TServers to obtain the global cap.
+
+This flag can be changed at runtime without restarting YB-Master.
 
 ### LISTEN/NOTIFY flags
 
@@ -1492,6 +1555,50 @@ Default: `true`
 
 Enables YSQL backends to generate and consume invalidation messages incrementally for schema changes. When enabled (true), invalidation messages are propagated via the `pg_yb_invalidation_messages` per-database catalog table. Details of the invalidation messages generated by a DDL are also logged when [ysql_log_min_messages](../yb-tserver/#ysql-log-min-messages) is set to `DEBUG1` or when `yb_debug_log_catcache_events` is set to true. When disabled, schema changes cause a full catalog cache refresh on existing backends, which can result in a latency and memory spike on existing YSQL backends.
 
+##### --enable_ysql_catalog_prefetch_admission
+
+{{% tags/wrap %}}
+
+Default: `true` on a new universe. During an upgrade, `false` until the upgrade is finalized, then `true`.
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+When `true`, the YB-Master leader limits how many YSQL catalog prefetches it serves at a time. Ordinary catalog reads stay unlimited.
+
+The limit stays off until every YB-Master and YB-TServer in the universe has been upgraded. A YB-TServer from an earlier version does not report that a read is a prefetch, so applying the limit before then would cover only the upgraded servers. A value you set yourself takes effect immediately and is kept when the upgrade is finalized.
+
+The number of prefetches allowed at once is [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches). The share of that limit available to a prefetch that is just starting is [master_new_ysql_catalog_prefetch_percent](#master-new-ysql-catalog-prefetch-percent).
+
+A prefetch past the limit is rejected. The client retries after backing off.
+
+##### --master_max_concurrent_ysql_catalog_prefetches
+
+{{% tags/wrap %}}
+
+Default: `-1` (resolved at startup to max(8, 2 × cores))
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`.
+
+`-1`, the default, is resolved once at process startup to `max(8, 2 * cores)` for this YB-Master. `0` means no limit. Setting the flag to `-1` after startup also means no limit, because that resolution runs only at startup.
+
+A prefetch beyond the limit is rejected, and the client retries until its RPC deadline (10 minutes by default) expires, and then the connection fails. Set the limit at or above what the leader can serve. A lower limit makes those callers wait out their deadline and fail.
+
+##### --master_new_ysql_catalog_prefetch_percent
+
+{{% tags/wrap %}}
+
+Default: `50`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`.
+
+A prefetch is a sequence of paged reads. Holding new prefetches to this share leaves room for sequences already under way to finish.
 
 ## Performance tuning
 
@@ -1581,7 +1688,7 @@ Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_m
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -1804,10 +1911,12 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+If the value is `-1` (default) or `0`, the thread count is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise). A positive value is used as-is.
 
 ##### --auto_compact_check_interval_sec
 
@@ -2044,6 +2153,32 @@ Default: `300000`
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
+### Multitenancy (Resource Governance) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+For information on other Resource Governance configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governance-flags).
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_count
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The maximum number of non-template databases that can be created. `CREATE DATABASE` fails if it would exceed this limit. Because per-database cgroups are weighted equally, this cap sets the effective per-database minimum CPU as `1 / qos_max_db_count` (for example, a value of `20` guarantees each database at least 5% of the available CPU). Has no effect unless `enable_qos` is `true`.
+
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
@@ -2080,18 +2215,12 @@ Number of minutes to wait before no longer displaying a dead node (no heartbeat)
 ##### --ysql_enable_write_pipelining
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="1298">}}
 {{<tags/feature/restart-needed>}}
 {{% tags/feature/t-server %}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
-
-Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
-
-This flag also needs to be enabled on [YB-TServer servers](../yb-tserver/#ysql_enable_write_pipelining).
-
 
 ## Security
 
@@ -2154,6 +2283,20 @@ Default: `false`
 Enables server-server (node-to-node) encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-TServer servers must also have their [--use_node_to_node_encryption](../yb-tserver/#use-node-to-node-encryption) flag enabled.
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
+
+##### --openssl_require_fips
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Requires the YB-Master to use the OpenSSL FIPS provider. The YB-Master fails to start if the provider can't be loaded.
+
+Set the same value on every YB-Master and YB-TServer. See [--openssl_require_fips](../yb-tserver/#openssl-require-fips) for YSQL processes, including YSQL Connection Manager.
+
+The flag selects the OpenSSL FIPS provider. To encrypt node-to-node communication, also enable [use_node_to_node_encryption](#use-node-to-node-encryption).
 
 ##### --cipher_list
 
@@ -2256,13 +2399,14 @@ When YSQL authentication is enabled, you can sign into ysqlsh using the default 
 ##### --ysql_enable_profile
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
-When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-Master and every YB-TServer. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use.
 
 ##### --pgsql_proxy_bind_address
 
@@ -2293,17 +2437,29 @@ Deprecated. Use `--ysql_hba_conf_csv` instead.
 ##### --ysql_hba_conf_csv
 
 {{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
+
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 {{% /tags/wrap %}}
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. For client connections, set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
+
 For details on using `--ysql_hba_conf_csv` to specify client authentication, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
 If a setting includes a comma (`,`) or double quotes (`"`), the setting should be enclosed in double quotes. In addition, double quotes inside the quoted text should be doubled (`""`).
 
-Suppose you have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
+Suppose you have two fields:
+
+```text
+host all all 127.0.0.1/0 password
+```
+
+and
+
+```text
+host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"
+```
 
 Because the second field includes double quotes (`"`) around one of the settings, you need to double the quotes and enclose the entire field in quotes, as follows:
 
@@ -2317,6 +2473,23 @@ To set the flag, join the fields using a comma (`,`) and enclose the final flag 
 --ysql_hba_conf_csv='host all all 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""'
 ```
 
+##### --ysql_ident_conf_csv
+
+{{% tags/wrap %}}
+
+Default: `""`
+{{% /tags/wrap %}}
+
+Specifies a comma-separated list of PostgreSQL user name mapping rules that is written to the `ysql_ident.conf` file. These rules define mappings from external users to database roles. See [Authentication methods](../../../secure/authentication/) for details.
+
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. For client connections, set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
+
+For example:
+
+```sh
+--ysql_ident_conf_csv='map_x user_foo yb_user_foo'
+```
+
 ##### --ysql_pg_conf
 
 {{% tags/wrap %}}{{<tags/feature/deprecated>}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
@@ -2326,10 +2499,22 @@ Deprecated. Use `--ysql_pg_conf_csv` instead.
 ##### --ysql_pg_conf_csv
 
 {{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
 {{% /tags/wrap %}}
 
 Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file. If internal quotation marks are required, surround each configuration pair having single quotation marks with double quotation marks.
+
+This flag can be updated at runtime without restarting the YugabyteDB server. However, whether an individual PostgreSQL parameter takes effect depends on its configuration context:
+
+- **Reloadable parameters** (context: `sighup`): Take effect immediately when the configuration is reloaded
+- **Startup-only parameters** (context: `postmaster`): Require a PostgreSQL server restart to take effect
+
+For example, `shared_buffers` is a postmaster parameter; changing it via `ysql_pg_conf_csv` will update the configuration file, but the new value won't become active until PostgreSQL restarts.
+
+To check if a parameter can be reloaded dynamically, query the `pg_settings` table:
+
+```sql
+SELECT name, context, pending_restart FROM pg_settings WHERE name = 'parameter_name';
+```
 
 For example:
 
@@ -2385,7 +2570,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-Master flag `yb_enable_read_committed_isolation` is set to `true`.
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-Master flag `yb_enable_read_committed_isolation` is set to `true`.
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
@@ -2398,15 +2583,16 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot isolation. See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

@@ -43,13 +43,13 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/rocksdb/db/filename.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/path_util.h"
@@ -65,7 +65,6 @@ using std::string;
 using std::vector;
 
 using consensus::ConsensusMetadataPB;
-using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::RaftGroupReplicaSuperBlockPB;
 
@@ -277,7 +276,7 @@ int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(size_t index,
     CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
       for (const auto& tablet : tablets) {
         // All tablets wal directories start with the string 'tablet-'
-        if (tablet == Substitute("tablet-$0", tablet_id)) {
+        if (tablet == Format("tablet-$0", tablet_id)) {
           auto tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
           count += CountFilesInDir(tablet_wal_dir);
         }
@@ -417,9 +416,9 @@ Status ExternalMiniClusterFsInspector::WaitForMinFilesInTabletWalDirOnTS(size_t 
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  return STATUS(TimedOut, Substitute("Timed out waiting for number of WAL segments on tablet $0 "
-                                     "on TS $1 to be $2. Found $3",
-                                     tablet_id, index, count, seen));
+  return STATUS(TimedOut, Format("Timed out waiting for number of WAL segments on tablet $0 "
+                                 "on TS $1 to be $2. Found $3",
+                                 tablet_id, index, count, seen));
 }
 
 Status ExternalMiniClusterFsInspector::WaitForReplicaCount(int expected, const MonoDelta& timeout) {
@@ -436,9 +435,9 @@ Status ExternalMiniClusterFsInspector::WaitForReplicaCount(int expected, const M
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  return STATUS(TimedOut, Substitute("Timed out waiting for a total replica count of $0. "
-                                     "Found $1 replicas",
-                                     expected, found));
+  return STATUS(TimedOut, Format("Timed out waiting for a total replica count of $0. "
+                                 "Found $1 replicas",
+                                 expected, found));
 }
 
 Status ExternalMiniClusterFsInspector::WaitForTabletDataStateOnTS(size_t index,
@@ -455,7 +454,7 @@ Status ExternalMiniClusterFsInspector::WaitForTabletDataStateOnTS(size_t index,
     if (deadline.ComesBefore(MonoTime::Now())) break;
     SleepFor(MonoDelta::FromMilliseconds(5));
   }
-  return STATUS(TimedOut, Substitute(
+  return STATUS(TimedOut, Format(
       "Timed out after $0 waiting for tablet $1 on TS-$2 to be in data state $3: $4",
       MonoTime::Now().GetDeltaSince(start).ToString(),
       tablet_id,
@@ -482,10 +481,10 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
   string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   RETURN_NOT_OK_PREPEND(ListFilesInDir(ts_wal_dir, &tables),
-                        Substitute("Unable to list files from directory $0", ts_wal_dir));
+                        Format("Unable to list files from directory $0", ts_wal_dir));
 
   string table_wal_dir = JoinPathSegments(ts_wal_dir, tables[0]);
-  string tablet_wal_dir = JoinPathSegments(table_wal_dir, Substitute("tablet-$0", tablet_id));
+  string tablet_wal_dir = JoinPathSegments(table_wal_dir, Format("tablet-$0", tablet_id));
 
   string error_msg;
   vector<string> entries;
@@ -532,9 +531,9 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  return STATUS(TimedOut, Substitute("Timed out waiting for file pattern on "
-                                     "tablet $0 on TS $1 in directory $2",
-                                     tablet_id, ts_index, tablet_wal_dir),
+  return STATUS(TimedOut, Format("Timed out waiting for file pattern on "
+                                 "tablet $0 on TS $1 in directory $2",
+                                 tablet_id, ts_index, tablet_wal_dir),
                           error_msg + "entries: " + JoinStrings(entries, ", "));
 }
 

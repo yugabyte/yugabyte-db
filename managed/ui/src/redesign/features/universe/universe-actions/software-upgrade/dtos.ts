@@ -45,7 +45,7 @@ export interface YbdbReleaseArtifact {
   file_name?: string;
   package_url?: string;
   platform: 'LINUX' | 'KUBERNETES';
-  architecture: 'x86_64' | 'aarch64';
+  architecture: 'x86_64' | 'aarch64' | null;
 }
 
 /**

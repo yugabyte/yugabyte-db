@@ -1,6 +1,7 @@
 import {
   getClusterByType,
-  hasDedicatedNodes,
+  getClusterProviderSpec,
+  hasDedicatedNodesForCluster,
   isKubernetesCluster,
   useEditUniverseContext
 } from '../EditUniverseUtils';
@@ -13,7 +14,11 @@ export const HardwareTab = () => {
   const { universeData } = useEditUniverseContext();
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const isK8s = isKubernetesCluster(primaryCluster);
-  const { useK8CustomResources } = useRuntimeConfigValues(primaryCluster?.provider_spec?.provider);
-  const hasDedicatedTo = (isK8s && useK8CustomResources) || hasDedicatedNodes(universeData!);
+  const { useK8CustomResources } = useRuntimeConfigValues(
+    getClusterProviderSpec(primaryCluster)?.provider
+  );
+  const hasDedicatedTo =
+    (isK8s && useK8CustomResources) ||
+    hasDedicatedNodesForCluster(universeData!, primaryCluster);
   return hasDedicatedTo ? <MasterTserverDedicatedView /> : <NonDedicatedView />;
 };

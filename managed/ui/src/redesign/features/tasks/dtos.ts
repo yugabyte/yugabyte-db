@@ -33,17 +33,21 @@ export type TaskState = (typeof TaskState)[keyof typeof TaskState];
 export const TaskType = {
   GFlags_UPGRADE: 'GFlagsUpgrade',
   EDIT: 'Update',
+  ROLLBACK_EDIT_UNIVERSE: 'RollbackEditUniverse',
   SOFTWARE_UPGRADE: 'SoftwareUpgrade',
   ROLLBACK_UPGRADE: 'RollbackUpgrade',
   FINALIZE_UPGRADE: 'FinalizeUpgrade',
   RESIZE_NODE: 'ResizeNode',
-  RESTORE_YBA_BACKUP: 'RestoreYbaBackup'
+  RESTORE_YBA_BACKUP: 'RestoreYbaBackup',
+  MANAGE_CROSS_CLOUD_FEDERATION: 'ManageCrossCloudFederation'
 };
 export const TargetType = {
   UNIVERSE: 'Universe',
+  CLUSTER: 'Cluster',
   BACKUP: 'Backup',
   GFlags: 'GFlags'
 };
+export type TargetType = (typeof TargetType)[keyof typeof TargetType];
 
 export const ServerType = {
   MASTER: 'MASTER',
@@ -111,6 +115,8 @@ export interface Task {
   abortable: boolean;
   retryable: boolean;
   canRollback: boolean;
+  /** UUID of the first task in the retry/rollback chain (clean universe state), if any. */
+  originalTaskUUID?: string;
   correlationId: string;
   userEmail: string;
   subtaskInfos: SubTaskInfo[];

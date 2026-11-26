@@ -42,7 +42,21 @@ int64_t GetTCMallocPageHeapFreeBytes();
 int64_t GetTCMallocPageHeapUnmappedBytes();
 
 // Attempts to return the given number of bytes to the operating system.
-void TCMallocReleaseMemoryToSystem();
+void TCMallocReleaseMemoryToSystem(int64_t bytes);
+
+// Like TCMallocReleaseMemoryToSystem, but Google TCMalloc also releases the free pages that it
+// would otherwise keep mapped to cover the peak demand of the last few minutes.
+void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes);
+
+// Like TCMallocReleaseMemoryToSystem, but for this call only, Google TCMalloc keeps the free pages
+// in partially used hugepages that cover the peak demand of the given lookbacks instead of those
+// of its process-wide lookbacks. Zero disables the corresponding lookback.
+void TCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms);
+
+// Returns the objects cached in every per-CPU cache to the central free lists. Does nothing unless
+// Google TCMalloc runs with per-CPU caches.
+void TCMallocDrainCpuCaches();
 
 void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 

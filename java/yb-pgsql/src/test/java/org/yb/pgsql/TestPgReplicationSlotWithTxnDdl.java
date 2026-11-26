@@ -1,0 +1,2815 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+package org.yb.pgsql;
+
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
+
+import com.google.common.net.HostAndPort;
+import com.yugabyte.PGConnection;
+import com.yugabyte.replication.LogSequenceNumber;
+import com.yugabyte.replication.PGReplicationConnection;
+import com.yugabyte.replication.PGReplicationStream;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.pgsql.PgOutputMessageDecoder.*;
+
+@RunWith(value = YBTestRunner.class)
+public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
+  private static final String YB_OUTPUT_PLUGIN_NAME =
+      PgReplicationSlotTestUtil.YB_OUTPUT_PLUGIN_NAME;
+  private static final int INT4_OID = 23;
+  private static final int TEXT_OID = 25;
+  private static final int INT8_OID = 20;
+  private static final int VARCHAR_OID = 1043;
+
+  @Override
+  protected int getInitialNumTServers() {
+    return PgReplicationSlotTestUtil.NUM_TSERVERS;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    PgReplicationSlotTestUtil.addCommonTServerFlags(flagMap);
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
+    flagMap.put("vmodule", "cdcsdk_virtual_wal=4");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    PgReplicationSlotTestUtil.addCommonMasterFlags(flagMap);
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
+    return flagMap;
+  }
+
+  private void createSlot(PGReplicationConnection replConnection, String slotName,
+      String pluginName) throws Exception {
+    PgReplicationSlotTestUtil.createSlot(replConnection, slotName, pluginName);
+  }
+
+  private List<PgOutputMessage> receiveMessage(PGReplicationStream stream, int count)
+      throws Exception {
+    return PgReplicationSlotTestUtil.receiveMessage(stream, count);
+  }
+
+  private PGReplicationStream startStream(PGReplicationConnection replConnection, String slotName,
+      String publicationName) throws Exception {
+    return replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", publicationName)
+        .start();
+  }
+
+  private static PgOutputRelationMessage relation(String tableName,
+      PgOutputRelationMessageColumn... columns) {
+    return PgOutputRelationMessage.CreateForComparison(
+        "public", tableName, 'c' /* replicaIdentity */, Arrays.asList(columns));
+  }
+
+  private static PgOutputRelationMessageColumn column(String name, int dataTypeOid) {
+    return PgOutputRelationMessageColumn.CreateForComparison(name, dataTypeOid);
+  }
+
+  // A null value is a NULL column.
+  private static PgOutputInsertMessage insert(String... values) {
+    List<PgOutputMessageTupleColumn> columnValues = new ArrayList<>();
+    for (String value : values) {
+      columnValues.add(value == null
+          ? new PgOutputMessageTupleColumnNull()
+          : new PgOutputMessageTupleColumnValue(value));
+    }
+    return PgOutputInsertMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) values.length, columnValues));
+  }
+
+  // The slot's replica identity is CHANGE, so there is no old tuple.
+  private static PgOutputUpdateMessage update(String... values) {
+    List<PgOutputMessageTupleColumn> columnValues = new ArrayList<>();
+    for (String value : values) {
+      columnValues.add(new PgOutputMessageTupleColumnValue(value));
+    }
+    return PgOutputUpdateMessage.CreateForComparison(
+        null /* old_tuple */, new PgOutputMessageTuple((short) values.length, columnValues));
+  }
+
+  // A table rewrite re-inserts every existing row into the new relfilenode, with the added column
+  // materialized from its volatile DEFAULT. The rows can come in any order, so they are compared as
+  // a set of their leading values; the last column only has to carry a value.
+  private static void assertRewriteInserts(
+      List<PgOutputMessage> messages, List<List<String>> expectedLeadingValues) {
+    List<List<PgOutputMessageTupleColumn>> expectedRows = new ArrayList<>();
+    for (List<String> values : expectedLeadingValues) {
+      List<PgOutputMessageTupleColumn> row = new ArrayList<>();
+      for (String value : values) {
+        row.add(new PgOutputMessageTupleColumnValue(value));
+      }
+      expectedRows.add(row);
+    }
+
+    List<List<PgOutputMessageTupleColumn>> actualRows = new ArrayList<>();
+    for (PgOutputMessage message : messages) {
+      assertTrue("Expected a rewrite INSERT, got " + message,
+          message instanceof PgOutputInsertMessage);
+      PgOutputMessageTuple tuple = ((PgOutputInsertMessage) message).tuple;
+      int numLeading = expectedLeadingValues.get(0).size();
+      assertEquals(numLeading + 1, (int) tuple.numColumns);
+      assertTrue("Rewrite INSERT should materialize the added column",
+          tuple.columns.get(numLeading) instanceof PgOutputMessageTupleColumnValue);
+      actualRows.add(new ArrayList<>(tuple.columns.subList(0, numLeading)));
+    }
+
+    assertEquals(expectedRows.size(), actualRows.size());
+    assertTrue("Rewrite INSERTs " + actualRows + " do not match " + expectedRows,
+        actualRows.containsAll(expectedRows));
+  }
+
+  private static PgOutputBeginMessage beginMessage(int transactionId) {
+    return PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf(0L), transactionId);
+  }
+
+  private static PgOutputCommitMessage commitMessage() {
+    return PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf(0L), LogSequenceNumber.valueOf(0L));
+  }
+
+  // Pinning LSNs is brittle: any extra catalog write shifts them. BEGIN and COMMIT of one
+  // transaction carry the same commit LSN, the commit end LSN is greater, and the next
+  // transaction starts after that.
+  private static void assertMessages(
+      List<PgOutputMessage> expected, List<PgOutputMessage> actual) {
+      assertEquals(normalizeLsns(expected), normalizeLsns(actual));
+      assertLsnsIncrease(actual);
+  }
+
+  private static List<PgOutputMessage> normalizeLsns(List<PgOutputMessage> messages) {
+    List<PgOutputMessage> normalized = new ArrayList<>(messages.size());
+    for (PgOutputMessage message : messages) {
+      normalized.add(normalizeLsn(message));
+    }
+    return normalized;
+  }
+
+  private static PgOutputMessage normalizeLsn(PgOutputMessage message) {
+    if (message instanceof PgOutputBeginMessage) {
+      return beginMessage(((PgOutputBeginMessage) message).transactionId);
+    }
+    if (message instanceof PgOutputCommitMessage) {
+      return commitMessage();
+    }
+    return message;
+  }
+
+  private static void assertLsnsIncrease(List<PgOutputMessage> messages) {
+    LogSequenceNumber previous = null;
+    LogSequenceNumber beginLsn = null;
+    for (PgOutputMessage message : messages) {
+      if (message instanceof PgOutputBeginMessage) {
+        assertTrue("BEGIN before the previous transaction committed", beginLsn == null);
+        beginLsn = ((PgOutputBeginMessage) message).finalLSN;
+        previous = assertLsnAfter(previous, beginLsn);
+      } else if (message instanceof PgOutputCommitMessage) {
+        PgOutputCommitMessage commit = (PgOutputCommitMessage) message;
+        assertTrue("COMMIT without BEGIN", beginLsn != null);
+        assertEquals(beginLsn, commit.commitLSN);
+        previous = assertLsnAfter(previous, commit.endLSN);
+        beginLsn = null;
+      }
+    }
+    assertTrue("Transaction BEGIN without COMMIT", beginLsn == null);
+  }
+
+  private static LogSequenceNumber assertLsnAfter(
+      LogSequenceNumber previous, LogSequenceNumber current) {
+    if (previous != null) {
+      assertTrue(
+          "Expected LSN " + current + " to be greater than " + previous,
+          current.asLong() > previous.asLong());
+    }
+    return current;
+  }
+
+  // Adding a column in the middle of a transaction: the rows inserted before the DDL are decoded
+  // with the old schema and the rows inserted after it with the new one.
+  @Test
+  public void addColumnInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION, INSERT, RELATION, INSERT, COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void addColumnInsideTransactionWithRowFilter() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1 WHERE (a > 0)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("INSERT INTO t1 VALUES (-1, 'not_streamed', -10)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Same as addColumnInsideTransactionWithRowFilter, with a column list instead of a row filter.
+  @Test
+  public void addColumnInsideTransactionWithColumnList() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1 (a, b)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        // c is not in the column list, so it is not streamed.
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Dropping a column in the middle of a transaction.
+  @Test
+  public void dropColumnInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Multiple DDLs interleaved with DML in a single transaction.
+  @Test
+  public void multipleDdlsInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d text");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20, 'two_d')");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 'three_d')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, 3 * (RELATION, INSERT), COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+            column("d", TEXT_OID)),
+        insert("2", "two", "20", "two_d"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("d", TEXT_OID)),
+        insert("3", "three", "three_d"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A transaction whose DDL is rolled back: no change of the transaction is streamed and the
+  // schema used for subsequent changes is the one from before the transaction.
+  @Test
+  public void rolledBackDdlInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("ROLLBACK");
+
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three')");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION, INSERT, COMMIT of the single committed transaction.
+    List<PgOutputMessage> result = receiveMessage(stream, 4);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("3", "three"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A DDL committed in its own transaction is picked up by the changes of the following
+  // transactions.
+  @Test
+  public void ddlOnlyTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("COMMIT");
+
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 4);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(3),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // CREATE TABLE on a FOR ALL TABLES publication triggers a publication refresh mid-txn, and
+  // DROP COLUMN on an already-published table produces a synthetic DDL. Both must be ordered
+  // correctly with the surrounding DML of the same transaction.
+  @Test
+  public void createTableAndDropColumnInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c int)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'new1')");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("INSERT INTO t2 VALUES (2, 'new2')");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'old1')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION t2, INSERT t2, INSERT t2, RELATION t1 (post-drop), INSERT t1, COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "new1"),
+        insert("2", "new2"),
+        // Note that this relation message comes after the INSERT t2 messages, because it is sent
+        // with the first DML on table t1 after the DROP COLUMN DDL.
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "old1"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A multi-shard transaction containing DDL, then a single-shard insert. The follow-up DML must
+  // be decoded with the post-DDL schema, not the catalog snapshot used while replaying the DDL
+  // transaction.
+  @Test
+  public void singleShardInsertAfterTransactionalDdl() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 1, 1)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("INSERT INTO t1 VALUES (3, 4, 5)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION, INSERT, RELATION, INSERT, COMMIT of the first transaction, then
+    // BEGIN, INSERT, COMMIT of the next insert.
+    List<PgOutputMessage> result = receiveMessage(stream, 9);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", INT4_OID)),
+        insert("1", "1"),
+        relation("t1", column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID)),
+        insert("2", "1", "1"),
+        commitMessage(),
+        beginMessage(3),
+        insert("3", "4", "5"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void fastPathInsertAfterStandaloneDdlFollowingTransactionalDdl() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("COMMIT");
+
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20, 30)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION(a,b), INSERT, COMMIT of the DDL txn, then
+    // BEGIN, RELATION(a,b,c,d), INSERT, COMMIT of the fast-path insert.
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+            column("d", INT4_OID)),
+        insert("2", "two", "20", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Two DDLs back to back, with no DML between them. The first DML after both DDLs must be
+  // decoded with the schema that includes both new columns.
+  @Test
+  public void backToBackAddColumnsInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20, 30)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+            column("d", INT4_OID)),
+        insert("2", "two", "20", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A DDL rolled back to a savepoint must not be visible. The subsequent committed ADD COLUMN
+  // is. Historical reads do not pass savepoint metadata, so aborted-subtxn intents must not
+  // leak into catalog snapshots used for later DMLs.
+  @Test
+  public void addColumnRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Rows written after a ROLLBACK TO SAVEPOINT are decoded without the column added inside the
+  // savepoint. Its intents are still in the intents DB, so the historical catalog reads must skip
+  // the aborted subtransaction (#36047). Nothing overwrites the rolled back pg_attribute row before
+  // INSERT(2), unlike in addColumnRolledBackToSavepoint.
+  @Test
+  public void insertAfterAddColumnRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'discarded', 1)");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'kept')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c text");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'after', 'c3')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "kept"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
+        insert("3", "after", "c3"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Same as insertAfterAddColumnRolledBackToSavepoint, but the rolled back ADD COLUMN rewrites the
+  // table. Rows written after the ROLLBACK TO SAVEPOINT are decoded with the original relfilenode,
+  // not the one of the rewritten table, which is dropped by the rollback. The transaction also
+  // writes to t2, so that it has BEGIN records on tablets of different tables. Each one carries the
+  // full aborted set, so it does not matter which one the virtual WAL ships.
+  @Test
+  public void insertAfterRewriteRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t1 VALUES (0, 'before_slot')");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 1000)::int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'discarded', 1)");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("RELEASE SAVEPOINT s1");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'kept')");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c text");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'after', 'c3')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "kept"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
+        insert("3", "after", "c3"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // The publication refresh caused by a table rewrite reads the publication's tables within the
+  // transaction. An ALTER PUBLICATION ADD TABLE rolled back to a savepoint earlier in the
+  // transaction must not be visible to it, so the rows of that table are not streamed.
+  @Test
+  public void rewriteAfterAlterPublicationRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE t2");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int DEFAULT (random() * 1000)::int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'not_published')");
+      stmt.execute("COMMIT");
+
+      stmt.execute("INSERT INTO t2 VALUES (2, 'not_published')");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        commitMessage(),
+        beginMessage(3),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // The producer otherwise moves the safe time of a tablet past a transaction open for longer than
+  // cdc_resolve_intent_lag_threshold_ms, which would put it after the commit time that
+  // commitAtSameTime forces.
+  private void restartClusterForCommitTimeTie() throws Exception {
+    Map<String, String> flags = new HashMap<>();
+    flags.put("cdc_resolve_intent_lag_threshold_ms", "3600000");
+    restartClusterWithFlags(flags, flags);
+  }
+
+  private static String currentTransactionId(Statement stmt) throws Exception {
+    return getSingleRow(stmt, "SELECT yb_get_current_transaction()::text").getString(0);
+  }
+
+  // Commits the two open transactions at the same hybrid time, with
+  // TEST_commit_time_override_ht. They must have written all their intents.
+  private void commitAtSameTime(Statement stmt1, String txnId1, Statement stmt2, String txnId2)
+      throws Exception {
+    // The producer's safe time on the tablets of the transactions is behind this time until they
+    // commit.
+    Thread.sleep(1000);
+    long commitTime;
+    try (Statement stmt = connection.createStatement()) {
+      commitTime = getSingleRow(stmt, "SELECT yb_get_current_hybrid_time_lsn()").getLong(0);
+    }
+
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    try {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "TEST_commit_time_override_txn_ids", txnId1 + "," + txnId2);
+        setServerFlag(tServer, "TEST_commit_time_override_ht", Long.toString(commitTime));
+      }
+      stmt1.execute("COMMIT");
+      stmt2.execute("COMMIT");
+    } finally {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "TEST_commit_time_override_ht", "0");
+        setServerFlag(tServer, "TEST_commit_time_override_txn_ids", "");
+      }
+    }
+  }
+
+  // The virtual WAL streams transactions that commit at the same hybrid time as one, and ships the
+  // BEGIN record of only the one with the lowest DocDB transaction id. The aborted subtransaction
+  // set of the other one must still reach the walsender, or its catalog reads see an ADD COLUMN it
+  // rolled back to a savepoint.
+  @Test
+  public void commitTimeTieWithAddColumnRolledBackToSavepoint() throws Exception {
+    restartClusterForCommitTimeTie();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    String plainTable;
+    String ddlTable;
+    try (Connection conn1 = getConnectionBuilder().connect();
+         Connection conn2 = getConnectionBuilder().connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("BEGIN");
+      stmt1.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt2.execute("BEGIN");
+      stmt2.execute("INSERT INTO t2 VALUES (1, 'one')");
+      String txnId1 = currentTransactionId(stmt1);
+      String txnId2 = currentTransactionId(stmt2);
+
+      // The virtual WAL orders the transactions by the text form of their ids.
+      Statement ddlStmt;
+      if (txnId1.compareTo(txnId2) < 0) {
+        plainTable = "t1";
+        ddlTable = "t2";
+        ddlStmt = stmt2;
+      } else {
+        plainTable = "t2";
+        ddlTable = "t1";
+        ddlStmt = stmt1;
+      }
+      ddlStmt.execute("SAVEPOINT s1");
+      ddlStmt.execute("ALTER TABLE " + ddlTable + " ADD COLUMN d int");
+      ddlStmt.execute("ROLLBACK TO SAVEPOINT s1");
+      // Makes the walsender reload the relation within the transaction.
+      ddlStmt.execute("ALTER TABLE " + ddlTable + " ADD COLUMN c text");
+      ddlStmt.execute("INSERT INTO " + ddlTable + " VALUES (2, 'two', 'c2')");
+
+      commitAtSameTime(stmt1, txnId1, stmt2, txnId2);
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation(plainTable, column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation(ddlTable, column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation(ddlTable, column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
+        insert("2", "two", "c2"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Like commitTimeTieWithAddColumnRolledBackToSavepoint, but the first record of the transaction
+  // whose BEGIN is dropped that reaches the virtual WAL triggers a publication refresh. That record
+  // is not shipped, so the aborted subtransaction set comes with the refresh, which must not see
+  // the ALTER PUBLICATION ADD TABLE rolled back to a savepoint. If it did, the slot would stream
+  // t3. pgoutput drops the rows of t3, so this only shows in the xid of the insert into t1 after
+  // the insert into t3.
+  @Test
+  public void commitTimeTieWithAlterPublicationRolledBackToSavepoint() throws Exception {
+    restartClusterForCommitTimeTie();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE unpublished (a int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Connection conn1 = getConnectionBuilder().connect();
+         Connection conn2 = getConnectionBuilder().connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      // Writes to a table the slot does not stream, so the transactions get their ids without
+      // shipping a record.
+      stmt1.execute("BEGIN");
+      stmt1.execute("INSERT INTO unpublished VALUES (1)");
+      stmt2.execute("BEGIN");
+      stmt2.execute("INSERT INTO unpublished VALUES (2)");
+      String txnId1 = currentTransactionId(stmt1);
+      String txnId2 = currentTransactionId(stmt2);
+
+      // The virtual WAL orders the transactions by the text form of their ids.
+      Statement plainStmt;
+      Statement ddlStmt;
+      if (txnId1.compareTo(txnId2) < 0) {
+        plainStmt = stmt1;
+        ddlStmt = stmt2;
+      } else {
+        plainStmt = stmt2;
+        ddlStmt = stmt1;
+      }
+      plainStmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      ddlStmt.execute("SAVEPOINT s1");
+      ddlStmt.execute("ALTER PUBLICATION pub ADD TABLE t3");
+      ddlStmt.execute("ROLLBACK TO SAVEPOINT s1");
+      ddlStmt.execute("ALTER PUBLICATION pub ADD TABLE t2");
+      ddlStmt.execute("INSERT INTO t3 VALUES (1, 'not_published')");
+      ddlStmt.execute("INSERT INTO t2 VALUES (1, 'one')");
+
+      commitAtSameTime(stmt1, txnId1, stmt2, txnId2);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t3 VALUES (2, 'not_published')");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 10);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(3),
+        // The ALTER PUBLICATION invalidates pgoutput's entry, so RELATION is sent again.
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A large transaction with a DDL in the middle must still order the schema change correctly
+  // after the reorder buffer spills to disk.
+  @Test
+  public void ddlInsideSpilledTransaction() throws Exception {
+    final String defaultMemoryLimitKb = "4096";
+    // Minimum allowed by FLAG_GE_VALUE_VALIDATOR(64); 4000 inserts exceed this.
+    final String memoryLimitKb = "64";
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    for (HostAndPort tServer : tServers) {
+      setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb", memoryLimitKb);
+    }
+
+    try {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+        stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      }
+
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+      createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+      final int numInsertsBeforeDdl = 2000;
+      final int numInsertsAfterDdl = 2000;
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("BEGIN");
+        for (int i = 0; i < numInsertsBeforeDdl; i++) {
+          stmt.execute(String.format("INSERT INTO t1 VALUES (%d, 'pre_%d')", i, i));
+        }
+        stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+        for (int i = 0; i < numInsertsAfterDdl; i++) {
+          stmt.execute(String.format(
+              "INSERT INTO t1 VALUES (%d, 'post_%d', %d)",
+              numInsertsBeforeDdl + i, i, i));
+        }
+        stmt.execute("COMMIT");
+      }
+
+      PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+      // BEGIN, RELATION, 2000 INSERT, RELATION, 2000 INSERT, COMMIT.
+      final int expectedMessageCount = 2 + numInsertsBeforeDdl + 1 + numInsertsAfterDdl + 1;
+      List<PgOutputMessage> result = receiveMessage(stream, expectedMessageCount);
+
+      List<PgOutputMessage> expectedResult = new ArrayList<>();
+      // BEGIN + 2000 INSERT + 3 synthetic DDLs + 2000 INSERT + COMMIT.
+      expectedResult.add(beginMessage(2));
+      expectedResult.add(relation("t1", column("a", INT4_OID), column("b", TEXT_OID)));
+      for (int i = 0; i < numInsertsBeforeDdl; i++) {
+        expectedResult.add(insert(String.format("%d", i), String.format("pre_%d", i)));
+      }
+      expectedResult.add(relation("t1", column("a", INT4_OID), column("b", TEXT_OID),
+          column("c", INT4_OID)));
+      for (int i = 0; i < numInsertsAfterDdl; i++) {
+        expectedResult.add(insert(
+            String.format("%d", numInsertsBeforeDdl + i),
+            String.format("post_%d", i),
+            String.format("%d", i)));
+      }
+      expectedResult.add(commitMessage());
+      assertMessages(expectedResult, result);
+
+      try (Statement stmt = connection.createStatement();
+           ResultSet rs = stmt.executeQuery(
+               "SELECT spill_count FROM pg_stat_replication_slots "
+                   + "WHERE slot_name = 'test_slot'")) {
+        assertTrue(rs.next());
+        assertTrue("Expected the transaction to spill to disk", rs.getLong("spill_count") > 0);
+      }
+
+      stream.close();
+      conn.close();
+    } finally {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb", defaultMemoryLimitKb);
+      }
+    }
+  }
+
+  // DROP COLUMN, then a DML, then CREATE TABLE (publication refresh) with no further DDL on t1.
+  // The insert after the refresh must still use the post-DROP schema.
+  @Test
+  public void dmlAfterPublicationRefreshFollowingDdl() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c int)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'old1')");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'old2')");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'new1')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "old1"),
+        insert("2", "old2"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "new1"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ADD COLUMN with a volatile default rewrites the table. The rewrite copies existing rows
+  // onto new tablets, and those writes are CDC-visible as INSERTs in the same transaction
+  // (unlike Postgres, which does not re-stream rows present before the rewrite).
+  @Test
+  public void addColumnWithVolatileDefaultInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int DEFAULT random()");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION(a,b), INSERT(1,one), RELATION(a,b,c), rewrite INSERT of row 1,
+    // RELATION(a,b,c) again after the rewrite's publication refresh, INSERT(2,two,20), COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    assertEquals(beginMessage(2), normalizeLsn(result.get(0)));
+    assertEquals(relation("t1", column("a", INT4_OID), column("b", TEXT_OID)), result.get(1));
+    assertEquals(insert("1", "one"), result.get(2));
+    assertEquals(
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(3));
+
+    assertTrue(
+        "Expected a rewrite INSERT of the pre-DDL row",
+        result.get(4) instanceof PgOutputInsertMessage);
+    PgOutputInsertMessage rewriteInsert = (PgOutputInsertMessage) result.get(4);
+    assertEquals("Rewrite INSERT should have three columns", 3, rewriteInsert.tuple.numColumns);
+    assertEquals(
+        new PgOutputMessageTupleColumnValue("1"), rewriteInsert.tuple.columns.get(0));
+    assertEquals(
+        new PgOutputMessageTupleColumnValue("one"), rewriteInsert.tuple.columns.get(1));
+    assertTrue(
+        "Rewrite INSERT column c should be the materialized DEFAULT random()",
+        rewriteInsert.tuple.columns.get(2) instanceof PgOutputMessageTupleColumnValue);
+
+    assertEquals(
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(5));
+    assertEquals(insert("2", "two", "20"), result.get(6));
+    assertEquals(commitMessage(), normalizeLsn(result.get(7)));
+    assertLsnsIncrease(result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // An autocommit table rewrite: the DDL txn's first records are catalog changes, and its rewrite
+  // INSERTs land on the new tablets, which are polled only after the publication refresh the
+  // rewrite triggers (#35242).
+  @Test
+  public void autocommitAlterColumnTypeRewrite() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10), (2, 'two', 20)");
+      stmt.execute("ALTER TABLE t1 ALTER COLUMN b TYPE varchar(100) USING upper(b), "
+          + "ALTER COLUMN c TYPE bigint");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 30)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 14);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        insert("2", "two", "20"),
+        commitMessage(),
+        beginMessage(3),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID), column("c", INT8_OID)),
+        insert("1", "ONE", "10"),
+        insert("2", "TWO", "20"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID), column("c", INT8_OID)),
+        insert("3", "three", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // After a rewrite the table's relfilenode no longer equals its OID. DDLs on it must still be
+  // detected from the catalog changes, else rows using a newly added column cannot be decoded.
+  @Test
+  public void addColumnInsideTransactionAfterRewrite() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ALTER COLUMN b TYPE varchar(100)");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 30)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 14);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(3),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID)),
+        insert("2", "two"),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID), column("c", INT4_OID)),
+        insert("3", "three", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // An autocommit ADD COLUMN writes only to the catalog, so its txn has no user tablet BEGIN or
+  // COMMIT.
+  @Test
+  public void autocommitAddColumn() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    // The DDL txn has no changes, so it is not streamed.
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // As part of START_REPLICATION, historical read context is established. Stopping the stream
+  // must clear that context so ordinary SQL on the same connection sees live catalog and data
+  // and can write.
+  @Test
+  public void liveQueriesAfterStreamingResetHistoricalReadContext() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    assertLsnsIncrease(receiveMessage(stream, 6));
+    stream.close();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 30)");
+    }
+
+    try (Statement live = conn.createStatement()) {
+      try (ResultSet rs = live.executeQuery("SELECT a, b, c FROM t1 ORDER BY a")) {
+        ResultSetMetaData md = rs.getMetaData();
+        assertEquals(
+            "Live SQL after streaming must see the current schema, not a historical catalog "
+                + "snapshot left over from walsender",
+            3, md.getColumnCount());
+        assertTrue(rs.next());
+        assertEquals(1, rs.getInt("a"));
+        assertEquals("one", rs.getString("b"));
+        rs.getObject("c");
+        assertTrue(rs.wasNull());
+        assertTrue(rs.next());
+        assertEquals(2, rs.getInt("a"));
+        assertEquals("two", rs.getString("b"));
+        assertEquals(20, rs.getInt("c"));
+        assertTrue(rs.next());
+        assertEquals(3, rs.getInt("a"));
+        assertEquals("three", rs.getString("b"));
+        assertEquals(30, rs.getInt("c"));
+        assertFalse(rs.next());
+      }
+
+      live.execute("INSERT INTO t1 VALUES (4, 'four', 40)");
+      try (ResultSet rs = live.executeQuery("SELECT COUNT(*) FROM t1")) {
+        assertTrue(rs.next());
+        assertEquals(4, rs.getInt(1));
+      }
+    }
+
+    conn.close();
+  }
+
+  // Concurrent DROP COLUMN from another session after A's insert and before A's commit.
+  // B waits on AccessExclusiveLock vs A's RowExclusiveLock, so CT_B is after CT_A.
+  // Decoding must still emit the insert with columns a, b, c (schema at write time).
+  @Test
+  public void insertThenConcurrentDropColumnBeforeCommit() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text, c int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t2");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Connection connA = getConnectionBuilder().withTServer(0).connect();
+         Statement stmtA = connA.createStatement()) {
+      stmtA.execute("BEGIN");
+      stmtA.execute("INSERT INTO t2 VALUES (1, 'one', 10)");
+
+      AtomicReference<Exception> ddlError = new AtomicReference<>();
+      Thread ddlThread = new Thread(() -> {
+        try (Connection connB = getConnectionBuilder().withTServer(0).connect();
+             Statement stmtB = connB.createStatement()) {
+          stmtB.execute("ALTER TABLE t2 DROP COLUMN c");
+        } catch (Exception e) {
+          ddlError.set(e);
+        }
+      });
+      ddlThread.start();
+      Thread.sleep(1000);
+      stmtA.execute("COMMIT");
+      ddlThread.join(60_000);
+      if (ddlThread.isAlive()) {
+        fail("ALTER TABLE t2 DROP COLUMN c still blocked after the insert committed");
+      }
+      if (ddlError.get() != null) {
+        throw ddlError.get();
+      }
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 4);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void alterPublicationAddDropTableInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE TABLE c (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'b_before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (2, 'b_after_add')");
+      stmt.execute("INSERT INTO c VALUES (1, 'c_before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE c");
+      stmt.execute("INSERT INTO c VALUES (2, 'c_after_add')");
+      stmt.execute("ALTER PUBLICATION pub DROP TABLE b");
+      stmt.execute("INSERT INTO b VALUES (3, 'b_after_drop')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "b_after_add"),
+        relation("c", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "c_after_add"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A table added by ALTER PUBLICATION and then altered in the same transaction: each row is
+  // decoded with the schema it was written with.
+  @Test
+  public void alterPublicationAddTableThenAddColumnInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (2, 'after_add')");
+      stmt.execute("ALTER TABLE b ADD COLUMN c int");
+      stmt.execute("INSERT INTO b VALUES (3, 'after_alter', 30)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "after_add"),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("3", "after_alter", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Dropping a table from the publication and adding it back in the same transaction: only the row
+  // written while the table was out of the publication is skipped.
+  @Test
+  public void alterPublicationDropThenAddTableInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE b");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'before_drop')");
+      stmt.execute("ALTER PUBLICATION pub DROP TABLE b");
+      stmt.execute("INSERT INTO b VALUES (2, 'after_drop')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (3, 'after_add')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "before_drop"),
+        // The ALTER PUBLICATION invalidates pgoutput's entry, so RELATION is sent again.
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("3", "after_add"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // SET TABLE with a new row filter on a table already in the publication replaces its
+  // pg_publication_rel row, so the table is removed and added back within one statement. No row of
+  // the table may be lost or sent twice, and the row after the SET that fails the filter is not
+  // streamed.
+  @Test
+  public void alterPublicationSetTableWithRowFilterInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE b");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'before_set')");
+      stmt.execute("ALTER PUBLICATION pub SET TABLE b WHERE (a > 0)");
+      stmt.execute("INSERT INTO b VALUES (2, 'after_set')");
+      stmt.execute("INSERT INTO b VALUES (-1, 'after_set_not_streamed')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "before_set"),
+        // The ALTER PUBLICATION invalidates pgoutput's entry, so RELATION is sent again.
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "after_set"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Under FOR ALL TABLES, CREATE TABLE triggers a refresh that reads at the commit time, so the new
+  // table is streamed even though it is altered later in the transaction.
+  @Test
+  public void createTableThenAlterColumnsInsideTransactionForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t2 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t2 VALUES (2, 'two', 20)");
+      stmt.execute("ALTER TABLE t2 DROP COLUMN b");
+      stmt.execute("INSERT INTO t2 VALUES (3, 30)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        relation("t2", column("a", INT4_OID), column("c", INT4_OID)),
+        insert("3", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Under FOR ALL TABLES, a table created and dropped in the same transaction is not in the
+  // publication at the commit time, so only the rows of the existing table are streamed.
+  @Test
+  public void createAndDropTableInsideTransactionForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'new')");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'existing')");
+      stmt.execute("DROP TABLE t2");
+      stmt.execute("COMMIT");
+      // A later transaction checks that the stream is still healthy after the one above.
+      stmt.execute("INSERT INTO t1 VALUES (2, 'after')");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "existing"),
+        commitMessage(),
+        beginMessage(3),
+        insert("2", "after"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ALTER PUBLICATION SET (publish = ...) on a FOR ALL TABLES publication after a CREATE TABLE in
+  // the same transaction. Each change is published by the options in effect when it was made: the
+  // UPDATE before the ALTER is streamed, the UPDATE after it is not.
+  @Test
+  public void createTableThenAlterPublicationInsideTransactionForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'one')");
+      stmt.execute("UPDATE t2 SET b = 'uno' WHERE a = 1");
+      stmt.execute("ALTER PUBLICATION pub SET (publish = 'insert')");
+      stmt.execute("UPDATE t2 SET b = 'eins' WHERE a = 1");
+      stmt.execute("INSERT INTO t2 VALUES (2, 'two')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        update("1", "uno"),
+        // The ALTER PUBLICATION invalidates pgoutput's entry, so RELATION is sent again.
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Two tables added by one ALTER PUBLICATION: each gets its own refresh, and the rows written
+  // before the ALTER are skipped for both.
+  @Test
+  public void alterPublicationAddMultipleTablesInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE TABLE c (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'b_before_add')");
+      stmt.execute("INSERT INTO c VALUES (1, 'c_before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b, c");
+      stmt.execute("INSERT INTO b VALUES (2, 'b_after_add')");
+      stmt.execute("INSERT INTO c VALUES (2, 'c_after_add')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "b_after_add"),
+        relation("c", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "c_after_add"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // An ALTER PUBLICATION ADD TABLE rolled back to a savepoint is never seen by the replication
+  // slot, so the table is only added by the later ALTER in the same transaction.
+  @Test
+  public void alterPublicationAddTableRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (1, 'rolled_back')");
+      stmt.execute("ROLLBACK TO SAVEPOINT s");
+      stmt.execute("INSERT INTO b VALUES (2, 'before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (3, 'after_add')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 4);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("3", "after_add"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A table added by ALTER PUBLICATION, then removed and dropped in the same transaction (YB does
+  // not allow dropping a table that is still in a publication): its rows written while it was in
+  // the publication are streamed, and the drop does not break the stream.
+  @Test
+  public void alterPublicationAddThenRemoveAndDropTableInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE TABLE c (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE c");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'b_before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (2, 'b_after_add')");
+      stmt.execute("INSERT INTO c VALUES (1, 'c_before_drop')");
+      stmt.execute("ALTER PUBLICATION pub DROP TABLE b");
+      stmt.execute("DROP TABLE b");
+      stmt.execute("INSERT INTO c VALUES (2, 'c_after_drop')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "b_after_add"),
+        relation("c", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "c_before_drop"),
+        // The ALTER PUBLICATION invalidates pgoutput's entry, so RELATION is sent again.
+        relation("c", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "c_after_drop"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A table added by ALTER PUBLICATION and then rewritten in the same transaction. The rows written
+  // before the ALTER are skipped, but the rewrite re-inserts every row, including those.
+  @Test
+  public void alterPublicationAddTableThenRewriteInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'before_add')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE b");
+      stmt.execute("INSERT INTO b VALUES (2, 'after_add')");
+      stmt.execute("ALTER TABLE b ADD COLUMN c int DEFAULT random()");
+      stmt.execute("INSERT INTO b VALUES (3, 'after_rewrite', 30)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION(a,b), INSERT(2), RELATION(a,b,c), rewrite INSERTs of rows 1 and 2,
+    // RELATION(a,b,c) again after the rewrite's refresh, INSERT(3), COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 9);
+
+    assertEquals(beginMessage(2), normalizeLsn(result.get(0)));
+    assertEquals(relation("b", column("a", INT4_OID), column("b", TEXT_OID)), result.get(1));
+    assertEquals(insert("2", "after_add"), result.get(2));
+    assertEquals(
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(3));
+    assertRewriteInserts(result.subList(4, 6),
+        Arrays.asList(Arrays.asList("1", "before_add"), Arrays.asList("2", "after_add")));
+    assertEquals(
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(6));
+    assertEquals(insert("3", "after_rewrite", "30"), result.get(7));
+    assertEquals(commitMessage(), normalizeLsn(result.get(8)));
+    assertLsnsIncrease(result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A table rewritten and then dropped from the publication in the same transaction: everything up
+  // to the DROP is streamed, nothing after it. A later transaction on another table checks that the
+  // stream is still healthy.
+  @Test
+  public void rewriteThenAlterPublicationDropTableInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE TABLE c (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE b, c");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE b ADD COLUMN c int DEFAULT random()");
+      stmt.execute("INSERT INTO b VALUES (2, 'two', 20)");
+      stmt.execute("ALTER PUBLICATION pub DROP TABLE b");
+      stmt.execute("INSERT INTO b VALUES (3, 'three', 30)");
+      stmt.execute("COMMIT");
+      stmt.execute("INSERT INTO c VALUES (1, 'later')");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 12);
+
+    assertEquals(beginMessage(2), normalizeLsn(result.get(0)));
+    assertEquals(relation("b", column("a", INT4_OID), column("b", TEXT_OID)), result.get(1));
+    assertEquals(insert("1", "one"), result.get(2));
+    assertEquals(
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(3));
+    assertRewriteInserts(result.subList(4, 5), Arrays.asList(Arrays.asList("1", "one")));
+    assertEquals(
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(5));
+    assertEquals(insert("2", "two", "20"), result.get(6));
+    assertEquals(commitMessage(), normalizeLsn(result.get(7)));
+    assertEquals(beginMessage(3), normalizeLsn(result.get(8)));
+    assertEquals(relation("c", column("a", INT4_OID), column("b", TEXT_OID)), result.get(9));
+    assertEquals(insert("1", "later"), result.get(10));
+    assertEquals(commitMessage(), normalizeLsn(result.get(11)));
+    assertLsnsIncrease(result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Under FOR ALL TABLES, a published table dropped in the middle of a transaction: its rows
+  // written before the DROP are streamed, and so are the other table's rows after it.
+  @Test
+  public void dropPublishedTableInsideTransactionForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'before_drop')");
+      stmt.execute("INSERT INTO t3 VALUES (1, 'before_drop')");
+      stmt.execute("DROP TABLE t1");
+      stmt.execute("INSERT INTO t3 VALUES (2, 'after_drop')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "before_drop"),
+        relation("t3", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "before_drop"),
+        insert("2", "after_drop"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Under FOR ALL TABLES, a table created and then rewritten in the same transaction. The row
+  // inserted before the rewrite is streamed with the old schema, and again as its rewrite INSERT,
+  // as for a rewrite of an existing table.
+  @Test
+  public void createTableThenRewriteInsideTransactionForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t2 ADD COLUMN c int DEFAULT random()");
+      stmt.execute("INSERT INTO t2 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    // BEGIN, RELATION(a,b), INSERT(1,one), RELATION(a,b,c), rewrite INSERT of row 1,
+    // RELATION(a,b,c) again after the rewrite's publication refresh, INSERT(2,two,20), COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    assertEquals(beginMessage(2), normalizeLsn(result.get(0)));
+    assertEquals(relation("t2", column("a", INT4_OID), column("b", TEXT_OID)), result.get(1));
+    assertEquals(insert("1", "one"), result.get(2));
+    assertEquals(
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(3));
+    assertRewriteInserts(result.subList(4, 5), Arrays.asList(Arrays.asList("1", "one")));
+    assertEquals(
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        result.get(5));
+    assertEquals(insert("2", "two", "20"), result.get(6));
+    assertEquals(commitMessage(), normalizeLsn(result.get(7)));
+    assertLsnsIncrease(result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ALTER PUBLICATION DROP TABLE of the only published table written in the transaction. The
+  // table's tablets, and the COMMIT records on them, are dropped from polling mid-transaction, so
+  // the sys catalog COMMIT has to close the transaction. A later transaction checks that the stream
+  // is still healthy.
+  @Test
+  public void alterPublicationDropOnlyWrittenTableInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE b (a int primary key, b text)");
+      stmt.execute("CREATE TABLE c (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE b, c");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO b VALUES (1, 'before_drop')");
+      stmt.execute("ALTER PUBLICATION pub DROP TABLE b");
+      stmt.execute("INSERT INTO b VALUES (2, 'after_drop')");
+      stmt.execute("COMMIT");
+      stmt.execute("INSERT INTO c VALUES (1, 'later')");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("b", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "before_drop"),
+        commitMessage(),
+        beginMessage(3),
+        relation("c", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "later"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Documents a known limitation. Under FOR ALL TABLES, the refresh for CREATE TABLE reads the
+  // table list at the commit time, which already reflects the later DROP TABLE t1. So t1 is
+  // removed from polling at the CREATE, and its row written between the two statements is not
+  // streamed. Update this test when the CREATE refresh reads inside the transaction.
+  @Test
+  public void createTableThenDropOtherTableInsideTransactionForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'before_create')");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'after_create')");
+      stmt.execute("DROP TABLE t1");
+      stmt.execute("INSERT INTO t3 VALUES (1, 'after_drop')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "before_create"),
+        relation("t3", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "after_drop"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A DROP COLUMN rolled back to a savepoint, then a CREATE TABLE under FOR ALL TABLES, which
+  // refreshes the publication at the commit time. Neither the refresh nor the decoding of the
+  // INSERT after it may see the dropped column as gone.
+  @Test
+  public void createTableAfterDropColumnRolledBackToSavepointForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (id int primary key, val1 int, val2 int)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT sp");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN val2");
+      stmt.execute("ROLLBACK TO SAVEPOINT sp");
+      stmt.execute("CREATE TABLE t2 (id int primary key)");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("INSERT INTO t1 VALUES (2, 2, 2)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("id", INT4_OID), column("val1", INT4_OID), column("val2", INT4_OID)),
+        insert("1", "1", null),
+        commitMessage(),
+        beginMessage(3),
+        insert("2", "2", "2"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ALTER PUBLICATION SET (publish = ...) followed by an ALTER PUBLICATION ADD TABLE in the same
+  // transaction. The ADD TABLE refresh reads the publication with the new options, which must not
+  // leak into the replay of the changes made before the SET.
+  @Test
+  public void alterPublicationOptionsThenAddTableInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("UPDATE t1 SET b = 'uno' WHERE a = 1");
+      stmt.execute("ALTER PUBLICATION pub SET (publish = 'insert')");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE t2");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'new')");
+      stmt.execute("UPDATE t1 SET b = 'eins' WHERE a = 1");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        update("1", "uno"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "new"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // DROP COLUMN removes a column added in the same transaction at once. Decoding the INSERT's
+  // intent reloads the schema at its time, which has d, so the producer also sends d with the
+  // UPDATE.
+  @Test
+  public void updateAfterAddThenDropColumnInsideTransaction() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("cdc_enable_intra_transactional_before_image", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b int, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY FULL");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1, 1, 1)");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN d");
+      stmt.execute("UPDATE t1 SET b = 20 WHERE a = 1");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID),
+                column("d", INT4_OID))),
+        insert("1", "1", "1", "1"),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "1", "1"), new PgOutputMessageTuple("1", "20", "1")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A rewritten table joins the stream with the default replica identity, not the table's.
+  private void restartWithDefaultReplicaIdentity(String replicaIdentity) throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_yb_default_replica_identity", replicaIdentity);
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+  }
+
+  // The rewrite creates the new DocDB table inside the transaction, so DROP COLUMN removes c from
+  // it at once. The producer still sends c in the writes after the transaction; the walsender
+  // skips it.
+  @Test
+  public void writeAfterRewriteThenDropColumnInsideTransaction() throws Exception {
+    restartWithDefaultReplicaIdentity("FULL");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      // The volatile DEFAULT forces a rewrite while the value stays 7.
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 0)::int + 7");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET b = 'uno' WHERE a = 1");
+      stmt.execute("UPDATE t1 SET b = NULL WHERE a = 1");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 15);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+                column("d", INT4_OID))),
+        insert("1", "one", "10", "7"),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("d", INT4_OID))),
+        insert("2", "two", "7"),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "one", "7"), new PgOutputMessageTuple("1", "uno", "7")),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "uno", "7"), new PgOutputMessageTuple("1", null, "7")),
+        commitMessage(),
+        beginMessage(5),
+        PgOutputDeleteMessage.CreateForComparison(
+            false /* hasKey */, new PgOutputMessageTuple("2", "two", "7")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A column added in the same transaction is also removed at once, without a rewrite.
+  // INSERT's intent carries d, which reloads the schema at its time and leaves d in it.
+  @Test
+  public void writeAfterAddThenDropColumnInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY FULL");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20, 7)");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN d");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET b = 'uno' WHERE a = 1");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 11);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+                column("d", INT4_OID))),
+        insert("2", "two", "20", "7"),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "one", "10"), new PgOutputMessageTuple("1", "uno", "10")),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputDeleteMessage.CreateForComparison(
+            false /* hasKey */, new PgOutputMessageTuple("2", "two", "20")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Several ADD and DROP COLUMNs in one transaction, with writes in between.
+  @Test
+  public void writeAfterRewriteWithDropsAndAddsInsideTransaction() throws Exception {
+    restartWithDefaultReplicaIdentity("FULL");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 0)::int + 7");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN e int");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 7, 30)");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN d");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET b = 'uno' WHERE a = 1");
+      stmt.execute("UPDATE t1 SET e = 31 WHERE a = 3");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 18);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+                column("d", INT4_OID))),
+        insert("1", "one", "10", "7"),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("d", INT4_OID))),
+        insert("2", "two", "7"),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("d", INT4_OID),
+                column("e", INT4_OID))),
+        insert("3", "three", "7", "30"),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("e", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "one", null), new PgOutputMessageTuple("1", "uno", null)),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("3", "three", "30"),
+            new PgOutputMessageTuple("3", "three", "31")),
+        commitMessage(),
+        beginMessage(5),
+        PgOutputDeleteMessage.CreateForComparison(
+            false /* hasKey */, new PgOutputMessageTuple("2", "two", null)),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // The DDL transaction writes nothing after its drops.
+  @Test
+  public void transactionAfterRewriteThenDropColumnsInsideTransaction() throws Exception {
+    restartWithDefaultReplicaIdentity("FULL");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, e int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10, 100), (2, 'two', 20, 200)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 0)::int + 7");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN e");
+      stmt.execute("COMMIT");
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE t1 SET b = b || '!'");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three')");
+      stmt.execute("COMMIT");
+      stmt.execute("DELETE FROM t1 WHERE a = 1");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 14);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+                column("e", INT4_OID), column("d", INT4_OID))),
+        insert("1", "one", "10", "100", "7"),
+        insert("2", "two", "20", "200", "7"),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("d", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "one", "7"), new PgOutputMessageTuple("1", "one!", "7")),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("2", "two", "7"), new PgOutputMessageTuple("2", "two!", "7")),
+        insert("3", "three", "7"),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputDeleteMessage.CreateForComparison(
+            false /* hasKey */, new PgOutputMessageTuple("1", "one!", "7")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // With replica identity DEFAULT the new tuple's unmodified columns are read from the row, so the
+  // dropped column reaches the walsender through the new tuple.
+  @Test
+  public void writesAfterRewritesThenDropColumnsOnTwoTablesInsideTransaction() throws Exception {
+    restartWithDefaultReplicaIdentity("DEFAULT");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE TABLE t2 (x int, y text, z int, PRIMARY KEY (x ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'uno', 100)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 0)::int + 7");
+      stmt.execute("ALTER TABLE t2 ADD COLUMN w int DEFAULT (random() * 0)::int + 8");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN c");
+      stmt.execute("ALTER TABLE t2 DROP COLUMN z");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET b = 'eins' WHERE a = 1");
+      stmt.execute("UPDATE t2 SET y = 'un' WHERE x = 1");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 14);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'd' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+                column("d", INT4_OID))),
+        insert("1", "one", "10", "7"),
+        PgOutputRelationMessage.CreateForComparison("public", "t2", 'd' /* replicaIdentity */,
+            Arrays.asList(column("x", INT4_OID), column("y", TEXT_OID), column("z", INT4_OID),
+                column("w", INT4_OID))),
+        insert("1", "uno", "100", "8"),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'd' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("d", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            null /* old_tuple */, new PgOutputMessageTuple("1", "eins", "7")),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputRelationMessage.CreateForComparison("public", "t2", 'd' /* replicaIdentity */,
+            Arrays.asList(column("x", INT4_OID), column("y", TEXT_OID), column("w", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            null /* old_tuple */, new PgOutputMessageTuple("1", "un", "8")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // The UPDATE is decoded with the schema after the rename, so it names c as c1, which the
+  // descriptor at the UPDATE's time doesn't have.
+  @Test
+  public void updateThenRenameColumnInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b int, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY FULL");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1, 1)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE t1 SET b = 20 WHERE a = 1");
+      stmt.execute("ALTER TABLE t1 RENAME COLUMN c TO c1");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET c1 = 2 WHERE a = 1");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "1", "1"), new PgOutputMessageTuple("1", "20", "1")),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c1", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "20", "1"), new PgOutputMessageTuple("1", "20", "2")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Same as above with replica identity CHANGE, where the renamed column is in the record only
+  // because the UPDATE modifies it.
+  @Test
+  public void updateRenamedColumnInsideTransactionWithReplicaIdentityChange() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b int, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1, 1)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE t1 SET c = 20 WHERE a = 1");
+      stmt.execute("ALTER TABLE t1 RENAME COLUMN c TO c1");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 4);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(null /* old_tuple */,
+            new PgOutputMessageTuple((short) 3,
+                Arrays.asList(
+                    new PgOutputMessageTupleColumnValue("1"),
+                    new PgOutputMessageTupleColumnToasted(),
+                    new PgOutputMessageTupleColumnValue("20")))),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Swapping two column names after the first UPDATE leaves both names valid in the descriptor at
+  // that UPDATE's time, so matching by name would put each value in the other column. The UPDATEs
+  // between the renames are decoded with the final names too, while the descriptor at each of
+  // their times has the intermediate ones.
+  @Test
+  public void updateThenSwapColumnNamesInsideTransaction() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("cdc_enable_intra_transactional_before_image", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b int, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY FULL");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 10, 100)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE t1 SET b = 20 WHERE a = 1");
+      stmt.execute("ALTER TABLE t1 RENAME COLUMN b TO tmp");
+      stmt.execute("UPDATE t1 SET tmp = 21 WHERE a = 1");
+      stmt.execute("ALTER TABLE t1 RENAME COLUMN c TO b");
+      stmt.execute("UPDATE t1 SET b = 101 WHERE a = 1");
+      stmt.execute("ALTER TABLE t1 RENAME COLUMN tmp TO c");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET c = 30 WHERE a = 1");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 12);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "10", "100"), new PgOutputMessageTuple("1", "20", "100")),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("tmp", INT4_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "20", "100"), new PgOutputMessageTuple("1", "21", "100")),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("tmp", INT4_OID), column("b", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "21", "100"), new PgOutputMessageTuple("1", "21", "101")),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("c", INT4_OID), column("b", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "21", "101"), new PgOutputMessageTuple("1", "30", "101")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // The rewritten row's intent reloads the schema at its time, before the rename, so the producer
+  // names c2 as c in the writes after the transaction.
+  @Test
+  public void writeAfterRewriteThenRenameColumnInsideTransaction() throws Exception {
+    restartWithDefaultReplicaIdentity("FULL");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      // The volatile DEFAULT forces a rewrite while the value stays 7.
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 0)::int + 7");
+      stmt.execute("ALTER TABLE t1 RENAME COLUMN c TO c2");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+      stmt.execute("UPDATE t1 SET c2 = 11 WHERE a = 1");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 12);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID),
+                column("d", INT4_OID))),
+        insert("1", "one", "10", "7"),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID), column("c2", INT4_OID),
+                column("d", INT4_OID))),
+        insert("2", "two", "20", "7"),
+        commitMessage(),
+        beginMessage(3),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "one", "10", "7"),
+            new PgOutputMessageTuple("1", "one", "11", "7")),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputDeleteMessage.CreateForComparison(
+            false /* hasKey */, new PgOutputMessageTuple("2", "two", "20", "7")),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ALTER SCHEMA ... RENAME TO writes only to pg_namespace. The row inserted after it must still be
+  // preceded by a RELATION message that carries the new schema name.
+  @Test
+  public void renameSchemaInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE SCHEMA s1");
+      stmt.execute("CREATE TABLE s1.t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE s1.t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO s1.t1 VALUES (1, 'one')");
+      stmt.execute("ALTER SCHEMA s1 RENAME TO s2");
+      stmt.execute("INSERT INTO s2.t1 VALUES (2, 'two')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+
+    // BEGIN, RELATION, INSERT, RELATION, INSERT, COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("s1", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID))),
+        insert("1", "one"),
+        PgOutputRelationMessage.CreateForComparison("s2", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID))),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+}

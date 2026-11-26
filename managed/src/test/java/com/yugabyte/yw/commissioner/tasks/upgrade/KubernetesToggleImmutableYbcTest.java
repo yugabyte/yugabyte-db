@@ -5,7 +5,9 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -14,9 +16,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -200,7 +205,8 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -220,6 +226,36 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
     assertTaskSequence(
         subTasksByPosition, ENABLE_ROLLING_UPGRADE_TASK_SEQUENCE, createRollingUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
+
+    // Enabling inbuilt YBC must leave ybcSoftwareVersion set, matching what a universe created
+    // with inbuilt YBC records. Consumers branch on useYbdbInbuiltYbc, not on an unset version.
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+        defaultUniverse.getUniverseDetails().getYbcSoftwareVersion());
+    assertTrue(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
+  }
+
+  // Only the tservers roll, so the masters keep the sidecar's TLS from their last render.
+  @Test
+  public void testToggleImmutableYbcKeepsSidecarTlsRecord() {
+    setupUniverseSingleAZ(false, false);
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.setEnableYbc(true);
+          params.setYbcInstalled(true);
+          params.setYbcSoftwareVersion("2.0.0.0-b0");
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater, false);
+    recordNodeExporterHttps();
+    kubernetesToggleImmutableYbc.setUserTaskUUID(UUID.randomUUID());
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(isNodeExporterHttpsRecorded());
   }
 
   @Test
@@ -256,7 +292,8 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -298,5 +335,35 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
         TaskType.KubernetesToggleImmutableYbc,
         taskParams);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testEnableRejectedDuringPreFinalize() {
+    setupUniverseSingleAZ(false, false);
+    setImmutableYbcUniverseState(false, "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(e.getMessage(), e.getMessage().contains("PreFinalize"));
+  }
+
+  @Test
+  public void testEnableAllowedWhenReady() {
+    setupUniverseSingleAZ(false, false);
+    setImmutableYbcUniverseState(false, "2025.2.0.0-b1", SoftwareUpgradeState.Ready);
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    taskParams.verifyParams(defaultUniverse, true);
+  }
+
+  @Test
+  public void testDisableAllowedDuringPreFinalize() {
+    setupUniverseSingleAZ(false, false);
+    setImmutableYbcUniverseState(true, "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(false);
+    taskParams.verifyParams(defaultUniverse, true);
   }
 }

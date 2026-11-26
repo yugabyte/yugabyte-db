@@ -85,6 +85,7 @@ class MiniTabletServer;
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 YB_STRONGLY_TYPED_BOOL(RequireLeaderIsReady)
+YB_STRONGLY_TYPED_BOOL(WaitForApplied);
 
 struct MiniClusterOptions {
   // Number of master servers.
@@ -114,6 +115,12 @@ struct MiniClusterOptions {
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
+
+  // Tiered storage: the storage tier label of each drive, by drive index, applied to every TS
+  // (as --fs_data_dirs=path:tier would). Drives past the end of the list stay unlabeled. Needs
+  // num_drives > 1 and --enable_tiered_storage. The default initializer lets designated
+  // initializers of this struct keep omitting it.
+  std::vector<std::string> ts_drive_storage_tiers{};
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -203,6 +210,13 @@ class MiniCluster : public MiniClusterBase {
   Result<master::MiniMaster*> GetLeaderMiniMaster();
 
   Result<TabletServerId> StepDownMasterLeader(const std::string& new_leader_uuid = "");
+
+  // Repeats master leader step down until new_leader_uuid is the leader, or, if it is empty, until
+  // any other master is the leader. Retrying is needed because the protege's election may fail and
+  // let another master win.
+  Status StepDownMasterLeaderAndWaitForNewLeader(
+      const TabletServerId& new_leader_uuid = "",
+      MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
 
   ssize_t LeaderMasterIdx();
 
@@ -416,6 +430,12 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
     MiniCluster* cluster, const std::string& table_name,
     ListPeersFilter filter = ListPeersFilter::kAll);
 
+// Waits until ListTabletPeersForTableName returns num_peers peers and returns them.
+// A replica is listed only after it applies the table's creation, so followers may lag.
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableNumPeers(
+    MiniCluster* cluster, const std::string& table_name, size_t num_peers, MonoDelta timeout,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
     MiniCluster* cluster, const std::string& table_name,
     ListPeersFilter filter = ListPeersFilter::kAll);
@@ -541,9 +561,19 @@ Status InvokeSplitTabletRpcAndWaitForDataCompacted(
     MiniCluster* cluster, const TabletId& tablet_id,
     MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
 
-Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
+// Waits until every replica of each tablet has committed the leader's committed op id, or applied
+// it if wait_for_applied is set. A LEADER_NOT_READY leader's committed op id may not cover every
+// write acknowledged to clients, so pass require_leader_is_ready to wait for a LEADER_AND_READY
+// leader instead.
+Status WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready,
+    WaitForApplied wait_for_applied = WaitForApplied::kFalse);
 
-Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout);
+Status WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready,
+    WaitForApplied wait_for_applied = WaitForApplied::kFalse);
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);

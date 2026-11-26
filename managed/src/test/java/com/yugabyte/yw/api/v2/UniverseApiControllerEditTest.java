@@ -23,8 +23,10 @@ import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBAValidationResponse;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.AvailabilityZoneGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
+import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
@@ -37,6 +39,7 @@ import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageType;
 import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.ExposingServiceState;
+import com.yugabyte.yba.v2.client.models.ManagedLoadBalancerSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
@@ -57,12 +60,17 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
@@ -74,6 +82,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +91,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -117,12 +128,13 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   // pass the edit payload to invoke the edit api and verify result
-  private void runEditUniverseV2(UniverseEditSpec universeEditSpec) throws ApiException {
-    runEditUniverseV2(universeUuid, universeEditSpec);
+  private UniverseConfigureTaskParams runEditUniverseV2(UniverseEditSpec universeEditSpec)
+      throws ApiException {
+    return runEditUniverseV2(universeUuid, universeEditSpec);
   }
 
-  private void runEditUniverseV2(UUID targetUniverseUuid, UniverseEditSpec universeEditSpec)
-      throws ApiException {
+  private UniverseConfigureTaskParams runEditUniverseV2(
+      UUID targetUniverseUuid, UniverseEditSpec universeEditSpec) throws ApiException {
     UniverseApi api = new UniverseApi();
     // setup mocks for edit universe
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
@@ -142,6 +154,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     com.yugabyte.yba.v2.client.models.Universe v2UniverseResp =
         api.getUniverse(customer.getUuid(), targetUniverseUuid);
     validateUniverseEditSpec(universeEditSpec, v1EditParams, v2UniverseResp.getSpec());
+    return v1EditParams;
   }
 
   @Test
@@ -177,7 +190,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
           for (NodeDetails n : univ.getUniverseDetails().nodeDetailsSet) {
             n.state = NodeState.Live;
             if (n.cloudInfo != null) {
@@ -214,7 +227,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
           List<NodeDetails> nodes =
               univ.getUniverseDetails().nodeDetailsSet.stream().collect(Collectors.toList());
           for (int i = 0; i < nodes.size(); i++) {
@@ -439,6 +452,32 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
           intent.dedicatedNodes = true;
           intent.masterInstanceType = "m5.large";
           intent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+          UUID azUUID =
+              univ.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .getOverallPlacement()
+                  .azStream()
+                  .map(az -> az.uuid)
+                  .findFirst()
+                  .get();
+          UniverseDefinitionTaskParams.UserIntentOverrides o =
+              new UniverseDefinitionTaskParams.UserIntentOverrides();
+          UniverseDefinitionTaskParams.AZOverrides az =
+              new UniverseDefinitionTaskParams.AZOverrides();
+          az.updatePerProcess(ServerType.TSERVER, ppd -> ppd.setInstanceType("overriden"));
+          o.setAzOverrides(Map.of(azUUID, az));
+
+          UniverseDefinitionTaskParams.PerProcessDetails ppd =
+              new UniverseDefinitionTaskParams.PerProcessDetails();
+          ppd.setDeviceInfo(intent.masterDeviceInfo);
+          o.setPerProcess(
+              Map.of(
+                  ServerType.TSERVER,
+                  new UniverseDefinitionTaskParams.PerProcessDetails(),
+                  ServerType.MASTER,
+                  ppd));
+          intent.setUserIntentOverrides(o);
           univ.setUniverseDetails(univ.getUniverseDetails());
         },
         false);
@@ -472,6 +511,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(primaryCluster.userIntent.dedicatedNodes, is(false));
     assertThat(primaryCluster.userIntent.masterInstanceType, is(nullValue()));
     assertThat(primaryCluster.userIntent.masterDeviceInfo, is(nullValue()));
+    assertTrue(
+        MapUtils.isEmpty(primaryCluster.userIntent.getUserIntentOverrides().getPerProcess()));
   }
 
   @Test
@@ -580,6 +621,47 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
+  public void testEditUniverseV2KeepsTheDnsNamesItLeavesOut() throws ApiException {
+    List<String> names = List.of("db.example.com", "*.db.example.com");
+    Universe.saveDetails(
+        universeUuid,
+        u -> {
+          UserIntent.ManagedLoadBalancerConfig lb = new UserIntent.ManagedLoadBalancerConfig();
+          lb.setEnablePrivate(true);
+          lb.setDnsNames(names);
+          u.getUniverseDetails().getPrimaryCluster().userIntent.setManagedLoadBalancer(lb);
+        });
+    UUID clusterUuid =
+        Universe.getOrBadRequest(universeUuid).getUniverseDetails().getPrimaryCluster().uuid;
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    // A client that sets only enable_private, which the spec requires.
+    new UniverseApi()
+        .editUniverse(
+            customer.getUuid(),
+            universeUuid,
+            new UniverseEditSpec()
+                .expectedUniverseVersion(-1)
+                .clusters(
+                    List.of(
+                        new ClusterEditSpec()
+                            .uuid(clusterUuid)
+                            .networkingSpec(
+                                new ClusterNetworkingEditSpec()
+                                    .managedLoadBalancer(
+                                        new ManagedLoadBalancerSpec().enablePrivate(true))))));
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> params =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), params.capture());
+    assertEquals(
+        names,
+        params.getValue().getPrimaryCluster().userIntent.getManagedLoadBalancer().getDnsNames());
+  }
+
+  @Test
   public void testEditUniverseV2GeoPartitions() throws ApiException {
     UniverseApi api = new UniverseApi();
     // payload for editing the Universe storage spec
@@ -674,6 +756,185 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .findAny()
             .orElse(null);
     validateClusterAddSpec(clusterAddSpec, newV1Cluster, v2PrimaryCluster);
+  }
+
+  private static final String YCQL_LDAP_SECRET = "ycql-ldap-lr23812";
+  private static final String HBA_WITH_SECRET =
+      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-lr23812";
+
+  private UniverseApi apiWithPrimaryLdapGFlags() {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    Universe.saveDetails(
+        universeUuid,
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                SpecificGFlags.construct(
+                    Map.of(),
+                    Map.of(
+                        "ycql_ldap_bind_passwd",
+                        YCQL_LDAP_SECRET,
+                        GFlagsUtil.YSQL_HBA_CONF_CSV,
+                        HBA_WITH_SECRET)));
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    return new UniverseApi();
+  }
+
+  @Test
+  public void testAddReadReplicaRestoresRedactedGFlagsFromPrimary() throws ApiException {
+    UniverseApi api = apiWithPrimaryLdapGFlags();
+    // The UI sends the primary's gflags from GET as the read replica's own.
+    Map<String, String> primaryTserverGFlags =
+        api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters().stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .get()
+            .getGflags()
+            .getTserver();
+    assertThat(primaryTserverGFlags.get("ycql_ldap_bind_passwd"), is("REDACTED"));
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    clusterAddSpec.setGflags(new ClusterGFlags().master(Map.of()).tserver(primaryTserverGFlags));
+
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> paramsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ReadOnlyClusterCreate), paramsCapture.capture());
+    Map<String, String> readReplicaTserverGFlags =
+        paramsCapture
+            .getValue()
+            .getClusterByUuid(addTask.getResourceUuid())
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    assertThat(readReplicaTserverGFlags.get("ycql_ldap_bind_passwd"), is(YCQL_LDAP_SECRET));
+    assertThat(readReplicaTserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV), is(HBA_WITH_SECRET));
+  }
+
+  @Test
+  public void testAddReadReplicaRestoresRedactedHbaStoredWithSurroundingWhitespace()
+      throws ApiException {
+    UniverseApi api = apiWithPrimaryLdapGFlags();
+    Universe.saveDetails(
+        universeUuid,
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                SpecificGFlags.construct(
+                    Map.of(), Map.of(GFlagsUtil.YSQL_HBA_CONF_CSV, " " + HBA_WITH_SECRET + " \n")));
+    Map<String, String> primaryTserverGFlags =
+        api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters().stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .get()
+            .getGflags()
+            .getTserver();
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    clusterAddSpec.setGflags(new ClusterGFlags().master(Map.of()).tserver(primaryTserverGFlags));
+
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> paramsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ReadOnlyClusterCreate), paramsCapture.capture());
+    Map<String, String> readReplicaTserverGFlags =
+        paramsCapture
+            .getValue()
+            .getClusterByUuid(addTask.getResourceUuid())
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    assertThat(readReplicaTserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV), is(HBA_WITH_SECRET));
+  }
+
+  @Test
+  public void testAddReadReplicaWithTserverGFlagsOnly() throws ApiException {
+    UniverseApi api = apiWithPrimaryLdapGFlags();
+    UUID azUuid =
+        AvailabilityZone.getAZsForRegion(Region.getByProvider(providerUuid).get(0).getUuid())
+            .get(0)
+            .getUuid();
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    clusterAddSpec.setGflags(
+        new ClusterGFlags()
+            .tserver(Map.of("tflag", "tval"))
+            .putAzGflagsItem(
+                azUuid.toString(),
+                new AvailabilityZoneGFlags().tserver(Map.of("azflag", "azval"))));
+
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> paramsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ReadOnlyClusterCreate), paramsCapture.capture());
+    SpecificGFlags readReplicaGFlags =
+        paramsCapture
+            .getValue()
+            .getClusterByUuid(addTask.getResourceUuid())
+            .userIntent
+            .specificGFlags;
+    assertThat(
+        readReplicaGFlags.getPerProcessFlags().value.get(ServerType.TSERVER),
+        is(Map.of("tflag", "tval")));
+    assertThat(
+        readReplicaGFlags.getPerAZ().get(azUuid).value.get(ServerType.TSERVER),
+        is(Map.of("azflag", "azval")));
+  }
+
+  @Test
+  public void testAddReadReplicaRejectsRedactedHbaThatDiffersFromPrimary() {
+    UniverseApi api = apiWithPrimaryLdapGFlags();
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    clusterAddSpec.setGflags(
+        new ClusterGFlags()
+            .master(Map.of())
+            .tserver(
+                Map.of(
+                    GFlagsUtil.YSQL_HBA_CONF_CSV,
+                    "host all all 192.0.2.0/24 ldap ldapserver=ldap.example.com"
+                        + " ldapbindpasswd=REDACTED")));
+
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () -> api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec));
+    assertEquals(400, e.getCode());
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.ReadOnlyClusterCreate), any(UniverseConfigureTaskParams.class));
+  }
+
+  @Test
+  public void testEditUniverseV2AddReadReplicaInheritsManagedLoadBalancer() throws ApiException {
+    when(mockRuntimeConfig.getBoolean(ProviderConfKeys.managedLoadBalancerEnabled.getKey()))
+        .thenReturn(true);
+    Universe.saveDetails(
+        universeUuid,
+        u -> {
+          ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+          config.setEnablePrivate(true);
+          u.getUniverseDetails().getPrimaryCluster().userIntent.setManagedLoadBalancer(config);
+        });
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask addTask =
+        new UniverseApi()
+            .addCluster(customer.getUuid(), universeUuid, getReadReplicaClusterAddSpec());
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1AddClusterParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.ReadOnlyClusterCreate), v1AddClusterParamsCapture.capture());
+    assertTrue(
+        v1AddClusterParamsCapture
+            .getValue()
+            .getClusterByUuid(addTask.getResourceUuid())
+            .userIntent
+            .isManagedLoadBalancerEnabled());
   }
 
   @Test
@@ -782,7 +1043,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = curIntent.clone();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
-    userIntent.deviceInfo.numVolumes = 1;
+    TestUtils.updateDeviceInfo(
+        userIntent, ServerType.TSERVER, deviceInfo -> deviceInfo.numVolumes = 1);
     PlacementInfo pi = rf3Placement(region);
     universe =
         Universe.saveDetails(
@@ -848,6 +1110,260 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     runEditUniverseV2(universeEditSpec);
   }
 
+  // Fields omitted from a read replica edit spec must keep the replica's own values rather than
+  // be filled in from the primary.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritFromPrimary() throws ApiException {
+    List<UUID> primaryRegionList =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .regionList;
+    // Place the replica in a region the primary does not use, so region_list differs.
+    Region region =
+        Region.getByProvider(providerUuid).stream()
+            .filter(r -> !primaryRegionList.contains(r.getUuid()))
+            .findFirst()
+            .orElseThrow();
+    UUID rrClusterUuid = addReadReplicaInDB(region).uuid;
+    Map<String, String> primaryTags = Map.of("env", "primary");
+    Map<String, String> rrTags = Map.of("env", "replica");
+    String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
+    String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
+    ImageBundleDetails rrImageDetails = new ImageBundleDetails();
+    rrImageDetails.setArch(Architecture.aarch64);
+    rrImageDetails.setGlobalYbImage("yb-image-global-rr");
+    ImageBundle rrImageBundle =
+        ImageBundle.create(
+            Provider.getOrBadRequest(providerUuid), "rr-image", rrImageDetails, false);
+    UUID primaryImageBundleUuid =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getImageBundleUUIDForProvider(providerUuid);
+    // Give the replica a value different from the primary's for the single-provider fields that
+    // ClusterEditSpec shares with ClusterSpec and that edit used to inherit from the primary:
+    // instance tags, networking_spec exposing service, and provider_spec region list, image bundle
+    // and AWS instance profile. dedicated_nodes and provider_specs need a dedicated or multicloud
+    // primary and are covered by the two tests that follow.
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
+          UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
+          TestUtils.existingProviderInitializer(rrIntent)
+              .setImageBundleUUID(rrImageBundle.getUuid())
+              .setInstanceTags(rrTags)
+              .setAwsInstanceProfile(rrArn);
+          rrIntent.regionList = new ArrayList<>(List.of(region.getUuid()));
+          TestUtils.existingProviderInitializer(primaryIntent)
+              .setInstanceTags(primaryTags)
+              .setAwsInstanceProfile(primaryArn);
+          // TODO: will be migrated in PLAT-19849.
+          primaryIntent.enableExposingService =
+              UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED;
+          rrIntent.enableExposingService =
+              UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
+          universe.setUniverseDetails(details);
+        });
+
+    // only numNodes is specified; every other field is omitted
+    ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    Cluster v1Primary = v1EditParams.getPrimaryCluster();
+    Cluster v1Rr =
+        v1EditParams.getReadOnlyClusters().stream()
+            .filter(c -> c.uuid.equals(rrClusterUuid))
+            .findAny()
+            .orElseThrow();
+    UserIntent rrIntent = v1Rr.userIntent;
+    assertThat(rrIntent.numNodes, is(4));
+    assertThat(rrIntent.getInstanceTagsForProvider(providerUuid), is(rrTags));
+    assertThat(rrIntent.getImageBundleUUIDForProvider(providerUuid), is(rrImageBundle.getUuid()));
+    assertThat(rrIntent.getAwsInstanceProfileForProvider(providerUuid), is(rrArn));
+    assertThat(rrIntent.regionList, is(List.of(region.getUuid())));
+    assertThat(
+        rrIntent.enableExposingService,
+        is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
+
+    // The primary is untouched.
+    UserIntent primaryIntent = v1Primary.userIntent;
+    assertThat(primaryIntent.getInstanceTagsForProvider(providerUuid), is(primaryTags));
+    assertThat(
+        primaryIntent.getImageBundleUUIDForProvider(providerUuid), is(primaryImageBundleUuid));
+    assertThat(primaryIntent.getAwsInstanceProfileForProvider(providerUuid), is(primaryArn));
+    assertThat(primaryIntent.regionList, is(primaryRegionList));
+    assertThat(
+        primaryIntent.enableExposingService,
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
+  }
+
+  // A non-dedicated read replica of a dedicated primary must stay non-dedicated when its edit spec
+  // omits dedicated_nodes. ClusterSpec always carries the primary's dedicated_nodes, so inheriting
+  // it would turn the replica dedicated.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritDedicatedNodesFromPrimary()
+      throws ApiException, IOException {
+    UniverseCreateSpec dedicatedSpec = getUniverseCreateSpecV2Dedicated();
+    dedicatedSpec.getSpec().name("dedicatedUniverse");
+    universeUuid = setupUniverse(dedicatedSpec, null);
+    assertTrue(
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .dedicatedNodes);
+    Region region = Region.getByProvider(providerUuid).get(0);
+    UUID rrClusterUuid = addReadReplicaInDB(region).uuid;
+    // addReadReplicaInDB clones the primary's intent; make the replica non-dedicated, as addCluster
+    // does.
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
+          rrIntent.dedicatedNodes = false;
+          rrIntent.masterInstanceType = null;
+          rrIntent.masterDeviceInfo = null;
+          universe.setUniverseDetails(details);
+        });
+
+    ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    Cluster v1Rr = v1EditParams.getClusterByUuid(rrClusterUuid);
+    assertThat(v1Rr.userIntent.numNodes, is(4));
+    assertFalse(v1Rr.userIntent.dedicatedNodes);
+    assertTrue(v1EditParams.getPrimaryCluster().userIntent.dedicatedNodes);
+  }
+
+  // On a multicloud universe, provider_specs omitted from a read replica edit spec must keep the
+  // replica's own per-provider settings rather than be overwritten with the primary's.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritProviderSpecsFromPrimary()
+      throws ApiException, IOException {
+    setNewUIEnabled();
+    universeUuid = setupUniverse(true);
+    Region region = Region.getByProvider(providerUuid).get(0);
+    Cluster rrCluster = addReadReplicaInDB(region);
+    UUID rrClusterUuid = rrCluster.uuid;
+    Map<String, String> rrTags = Map.of("env", "replica");
+    String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
+    String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
+    String rrAccessKeyCode = "rr-access-key";
+    ImageBundleDetails rrImageDetails = new ImageBundleDetails();
+    rrImageDetails.setArch(Architecture.aarch64);
+    rrImageDetails.setGlobalYbImage("yb-image-global-rr");
+    ImageBundle rrImageBundle =
+        ImageBundle.create(
+            Provider.getOrBadRequest(providerUuid), "rr-image", rrImageDetails, false);
+    // addReadReplicaInDB clones the primary's provider specifications; make each field that
+    // applyClusterPerProviderSpecToProviderSpecification would overwrite differ from the primary:
+    // access key, image bundle, AWS instance profile, instance tags, nodes specs (tserver volume
+    // count) and networking (load balancer, exposing service).
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details
+              .getPrimaryCluster()
+              .userIntent
+              .getProviderSpecification(providerUuid)
+              .setAwsInstanceProfile(primaryArn);
+          ProviderSpecification rrSpec =
+              details
+                  .getReadOnlyClusters()
+                  .get(0)
+                  .userIntent
+                  .getProviderSpecification(providerUuid);
+          rrSpec.setAccessKeyCode(rrAccessKeyCode);
+          rrSpec.setImageBundleUUID(rrImageBundle.getUuid());
+          rrSpec.setInstanceTags(new HashMap<>(rrTags));
+          rrSpec.setAwsInstanceProfile(rrArn);
+          rrSpec.getNodesSpecs().getTserverSpecification().getDeviceInfo().numVolumes = 1;
+          rrSpec.setEnableLoadBalancer(false);
+          rrSpec.setExposingServiceState(
+              UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED);
+          universe.setUniverseDetails(details);
+        });
+    ProviderSpecification primarySpecBefore =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getProviderSpecification(providerUuid)
+            .clone();
+    assertThat(
+        primarySpecBefore.getExposingServiceState(),
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
+    assertThat(primarySpecBefore.getAccessKeyCode(), is(ApiUtils.DEFAULT_ACCESS_KEY_CODE));
+    assertTrue(primarySpecBefore.isEnableLoadBalancer());
+    int primaryNumVolumes =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseDeviceInfo(providerUuid, ServerType.TSERVER)
+            .numVolumes;
+    assertThat(primaryNumVolumes, is(2));
+
+    // With the new UI enabled the node count follows the placement, so grow both together.
+    PlacementCloud rrPlacementCloud =
+        expandNumNodes(toPlacementSpec(rrCluster.placementInfo).getCloudList().get(0), 1);
+    ClusterEditSpec rrClusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(rrClusterUuid)
+            .numNodes(4)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(rrPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    UserIntent rrIntent = v1EditParams.getClusterByUuid(rrClusterUuid).userIntent;
+    assertThat(rrIntent.numNodes, is(4));
+    assertThat(rrIntent.providerSpecifications, hasSize(1));
+    ProviderSpecification rrSpec = rrIntent.getProviderSpecification(providerUuid);
+    assertThat(rrSpec.getAccessKeyCode(), is(rrAccessKeyCode));
+    assertThat(rrSpec.getImageBundleUUID(), is(rrImageBundle.getUuid()));
+    assertThat(rrSpec.getInstanceTags(), is(rrTags));
+    assertThat(rrSpec.getAwsInstanceProfile(), is(rrArn));
+    assertThat(rrIntent.getBaseDeviceInfo(providerUuid, ServerType.TSERVER).numVolumes, is(1));
+    assertFalse(rrSpec.isEnableLoadBalancer());
+    assertThat(
+        rrSpec.getExposingServiceState(),
+        is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
+
+    // The primary is untouched.
+    ProviderSpecification primarySpec =
+        v1EditParams.getPrimaryCluster().userIntent.getProviderSpecification(providerUuid);
+    assertThat(primarySpec.getAccessKeyCode(), is(ApiUtils.DEFAULT_ACCESS_KEY_CODE));
+    assertThat(primarySpec.getImageBundleUUID(), is(primarySpecBefore.getImageBundleUUID()));
+    assertThat(primarySpec.getInstanceTags(), is(primarySpecBefore.getInstanceTags()));
+    assertThat(primarySpec.getAwsInstanceProfile(), is(primaryArn));
+    assertThat(
+        v1EditParams
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseDeviceInfo(providerUuid, ServerType.TSERVER)
+            .numVolumes,
+        is(primaryNumVolumes));
+    assertTrue(primarySpec.isEnableLoadBalancer());
+    assertThat(
+        primarySpec.getExposingServiceState(),
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
+  }
+
   @Test
   public void testEditUniverseV2DeleteReadReplica() throws ApiException {
     UniverseApi api = new UniverseApi();
@@ -871,6 +1387,285 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         .submit(eq(TaskType.ReadOnlyClusterDelete), v1DeleteClusterParamsCapture.capture());
     ReadOnlyClusterDelete.Params v1DeleteClusterParams = v1DeleteClusterParamsCapture.getValue();
     assertThat(v1DeleteClusterParams.clusterUUID, is(rrClusterUuid));
+  }
+
+  // Build a dedicated multi-AZ Kubernetes universe directly in the DB (mirrors the setup used by
+  // EditKubernetesUniverseTest) so that a v2 edit can exercise the K8s full-move code path.
+  private Universe setupKubernetesUniverseInDB() {
+    setupProvider(Common.CloudType.kubernetes);
+    Provider k8sProvider = Provider.getOrBadRequest(providerUuid);
+    Region region = Region.getByProvider(providerUuid).get(0);
+    UserIntent userIntent = ApiUtils.getTestUserIntent(region, k8sProvider, null, 3, 100, 50);
+    userIntent.replicationFactor = 3;
+    userIntent.dedicatedNodes = true;
+    userIntent.universeName = "k8s-full-move";
+    userIntent.ybSoftwareVersion = "2.20.0.0-b123";
+
+    Universe universe = ModelFactory.createUniverse(customer.getId(), rootCA);
+    UUID k8sUuid = universe.getUniverseUUID();
+    Universe.saveDetails(
+        k8sUuid,
+        ApiUtils.mockUniverseUpdaterForK8sEdit(
+            userIntent, "k8s-full-move", true /* setMasters */, false /* updateInProgress */));
+    // mockUniverseUpdaterForK8sEdit rebuilds the details from scratch and does not carry over the
+    // universe UUID, which configure()'s EDIT path needs to look up the existing universe.
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.setUniverseUUID(k8sUuid);
+          univ.setUniverseDetails(details);
+        });
+    universe = Universe.getOrBadRequest(k8sUuid);
+    universe.updateConfig(Map.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    universe.save();
+    return Universe.getOrBadRequest(k8sUuid);
+  }
+
+  // A K8s full move (here triggered by changing the tserver storage volume count) must bump the
+  // per-AZ statefulset index in the submitted params. EditKubernetesUniverse relies on that index
+  // change to detect and perform the full move; without the v2 edit path applying the increment
+  // (see UniverseManagementHandler.applyK8sPlacementFinalization), the full move silently becomes a
+  // no-op.
+  @Test
+  public void testEditUniverseV2KubernetesFullMoveBumpsStsIndex() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    // Changing the volume count forces every tserver pod to be replaced (a full move).
+    ClusterStorageSpec newStorageSpec =
+        primaryClusterSpec.getNodeSpec().getStorageSpec().numVolumes(2);
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UniverseConfigureTaskParams v1EditParams = v1EditParamsCapture.getValue();
+
+    // configure() must have marked nodes in each AZ as both ToBeAdded and ToBeRemoved (full move).
+    Map<NodeState, Long> stateCounts =
+        v1EditParams.getNodesInCluster(v1EditParams.getPrimaryCluster().uuid).stream()
+            .collect(Collectors.groupingBy(n -> n.state, Collectors.counting()));
+    long toBeAdded = stateCounts.getOrDefault(NodeState.ToBeAdded, 0L);
+    long toBeRemoved = stateCounts.getOrDefault(NodeState.ToBeRemoved, 0L);
+    assertTrue("expected nodes ToBeAdded for a full move", toBeAdded > 0);
+    assertThat("a full move adds and removes equal node counts", toBeAdded, is(toBeRemoved));
+
+    // The full move must have bumped the per-AZ statefulset index. Without the v2 edit path
+    // applying applyK8sStsIndexIncrement, these would all remain 0 and EditKubernetesUniverse would
+    // treat the edit as a no-op instead of a full move.
+    boolean stsIndexBumped =
+        v1EditParams
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .anyMatch(az -> az.tsStsIndex > 0 || az.masterStsIndex > 0);
+    assertTrue("Expected a K8s statefulset index bump signalling a full move", stsIndexBumped);
+  }
+
+  // A second full move must bump the statefulset index again (1 -> 2). If the persisted index is
+  // not restored first, the increment recomputes 1 from a base of 0, the new index equals the
+  // deployed one, and getPodsToAdd/getPodsToRemove find nothing to replace: the full move silently
+  // degrades into an in-place rolling upgrade instead of failing.
+  @Test
+  public void testEditUniverseV2KubernetesSecondFullMoveBumpsStsIndexAgain() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+    // Simulate the state left behind by a previous full move: every AZ at statefulset index 1.
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details
+              .getPrimaryCluster()
+              .placementInfo
+              .azStream()
+              .forEach(
+                  az -> {
+                    az.masterStsIndex = 1;
+                    az.tsStsIndex = 1;
+                  });
+          univ.setUniverseDetails(details);
+        });
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    // Changing the volume count forces every tserver pod to be replaced (a full move).
+    ClusterStorageSpec newStorageSpec =
+        primaryClusterSpec.getNodeSpec().getStorageSpec().numVolumes(2);
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UniverseConfigureTaskParams v1EditParams = v1EditParamsCapture.getValue();
+
+    // The index must move away from the deployed generation, otherwise EditKubernetesUniverse
+    // finds no pods to replace and the full move becomes a no-op.
+    boolean tsStsIndexBumpedPastDeployed =
+        v1EditParams
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .anyMatch(az -> az.tsStsIndex == 2);
+    assertTrue(
+        "Expected the second full move to bump the tserver statefulset index to 2",
+        tsStsIndexBumpedPastDeployed);
+  }
+
+  // Regression test for "K8s edit placement fails after a full move". The v2 edit spec is mapped
+  // onto dbUniverse.getUniverseDetails() in place (MapStruct @MappingTarget), so by the time the
+  // task is submitted that object no longer holds the persisted placement. If the statefulset
+  // indices are re-hydrated from it, they silently fall back to 0 while the deployed statefulsets
+  // are at 1, and EditKubernetesUniverse then renders an inverted helm range (start=1, end=0):
+  // "stsIndex.master: end (0) must be >= start (1)".
+  @Test
+  public void testEditUniverseV2KubernetesPlacementEditPreservesStsIndex() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+    // Simulate the state left behind by a previous full move: every AZ at statefulset index 1.
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details
+              .getPrimaryCluster()
+              .placementInfo
+              .azStream()
+              .forEach(
+                  az -> {
+                    az.masterStsIndex = 1;
+                    az.tsStsIndex = 1;
+                  });
+          univ.setUniverseDetails(details);
+        });
+    Set<UUID> existingAzUuids =
+        Universe.getOrBadRequest(k8sUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .map(az -> az.uuid)
+            .collect(Collectors.toSet());
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    // A plain placement edit (scale out), not a full move.
+    int incNumNodesBy = 3;
+    PlacementCloud newPlacementCloud =
+        expandNumNodes(primaryClusterSpec.getPlacementSpec().getCloudList().get(0), incNumNodesBy);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UniverseConfigureTaskParams v1EditParams = v1EditParamsCapture.getValue();
+    Cluster editedPrimary = v1EditParams.getPrimaryCluster();
+
+    // A scale out must not look like a full move.
+    assertThat(
+        "no node should be replaced by a plain placement edit",
+        v1EditParams.getNodesInCluster(editedPrimary.uuid).stream()
+            .filter(n -> n.state == NodeState.ToBeRemoved)
+            .count(),
+        is(0L));
+
+    // Every AZ that already existed must keep the statefulset generation that is deployed.
+    editedPrimary
+        .placementInfo
+        .azStream()
+        .filter(az -> existingAzUuids.contains(az.uuid))
+        .forEach(
+            az -> {
+              assertThat("masterStsIndex must be preserved", az.masterStsIndex, is(1));
+              assertThat("tsStsIndex must be preserved", az.tsStsIndex, is(1));
+            });
+    if (!CollectionUtils.isEmpty(editedPrimary.getPartitions())) {
+      editedPrimary
+          .getPartitions()
+          .forEach(
+              partition ->
+                  partition
+                      .getPlacement()
+                      .azStream()
+                      .filter(az -> existingAzUuids.contains(az.uuid))
+                      .forEach(
+                          az -> {
+                            assertThat(
+                                "partition masterStsIndex must be preserved",
+                                az.masterStsIndex,
+                                is(1));
+                            assertThat(
+                                "partition tsStsIndex must be preserved", az.tsStsIndex, is(1));
+                          }));
+    }
   }
 
   @Test

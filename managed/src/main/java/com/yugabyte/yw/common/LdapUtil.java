@@ -54,6 +54,9 @@ import org.apache.directory.ldap.client.api.exception.LdapConnectionTimeOutExcep
 public class LdapUtil {
   public static final String windowsAdUserDoesNotExistErrorCode = "data 2030";
   public static final String USERNAME_KEYWORD = "{username}";
+  // Alternate username placeholder, kept in sync with the "$username" convention used by
+  // the YSQL/YCQL LDAP search filters (ysql_hba_conf_csv, ycql_ldap_search_filter).
+  public static final String ALT_USERNAME_KEYWORD = "$username";
 
   @Inject private RuntimeConfGetter confGetter;
 
@@ -201,6 +204,34 @@ public class LdapUtil {
     throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
   }
 
+  public static String substituteUsername(String searchFilter, String username) {
+    if (StringUtils.isEmpty(searchFilter)) {
+      return searchFilter;
+    }
+    String escapedUsername = escapeFilterValue(username);
+    return searchFilter
+        .replace(USERNAME_KEYWORD, escapedUsername)
+        .replace(ALT_USERNAME_KEYWORD, escapedUsername);
+  }
+
+  /**
+   * Escapes the special characters of an assertion value as per RFC 4515 section 3, so that a value
+   * supplied by the user cannot alter the structure of the search filter it is embedded in. Without
+   * this, a login name such as {@code bob))(|(sAMAccountName=bob} truncates the configured filter
+   * to its first clause, dropping any group restriction it applies.
+   */
+  private static String escapeFilterValue(String value) {
+    if (StringUtils.isEmpty(value)) {
+      return "";
+    }
+    return value
+        .replace("\\", "\\5c")
+        .replace("*", "\\2a")
+        .replace("(", "\\28")
+        .replace(")", "\\29")
+        .replace("\0", "\\00");
+  }
+
   public LdapNetworkConnection createNewLdapConnection(LdapConnectionConfig ldapConnectionConfig) {
     return new LdapNetworkConnection(ldapConnectionConfig);
   }
@@ -224,8 +255,7 @@ public class LdapUtil {
 
     String searchFilter = "";
     try {
-      searchFilter =
-          ldapConfiguration.getLdapGroupSearchFilter().replace(USERNAME_KEYWORD, ybaUsername);
+      searchFilter = substituteUsername(ldapConfiguration.getLdapGroupSearchFilter(), ybaUsername);
       EntryCursor cursor =
           connection.search(
               ldapConfiguration.getLdapGroupSearchBaseDn(),
@@ -304,7 +334,13 @@ public class LdapUtil {
     try {
       String searchFilter = ldapConfiguration.getLdapSearchFilter();
       if (StringUtils.isEmpty(searchFilter)) {
-        searchFilter = "(" + ldapConfiguration.getLdapSearchAttribute() + "=" + email + ")";
+        searchFilter =
+            "(" + ldapConfiguration.getLdapSearchAttribute() + "=" + escapeFilterValue(email) + ")";
+      } else {
+        // The configured filter can refer to the user logging in via a username placeholder, which
+        // lets the filter both identify the user and restrict the login to specific groups, e.g.
+        // (&(sAMAccountName={username})(|(memberOf=<group1Dn>)(memberOf=<group2Dn>))).
+        searchFilter = substituteUsername(searchFilter, email);
       }
       log.debug("Performing LDAP search with filter: {}", searchFilter);
       EntryCursor cursor =
@@ -644,7 +680,7 @@ public class LdapUtil {
             log.debug(
                 "Assigning LDAP-specified role {} to existing user {}",
                 roleToAssign,
-                oldUser.getEmail());
+                oldUser.getUuid());
           }
           oldUser.setRole(roleToAssign);
           oldUser.setLdapSpecifiedRole(true);

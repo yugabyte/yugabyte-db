@@ -39,13 +39,12 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/tools/data_gen_util.h"
 #include "yb/tools/ysck_remote.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
@@ -68,7 +67,6 @@ using client::YBTableName;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "ysck-test-table");
 
@@ -275,10 +273,10 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   if (!s.ok()) {
-    LOG(WARNING) << Substitute("Timed out after $0 waiting for ysck to become consistent on TS $1. "
-                               "Status: $2",
-                               MonoTime::Now().GetDeltaSince(start).ToString(),
-                               ts, s.ToString());
+    LOG(WARNING) << Format("Timed out after $0 waiting for ysck to become consistent on TS $1. "
+                           "Status: $2",
+                           MonoTime::Now().GetDeltaSince(start).ToString(),
+                           ts, s.ToString());
     EXPECT_OK(s); // To avoid ASAN complaints due to thread reading the CountDownLatch.
   }
   continue_writing.Store(false);

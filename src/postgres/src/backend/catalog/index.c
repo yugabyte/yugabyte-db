@@ -748,7 +748,8 @@ index_create(Relation heapRelation,
 			 bool is_colocated,
 			 Oid tablegroupId,
 			 Oid colocationId,
-			 bool yb_skip_index_creation)
+			 bool yb_skip_index_creation,
+			 Oid yb_index_old_relfilenode)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -1048,7 +1049,7 @@ index_create(Relation heapRelation,
 					   colocationId,
 					   tableSpaceId,
 					   YbGetRelfileNodeId(indexRelation),
-					   InvalidOid /* oldRelfileNodeId */ ,
+					   yb_index_old_relfilenode /* oldRelfileNodeId */ ,
 					   classObjectId);
 	}
 
@@ -1574,7 +1575,8 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  InvalidOid,	/* colocationId, TODO: fill this
 											 * appropriately when adding
 											 * support for reindex */
-							  false /* yb_skip_index_creation */ );
+							  false /* yb_skip_index_creation */ ,
+							  InvalidOid /* yb_index_old_relfilenode */ );
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);
@@ -3095,7 +3097,9 @@ index_update_stats(Relation rel,
 	  * avoid updating statistics if we don't really need to. If auto analyze is enabled, it will keep reltuples
 	  * on the (indexed) main table reasonably accurate, so we can skip updating statistics here.
 	  */
-	update_stats = update_stats && (YBCIsLegacyModeForCatalogOps() || !YBCIsAutoAnalyzeEnabled());
+	update_stats = update_stats &&
+		(!YBCUsingObjectLocksGloballyForCurrentTxn() ||
+		 !YBCIsAutoAnalyzeEnabled());
 	if (update_stats)
 	{
 		if (rd_rel->relpages != (int32) relpages)
@@ -3174,7 +3178,13 @@ index_build(Relation heapRelation,
 	Assert(PointerIsValid(indexRelation->rd_indam->ambuild));
 	Assert(PointerIsValid(indexRelation->rd_indam->ambuildempty));
 
-	if (yb_xcluster_automatic_mode_target_ddl)
+	/*
+	 * YB: on an xCluster automatic-mode target, index rows arrive through
+	 * replication, so the build is skipped.  Copartitioned (ybhnsw)
+	 * indexes are built locally by each cluster and still need the build.
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl &&
+		!indexRelation->rd_indam->yb_amiscopartitioned)
 	{
 		/* Still need to update pg_catalog. */
 		index_update_stats(heapRelation, true, -1);
@@ -3382,7 +3392,8 @@ yb_index_backfill(Relation heapRelation,
 				  IndexInfo *indexInfo,
 				  bool isprimary,
 				  YbBackfillInfo *bfinfo,
-				  YbPgExecOutParam *bfresult)
+				  YbPgExecOutParam *bfresult,
+				  double *num_rows_scanned)
 {
 	Oid			save_userid;
 	int			save_sec_context;
@@ -3431,6 +3442,7 @@ yb_index_backfill(Relation heapRelation,
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
+	*num_rows_scanned = result->heap_tuples;
 	return result->index_tuples;
 }
 
@@ -4384,18 +4396,34 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 
 		if (IsYBRelation(iRel))
 		{
-			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
-				/*
-				* Drop the old DocDB table associated with this index.
-				* This is only required for secondary indexes, because a
-				* primary index in YB doesn't have a DocDB table separate
-				* from the base relation's table.
-				* If this is a table rewrite, the indexes on the table
-				* will automatically be dropped when the table is dropped.
-				* Note: The drop isn't finalized until after the txn
-				* commits/aborts.
-				*/
-				YBCDropIndex(iRel);
+			if (!iRel->rd_index->indisprimary)
+			{
+				if (is_yb_table_rewrite)
+				{
+					YbcTableProperties yb_props = YbTryGetTableProperties(iRel);
+
+					/*
+					 * Dropping the old table drops this index's DocDB table
+					 * but only tombstones the table's own colocation id.
+					 * Write a tombstone for the index so its rows don't
+					 * reappear if its colocation id is reused.
+					 */
+					if (yb_props && yb_props->is_colocated)
+						YbWriteColocatedIndexTombstone(iRel);
+				}
+				else
+					/*
+					 * Drop the old DocDB table associated with this index.
+					 * This is only required for secondary indexes, because a
+					 * primary index in YB doesn't have a DocDB table separate
+					 * from the base relation's table.
+					 * If this is a table rewrite, the indexes on the table
+					 * will automatically be dropped when the table is dropped.
+					 * Note: The drop isn't finalized until after the txn
+					 * commits/aborts.
+					 */
+					YBCDropIndex(iRel);
+			}
 		}
 		index_close(iRel, AccessExclusiveLock);
 

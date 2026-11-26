@@ -2,6 +2,8 @@
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.2-YB-2.25.2.0-b0
 -- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
@@ -836,4 +838,6 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

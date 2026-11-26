@@ -28,13 +28,13 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 using namespace std::literals;
-using strings::Substitute;
 
 namespace yb {
 namespace integration_tests {
@@ -171,7 +171,7 @@ TEST_F(SysCatalogRespectAffinityTest, TestNoPreferredZones) {
 TEST_F(SysCatalogRespectAffinityTest, TestInPreferredZone) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
-  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Substitute("c.r.$0", leader_zone) }));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Format("c.r.$0", leader_zone) }));
   ASSERT_OK(WaitFor([&]() {
     return IsMasterLeaderInZone("c", "r", leader_zone);
   }, kDefaultTimeout, "Master leader stepdown"));
@@ -181,11 +181,29 @@ TEST_F(SysCatalogRespectAffinityTest, TestMoveToPreferredZone) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
   int leader_zone_idx = leader_zone[1] - '0';
-  std::string next_zone = Substitute("z$0", (leader_zone_idx + 1) % 3);
-  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Substitute("c.r.$0", next_zone) }));
+  std::string next_zone = Format("z$0", (leader_zone_idx + 1) % 3);
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Format("c.r.$0", next_zone) }));
   ASSERT_OK(WaitFor([&]() {
     return IsMasterLeaderInZone("c", "r", next_zone);
   }, kDefaultTimeout, "Master leader stepdown"));
+}
+
+// Tests that when the preferred zone contains only a master that was added to the sys catalog
+// Raft config via ChangeConfig, the sys catalog leader moves to that master.
+TEST_F(SysCatalogRespectAffinityTest, TestMoveToPreferredZoneOfAddedMaster) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2,c.r.z3", 4, ""));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z3"}));
+
+  // Start a fourth master; the fixture's --placement_zone=z${index} puts it in a new zone, z3.
+  auto new_master = ASSERT_RESULT(external_mini_cluster()->StartShellMaster());
+
+  // Like YBA and yb-admin, ExternalMiniCluster::ChangeConfig sends the new peer without its
+  // cloud_info, so the Raft config does not record the added master's zone (z3).
+  ASSERT_OK(external_mini_cluster()->ChangeConfig(new_master, consensus::ADD_SERVER));
+
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZone("c", "r", "z3");
+  }, kDefaultTimeout, "Master leader moves to added master's zone"));
 }
 
 // Note for these tests: there is an edge case where the master goes down between ListMasters
@@ -198,7 +216,7 @@ TEST_F(SysCatalogRespectAffinityTest, TestPreferredZoneMasterDown) {
   int next_zone_idx = (leader_zone_idx + 1) % 3;
 
   external_mini_cluster()->master(next_zone_idx)->Shutdown();
-  ASSERT_OK(yb_admin_client_->SetPreferredZones({Substitute("c.r.z$0", next_zone_idx)}));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({Format("c.r.z$0", next_zone_idx)}));
   SleepFor(MonoDelta::FromMilliseconds(2000));
   ASSERT_OK(WaitFor([&]() {
     return IsMasterLeaderInZone("c", "r", leader_zone);
@@ -214,9 +232,9 @@ TEST_F(SysCatalogRespectAffinityTest, TestMultiplePreferredZones) {
 
   external_mini_cluster()->master(first_zone_idx)->Shutdown();
   ASSERT_OK(yb_admin_client_->SetPreferredZones(
-      { Substitute("c.r.z$0", first_zone_idx), Substitute("c.r.z$0", second_zone_idx) }));
+      { Format("c.r.z$0", first_zone_idx), Format("c.r.z$0", second_zone_idx) }));
   ASSERT_OK(WaitFor([&]() {
-    return IsMasterLeaderInZone("c", "r", Substitute("z$0", second_zone_idx));
+    return IsMasterLeaderInZone("c", "r", Format("z$0", second_zone_idx));
   }, kDefaultTimeout, "Master leader stepdown"));
 }
 
@@ -228,15 +246,15 @@ TEST_F(SysCatalogRespectAffinityTest, TestMultiplePriorityPreferredZones) {
   int second_zone_idx = (leader_zone_idx + 2) % 3;
 
   ASSERT_OK(yb_admin_client_->SetPreferredZones(
-      {Substitute("c.r.z$0:1", first_zone_idx), Substitute("c.r.z$0:2", second_zone_idx)}));
+      {Format("c.r.z$0:1", first_zone_idx), Format("c.r.z$0:2", second_zone_idx)}));
   ASSERT_OK(WaitFor(
-      [&]() { return IsMasterLeaderInZone("c", "r", Substitute("z$0", first_zone_idx)); },
+      [&]() { return IsMasterLeaderInZone("c", "r", Format("z$0", first_zone_idx)); },
       kDefaultTimeout,
       "Master leader stepdown"));
 
   external_mini_cluster()->master(first_zone_idx)->Shutdown();
   ASSERT_OK(WaitFor(
-      [&]() { return IsMasterLeaderInZone("c", "r", Substitute("z$0", second_zone_idx)); },
+      [&]() { return IsMasterLeaderInZone("c", "r", Format("z$0", second_zone_idx)); },
       kDefaultTimeout,
       "Master leader stepdown"));
 }
@@ -249,10 +267,10 @@ TEST_F(SysCatalogRespectAffinityTest, TestMultiplePreferredZonesWithBlacklist) {
   int leader_zone_idx = leader_zone[1] - '0';
   int first_zone_idx = (leader_zone_idx + 1) % 3;
   ASSERT_OK(yb_admin_client_->SetPreferredZones(
-      {Substitute("c.r.z$0", leader_zone_idx), Substitute("c.r.z$0", first_zone_idx)}));
+      {Format("c.r.z$0", leader_zone_idx), Format("c.r.z$0", first_zone_idx)}));
   ASSERT_OK(BlacklistLeader());
   ASSERT_OK(WaitFor([&]() {
-    return IsMasterLeaderInZone("c", "r", Substitute("z$0", first_zone_idx));
+    return IsMasterLeaderInZone("c", "r", Format("z$0", first_zone_idx));
   }, kDefaultTimeout, "Master leader stepdown"));
 }
 
@@ -261,10 +279,10 @@ TEST_F(SysCatalogRespectAffinityTest, TestInPreferredZoneWithBlacklist) {
   // The sys catalog leader should step down to a master in any other zone.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
-  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Substitute("c.r.$0", leader_zone) }));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({ Format("c.r.$0", leader_zone) }));
   int leader_zone_idx = leader_zone[1] - '0';
-  std::string first_zone = Substitute("z$0", (leader_zone_idx + 1) % 3);
-  std::string second_zone = Substitute("z$0", (leader_zone_idx + 2) % 3);
+  std::string first_zone = Format("z$0", (leader_zone_idx + 1) % 3);
+  std::string second_zone = Format("z$0", (leader_zone_idx + 2) % 3);
   CloudInfoPB cloud_info;
   cloud_info.set_placement_cloud("c");
   cloud_info.set_placement_region("r");
@@ -286,8 +304,8 @@ TEST_F(SysCatalogRespectAffinityTest, TestNoPreferredZonesWithBlacklist) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
   int leader_zone_idx = leader_zone[1] - '0';
-  std::string first_zone = Substitute("z$0", (leader_zone_idx + 1) % 3);
-  std::string second_zone = Substitute("z$0", (leader_zone_idx + 2) % 3);
+  std::string first_zone = Format("z$0", (leader_zone_idx + 1) % 3);
+  std::string second_zone = Format("z$0", (leader_zone_idx + 2) % 3);
   CloudInfoPB cloud_info;
   cloud_info.set_placement_cloud("c");
   cloud_info.set_placement_region("r");

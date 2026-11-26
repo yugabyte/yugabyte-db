@@ -117,6 +117,13 @@ public abstract class YRpc<R> {
    */
   int attempt;  // package-private for TabletClient and AsyncYBClient only.
 
+  /**
+   * When this attempt was written out, used by the idle timeout to tell an RPC that is genuinely
+   * overdue from one that was just sent. Volatile: a re-send rewrites it with no other
+   * happens-before edge, and a torn long would read as ancient.
+   */
+  volatile long sentAtNanos;  // package-private for TabletClient only.
+
   // Maximum number of attempts to try the RPC. Default 100 times.
   int maxAttempts = 100;
 

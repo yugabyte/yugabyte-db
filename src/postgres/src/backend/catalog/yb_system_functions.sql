@@ -116,11 +116,35 @@ VOLATILE STRICT PARALLEL SAFE
 AS 'yb_cancel_query_diagnostics';
 
 CREATE OR REPLACE FUNCTION
-  yb_index_check(indexrelid oid, single_snapshot_mode bool DEFAULT false)
-RETURNS void
+  yb_index_check(indexrelid oid, single_snapshot_mode bool DEFAULT false,
+                 log_num_errors int DEFAULT 0)
+RETURNS TABLE(tablerelid oid, indexrelid oid, ybctid bytea, table_cols jsonb,
+              ybbasectid bytea, index_cols jsonb, error_category text)
 LANGUAGE INTERNAL
-VOLATILE PARALLEL SAFE
+VOLATILE PARALLEL UNSAFE
 AS 'yb_index_check';
+
+CREATE OR REPLACE FUNCTION
+  yb_backfill_online_schema_change_chunk(
+    source_table oid,
+    target_table oid,
+    transform_fn oid,
+    read_time_ht int8,
+    partition_key bytea,
+    bfinstr bytea,
+    OUT rows_processed int8,
+    OUT next_bfinstr bytea)
+RETURNS record
+LANGUAGE INTERNAL
+VOLATILE
+AS 'yb_backfill_online_schema_change_chunk';
+
+CREATE OR REPLACE FUNCTION
+  yb_online_schema_change_trigger()
+RETURNS trigger
+LANGUAGE INTERNAL
+VOLATILE
+AS 'yb_online_schema_change_trigger';
 
 CREATE OR REPLACE FUNCTION
   yb_compute_row_ybctid(relid oid, key_atts record, ybidxbasectid bytea DEFAULT NULL)
@@ -215,6 +239,10 @@ REVOKE EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,b
 GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) TO yb_db_admin;
 REVOKE EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) FROM public;
 GRANT EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_backfill_online_schema_change_chunk(oid,oid,oid,int8,bytea,bytea) FROM public;
+-- EXECUTE on a trigger function is checked only by CREATE TRIGGER, and a
+-- firing writes to whatever table the trigger arguments name.
+REVOKE EXECUTE ON FUNCTION yb_online_schema_change_trigger() FROM public;
 REVOKE EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oid,boolean,bytea,int4)
   FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oid,boolean,bytea,int4)

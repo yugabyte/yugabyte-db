@@ -228,8 +228,8 @@ Result<DocHybridTime> GetTableTombstoneTime(
   IntentAwareIteratorUpperboundScope bound_scope(table_id_buf.AsSlice(), iter.get());
   iter->Seek(table_id, SeekFilter::kAll);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
-  if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||
-      entry_data.key != table_id) {
+  if (!entry_data || entry_data.key != table_id ||
+      !VERIFY_RESULT(dockv::Value::IsTombstoned(entry_data.value))) {
     return DocHybridTime::kInvalid;
   }
 
@@ -914,8 +914,9 @@ class GetHelperBase : public PackedRowContext {
       return true; // Continue scanning.
     }
 
-    // Specific handling for deleted/tombstoned row is required.
-    if (dockv::DecodeValueEntryType(key_result.value) == ValueEntryType::kTombstone) {
+    auto value = key_result.value;
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+    if (dockv::DecodeValueEntryType(value) == ValueEntryType::kTombstone) {
       // We should consider the delete only if it is more recent than any row update write time.
       auto has_row_update = data_.packed_row->HasUpdatesAfter(key_result.write_time);
       if (has_row_update.value_or(true)) {
@@ -930,17 +931,22 @@ class GetHelperBase : public PackedRowContext {
       found_ = false;
     }
 
-    RETURN_NOT_OK(DoHandleRootRecord(key_result, root_write_time));
+    RETURN_NOT_OK(DoHandleRootRecord(key_result, root_write_time, value, control_fields));
     return true; // Continue scanning.
   }
 
   Status DoHandleRootRecord(const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
+    auto value = key_result.value;
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+    return DoHandleRootRecord(key_result, root_write_time, value, control_fields);
+  }
+
+  Status DoHandleRootRecord(
+      const FetchedEntry& key_result, LazyDocHybridTime* root_write_time, Slice value,
+      const ValueControlFields& control_fields) {
     DCHECK(IsRootRecord(key_result.key));
 
     root_write_time->Assign(key_result.write_time);
-
-    auto value = key_result.value;
-    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
 
     RETURN_NOT_OK(InitRowValue(value, root_write_time, control_fields));
 

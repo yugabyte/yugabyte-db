@@ -32,6 +32,7 @@
 
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
@@ -84,8 +85,8 @@ void TabletServerIntegrationTestBase::CreateCluster(
   // low timeouts and frequent cache misses.
   if (non_default_ts_flags.empty()) {
     opts.extra_tserver_flags.push_back("--log_cache_size_limit_mb=10");
-    opts.extra_tserver_flags.push_back(strings::Substitute("--consensus_rpc_timeout_ms=$0",
-                                                           FLAGS_consensus_rpc_timeout_ms));
+    opts.extra_tserver_flags.push_back(Format("--consensus_rpc_timeout_ms=$0",
+                                              FLAGS_consensus_rpc_timeout_ms));
   } else {
     for (const std::string& flag : non_default_ts_flags) {
       opts.extra_tserver_flags.push_back(flag);
@@ -370,8 +371,8 @@ Status TabletServerIntegrationTestBase::RestartServerWithUUID(const std::string&
 // are alive.
 Status TabletServerIntegrationTestBase::CheckTabletServersAreAlive(size_t num_tablet_servers) {
   size_t live_count = 0;
-  std::string error = strings::Substitute("Fewer than $0 TabletServers were alive. Dead TSs: ",
-                                          num_tablet_servers);
+  std::string error = Format("Fewer than $0 TabletServers were alive. Dead TSs: ",
+                             num_tablet_servers);
   rpc::RpcController controller;
   for (const itest::TabletServerMap::value_type& entry : tablet_servers_) {
     controller.Reset();

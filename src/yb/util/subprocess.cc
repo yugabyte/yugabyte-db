@@ -45,6 +45,7 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/once.h"
@@ -67,7 +68,6 @@ using std::mutex;
 using std::string;
 using std::vector;
 using strings::Split;
-using strings::Substitute;
 
 extern char** environ;
 
@@ -109,7 +109,7 @@ void EnsureSigPipeDisabled() {
 Result<DIR*> OpenProcFdDir() {
   DIR* dir = opendir(kProcSelfFd);
   if (PREDICT_FALSE(dir == nullptr)) {
-    return STATUS(IOError, Substitute("opendir(\"$0\") failed", kProcSelfFd), Errno(errno));
+    return STATUS(IOError, Format("opendir(\"$0\") failed", kProcSelfFd), Errno(errno));
   }
   return dir;
 }
@@ -120,7 +120,7 @@ void CloseProcFdDir(DIR* dir) {
   if (PREDICT_FALSE(closedir(dir) == -1)) {
     LOG(WARNING)
         << "Unable to close fd dir: "
-        << STATUS(IOError, Substitute("closedir(\"$0\") failed", kProcSelfFd), Errno(errno));
+        << STATUS(IOError, Format("closedir(\"$0\") failed", kProcSelfFd), Errno(errno));
   }
 }
 
@@ -179,8 +179,15 @@ void LogTailerThread::Run(const int child_fd) {
   bool is_fgets_null = false;
   // NOTE: fgets is a blocking call, which means we might not respond to stopped unless the child
   // process actually writes to the pipe or stops. This is not expected to happen in practice.
-  while (!(is_eof = feof(fp)) && !(is_fgets_null = (fgets(buf, sizeof(buf), fp) == nullptr)) &&
-         !stopped_) {
+  while (!(is_eof = feof(fp)) && !stopped_) {
+    if (fgets(buf, sizeof(buf), fp) == nullptr) {
+      if (ferror(fp) && errno == EINTR) {
+        clearerr(fp);
+        continue;
+      }
+      is_fgets_null = true;
+      break;
+    }
     size_t l = strlen(buf);
     if (l > 0) {
       if (buf[l - 1] == '\n') {
@@ -545,7 +552,10 @@ Status Subprocess::DoWait(int* ret, int options) {
 
   CHECK_NE(child_pid, 0);
 
-  int waitpid_ret_val = waitpid(child_pid, ret, options);
+  int waitpid_ret_val;
+  do {
+    waitpid_ret_val = waitpid(child_pid, ret, options);
+  } while (waitpid_ret_val == -1 && errno == EINTR);
   if (waitpid_ret_val == -1) {
     return STATUS(RuntimeError, "Unable to wait on child", Errno(errno));
   }
@@ -670,8 +680,9 @@ Status Subprocess::Call(string* output, string* error) {
   }
 
   RETURN_NOT_OK_PREPEND(Start(), "Unable to fork " + argv_[0]);
+  // On Linux the fd is released even if close() fails with EINTR, so it must not be retried.
   const int err = close(ReleaseChildStdinFd());
-  if (PREDICT_FALSE(err != 0)) {
+  if (PREDICT_FALSE(err != 0 && errno != EINTR)) {
     return STATUS(IOError, "Unable to close child process stdin", Errno(errno));
   }
 
@@ -694,7 +705,7 @@ Status Subprocess::Call(string* output, string* error) {
     while (!done) {
       int res = poll(pollfds.data(), static_cast<nfds_t>(pollfds.size()), /* timeout= */ -1);
       if (res <= 0) {
-        LOG_IF(WARNING, res < 0) << "Poll failed: " << strerror(errno);
+        LOG_IF(WARNING, res < 0 && errno != EINTR) << "Poll failed: " << strerror(errno);
         continue;
       }
       done = true;
@@ -702,7 +713,11 @@ Status Subprocess::Call(string* output, string* error) {
         if (pollfds[i].revents & (POLLHUP | POLLIN)) {
           auto n = read(pollfds[i].fd, buf, arraysize(buf));
           if (n < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR) {
+              // Not at EOF yet; poll again instead of dropping the rest of the output.
+              done = false;
+              continue;
+            }
             return STATUS(IOError, "IO error reading from " + argv_[0], Errno(errno));
           }
           done = done && n == 0;
@@ -716,7 +731,7 @@ Status Subprocess::Call(string* output, string* error) {
   RETURN_NOT_OK_PREPEND(Wait(&retcode), "Unable to wait() for " + argv_[0]);
 
   if (PREDICT_FALSE(retcode != 0)) {
-    return STATUS(RuntimeError, Substitute(
+    return STATUS(RuntimeError, Format(
         "Subprocess '$0' terminated with non-zero exit status $1",
         argv_[0],
         retcode));

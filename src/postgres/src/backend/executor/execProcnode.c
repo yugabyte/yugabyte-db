@@ -1086,7 +1086,7 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_YbSkippableEntities:
 		case T_YbUpdateAffectedEntities:
 		case T_YbMergeScanInfo:
-		case T_YbMergeScanSaopColInfo:
+		case T_YbMergeScanStreamColInfo:
 		case T_YbSortInfo:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1700,8 +1700,9 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 	else if (IsA(child_node, YbBatchedNestLoopState))
 	{
 		YbBatchedNestLoopState *bnl_state = (YbBatchedNestLoopState *) child_node;
+		YbBatchedNestLoop *bnl_plan = (YbBatchedNestLoop *) bnl_state->js.ps.plan;
 
-		if (bnl_state->bnl_is_sorted)
+		if (bnl_plan->numSortCols > 0)
 		{
 			if (tuples_needed < 0)
 				bnl_state->bound = 0;

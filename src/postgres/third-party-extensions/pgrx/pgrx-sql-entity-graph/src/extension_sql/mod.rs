@@ -22,7 +22,7 @@ use crate::positioning_ref::PositioningRef;
 
 use crate::enrich::{CodeEnrichment, ToEntityGraphTokens, ToRustCodeTokens};
 use proc_macro2::{Ident, TokenStream as TokenStream2};
-use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use quote::{ToTokens, TokenStreamExt, format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{LitStr, Token};
@@ -63,15 +63,15 @@ impl ToEntityGraphTokens for ExtensionSqlFile {
         let mut name = None;
         let mut bootstrap = false;
         let mut finalize = false;
-        let mut requires = vec![];
-        let mut creates = vec![];
+        let mut requires: Vec<PositioningRef> = vec![];
+        let mut creates: Vec<SqlDeclared> = vec![];
         for attr in &self.attrs {
             match attr {
                 ExtensionSqlAttribute::Creates(items) => {
-                    creates.append(&mut items.iter().map(|x| x.to_token_stream()).collect());
+                    creates.extend(items.iter().cloned());
                 }
                 ExtensionSqlAttribute::Requires(items) => {
-                    requires.append(&mut items.iter().map(|x| x.to_token_stream()).collect());
+                    requires.extend(items.iter().cloned());
                 }
                 ExtensionSqlAttribute::Bootstrap => {
                     bootstrap = true;
@@ -92,31 +92,58 @@ impl ToEntityGraphTokens for ExtensionSqlFile {
                 .expect("No UTF-8 file name for extension_sql_file!()")
                 .to_string(),
         );
-        let requires_iter = requires.iter();
-        let creates_iter = creates.iter();
-        let sql_graph_entity_fn_name = format_ident!("__pgrx_internals_sql_{}", name.clone());
+        let require_lens = requires.iter().map(PositioningRef::section_len_tokens);
+        let create_lens = creates.iter().map(SqlDeclared::section_len_tokens);
+        let require_writers =
+            requires.iter().map(|item| item.section_writer_tokens(quote! { writer }));
+        let create_writers =
+            creates.iter().map(|item| item.section_writer_tokens(quote! { writer }));
+        let require_count = requires.len();
+        let create_count = creates.len();
+        let sql_graph_entity_fn_name = format_ident!("__pgrx_schema_sql_{}", name.clone());
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(include_str!(#path))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(concat!(file!(), ':', line!()))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(#name)
+                + ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                    #( #require_lens ),*
+                ])
+                + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                    #( #create_lens ),*
+                ])
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
         quote! {
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(unknown_lints, clippy::no_mangle_with_rust_abi)]
-            pub extern "Rust" fn  #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                extern crate alloc;
-                use alloc::vec::Vec;
-                use alloc::vec;
-                let submission = ::pgrx::pgrx_sql_entity_graph::ExtensionSqlEntity {
-                    sql: include_str!(#path),
-                    module_path: module_path!(),
-                    full_path: concat!(file!(), ':', line!()),
-                    file: file!(),
-                    line: line!(),
-                    name: #name,
-                    bootstrap: #bootstrap,
-                    finalize: #finalize,
-                    requires: vec![#(#requires_iter),*],
-                    creates: vec![#(#creates_iter),*],
-                };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::CustomSql(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                {
+                    let writer = ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                        .u32((#payload_len) as u32)
+                        .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_CUSTOM_SQL)
+                        .str(include_str!(#path))
+                        .str(module_path!())
+                        .str(concat!(file!(), ':', line!()))
+                        .str(file!())
+                        .u32(line!())
+                        .str(#name)
+                        .bool(#bootstrap)
+                        .bool(#finalize)
+                        .u32(#require_count as u32);
+                    #( let writer = { #require_writers }; )*
+                    let writer = writer.u32(#create_count as u32);
+                    #( let writer = { #create_writers }; )*
+                    writer.finish()
+                }
+            );
         }
     }
 }
@@ -128,7 +155,7 @@ impl Parse for CodeEnrichment<ExtensionSqlFile> {
         let path = input.parse()?;
         let _after_sql_comma: Option<Token![,]> = input.parse()?;
         let attrs = input.parse_terminated(ExtensionSqlAttribute::parse, Token![,])?;
-        Ok(CodeEnrichment(ExtensionSqlFile { path, attrs }))
+        Ok(Self(ExtensionSqlFile { path, attrs }))
     }
 }
 
@@ -168,15 +195,15 @@ impl ToEntityGraphTokens for ExtensionSql {
         let sql = &self.sql;
         let mut bootstrap = false;
         let mut finalize = false;
-        let mut creates = vec![];
-        let mut requires = vec![];
+        let mut creates: Vec<SqlDeclared> = vec![];
+        let mut requires: Vec<PositioningRef> = vec![];
         for attr in &self.attrs {
             match attr {
                 ExtensionSqlAttribute::Requires(items) => {
-                    requires.append(&mut items.iter().map(|x| x.to_token_stream()).collect());
+                    requires.extend(items.iter().cloned());
                 }
                 ExtensionSqlAttribute::Creates(items) => {
-                    creates.append(&mut items.iter().map(|x| x.to_token_stream()).collect());
+                    creates.extend(items.iter().cloned());
                 }
                 ExtensionSqlAttribute::Bootstrap => {
                     bootstrap = true;
@@ -187,33 +214,59 @@ impl ToEntityGraphTokens for ExtensionSql {
                 ExtensionSqlAttribute::Name(_found_name) => (), // Already done
             }
         }
-        let requires_iter = requires.iter();
-        let creates_iter = creates.iter();
         let name = &self.name;
-
-        let sql_graph_entity_fn_name = format_ident!("__pgrx_internals_sql_{}", name.value());
+        let require_lens = requires.iter().map(PositioningRef::section_len_tokens);
+        let create_lens = creates.iter().map(SqlDeclared::section_len_tokens);
+        let require_writers =
+            requires.iter().map(|item| item.section_writer_tokens(quote! { writer }));
+        let create_writers =
+            creates.iter().map(|item| item.section_writer_tokens(quote! { writer }));
+        let require_count = requires.len();
+        let create_count = creates.len();
+        let sql_graph_entity_fn_name = format_ident!("__pgrx_schema_sql_{}", name.value());
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(#sql)
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(concat!(file!(), ':', line!()))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(#name)
+                + ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                    #( #require_lens ),*
+                ])
+                + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                    #( #create_lens ),*
+                ])
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
         quote! {
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(unknown_lints, clippy::no_mangle_with_rust_abi)]
-            pub extern "Rust" fn  #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                extern crate alloc;
-                use alloc::vec::Vec;
-                use alloc::vec;
-                let submission = ::pgrx::pgrx_sql_entity_graph::ExtensionSqlEntity {
-                    sql: #sql,
-                    module_path: module_path!(),
-                    full_path: concat!(file!(), ':', line!()),
-                    file: file!(),
-                    line: line!(),
-                    name: #name,
-                    bootstrap: #bootstrap,
-                    finalize: #finalize,
-                    requires: vec![#(#requires_iter),*],
-                    creates: vec![#(#creates_iter),*],
-                };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::CustomSql(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                {
+                    let writer = ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                        .u32((#payload_len) as u32)
+                        .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_CUSTOM_SQL)
+                        .str(#sql)
+                        .str(module_path!())
+                        .str(concat!(file!(), ':', line!()))
+                        .str(file!())
+                        .u32(line!())
+                        .str(#name)
+                        .bool(#bootstrap)
+                        .bool(#finalize)
+                        .u32(#require_count as u32);
+                    #( let writer = { #require_writers }; )*
+                    let writer = writer.u32(#create_count as u32);
+                    #( let writer = { #create_writers }; )*
+                    writer.finish()
+                }
+            );
         }
     }
 }
@@ -231,7 +284,7 @@ impl Parse for CodeEnrichment<ExtensionSql> {
         });
         let name =
             name.ok_or_else(|| syn::Error::new(input.span(), "expected `name` to be set"))?;
-        Ok(CodeEnrichment(ExtensionSql { sql, attrs, name }))
+        Ok(Self(ExtensionSql { sql, attrs, name }))
     }
 }
 
@@ -276,7 +329,7 @@ impl Parse for ExtensionSqlAttribute {
                 return Err(syn::Error::new(
                     ident.span(),
                     format!("Unknown extension_sql attribute: {other}"),
-                ))
+                ));
             }
         };
         Ok(found)
@@ -293,25 +346,100 @@ pub enum SqlDeclared {
 impl ToEntityGraphTokens for SqlDeclared {
     fn to_entity_graph_tokens(&self) -> TokenStream2 {
         let (variant, identifier) = match &self {
-            SqlDeclared::Type(val) => ("Type", val),
-            SqlDeclared::Enum(val) => ("Enum", val),
-            SqlDeclared::Function(val) => ("Function", val),
+            Self::Type(val) => ("Type", val),
+            Self::Enum(val) => ("Enum", val),
+            Self::Function(val) => ("Function", val),
         };
-        let identifier_split = identifier.split("::").collect::<Vec<_>>();
-        let identifier = if identifier_split.len() == 1 {
-            let identifier_infer =
-                Ident::new(identifier_split.last().unwrap(), proc_macro2::Span::call_site());
-            quote! { concat!(module_path!(), "::", stringify!(#identifier_infer)) }
-        } else {
-            quote! { stringify!(#identifier) }
-        };
-        quote! {
-            ::pgrx::pgrx_sql_entity_graph::SqlDeclaredEntity::build(#variant, #identifier).unwrap()
+        let identifier_expr = self.section_identifier_tokens();
+        match self {
+            Self::Type(_) | Self::Enum(_) => {
+                let identifier_path: syn::Path =
+                    syn::parse_str(identifier).expect("type declaration path should parse");
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::SqlDeclaredEntity::build_type::<#identifier_path>(#variant, #identifier_expr).unwrap()
+                }
+            }
+            Self::Function(_) => quote! {
+                ::pgrx::pgrx_sql_entity_graph::SqlDeclaredEntity::build(#variant, #identifier_expr).unwrap()
+            },
         }
     }
 }
 
 impl ToRustCodeTokens for SqlDeclared {}
+
+impl SqlDeclared {
+    fn section_identifier_tokens(&self) -> TokenStream2 {
+        let identifier = match self {
+            Self::Type(value) | Self::Enum(value) | Self::Function(value) => value,
+        };
+        let identifier_split = identifier.split("::").collect::<Vec<_>>();
+        if identifier_split.len() == 1 {
+            let identifier_infer =
+                Ident::new(identifier_split.last().unwrap(), proc_macro2::Span::call_site());
+            quote! { concat!(module_path!(), "::", stringify!(#identifier_infer)) }
+        } else {
+            quote! { #identifier }
+        }
+    }
+
+    pub fn section_len_tokens(&self) -> TokenStream2 {
+        let identifier_expr = self.section_identifier_tokens();
+        match self {
+            Self::Type(identifier) | Self::Enum(identifier) => {
+                let identifier_path: syn::Path =
+                    syn::parse_str(identifier).expect("type declaration path should parse");
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                        + ::pgrx::pgrx_sql_entity_graph::section::str_len(#identifier_expr)
+                        + ::pgrx::pgrx_sql_entity_graph::section::str_len(
+                            <#identifier_path as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT
+                        )
+                        + ::pgrx::pgrx_sql_entity_graph::section::argument_sql_len(
+                            <#identifier_path as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::ARGUMENT_SQL
+                        )
+                }
+            }
+            Self::Function(_) => quote! {
+                ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                    + ::pgrx::pgrx_sql_entity_graph::section::str_len(#identifier_expr)
+            },
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream2) -> TokenStream2 {
+        let identifier_expr = self.section_identifier_tokens();
+        match self {
+            Self::Type(identifier) => {
+                let identifier_path: syn::Path =
+                    syn::parse_str(identifier).expect("type declaration path should parse");
+                quote! {
+                    #writer
+                        .u8(::pgrx::pgrx_sql_entity_graph::section::SQL_DECLARED_TYPE)
+                        .str(#identifier_expr)
+                        .str(<#identifier_path as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT)
+                        .argument_sql(<#identifier_path as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::ARGUMENT_SQL)
+                }
+            }
+            Self::Enum(identifier) => {
+                let identifier_path: syn::Path =
+                    syn::parse_str(identifier).expect("type declaration path should parse");
+                quote! {
+                    #writer
+                        .u8(::pgrx::pgrx_sql_entity_graph::section::SQL_DECLARED_ENUM)
+                        .str(#identifier_expr)
+                        .str(<#identifier_path as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT)
+                        .argument_sql(<#identifier_path as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::ARGUMENT_SQL)
+                }
+            }
+            Self::Function(_) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::SQL_DECLARED_FUNCTION)
+                    .str(#identifier_expr)
+            },
+        }
+    }
+}
 
 impl Parse for SqlDeclared {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -327,13 +455,15 @@ impl Parse for SqlDeclared {
             identifier_segments.join("::")
         };
         let this = match variant.to_string().as_str() {
-            "Type" => SqlDeclared::Type(identifier_str),
-            "Enum" => SqlDeclared::Enum(identifier_str),
-            "Function" => SqlDeclared::Function(identifier_str),
-            _ => return Err(syn::Error::new(
-                variant.span(),
-                "SQL declared entities must be `Type(ident)`, `Enum(ident)`, or `Function(ident)`",
-            )),
+            "Type" => Self::Type(identifier_str),
+            "Enum" => Self::Enum(identifier_str),
+            "Function" => Self::Function(identifier_str),
+            _ => {
+                return Err(syn::Error::new(
+                    variant.span(),
+                    "SQL declared entities must be `Type(ident)`, `Enum(ident)`, or `Function(ident)`",
+                ));
+            }
         };
         Ok(this)
     }

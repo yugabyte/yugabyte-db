@@ -14,6 +14,7 @@
 #include "yb/tablet/tablet-test-base.h"
 
 #include "yb/dockv/reader_projection.h"
+#include "yb/util/format.h"
 
 using std::string;
 using std::vector;
@@ -50,7 +51,7 @@ string StringKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool upd
   char buf[256];
   FormatKey(buf, sizeof(buf), key_idx);
 
-  return strings::Substitute(
+  return Format(
     "{ string_value: \"$0\" int32_value: $1 int32_value: $2 }",
     buf, key_idx, val);
 }
@@ -73,7 +74,7 @@ void CompositeKeyTestSetup::FormatKey(char *buf, size_t buf_size, int64_t key_id
 string CompositeKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   char buf[256];
   FormatKey(buf, sizeof(buf), key_idx);
-  return strings::Substitute(
+  return Format(
     "(string key1=$0, int32 key2=$1, int32 val=$2, int32 val=$3)",
     buf, key_idx, key_idx, val);
 }

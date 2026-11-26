@@ -5,30 +5,43 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
@@ -37,6 +50,9 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -45,6 +61,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -64,6 +81,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -73,6 +91,7 @@ import org.mockito.ArgumentCaptor;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -221,11 +240,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   private Map<String, Object> getExpectedOverrides(boolean exposeAll) {
-    return getExpectedOverrides(exposeAll, false /* setMasterJoinExistingUniverseGflag */);
+    return getExpectedOverrides(exposeAll, true /* masterJoinExistingCluster */);
   }
 
   private Map<String, Object> getExpectedOverrides(
-      boolean exposeAll, boolean setMasterJoinExistingUniverseGflag) {
+      boolean exposeAll, boolean masterJoinExistingCluster) {
     Yaml yaml = new Yaml();
     Map<String, Object> expectedOverrides = new HashMap<>();
     if (exposeAll) {
@@ -320,7 +339,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     masterGFlags.put("placement_zone", defaultAZ.getCode());
     masterGFlags.put(
         "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
-    if (setMasterJoinExistingUniverseGflag) {
+    if (masterJoinExistingCluster) {
       masterGFlags.put("master_join_existing_universe", "true");
     }
     gflagOverrides.put("master", masterGFlags);
@@ -402,32 +421,35 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
 
+    UUID providerUUID = defaultUserIntent.maybeGetSingleProviderUUID().get();
+    DeviceInfo defaultDeviceInfo = defaultUserIntent.getBaseDeviceInfo(providerUUID);
+
     Map<String, Object> storageOverrides =
         (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
-    if (defaultUserIntent.deviceInfo != null) {
+    if (defaultDeviceInfo != null) {
       Map<String, Object> tserverDiskSpecs =
           (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
       Map<String, Object> masterDiskSpecs =
           (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
 
-      if (defaultUserIntent.deviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+      if (defaultDeviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", defaultDeviceInfo.numVolumes);
       }
-      if (defaultUserIntent.deviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      if (defaultDeviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put("size", String.format("%dGi", defaultDeviceInfo.volumeSize));
       }
-      if (defaultUserIntent.deviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      if (defaultDeviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", defaultDeviceInfo.storageClass);
       }
 
+      DeviceInfo defaultMasterDeviceInfo =
+          defaultUserIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER);
       // For master
-      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      if (defaultMasterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultMasterDeviceInfo.numVolumes);
       }
-      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      if (defaultMasterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put("size", String.format("%dGi", defaultMasterDeviceInfo.volumeSize));
       }
       if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
         masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
@@ -451,6 +473,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
+    // Both keys default to on, and the version gates, like KubernetesUtil's others, treat an
+    // unparsable version such as "1.0.0" as supported, so TLS follows node-to-node encryption.
+    expectedOverrides.put(
+        "nodeExporter",
+        ImmutableMap.of(
+            "enabled",
+            true,
+            "port",
+            9300,
+            "tls",
+            ImmutableMap.of("enabled", defaultUserIntent.enableNodeToNodeEncrypt)));
     return expectedOverrides;
   }
 
@@ -492,14 +525,105 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(getExpectedOverrides(true), overrides);
   }
 
+  // The key defaults to on.
   @Test
-  public void testHelmInstallSetMasterExistingUniverseGflag() throws IOException {
-    defaultUniverse.updateConfig(
-        ImmutableMap.of(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "true"));
+  public void testNodeExporterRenderedAtSupportedVersion() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    assertEquals(
+        ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
+        runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterOffWithKeyOff() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
+
+    assertEquals(
+        ImmutableMap.of("enabled", false, "tls", ImmutableMap.of("enabled", false)),
+        runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterTlsOnWithSidecarTlsKeyAndNodeToNode() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    defaultUserIntent.enableNodeToNodeEncrypt = true;
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
+
+    assertEquals(ImmutableMap.of("enabled", true), nodeExporterTls(null));
+  }
+
+  @Test
+  public void testNodeExporterTlsUserOverridesCannotTurnItOn() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+
+    assertEquals(
+        ImmutableMap.of("enabled", false),
+        nodeExporterTls(
+            ImmutableMap.of(
+                "nodeExporter", ImmutableMap.of("tls", ImmutableMap.of("enabled", true)))));
+  }
+
+  private Object nodeExporterTls(Map<String, Object> universeOverrides) throws IOException {
+    return ((Map<String, Object>)
+            runHelmInstallAndReadOverrides(universeOverrides).get("nodeExporter"))
+        .get("tls");
+  }
+
+  @Test
+  public void testNodeExporterUserOverridesCannotTurnItOn() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
+
+    Map<String, Object> overrides =
+        runHelmInstallAndReadOverrides(
+            ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", true)));
+
+    assertEquals(false, ((Map<String, Object>) overrides.get("nodeExporter")).get("enabled"));
+  }
+
+  @Test
+  public void testNodeExporterUserOverridesCannotTurnItOff() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    Map<String, Object> overrides =
+        runHelmInstallAndReadOverrides(
+            ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", false, "port", 9400)));
+
+    assertEquals(
+        ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
+        overrides.get("nodeExporter"));
+  }
+
+  /** Runs a HELM_INSTALL with the given universe overrides and returns the rendered overrides. */
+  private Map<String, Object> runHelmInstallAndReadOverrides(Map<String, Object> universeOverrides)
+      throws IOException {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().universeOverrides = universeOverrides;
+    kubernetesCommandExecutor.run();
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    try (InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()))) {
+      return new Yaml().loadAs(is, Map.class);
+    }
+  }
+
+  @Test
+  public void testHelmInstallNewUniverseOmitsMasterJoinExistingUniverseGflag() throws IOException {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().masterJoinExistingCluster = false;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -530,7 +654,192 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
 
     // TODO implement exposeAll false case
-    assertEquals(getExpectedOverrides(true, true), overrides);
+    assertEquals(getExpectedOverrides(true, false /* masterJoinExistingCluster */), overrides);
+  }
+
+  private void saveNewInstallGFlags(boolean applyNewInstallGFlags) {
+    Map<String, String> newInstallFlags =
+        ImmutableMap.of(
+            "yb_enable_read_committed_isolation",
+            "true",
+            GFlagsUtil.YSQL_PG_CONF_CSV,
+            "yb_enable_cbo=on");
+    SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
+    newInstallGFlags.value.put(ServerType.MASTER, newInstallFlags);
+    newInstallGFlags.value.put(ServerType.TSERVER, newInstallFlags);
+    defaultUniverse.setNewInstallGFlags(newInstallGFlags);
+    if (applyNewInstallGFlags) {
+      defaultUniverse.updateConfig(
+          ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    }
+    defaultUniverse.save();
+  }
+
+  private Map<String, Object> runHelmInstallAndGetOverrides() throws IOException {
+    createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true)
+        .run();
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+    try (InputStream is = new FileInputStream(overrideFile.getValue())) {
+      return new Yaml().loadAs(is, Map.class);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> getGFlagOverrides(
+      Map<String, Object> overrides, String serverType) {
+    return (Map<String, Object>) ((Map<String, Object>) overrides.get("gflags")).get(serverType);
+  }
+
+  @Test
+  public void testHelmInstallAppliesNewInstallGFlags() throws IOException {
+    saveNewInstallGFlags(true /* applyNewInstallGFlags */);
+
+    Map<String, Object> overrides = runHelmInstallAndGetOverrides();
+
+    Map<String, Object> expectedOverrides = getExpectedOverrides(true);
+    for (String serverType : ImmutableList.of("master", "tserver")) {
+      Map<String, Object> expectedGFlags = getGFlagOverrides(expectedOverrides, serverType);
+      expectedGFlags.put("yb_enable_read_committed_isolation", "true");
+      expectedGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on");
+    }
+    assertEquals(expectedOverrides, overrides);
+  }
+
+  @Test
+  public void testHelmInstallNewInstallGFlagsKeepUserValues() throws IOException {
+    defaultUserIntent.masterGFlags =
+        new HashMap<>(
+            ImmutableMap.of(
+                "yb_enable_read_committed_isolation",
+                "false",
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                "yb_enable_cbo=off"));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    saveNewInstallGFlags(true /* applyNewInstallGFlags */);
+
+    Map<String, Object> overrides = runHelmInstallAndGetOverrides();
+
+    // The master keeps the user's values, including yb_enable_cbo inside ysql_pg_conf_csv. The
+    // tserver's ysql_pg_conf_csv gets the new install entry appended to the user's.
+    Map<String, Object> expectedOverrides = getExpectedOverrides(true);
+    Map<String, Object> expectedTserverGFlags = getGFlagOverrides(expectedOverrides, "tserver");
+    expectedTserverGFlags.put("yb_enable_read_committed_isolation", "true");
+    expectedTserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl,yb_enable_cbo=on");
+    assertEquals(expectedOverrides, overrides);
+  }
+
+  @Test
+  public void testHelmInstallSkipsNewInstallGFlagsWithoutApplyConfig() throws IOException {
+    saveNewInstallGFlags(false /* applyNewInstallGFlags */);
+
+    assertEquals(getExpectedOverrides(true), runHelmInstallAndGetOverrides());
+  }
+
+  @Test
+  public void testHelmUpgradeAppliesNewInstallGFlags() throws IOException {
+    saveNewInstallGFlags(true /* applyNewInstallGFlags */);
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    kubernetesCommandExecutor.taskParams().namespace = namespace;
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmUpgrade(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture(),
+            isNull());
+    Map<String, Object> overrides;
+    try (InputStream is = new FileInputStream(overrideFile.getValue())) {
+      overrides = new Yaml().loadAs(is, Map.class);
+    }
+    for (String serverType : ImmutableList.of("master", "tserver")) {
+      Map<String, Object> gflags = getGFlagOverrides(overrides, serverType);
+      assertEquals("true", gflags.get("yb_enable_read_committed_isolation"));
+      assertEquals("yb_enable_cbo=on", gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    }
+  }
+
+  @Test
+  public void testHelmUpgradeProcessesMasterHbaConfWithOidcEnhancements() throws IOException {
+    String hbaConf = "host all all 0.0.0.0/0 jwt jwks={\"keys\":[]}";
+    defaultUserIntent.enableYSQLAuth = true;
+    defaultUserIntent.masterGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, hbaConf));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, hbaConf));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.oidcFeatureEnhancements.getKey(), "true");
+
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    File jwksDir =
+        new File(
+            runtimeConfGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath),
+            clusterUUID.toString());
+    try {
+      KubernetesCommandExecutor kubernetesCommandExecutor =
+          createExecutor(
+              KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+              defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+      kubernetesCommandExecutor.taskParams().namespace = namespace;
+      kubernetesCommandExecutor
+          .taskParams()
+          .universeDetails
+          .setUniverseUUID(defaultUniverse.getUniverseUUID());
+      kubernetesCommandExecutor.run();
+
+      ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+      verify(kubernetesManager, times(1))
+          .helmUpgrade(
+              any(UUID.class),
+              any(String.class),
+              any(Map.class),
+              any(String.class),
+              any(String.class),
+              overrideFile.capture(),
+              isNull());
+      Map<String, Object> overrides;
+      try (InputStream is = new FileInputStream(overrideFile.getValue())) {
+        overrides = new Yaml().loadAs(is, Map.class);
+      }
+
+      String[] jwksFiles = jwksDir.list();
+      assertNotNull(jwksFiles);
+      assertEquals(1, jwksFiles.length);
+      String remoteJwksPath = "/mnt/disk0/yw-data/conf/gflag_files/" + jwksFiles[0];
+      for (String serverType : ImmutableList.of("master", "tserver")) {
+        String processedHbaConf =
+            (String) getGFlagOverrides(overrides, serverType).get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+        assertThat(processedHbaConf, containsString("jwt_jwks_path="));
+        assertThat(processedHbaConf, containsString(remoteJwksPath));
+        assertFalse(processedHbaConf.contains("jwks={"));
+      }
+    } finally {
+      FileUtils.deleteDirectory(jwksDir);
+    }
   }
 
   @Test
@@ -1100,6 +1409,327 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallRejectsCertManagerKeyFipsDoesNotAllow() throws IOException {
+    // Chart defaults with a cert-manager setup the other checks accept.
+    when(kubernetesManager.helmShowValues(any(), any()))
+        .thenReturn(
+            "tls:\n  enabled: false\n  certManager:\n    enabled: false\n"
+                + "    bootstrapSelfsigned: false\n    useClusterIssuer: true\n"
+                + "    clusterIssuer: cluster-ca\n"
+                + "    certificates:\n      algorithm: RSA\n      keySize: 2048\n");
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides =
+        HelmUtils.convertYamlToMap(
+            "tls:\n  enabled: true\n  certManager:\n    enabled: true\n"
+                + "    certificates:\n      algorithm: Ed25519\n");
+    kubernetesCommandExecutor.initialize(params);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, kubernetesCommandExecutor::run);
+    assertTrue(e.getMessage(), e.getMessage().contains("algorithm Ed25519"));
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  public void testHelmInstallOverridesCannotDisableFipsOnFipsUniverse() throws IOException {
+    // Overrides saved before the API rejected them are still in the database, so the generated
+    // values must put the FIPS gflag back regardless of where the override came from.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", "gflags:\n  master:\n    openssl_require_fips: false");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides =
+        HelmUtils.convertYamlToMap("gflags:\n  tserver:\n    openssl_require_fips: \"false\"");
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    assertEquals("true", ((Map<String, Object>) gflags.get("master")).get("openssl_require_fips"));
+    assertEquals("true", ((Map<String, Object>) gflags.get("tserver")).get("openssl_require_fips"));
+  }
+
+  private static final String LDAP_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+
+  private KubernetesCommandExecutor helmInstallTask(Map<String, Object> universeOverrides) {
+    when(kubernetesManager.helmShowValues(any(), any())).thenReturn("tls:\n  enabled: false\n");
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides = universeOverrides;
+    kubernetesCommandExecutor.initialize(params);
+    return kubernetesCommandExecutor;
+  }
+
+  private static List<ILoggingEvent> captureTraceLogs(Runnable runnable) {
+    Logger logger = (Logger) LoggerFactory.getLogger(KubernetesCommandExecutor.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.TRACE);
+    try {
+      runnable.run();
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    return appender.list;
+  }
+
+  private static void assertNoLogMentions(List<ILoggingEvent> events, String secret) {
+    for (ILoggingEvent event : events) {
+      assertFalse(event.getFormattedMessage(), event.getFormattedMessage().contains(secret));
+    }
+  }
+
+  @Test
+  public void testHelmInstallTraceLogsNoOverrideSecrets() {
+    KubernetesCommandExecutor task = helmInstallTask(HelmUtils.convertYamlToMap(LDAP_OVERRIDES));
+    List<ILoggingEvent> events = captureTraceLogs(task::run);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+    assertTrue(
+        events.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Running validations on merged")));
+    assertNoLogMentions(events, "dummy-bind-pass");
+  }
+
+  @Test
+  public void testUnserializableOverridesErrorLogsNoOverrideSecrets() {
+    Map<String, Object> universeOverrides =
+        new HashMap<>(HelmUtils.convertYamlToMap(LDAP_OVERRIDES));
+    // Jackson can't serialize a plain Object, so the overrides fail to convert.
+    universeOverrides.put("unserializable", new Object());
+    KubernetesCommandExecutor task = helmInstallTask(universeOverrides);
+    List<ILoggingEvent> events =
+        captureTraceLogs(() -> assertThrows(RuntimeException.class, task::run));
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
+    assertTrue(
+        events.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Error in writing overrides map")));
+    assertNoLogMentions(events, "dummy-bind-pass");
+  }
+
+  @Test
+  public void testHelmInstallOverridesCannotDisableClientCerts() throws IOException {
+    // Provider overrides aren't validated, so the generated values must put the client cert
+    // gflag back and drop the identity checks YBA's client cert can't pass.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put(
+        "OVERRIDES",
+        "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: false\n"
+            + "  tserver:\n    node_to_node_encryption_required_uid: yugabyte\n"
+            + "    verify_client_endpoint: true");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.useNodeToNodeClientCerts = true;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    for (String server : List.of("master", "tserver")) {
+      Map<String, Object> serverGFlags = (Map<String, Object>) gflags.get(server);
+      assertEquals("true", serverGFlags.get(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+      assertFalse(serverGFlags.containsKey(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID));
+      assertFalse(serverGFlags.containsKey(GFlagsUtil.VERIFY_CLIENT_ENDPOINT));
+    }
+  }
+
+  @Test
+  public void testHelmInstallOverridesCannotRequireClientCertsWithoutSetting() throws IOException {
+    // YBA presents no client cert without the setting, so an override can't make servers require
+    // one; without such an override the gflag isn't added, so the gflags checksum is unchanged.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put(
+        "OVERRIDES",
+        "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: true");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    assertEquals(
+        "false",
+        ((Map<String, Object>) gflags.get("master")).get(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+    assertFalse(
+        ((Map<String, Object>) gflags.getOrDefault("tserver", Map.of()))
+            .containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+  }
+
+  private Map<String, Object> getInbuiltYbcGFlags(boolean clientCerts) throws IOException {
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+              details.getPrimaryCluster().userIntent.useNodeToNodeClientCerts = clientCerts;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    kubernetesCommandExecutor.taskParams().namespace = namespace;
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmUpgrade(any(), any(), any(), any(), any(), overrideFile.capture(), isNull());
+    Map<String, Object> overrides;
+    try (InputStream is = new FileInputStream(overrideFile.getValue())) {
+      overrides = new Yaml().loadAs(is, Map.class);
+    }
+    return (Map<String, Object>) ((Map<String, Object>) overrides.get("gflags")).get("ybc");
+  }
+
+  @Test
+  public void testInbuiltYbcRequiresClientCerts() throws IOException {
+    assertEquals("true", getInbuiltYbcGFlags(true).get(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES));
+  }
+
+  @Test
+  public void testInbuiltYbcNoRequireClientCertsWithoutSetting() throws IOException {
+    assertFalse(getInbuiltYbcGFlags(false).containsKey(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES));
+  }
+
+  @Test
+  public void testHelmInstallRejectsInjectedGFlags() throws IOException {
+    // Overrides saved before the API rejected them are still in the database.
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    for (String universeOverrides :
+        List.of(
+            "gflags:\n  tserver:\n    tmp_dir: \"/tmp\\n--openssl_require_fips=false\"",
+            "gflags:\n  tserver:\n    tryfromenv: openssl_require_fips\n",
+            "tserver:\n  extraEnv:\n  - name: FLAGS_openssl_require_fips\n    value: \"false\"")) {
+      KubernetesCommandExecutor kubernetesCommandExecutor =
+          AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+      params.ybSoftwareVersion = ybSoftwareVersion;
+      params.providerUUID = defaultProvider.getUuid();
+      params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+      params.config = config;
+      params.universeName = defaultUniverse.getName();
+      params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+      params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+      params.universeConfig = defaultUniverse.getConfig();
+      params.universeDetails = defaultUniverse.getUniverseDetails();
+      params.namespace = namespace;
+      params.universeOverrides = HelmUtils.convertYamlToMap(universeOverrides);
+      kubernetesCommandExecutor.initialize(params);
+      assertThrows(PlatformServiceException.class, kubernetesCommandExecutor::run);
+    }
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
   public void testHelmInstallResourceOverrideMerge() throws IOException {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");
@@ -1186,8 +1816,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithStorageClass() throws IOException {
-    defaultUserIntent.deviceInfo = new DeviceInfo();
-    defaultUserIntent.deviceInfo.storageClass = "foo";
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.storageClass = "foo";
+    TestUtils.existingProviderInitializer(defaultUserIntent).setDeviceInfo(deviceInfo);
     Universe u =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -1428,7 +2059,50 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1))
-        .deleteStorage(config, defaultUniverse.getUniverseDetails().nodePrefix, namespace);
+        .deleteStorage(
+            defaultUniverse.getUniverseUUID(),
+            config,
+            ImmutableSet.of(defaultUniverse.getUniverseDetails().nodePrefix),
+            namespace);
+  }
+
+  @Test
+  public void testVolumeDeleteForReleaseNames() {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().helmReleaseNames = ImmutableSet.of("rel-a", "rel-b");
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1))
+        .deleteStorage(
+            defaultUniverse.getUniverseUUID(),
+            config,
+            ImmutableSet.of("rel-a", "rel-b"),
+            namespace);
+  }
+
+  @Test
+  public void testVolumeDeleteErrorFailsTheStep() {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(kubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    assertThrows(RuntimeException.class, kubernetesCommandExecutor::run);
+  }
+
+  @Test
+  public void testVolumeDeleteErrorIgnoredOnForceDelete() {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(kubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().isForceDelete = true;
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1)).deleteStorage(any(), any(), any(), any());
   }
 
   @Test
@@ -1795,7 +2469,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             eq(config),
             eq(defaultUniverse.getUniverseDetails().nodePrefix),
             eq(namespace),
-            any(String.class));
+            any(String.class),
+            isNull());
   }
 
   @Test
@@ -1888,6 +2563,141 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallQueryLogPgConfWinsOverUserPgConf() throws IOException {
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig ysqlQueryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(
+        com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig queryExporter =
+        new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
+    queryExporter.setExporterUuid(tp.getUuid());
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
+
+    createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .queryLogConfig(queryLogConfig)
+                .build())
+        .run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    List<String> pgConfLines =
+        overridesYaml
+            .lines()
+            .filter(line -> line.contains(GFlagsUtil.YSQL_PG_CONF_CSV))
+            .collect(Collectors.toList());
+    assertTrue(
+        "tserver ysql_pg_conf_csv must take log_statement from the query log config, yaml="
+            + overridesYaml,
+        pgConfLines.stream().anyMatch(line -> line.contains("log_statement=MOD")));
+    assertTrue(
+        "user log_statement must be replaced, yaml=" + overridesYaml,
+        pgConfLines.stream().noneMatch(line -> line.contains("log_statement=ddl")));
+  }
+
+  @Test
+  public void testHelmInstallMergesNewInstallGFlagsWithAuditLogPgConf() throws IOException {
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig auditLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig();
+    com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig ysqlAudit =
+        new com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig();
+    ysqlAudit.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysqlAudit);
+    com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig auditExporter =
+        new com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig();
+    auditExporter.setExporterUuid(tp.getUuid());
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(auditExporter));
+    saveNewInstallGFlags(true /* applyNewInstallGFlags */);
+
+    createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .build())
+        .run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+    // Exporter classes carry java-type tags the default Yaml ctor can't resolve, so match the raw
+    // text. Only tservers get pgaudit entries, so a line with both values shows they were merged.
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    assertTrue(
+        "tserver ysql_pg_conf_csv must keep yb_enable_cbo=on next to pgaudit, yaml="
+            + overridesYaml,
+        overridesYaml
+            .lines()
+            .anyMatch(
+                line ->
+                    line.contains(GFlagsUtil.YSQL_PG_CONF_CSV)
+                        && line.contains("yb_enable_cbo=on")
+                        && line.contains("pgaudit.")));
+  }
+
+  @Test
   public void testHelmInstallRendersOtelCollectorForMetricsExport() throws IOException {
     // Persist a TelemetryProvider so the Datadog exporter UUID referenced by the config resolves
     // through TelemetryProviderService.getOrBadRequest at render time.
@@ -1957,5 +2767,21 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertTrue(
         "runOnMaster must be set for metrics export, yaml=" + overridesYaml,
         overridesYaml.contains("runOnMaster: true"));
+  }
+
+  // The collector config is shared by every pod in the release, so it keeps the master target
+  // when either the current or the full-move StatefulSet runs masters.
+  @Test
+  public void testReleaseHasMasters() {
+    assertTrue(KubernetesCommandExecutor.releaseHasMasters(false, 1, null));
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(false, 0, null));
+    KubernetesCommandExecutor.FullMoveParams fullMove =
+        new KubernetesCommandExecutor.FullMoveParams();
+    fullMove.masterReplicas = 1;
+    assertTrue(KubernetesCommandExecutor.releaseHasMasters(false, 0, fullMove));
+    // A read replica full move sets masterReplicas from the placement, but runs no masters.
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(true, 0, fullMove));
+    fullMove.masterReplicas = 0;
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(false, 0, fullMove));
   }
 }

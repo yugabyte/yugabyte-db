@@ -134,12 +134,17 @@ class SnapshotTestUtil {
       MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention);
 
   Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil());
+  Status DeleteSchedule(const SnapshotScheduleId& schedule_id);
 
   Result<TxnSnapshotId> PickSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime hybrid_time);
 
   Result<master::SnapshotInfoPB> WaitScheduleSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time = HybridTime::kMin);
+
+  Result<TxnSnapshotRestorationId> StartScheduleRestoration(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+  Status RestoreSnapshotSchedule(const SnapshotScheduleId& schedule_id, HybridTime restore_at);
 
  private:
   template <class F>

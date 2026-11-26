@@ -42,8 +42,10 @@ different.
     In addition to the types found by the above command, here are a few more
     items that should be added manually:
     - Any Form_foo should be accompanied by FormData_foo.
-    - Any types defined using YB_DEFINE_HANDLE_TYPE should have a corresponding
-      entry.
+    - Any type minted by a handle type macro in ybc_pg_typedefs.h should have a
+      corresponding entry.  There is more than one such macro, so find them
+      with grep -F 'Ybc##name' src/yb/yql/pggate/ybc_pg_typedefs.h and then
+      look for invocations of each.
   - Add further third-party typedefs to yb_thirdparty_typedefs.list.  For
     example, types in hdrhistogram or the standard library.
 - Yugabyte has other files which might have to be exempt from modification by

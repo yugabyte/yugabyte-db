@@ -17,6 +17,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/master/master_client.pb.h"
 
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
@@ -75,11 +76,6 @@ class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
     options->replication_factor = 3;
-    options->extra_master_flags.emplace_back(
-        "--ysql_enable_colocated_tables_with_tablespaces=true");
-
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_enable_colocated_tables_with_tablespaces=true");
   }
   void SetupTablespaces() {
     const std::string placement_info_1 = R"#(
@@ -723,6 +719,11 @@ TEST_F_EX(YBBackupTest,
       static_cast<double>(expected_num_tablets) / GetNumTabletServers());
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_shard_count_per_node",
                                        IntToString(low_phase_shard_count_per_node)));
+  // Splitting sizes a tablet by its leader's on-disk SST files. A load balancer leader move can
+  // hand leadership to a replica that was still catching up during the flush below and so flushed
+  // nothing: its data stays in an unflushed memtable, the tablet reports no SST bytes and, with no
+  // further writes to trigger a flush, never becomes a split candidate.
+  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_concurrent_moves", "0"));
 
   const string table_name = "mytbl";
 
@@ -1176,8 +1177,6 @@ TEST_F_EX(YBBackupTest,
 }
 
 // Test backup/restore on a colocated database which has colocated tables with tablespaces.
-// (Colocated tables support tablespaces only if preview flag
-// ysql_enable_colocated_tables_with_tablespaces is enabled.)
 // Backup/Restore on such a database performed with --use_tablespaces option specified, will restore
 // the tables to the corresponding tablespaces.
 TEST_F(
@@ -1258,9 +1257,8 @@ TEST_F(
 }
 
 // Test backup/restore on a colocated database which has colocated tables with tablespaces.
-// If Backup & Restore is performed on a database with ysql_enable_colocated_tables_with_tablespaces
-// enabled without the --use-tablespaces flag then we restore the tables to the pg_default
-// tablespace.
+// If Backup & Restore is performed on such a database without the --use-tablespaces flag then we
+// restore the tables to the pg_default tablespace.
 TEST_F(
     YBBackupTestColocatedTablesWithTablespaces,
     YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithoutTablespaces)) {
@@ -1550,29 +1548,25 @@ ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, a
       "SELECT yb_index_check('t1_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t2_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t3_b_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t4_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   // Validate indexes by performing index-only scans
   RunPsqlCommand(
@@ -3026,21 +3020,24 @@ INSTANTIATE_TEST_CASE_P(
     AddColumnDefault, YBAddColumnDefaultBackupTest,
     ::testing::Values(std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse),
         std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kTrue),
-        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
-        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse)));
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse)));
 
 class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
  public:
   Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
 
+  // TODO(Yamen): Remove this override once GH-28766 is fixed. Skipping here rather than in the
+  // test bodies avoids starting the external cluster for tests that never run.
+  void SetUp() override {
+    GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
+  }
+
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
     // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
     // being released. Hence blocking the following statements from failing to acquire locks.
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
     pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
   }
 
@@ -3110,14 +3107,10 @@ Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjectio
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(SuccessfulDdlAtomicityTest)) {
-  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kFalse));
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomicityTest)) {
-  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kTrue));
 }
 
@@ -3869,6 +3862,13 @@ TEST_F_EX(
     YBBackupTestAutoAnalyze) {
   ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "pg_auto_analyze_service=5"));
   const int num_tables = 20;
+  auto wait_for_analyze = [](pgwrapper::PGConn& conn, int table_idx) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<float>(Format(
+              "SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", table_idx))) == 3;
+        }, 30s * kTimeMultiplier, Format("Waiting for auto analyze of tbl_$0", table_idx));
+  };
   for (int i = 0; i < num_tables; ++i) {
     ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", i)));
     ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", i), 3));
@@ -3878,18 +3878,12 @@ TEST_F_EX(
   // run ANALYZEs aggressively.
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_threshold", "1"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_scale_factor", "0.1"));
-  SleepFor(3s * kTimeMultiplier);
 
   // Verify that the auto analyze service is running.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT reltuples FROM pg_class WHERE relname = 'tbl_0'",
-      R"#(
-         reltuples
-        -----------
-                 3
-        (1 row)
-      )#"
-  ));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+    ASSERT_OK(wait_for_analyze(conn, 0));
+  }
 
   // Backup and restore to a new database.
   const string backup_dir = GetTempDir("backup");
@@ -3902,16 +3896,9 @@ TEST_F_EX(
   SetDbName("db2");
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", num_tables)));
   ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", num_tables), 3));
-  SleepFor(3s * kTimeMultiplier);
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", num_tables),
-      R"#(
-         reltuples
-        -----------
-                 3
-        (1 row)
-      )#"
-  ));
+  // The service may first spend seconds analyzing db2's catalog tables modified by the restore.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("db2"));
+  ASSERT_OK(wait_for_analyze(conn, num_tables));
 }
 
 // Starts each base table with a single hash tablet so that we can drive
@@ -4281,6 +4268,45 @@ TEST_F(
       ASSERT_RESULT(restored_conn.FetchAllAsString(
           Format("SELECT * FROM $0 ORDER BY vec <-> '[1.0, 0.4, 0.3]'", table_name))),
       "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
+}
+
+class YBBackupTestPgDuckdb : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_yb_enable_pg_duckdb");
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_pg_duckdb=true");
+  }
+};
+
+// The restore replays pg_duckdb's members one by one and creates the secret's FOREIGN SERVER
+// before any extension sequence. The server's validator opens a DuckDB connection, which must not
+// depend on duckdb.extensions_table_seq existing yet.
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(PgDuckdbSecretRestore), YBBackupTestPgDuckdb) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION pg_duckdb"));
+  ASSERT_OK(conn.Fetch(
+      "SELECT duckdb.create_simple_secret(type := 'S3', key_id := 'k', secret := 's', "
+      "region := 'us-west-2')"));
+
+  const std::string kServerQuery =
+      "SELECT s.srvname, s.srvtype, s.srvoptions::text, m.umuser::regrole::text, "
+      "m.umoptions::text FROM pg_foreign_server s "
+      "JOIN pg_user_mapping m ON m.umserver = s.oid ORDER BY 1";
+  const auto expected = ASSERT_RESULT(conn.FetchAllAsString(kServerQuery));
+  ASSERT_STR_CONTAINS(expected, "simple_s3_secret");
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  const std::string restored_db_name{"restored_pgd_db"};
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restored_db_name),
+       "restore"}));
+
+  auto restored_conn = ASSERT_RESULT(cluster_->ConnectToDB(restored_db_name));
+  ASSERT_EQ(ASSERT_RESULT(restored_conn.FetchAllAsString(kServerQuery)), expected);
 }
 
 }  // namespace tools

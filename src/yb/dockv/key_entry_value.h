@@ -25,6 +25,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_datatype.h"
 
+#include "yb/dockv/decode_policy.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/integral_types.h"
@@ -88,8 +89,14 @@ class KeyEntryValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
   // format and consumes a prefix of the slice.
+  // The template versions report failure according to DecodePolicy<kDescribeErrors>.
+  template <bool kDescribeErrors>
+  static typename DecodePolicy<kDescribeErrors>::StatusType DecodeKey(
+      Slice* slice, KeyEntryValue* out);
   static Status DecodeKey(Slice* slice, KeyEntryValue* out);
 
+  template <bool kDescribeErrors>
+  typename DecodePolicy<kDescribeErrors>::StatusType DecodeFromKey(Slice* slice);
   Status DecodeFromKey(Slice* slice);
   static Result<KeyEntryValue> FullyDecodeFromKey(const Slice& slice);
 

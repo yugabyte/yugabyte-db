@@ -1,42 +1,28 @@
-import {
-  FC,
-  forwardRef,
-  RefObject,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState
-} from 'react';
+import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { TourStep, dismissTourStep, isTourStepDismissed } from '../tour-progress';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
 
 /** Distance below the Settings tab anchor. */
 const POPOVER_OFFSET: [number, number] = [0, 12];
 
-export const DETAIL_SETTINGS_POPOVER_DISMISS_KEY = 'yb_detail_settings_popover_dismissed';
 const DETAIL_SETTINGS_POPOVER_OPEN_EVENT = 'yb-detail-settings-popover-open';
 
 interface DetailSettingsPopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
-}
-
-export interface SettingsTabTitleWithPopoverHandle {
-  /**
-   * Opens the tip when it has not been dismissed yet.
-   * @returns true when navigation should be blocked.
-   */
-  tryIntercept: () => boolean;
+  /** Transient click-away close. */
+  onClickAway: () => void;
 }
 
 export const isDetailSettingsPopoverDismissed = (): boolean =>
-  localStorage.getItem(DETAIL_SETTINGS_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.DetailSettings);
 
 export const dismissDetailSettingsPopover = (): void => {
-  localStorage.setItem(DETAIL_SETTINGS_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.DetailSettings);
 };
 
 /** Opens the Settings tip when it has not been dismissed yet. */
@@ -50,7 +36,8 @@ export const requestOpenDetailSettingsPopover = (): void => {
 export const DetailSettingsPopover: FC<DetailSettingsPopoverProps> = ({
   open,
   anchorRef,
-  onClose
+  onClose,
+  onClickAway
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.detailSettingsPopover'
@@ -62,6 +49,7 @@ export const DetailSettingsPopover: FC<DetailSettingsPopoverProps> = ({
       anchorEl={anchorRef.current}
       placement={TourPlacement.Bottom}
       offset={POPOVER_OFFSET}
+      onClickAway={onClickAway}
     >
       <YBTourSpotlight
         title={t('title')}
@@ -77,51 +65,37 @@ export const DetailSettingsPopover: FC<DetailSettingsPopoverProps> = ({
   );
 };
 
-/**
- * Settings tab label. Exposes {@link SettingsTabTitleWithPopoverHandle.tryIntercept}
- * so the tab panel can block navigation until the tip is dismissed.
- */
-export const SettingsTabTitleWithPopover = forwardRef<SettingsTabTitleWithPopoverHandle>(
-  function SettingsTabTitleWithPopover(_props, ref) {
-    const anchorRef = useRef<HTMLSpanElement>(null);
-    const [open, setOpen] = useState(false);
+/** Settings tab label with onboarding tip anchored to the tab title. */
+export const SettingsTabTitleWithPopover: FC = () => {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
 
-    useEffect(() => {
-      const handleOpenRequest = () => {
-        if (!isDetailSettingsPopoverDismissed()) {
-          setOpen(true);
-        }
-      };
-      window.addEventListener(DETAIL_SETTINGS_POPOVER_OPEN_EVENT, handleOpenRequest);
-      return () => {
-        window.removeEventListener(DETAIL_SETTINGS_POPOVER_OPEN_EVENT, handleOpenRequest);
-      };
-    }, []);
+  useEffect(() => {
+    const handleOpenRequest = () => {
+      if (!isDetailSettingsPopoverDismissed()) {
+        setOpen(true);
+      }
+    };
+    window.addEventListener(DETAIL_SETTINGS_POPOVER_OPEN_EVENT, handleOpenRequest);
+    return () => {
+      window.removeEventListener(DETAIL_SETTINGS_POPOVER_OPEN_EVENT, handleOpenRequest);
+    };
+  }, []);
 
-    const handleClose = useCallback(() => {
-      dismissDetailSettingsPopover();
-      setOpen(false);
-    }, []);
+  const handleClose = useCallback(() => {
+    dismissDetailSettingsPopover();
+    setOpen(false);
+  }, []);
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        tryIntercept: () => {
-          if (isDetailSettingsPopoverDismissed()) {
-            return false;
-          }
-          setOpen(true);
-          return true;
-        }
-      }),
-      []
-    );
-
-    return (
-      <>
-        <span ref={anchorRef}>Settings</span>
-        <DetailSettingsPopover open={open} anchorRef={anchorRef} onClose={handleClose} />
-      </>
-    );
-  }
-);
+  return (
+    <>
+      <span ref={anchorRef}>Settings</span>
+      <DetailSettingsPopover
+        open={open}
+        anchorRef={anchorRef}
+        onClose={handleClose}
+        onClickAway={handleClose}
+      />
+    </>
+  );
+};

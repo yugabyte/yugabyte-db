@@ -28,6 +28,7 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/endian_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
@@ -122,7 +123,7 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   result.reserve(512);
   result += Format("host=$0 port=$1", settings.host, settings.port);
   if (!settings.dbname.empty()) {
-    result += Format(" dbname=$0", PqEscapeStringConn(settings.dbname));
+    result += " " + PqDbNameConnStr(settings.dbname);
   }
   if (settings.connect_timeout) {
     result += Format(" connect_timeout=$0", settings.connect_timeout);
@@ -713,6 +714,32 @@ Result<PGResultPtr> PGConn::Fetch(
       command);
 }
 
+Status PGConn::Prepare(const std::string& stmt_name, const std::string& query) {
+  VLOG(1) << __func__ << " " << stmt_name << ": " << query;
+  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
+  PGResultPtr res(PQprepare(impl_.get(), stmt_name.c_str(), query.c_str(), 0, nullptr));
+  auto status = PQresultStatus(res.get());
+  if (status != ExecStatusType::PGRES_COMMAND_OK) {
+    auto msg = GetPQErrorMessage(res.get());
+    return STATUS(NetworkError,
+                  Format("Prepare '$0' failed: $1, message: $2", query, status, msg),
+                  Slice() /* msg2 */,
+                  PgsqlError(GetSqlState(res.get()))).CloneAndAddErrorCode(AuxilaryMessage(msg));
+  }
+  return Status::OK();
+}
+
+Result<PGResultPtr> PGConn::FetchPrepared(
+    const std::string& stmt_name, const std::vector<const char*>& params) {
+  VLOG(1) << __func__ << " " << stmt_name;
+  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
+  return CheckResult(
+      PGResultPtr(PQexecPrepared(
+          impl_.get(), stmt_name.c_str(), static_cast<int>(params.size()), params.data(), nullptr,
+          nullptr, static_cast<int>(PGResultFormat::kBinary))),
+      stmt_name);
+}
+
 Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, int columns) {
   auto res = VERIFY_RESULT(Fetch(command));
 
@@ -867,6 +894,10 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
   return Format("Type not supported: $0", type);
 }
 
+int PGConn::BackendPID() const {
+  return PQbackendPID(impl_.get());
+}
+
 // Escape a string for use as a SQL string literal, i.e. a value that appears in a SQL statement
 // like `SELECT * FROM t WHERE name = '<escaped>'`.  Single quotes are doubled and, when the input
 // contains backslashes, E'...' (escape string) syntax is used so that backslash sequences are
@@ -912,9 +943,6 @@ std::string PqEscapeIdentifier(const std::string& input) {
 // Escape a value for use in a libpq connection string (e.g. to make a
 // libpq connection to a database named `this->'\<-this`, use
 // `dbname='this->\'\\<-this'`).
-//
-// This should behave like `PQescapeStringConn` except that it doesn't need an existing connection
-// passed in.
 std::string PqEscapeStringConn(const std::string& input) {
   std::string output = input;
   boost::algorithm::replace_all(output, "\\", "\\\\");
@@ -922,6 +950,10 @@ std::string PqEscapeStringConn(const std::string& input) {
   output.insert(0, 1, '\'');
   output.push_back('\'');
   return output;
+}
+
+std::string PqDbNameConnStr(const std::string& db_name) {
+  return "dbname=" + PqEscapeStringConn(db_name);
 }
 
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
@@ -932,6 +964,16 @@ PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
 }
 
 Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
+  auto conn_str = conn_str_;
+  auto conn_str_for_log = conn_str_for_log_;
+  // Capture the traceparent at connect time, not at builder-construction time: a stored
+  // builder can outlive the trace that was active when it was built.
+  const auto traceparent = dist_trace::GetActiveTraceparent();
+  if (!traceparent.empty()) {
+    const auto param = Format(" yb_dist_traceparent=$0", PqEscapeStringConn(traceparent));
+    conn_str += param;
+    conn_str_for_log += param;
+  }
   // If connect_timeout is specified, also set it as the total deadline among connection attempts
   // because that is likely what the caller intended.  There is logic in connectDBComplete to make
   // connect_timeout of 1 effectively mean 2, but don't bother with that conversion for this
@@ -939,9 +981,9 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
   if (connect_timeout_) {
     const auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(connect_timeout_);
     return PGConn::Connect(
-        conn_str_, deadline, simple_query_protocol, conn_str_for_log_, should_stop_);
+        conn_str, deadline, simple_query_protocol, conn_str_for_log, should_stop_);
   }
-  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_, should_stop_);
+  return PGConn::Connect(conn_str, simple_query_protocol, conn_str_for_log, should_stop_);
 }
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
@@ -995,8 +1037,7 @@ Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
 }
 
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
-    : process_("perf",
-               PerfArguments(CHECK_RESULT(conn->FetchRow<PGUint32>("SELECT pg_backend_pid()")))) {
+    : process_("perf", PerfArguments(conn->BackendPID())) {
 
   CHECK_OK(process_.Start());
 }
@@ -1031,6 +1072,15 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .connect_timeout = connect_timeout,
        .yb_internal_conn_kind = std::string(yb_internal_conn_kind),
        .should_stop = std::move(should_stop)});
+}
+
+Result<bool> TryTerminateBackendWithRunningQuery(
+    PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs) {
+  return conn.FetchRow<bool>(
+      Format(
+          "SELECT COUNT(pg_terminate_backend(pid)) > 0 FROM pg_stat_activity WHERE " \
+          "pid=$0 AND state='active' AND query_start < NOW() - interval '$1 msec'",
+          backend_pid, min_query_running_time_msecs));
 }
 
 } // namespace yb::pgwrapper

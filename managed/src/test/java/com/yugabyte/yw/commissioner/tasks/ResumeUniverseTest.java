@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -120,7 +121,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     verifyCapacityReservationGcp(
         defaultUniverse.getUniverseUUID(),
         Map.of(
-            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            defaultUniverse
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(gcpProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     // GCP reservation names are random "r-<uuid>"; capture them and map by zone.
@@ -263,6 +268,21 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 
+  // Resume does not change master roles, and configure already wrote the master target, so the
+  // master start must not plan a collector refresh.
+  @Test
+  public void testResumeUniverseSkipsOtelCollectorRewrite() {
+    setupUniverse(false, 1);
+    defaultUniverse = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageOtelCollector));
+  }
+
   @Test
   public void testResumeUniverseWithCRAzureSuccess() {
     factory
@@ -281,7 +301,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         AzureReservationGroup.of(
             region,
             Map.of(
-                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                defaultUniverse
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
@@ -310,7 +334,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent curIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     UniverseDefinitionTaskParams.UserIntent rrUserIntent = curIntent.clone();
-    rrUserIntent.provider = azuProvider2.getUuid().toString();
+    TestUtils.existingProviderInitializer(rrUserIntent).setProviderUUID(azuProvider2.getUuid());
     rrUserIntent.replicationFactor = 3;
     AvailabilityZone az = AvailabilityZone.getByCode(azuProvider2, "az-1");
 
@@ -350,12 +374,20 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         AzureReservationGroup.of(
             region,
             Map.of(
-                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                defaultUniverse
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))),
         AzureReservationGroup.of(
             region1,
             Map.of(
-                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                defaultUniverse
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider2.getUuid()),
                 Map.of(
                     "1",
                     Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")))));
@@ -393,7 +425,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     verifyCapacityReservationAws(
         defaultUniverse.getUniverseUUID(),
         Map.of(
-            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            defaultUniverse
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(defaultProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
@@ -405,7 +441,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                 defaultUniverse.getUniverseUUID(),
                 UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
-                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+                defaultUniverse
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(defaultProvider.getUuid())),
             Arrays.asList("host-n1", "host-n2", "host-n3")));
   }
 

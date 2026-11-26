@@ -11,19 +11,32 @@
 # under the License.
 
 """
-Unit tests for the Spark job submission orchestration in run_tests_on_spark.py, specifically
-run_tests_job_with_resubmits(): it re-submits the Spark job (both the initial test job and the
-failed-test re-run job) for test attempts that did not produce a result (e.g. because the Spark
-application was lost while autoscaled workers were shutting down), re-creating the Spark context
-when it was stopped.
+Unit tests for the failed-test re-run orchestration in run_tests_on_spark.py, specifically
+run_tests_job_with_resubmits(): it re-submits the Spark job for test attempts that did not produce
+a result (e.g. because the Spark application was lost while autoscaled workers were shutting down),
+re-creating the Spark context when it was stopped.
 
 These tests mock out Spark: run_tests_job(), spark_context_is_stopped() and restart_spark_context()
 are patched, so no Spark cluster (or pyspark) is exercised. Only the driver-side orchestration
 logic is under test.
 """
 
+import ast
+import fcntl
+import hashlib
+import inspect
+import io
+import json
+import os
+import shutil
+import subprocess
+import tarfile
+import sys
+import threading
+import time
 import types
-from typing import List, Set
+import urllib.request
+from typing import Any, Iterator, List, Optional, Set
 
 import pytest
 
@@ -35,7 +48,8 @@ from yugabyte import yb_dist_tests
 
 
 # run_tests_job() is faked in every test here, so the conf is only threaded through, never used.
-# None of these paths are touched.
+# It is a real TestConfig rather than a fake so that mypy checks the call sites; none of these
+# paths are used.
 FAKE_CONF = yb_dist_tests.TestConfig(
     build_root='/fake/yb-src-root/build/debug-clang17-dynamic-ninja',
     build_type='debug',
@@ -45,6 +59,10 @@ FAKE_CONF = yb_dist_tests.TestConfig(
     archive_sha256sum=None,
     compiler_type='clang17')
 
+# A caller-supplied environment, distinct from the module-level propagated_env_vars, so a test can
+# tell which one the wrapper actually forwards.
+FAKE_ENV = {'YB_FAKE_ENV_MARKER': 'from-the-caller'}
+
 
 def make_attempts(base: str, num_repetitions: int) -> List[test_descriptor.TestDescriptor]:
     """Expand one failed test into its per-attempt descriptors, the same way main() does."""
@@ -52,7 +70,9 @@ def make_attempts(base: str, num_repetitions: int) -> List[test_descriptor.TestD
     return [base_descriptor.with_attempt_index(i) for i in range(1, num_repetitions + 1)]
 
 
-def make_result(descriptor_str: str, exit_code: int = 0) -> yb_dist_tests.TestResult:
+def make_result(descriptor_str: str, exit_code: int = 0,
+                skipped: bool = False,
+                failed_in_earlier_task_attempt: bool = False) -> yb_dist_tests.TestResult:
     """A minimal TestResult carrying only the fields the re-run orchestration reads."""
     return yb_dist_tests.TestResult(
         test_descriptor=test_descriptor.TestDescriptor(descriptor_str),
@@ -61,7 +81,9 @@ def make_result(descriptor_str: str, exit_code: int = 0) -> yb_dist_tests.TestRe
         failed_without_output=False,
         artifact_paths=None,
         artifact_copy_result=None,
-        spark_error_copy_result=None)
+        spark_error_copy_result=None,
+        skipped=skipped,
+        failed_in_earlier_task_attempt=failed_in_earlier_task_attempt)
 
 
 def results_for(
@@ -81,7 +103,7 @@ def isolate_spark(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
     monkeypatch.setattr(rts, "restart_spark_context", lambda conf: None)
-    monkeypatch.setattr(rts, "g_spark_job_cancelled", False)
+    monkeypatch.setattr(rts, "g_cancelled_job_groups", set())
     # Ensure the test-only fault hooks are off, so the behavioral tests are not perturbed by a
     # developer running with these set in their environment.
     monkeypatch.delenv("YB_TEST_SUBMIT_DROP_RESULTS", raising=False)
@@ -96,13 +118,17 @@ def test_all_attempts_complete_on_first_submission(monkeypatch: pytest.MonkeyPat
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         return results_for(pending)
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert len(submissions) == 1
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
@@ -120,7 +146,11 @@ def test_worker_dies_after_5_iterations_only_missing_resubmitted(
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append([td.descriptor_str for td in pending])
         # First submission loses the second half; the resubmission returns everything it is given.
         returned = list(pending)[:5] if len(submissions) == 1 else list(pending)
@@ -128,7 +158,7 @@ def test_worker_dies_after_5_iterations_only_missing_resubmitted(
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert len(submissions) == 2
     # Only the 5 attempts missing a result are resubmitted.
@@ -148,7 +178,11 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         # Never return a result for the last attempt, forcing repeated resubmissions.
         return results_for([td for td in pending if td.attempt_index != 4])
@@ -164,7 +198,7 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     # Context reports stopped -> restart before each of the 3 submissions, including the first
     # (an already-dead context at rerun entry must be recovered before the first submission).
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
-    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
     assert len(submissions) == 3
     assert restart_count == 3
 
@@ -172,7 +206,7 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     submissions.clear()
     restart_count = 0
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: False)
-    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
     assert len(submissions) == 3
     assert restart_count == 0
 
@@ -192,7 +226,11 @@ def test_dead_context_at_entry_is_restarted_before_first_submission(
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         events.append("submit")
         return results_for(pending)
 
@@ -204,7 +242,7 @@ def test_dead_context_at_entry_is_restarted_before_first_submission(
     monkeypatch.setattr(rts, "restart_spark_context", record_restart)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     # The restart happened before the first (and here only) submission.
     assert events == ["restart", "submit"]
@@ -228,7 +266,11 @@ def test_submission_error_is_recovered_not_crashed(
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions["n"] += 1
         if submissions["n"] == 1:
             raise Py4JJavaError("Cannot call methods on a stopped SparkContext.")
@@ -236,7 +278,7 @@ def test_submission_error_is_recovered_not_crashed(
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert submissions["n"] == 2  # first submission raised, second succeeded
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
@@ -264,7 +306,11 @@ def test_failed_restart_is_retried_not_crashed(monkeypatch: pytest.MonkeyPatch) 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions["n"] += 1
         return results_for(pending)
 
@@ -272,7 +318,7 @@ def test_failed_restart_is_retried_not_crashed(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(rts, "restart_spark_context", flaky_restart)
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert restarts["n"] == 2      # first recovery failed, second succeeded
     assert submissions["n"] == 1   # run_tests_job only ran after a successful recovery
@@ -291,7 +337,11 @@ def test_non_py4j_error_with_dead_context_is_retried(monkeypatch: pytest.MonkeyP
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions["n"] += 1
         if submissions["n"] == 1:
             raise EOFError("gateway connection closed")
@@ -300,7 +350,7 @@ def test_non_py4j_error_with_dead_context_is_retried(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)  # application is down
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert submissions["n"] == 2  # EOFError on a dead context is retried, not fatal
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
@@ -316,14 +366,18 @@ def test_error_with_healthy_context_is_not_swallowed(monkeypatch: pytest.MonkeyP
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         raise ValueError("unrelated bug")
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: False)  # context is fine
 
     with pytest.raises(ValueError, match="unrelated bug"):
-        rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+        rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
 
 def test_cancellation_stops_resubmission(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -337,15 +391,19 @@ def test_cancellation_stops_resubmission(monkeypatch: pytest.MonkeyPatch) -> Non
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         # Simulate run_spark_action detecting the deliberate cancellation.
-        rts.g_spark_job_cancelled = True
+        rts.g_cancelled_job_groups.add(rts.FAILED_TESTS_ON_DIFF_JOB_GROUP)
         return results_for(list(pending)[:3])
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert len(submissions) == 1
     assert len(results) == 3
@@ -359,14 +417,18 @@ def test_permanent_loss_exhausts_submission_budget(monkeypatch: pytest.MonkeyPat
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         return []
 
     monkeypatch.setattr(rts, "SPARK_JOB_MAX_SUBMITS", 5)
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert len(submissions) == 5
     assert results == []
@@ -386,7 +448,11 @@ def test_java_and_cpp_attempts_matched_independently(monkeypatch: pytest.MonkeyP
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append([td.descriptor_str for td in pending])
         # Lose exactly one attempt of each test on the first pass.
         if len(submissions) == 1:
@@ -395,7 +461,7 @@ def test_java_and_cpp_attempts_matched_independently(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert len(submissions) == 2
     # The two attempt_2 descriptors (one Java, one C++) are exactly what gets resubmitted.
@@ -471,7 +537,11 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         return results_for(pending)
 
@@ -490,12 +560,49 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("YB_TEST_SUBMIT_DROP_RESULTS", "3")
     monkeypatch.setenv("YB_TEST_SUBMIT_STOP_CONTEXT", "1")
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
 
     assert len(submissions) == 2       # first submission + one recovery submission
     assert len(submissions[1]) == 3    # exactly the 3 dropped attempts are re-submitted
     assert restart_count == 1          # context re-created once before the recovery submission
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+# ---------------------------------------------------------------------------------------------
+# What the wrapper forwards, and which attempts it re-submits.
+# ---------------------------------------------------------------------------------------------
+
+def test_caller_env_reaches_every_submission(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The wrapper must hand its own env_vars parameter to each submission, including the ones after
+    a re-submission. Taking the module-level propagated_env_vars instead would still work for the
+    initial run and silently ignore a caller that wants a different environment - which is the
+    whole point of passing it as a parameter.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    seen_envs: List[Any] = []
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
+        seen_envs.append(env_vars)
+        # Drop one attempt on the first submission so a second one happens.
+        keep = [td for td in pending if td.attempt_index != 4] if not seen_envs[1:] else pending
+        return results_for(keep)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    # A different value in the module global: if the wrapper reads that instead, this test fails.
+    monkeypatch.setattr(rts, "propagated_env_vars", {'YB_FAKE_ENV_MARKER': 'from-the-global'})
+
+    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars=FAKE_ENV)
+
+    assert len(seen_envs) == 2
+    assert seen_envs == [FAKE_ENV, FAKE_ENV]
 
 
 def test_initial_job_lost_application_is_resubmitted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -515,7 +622,11 @@ def test_initial_job_lost_application_is_resubmitted(monkeypatch: pytest.MonkeyP
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         rerun_flags.append(rerun)
         if len(submissions) == 1:
@@ -533,7 +644,8 @@ def test_initial_job_lost_application_is_resubmitted(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(rts, "restart_spark_context", record_restart)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=False, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(
+        attempts, rerun=False, conf=FAKE_CONF, env_vars=FAKE_ENV)
 
     assert len(submissions) == 2
     assert rerun_flags == [False, False]   # the rerun flag is passed through unchanged
@@ -553,7 +665,11 @@ def test_failed_attempts_are_not_resubmitted(monkeypatch: pytest.MonkeyPatch) ->
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
             rerun: bool,
-            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            job_group: Any = None,
+            shares_context: bool = False,
+            stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
         submissions.append([td.descriptor_str for td in pending])
         if len(submissions) == 1:
             # Attempts 1-2 pass, 3-4 fail, 5-6 are lost with the application.
@@ -563,7 +679,8 @@ def test_failed_attempts_are_not_resubmitted(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=False, conf=FAKE_CONF)
+    results = rts.run_tests_job_with_resubmits(
+        attempts, rerun=False, conf=FAKE_CONF, env_vars=FAKE_ENV)
 
     assert len(submissions) == 2
     # Only the two lost attempts are re-submitted; the failed ones are not.
@@ -579,13 +696,474 @@ def test_failed_attempts_are_not_resubmitted(monkeypatch: pytest.MonkeyPatch) ->
     }
 
 
+# ---------------------------------------------------------------------------------------------
+# Cancelled vs lost: run_spark_action decides which, and the callers do the opposite on each.
+# ---------------------------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_py4j(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """
+    run_spark_action imports py4j to catch Py4JJavaError, and py4j is absent here (it only arrives
+    with pyspark). Stand in a module whose exception type we can raise.
+    """
+    class Py4JJavaError(Exception):
+        pass
+
+    protocol = types.ModuleType('py4j.protocol')
+    protocol.Py4JJavaError = Py4JJavaError  # type: ignore[attr-defined]
+    py4j = types.ModuleType('py4j')
+    py4j.protocol = protocol  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, 'py4j', py4j)
+    monkeypatch.setitem(sys.modules, 'py4j.protocol', protocol)
+    return Py4JJavaError
+
+
+# Taken from a Spark 3.5 local[2] run that reached the failure threshold - once with a single job
+# (cancelAllJobs) and once with two concurrent jobs (cancelJobGroup). Pinning the real messages
+# rather than parametrizing over SPARK_JOB_CANCELLED_MESSAGES is the point: a test built from that
+# tuple can only confirm the strings someone already chose, and would keep passing if an edit
+# stopped it matching what Spark actually emits.
+OBSERVED_SPARK_CANCELLATION_MESSAGES = (
+    "org.apache.spark.SparkException: Job aborted due to stage failure: Task 0 in stage 0.0 failed "
+    "1 times, most recent failure: Lost task 0.0 in stage 0.0 (TID 0) (host executor driver): "
+    "TaskKilled (Stage cancelled: Job 0 cancelled as part of cancellation of all jobs)",
+    "org.apache.spark.SparkException: Job aborted due to stage failure: Task 0 in stage 1.0 failed "
+    "1 times, most recent failure: Lost task 0.0 in stage 1.0 (TID 4) (host executor driver): "
+    "TaskKilled (Stage cancelled: Job 1 cancelled part of cancelled job group diff-rerun)",
+)
+
+
+class FakeAccumulator:
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+
+class FakeStatusTracker:
+    """Answers getJobIdsForGroup the way the test asks it to - a list, or an exception."""
+
+    def __init__(self, answer: Any) -> None:
+        self.answer = answer
+        self.asked: List[str] = []
+
+    def getJobIdsForGroup(self, job_group: str) -> Any:  # noqa: N802 - Spark's spelling
+        self.asked.append(job_group)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+class FakeRDD:
+    def map(self, func: Any) -> 'FakeRDD':
+        return self
+
+    def collect(self) -> list:
+        # Long enough for the monitor thread to reach its decision, short enough not to matter.
+        time.sleep(0.5)
+        return []
+
+
+class FakeSparkContext:
+    """
+    Enough of a SparkContext for run_tests_job's monitor to run: the failure count starts above
+    the limit, so monitor_fail_count skips its polling loop and decides immediately.
+    """
+    applicationId = 'local-fake'
+
+    def __init__(self, group_job_ids: Any) -> None:
+        self.statusTrackerObj = FakeStatusTracker(group_job_ids)
+        self.cancelled_groups: List[str] = []
+        self.cancel_all_calls = 0
+
+    def setJobGroup(self, group_id: str, description: str) -> None:  # noqa: N802
+        pass
+
+    def accumulator(self, value: Any, accum_param: Any = None) -> FakeAccumulator:
+        # The list accumulator collects results; the int one is the failure count, and it is
+        # already over the limit this test sets.
+        return FakeAccumulator([] if accum_param is not None else 99)
+
+    def parallelize(self, values: Any, numSlices: int = 1) -> FakeRDD:  # noqa: N803
+        return FakeRDD()
+
+    def statusTracker(self) -> FakeStatusTracker:  # noqa: N802
+        return self.statusTrackerObj
+
+    def cancelJobGroup(self, job_group: str) -> None:  # noqa: N802
+        self.cancelled_groups.append(job_group)
+
+    def cancelAllJobs(self) -> None:  # noqa: N802
+        self.cancel_all_calls += 1
+
+
+@pytest.fixture
+def fake_pyspark(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    run_tests_job imports pyspark.accumulators for its list accumulator, and pyspark is absent
+    here - the same reason fake_py4j exists. The fake context never uses the param, so an empty
+    base class is enough.
+    """
+    class AccumulatorParam:
+        pass
+
+    accumulators = types.ModuleType('pyspark.accumulators')
+    accumulators.AccumulatorParam = AccumulatorParam  # type: ignore[attr-defined]
+    pyspark = types.ModuleType('pyspark')
+    pyspark.accumulators = accumulators  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, 'pyspark', pyspark)
+    monkeypatch.setitem(sys.modules, 'pyspark.accumulators', accumulators)
+
+
+def run_job_reaching_the_limit(
+        monkeypatch: pytest.MonkeyPatch, group_job_ids: Any) -> FakeSparkContext:
+    spark_context = FakeSparkContext(group_job_ids)
+    monkeypatch.setattr(rts, "spark_context", spark_context)
+    monkeypatch.setattr(rts, "g_max_num_test_failures", 3)
+    monkeypatch.setattr(rts, "g_cancelled_job_groups", set())
+    rts.run_tests_job(
+        [test_descriptor.TestDescriptor("tests-x/a-test:::A.B")],
+        rerun=True, conf=FAKE_CONF, env_vars=FAKE_ENV,
+        job_group=rts.FAILED_TESTS_ON_DIFF_JOB_GROUP, shares_context=True)
+    return spark_context
+
+
+def test_the_failure_limit_cancels_only_its_own_job_group(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    """The point of the groups: one job reaching the limit must not stop the one beside it."""
+    spark_context = run_job_reaching_the_limit(monkeypatch, [7])
+    assert spark_context.cancelled_groups == [rts.FAILED_TESTS_ON_DIFF_JOB_GROUP]
+    assert spark_context.cancel_all_calls == 0
+
+
+def test_an_empty_job_group_falls_back_to_cancelling_everything(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any,
+        caplog: Any) -> None:
+    """
+    Reaching this point means the failure count crossed the limit, so the job is certainly
+    submitted and an empty group can only mean the group was never applied - pinned-thread mode
+    off, where setJobGroup and the submission land on different JVM threads. cancelJobGroup would
+    then match nothing and the limit would stop nothing at all, so everything is cancelled
+    instead: the best-effort baseline sample is traded for a limit that still works.
+
+    Only reachable here. Turning PYSPARK_PIN_THREAD off does not reproduce it on a local master -
+    py4j's classic gateway still keeps one connection per python thread, so the groups land
+    correctly anyway.
+    """
+    with caplog.at_level('WARNING'):
+        spark_context = run_job_reaching_the_limit(monkeypatch, [])
+    assert spark_context.cancelled_groups == []
+    assert spark_context.cancel_all_calls == 1
+    assert 'job groups are not being applied' in caplog.text
+
+
+def test_a_status_tracker_that_raises_falls_back_the_same_way(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any,
+        caplog: Any) -> None:
+    """
+    An unknown group comes back as an empty list rather than an exception - confirmed against
+    Spark 3.5 in both thread modes - so this is defence against a future version, not the
+    observed behaviour. It must not leave the limit doing nothing.
+    """
+    with caplog.at_level('ERROR'):
+        spark_context = run_job_reaching_the_limit(monkeypatch, RuntimeError("no such group"))
+    assert spark_context.cancelled_groups == []
+    assert spark_context.cancel_all_calls == 1
+    assert 'Could not list the jobs of group' in caplog.text
+
+
+def test_requested_cancellation_is_recognized_regardless_of_wording(
+        monkeypatch: pytest.MonkeyPatch, fake_py4j: Any) -> None:
+    """
+    The authoritative signal: monitor_fail_count set cancel_requested before cancelling, so the
+    flag must be set no matter how Spark words the resulting error - this is what frees the
+    threshold from tracking wording across Spark versions. The message here matches nothing in
+    SPARK_JOB_CANCELLED_MESSAGES on purpose.
+    """
+    def action() -> None:
+        raise fake_py4j("Job 1 was axed for reasons Spark 4.x words in some brand-new way")
+
+    cancel_requested = threading.Event()
+    cancel_requested.set()
+    monkeypatch.setattr(rts, "g_cancelled_job_groups", set())
+    assert rts.run_spark_action(
+        action, rts.FAILED_TESTS_ON_DIFF_JOB_GROUP, cancel_requested) is None
+    assert rts.FAILED_TESTS_ON_DIFF_JOB_GROUP in rts.g_cancelled_job_groups
+
+
+@pytest.mark.parametrize('message', list(OBSERVED_SPARK_CANCELLATION_MESSAGES))
+def test_external_cancellation_is_recognized_by_wording(
+        monkeypatch: pytest.MonkeyPatch, fake_py4j: Any, message: str) -> None:
+    """
+    A cancellation we did not request (cancel_requested unset - e.g. an operator killing the job
+    from the Spark UI) is only recognizable by Spark's wording. It must still set the flag:
+    re-submitting would fight whoever cancelled the job. cancelAllJobs() and cancelJobGroup() word
+    it differently - the latter as "cancelled part of", not "as part of" - hence one case each.
+    """
+    def action() -> None:
+        raise fake_py4j(message)
+
+    monkeypatch.setattr(rts, "g_cancelled_job_groups", set())
+    assert rts.run_spark_action(
+        action, rts.FAILED_TESTS_ON_DIFF_JOB_GROUP, threading.Event()) is None
+    assert rts.FAILED_TESTS_ON_DIFF_JOB_GROUP in rts.g_cancelled_job_groups
+
+
+@pytest.mark.parametrize('message', [
+    "Master removed our application: FAILED",
+    # Spark words a stopped context with "cancelled" too (DAGScheduler's cleanUpAfterSchedulerStop);
+    # it must still classify as lost so the re-submission recovery runs. This is why the match
+    # requires the cancel APIs' reason text and not just the word "cancelled".
+    "Job 1 cancelled because SparkContext was shut down",
+])
+def test_other_spark_error_is_not_treated_as_cancellation(
+        monkeypatch: pytest.MonkeyPatch, fake_py4j: Any, message: str) -> None:
+    """A lost application must stay 'lost', so the attempts get re-submitted."""
+    def action() -> None:
+        raise fake_py4j(message)
+
+    monkeypatch.setattr(rts, "g_cancelled_job_groups", set())
+    assert rts.run_spark_action(
+        action, rts.FAILED_TESTS_ON_DIFF_JOB_GROUP, threading.Event()) is None
+    assert rts.FAILED_TESTS_ON_DIFF_JOB_GROUP not in rts.g_cancelled_job_groups
+
+
+# ---------------------------------------------------------------------------------------------
+# The failed-tests-on-baseline job runs inside the re-submission loop.
+# ---------------------------------------------------------------------------------------------
+
+def test_baseline_phase_is_resubmitted_after_context_loss(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    With a baseline conf, each submission is the two-job concurrent phase. Losing the application
+    must re-submit that phase - and the full baseline set goes again, because the previous
+    attempt's baseline results went down with the context.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    baseline_tests = [test_descriptor.TestDescriptor("tests-x/a-test:::A.B")]
+    calls: List[dict] = []
+    stopped = {"value": False}
+
+    def fake_phase(diff_rerun_descriptors: List[test_descriptor.TestDescriptor],
+                   baseline_test_descriptors: List[test_descriptor.TestDescriptor],
+                   conf: Any, baseline_conf: Any, env_vars: Any,
+                   args: Any) -> List[yb_dist_tests.TestResult]:
+        calls.append({'diff': list(diff_rerun_descriptors),
+                      'baseline': list(baseline_test_descriptors)})
+        if len(calls) == 1:
+            stopped["value"] = True          # the application is lost after the first submission
+            return results_for(diff_rerun_descriptors[:2])
+        return results_for(diff_rerun_descriptors)
+
+    monkeypatch.setattr(rts, "rerun_failed_tests_on_diff_and_baseline", fake_phase)
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
+    monkeypatch.setattr(rts, "restart_spark_context",
+                        lambda conf: stopped.__setitem__("value", False))
+
+    results = rts.run_tests_job_with_resubmits(
+        attempts, rerun=True, conf=FAKE_CONF, env_vars={}, baseline_conf=FAKE_CONF,
+        baseline_test_descriptors=baseline_tests, args=types.SimpleNamespace())
+
+    assert len(calls) == 2
+    assert len(calls[1]['diff']) == 2                      # only the diff attempts still missing
+    assert calls[1]['baseline'] == baseline_tests          # the whole baseline set, again
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_without_baseline_conf_the_plain_job_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No baseline conf must leave the single-job path exactly as it was."""
+    attempts = make_attempts("tests-x/a-test:::A.B", 2)
+    used = {"phase": 0, "plain": 0}
+
+    def fake_phase(*a: Any, **kw: Any) -> List[yb_dist_tests.TestResult]:
+        used["phase"] += 1
+        return []
+
+    def fake_plain(pending: List[test_descriptor.TestDescriptor], rerun: bool, conf: Any,
+                   env_vars: Any = None, job_group: Any = None,
+                   shares_context: bool = False) -> List[yb_dist_tests.TestResult]:
+        used["plain"] += 1
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "rerun_failed_tests_on_diff_and_baseline", fake_phase)
+    monkeypatch.setattr(rts, "run_tests_job", fake_plain)
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: False)
+
+    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF, env_vars={})
+
+    assert used == {"phase": 0, "plain": 1}
+
+
+# ---------------------------------------------------------------------------------------------
+# Running each test on the baseline once per (base commit, lane).
+# ---------------------------------------------------------------------------------------------
+
+def test_tests_already_run_on_baseline_are_dropped_ignoring_attempt_index(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    CSI stores a test's uniqueId as its descriptor without the attempt index, so the comparison
+    has to strip that index - otherwise nothing ever matches and every test is run again.
+    """
+    kept = test_descriptor.TestDescriptor("tests-x/a-test:::A.Keep")
+    dropped = test_descriptor.TestDescriptor("tests-x/a-test:::A.Drop")
+    monkeypatch.setattr(rts.csi_report, "test_ids_in_launches",
+                        lambda attr_filter: {dropped.descriptor_str_without_attempt_index})
+
+    remaining = rts.filter_already_run_on_baseline(
+        [kept.with_attempt_index(1), dropped.with_attempt_index(1)], 'deadbeef')
+
+    assert [td.descriptor_str_without_attempt_index for td in remaining] == \
+        [kept.descriptor_str_without_attempt_index]
+
+
+def test_csi_failure_runs_everything_on_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A CSI outage may waste cluster time, but must never silently skip running on the baseline."""
+    def boom(attr_filter: str) -> Set[str]:
+        raise RuntimeError("CSI unreachable")
+
+    monkeypatch.setattr(rts.csi_report, "test_ids_in_launches", boom)
+    descriptors = make_attempts("tests-x/a-test:::A.B", 3)
+    assert rts.filter_already_run_on_baseline(descriptors, 'deadbeef') == descriptors
+
+
+def test_no_commit_id_skips_the_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a base commit there is nothing to deduplicate against, and no query to make."""
+    def fail(attr_filter: str) -> Set[str]:
+        raise AssertionError("must not query CSI without a commit id")
+
+    monkeypatch.setattr(rts.csi_report, "test_ids_in_launches", fail)
+    descriptors = make_attempts("tests-x/a-test:::A.B", 2)
+    assert rts.filter_already_run_on_baseline(descriptors, None) == descriptors
+
+
+# ---------------------------------------------------------------------------------------------
+# Reading the baseline build's recorded Maven repo, and reporting the outcome.
+# ---------------------------------------------------------------------------------------------
+
+def test_recorded_mvn_repo_is_preferred(tmp_path: Any) -> None:
+    """The build recorded which repo it used; we did not configure that build, so we read it."""
+    (tmp_path / 'mvn_repo').write_text('/recorded/m2_repository\n')
+    assert rts.get_mvn_local_repo(str(tmp_path)) == '/recorded/m2_repository'
+
+
+@pytest.mark.parametrize('contents', [None, '', '   \n'])
+def test_missing_or_empty_mvn_repo_record_falls_back(tmp_path: Any, contents: Any) -> None:
+    """
+    A build that skipped its Java build leaves no usable record - and no populated repo either.
+    Falling back keeps the caller going as far as the archive step, whose validation reports it.
+    """
+    if contents is not None:
+        (tmp_path / 'mvn_repo').write_text(contents)
+    assert rts.get_mvn_local_repo(str(tmp_path)) == str(tmp_path / 'm2_repository')
+
+
+def test_recorded_thirdparty_is_read(tmp_path: Any) -> None:
+    """
+    Whatever the build recorded, one entry per env var its record file names - the URLs along with
+    the directory. A worker without the directory downloads it, but only from the URL:
+    find_or_download_thirdparty leaves a missing YB_THIRDPARTY_DIR missing unless
+    YB_THIRDPARTY_URL points somewhere.
+    """
+    (tmp_path / 'thirdparty_path.txt').write_text('/opt/yb-build/thirdparty/v1-clang17\n')
+    (tmp_path / 'thirdparty_url.txt').write_text('https://example.invalid/v1-clang17.tar.gz\n')
+    (tmp_path / 'thirdparty_checksum_url.txt').write_text(
+        'https://example.invalid/v1-clang17.tar.gz.sha256\n')
+    assert rts.get_thirdparty_env_vars(str(tmp_path)) == {
+        'YB_THIRDPARTY_DIR': '/opt/yb-build/thirdparty/v1-clang17',
+        'YB_THIRDPARTY_URL': 'https://example.invalid/v1-clang17.tar.gz',
+        'YB_THIRDPARTY_CHECKSUM_URL': 'https://example.invalid/v1-clang17.tar.gz.sha256',
+    }
+
+
+def test_the_toolchain_is_left_to_the_diff_tree(tmp_path: Any) -> None:
+    """
+    A build records its toolchain the same way, but nothing on a worker fetches one, so naming the
+    baseline's would leave a path nothing brings there. What the tests read from a toolchain is
+    llvm-symbolizer, looked up under YB_THIRDPARTY_DIR first, and that does point at the baseline's.
+    """
+    (tmp_path / 'llvm_path.txt').write_text('/opt/yb-build/llvm/yb-llvm-v17\n')
+    (tmp_path / 'llvm_url.txt').write_text('https://example.invalid/yb-llvm-v17.tar.gz\n')
+    (tmp_path / 'gcc_path.txt').write_text('/opt/yb-build/gcc/yb-gcc-v13\n')
+    assert rts.get_thirdparty_env_vars(str(tmp_path)) == {}
+
+
+def test_unrecorded_thirdparty_is_absent(tmp_path: Any) -> None:
+    """
+    A build that had its thirdparty locally records no URL to download it by, and an empty value is
+    not written at all. Reporting a key we have no value for would be worse than omitting it: the
+    caller uses these to overwrite the diff tree's, so a '' would point the worker at nothing.
+    """
+    (tmp_path / 'thirdparty_url.txt').write_text('   \n')
+    assert rts.get_thirdparty_env_vars(str(tmp_path)) == {}
+    assert rts.get_thirdparty_env_vars(str(tmp_path / 'no-such-build-root')) == {}
+
+
+def test_thirdparty_path_is_not_checked_against_this_host(tmp_path: Any) -> None:
+    """
+    The value is for the Spark worker, which downloads a thirdparty directory it does not have. It
+    need not exist here - the baseline tree was built on another host - so reading it must not go
+    through build_paths.BuildPaths, which requires that it does.
+    """
+    recorded = str(tmp_path / 'not-on-this-host')
+    (tmp_path / 'thirdparty_path.txt').write_text(recorded + '\n')
+    assert not os.path.exists(recorded)
+    assert rts.get_thirdparty_env_vars(str(tmp_path)) == {'YB_THIRDPARTY_DIR': recorded}
+
+
+def test_baseline_status_is_written(tmp_path: Any) -> None:
+    status_file = tmp_path / 'status.txt'
+    rts.write_baseline_status(str(status_file), 'done-partial-3-of-10')
+    assert status_file.read_text() == 'done-partial-3-of-10\n'
+
+
+def test_baseline_status_without_a_file_is_a_no_op() -> None:
+    """The status file is optional; reporting must never be the thing that fails a run."""
+    rts.write_baseline_status(None, 'done')
+    rts.write_baseline_status('', 'done')
+
+
+# ---------------------------------------------------------------------------------------------
+# The conf derived from a build root, which the extraction path depends on.
+# ---------------------------------------------------------------------------------------------
+
+def test_conf_rejects_a_build_root_that_is_not_a_flavor_dir() -> None:
+    """
+    The build root's basename is parsed for build type and compiler, so a path that is not a
+    <flavor> directory is rejected. That parse - not the relative-path check below - is what makes
+    a wrong --baseline_build_root fail early.
+    """
+    with pytest.raises(ValueError, match='Too few components'):
+        yb_dist_tests.make_conf_for_build_root(
+            '/a/flavor', send_archive_to_workers=False,
+            archive_name=yb_dist_tests.ARCHIVE_FOR_WORKERS_NAME)
+
+
+def test_conf_does_not_validate_the_build_root_depth() -> None:
+    """
+    Pins a limit worth knowing: yb_src_root is *derived* as the build root's grandparent, so the
+    relative path is always two components and the check on it cannot catch a build root at the
+    wrong depth. '/a/b/c/build/x/<flavor>' is accepted with yb_src_root='/a/b/c/build'. What
+    protects the baseline path is therefore the flavor parse above, the pipeline's workspace-root
+    containment guard, and the preflight - not this check.
+    """
+    conf = yb_dist_tests.make_conf_for_build_root(
+        '/a/b/c/build/x/debug-clang17-dynamic-ninja', send_archive_to_workers=False,
+        archive_name=yb_dist_tests.ARCHIVE_FOR_WORKERS_NAME)
+    assert conf.yb_src_root == '/a/b/c/build'
+    assert conf.rel_build_root == 'x/debug-clang17-dynamic-ninja'
+
+
+# ---------------------------------------------------------------------------------------------
+# Worker-side name resolution.
+# ---------------------------------------------------------------------------------------------
+
 def test_no_function_shadows_a_module_level_import() -> None:
     """
     A function-level "from yugabyte import yb_dist_tests" makes that name local for the *whole*
-    function body, so any use of it earlier in the function raises UnboundLocalError. That is how
-    parallel_run_test() failed on every Spark task once this refactoring had it parse the conf
-    before that import. Python decides local-vs-global at compile time, so the mocked tests above
-    cannot catch it - only running a real task would. This check does, statically.
+    function body, so any use of it earlier in the function raises UnboundLocalError. An earlier
+    iteration of this work rebuilt the conf at the top of parallel_run_test() and hit exactly that,
+    failing every Spark task; the conf now arrives as an object and the parse is gone, but the
+    shadowing import it tripped over is the kind of thing that comes back. Python decides
+    local-vs-global at compile time, so no amount of mocking would catch it - only running a real
+    task would. This check does, statically.
     """
     module_names = {
         name for name, value in vars(rts).items() if isinstance(value, types.ModuleType)
@@ -599,3 +1177,1452 @@ def test_no_function_shadows_a_module_level_import() -> None:
     assert not offenders, (
         "These functions bind a name that is already a module-level import, shadowing it for the "
         "whole function body: %s" % offenders)
+
+
+def test_main_calls_nothing_that_can_log_before_logging_is_configured() -> None:
+    """
+    A log call on the unconfigured root logger installs Python's default handler, which drops INFO,
+    and logging.basicConfig() in configure_logging() then changes nothing: the driver's whole INFO
+    log is lost, with no error. So before configure_logging(), main() may only build and run the
+    argument parser. Only a real run would show the loss, so this checks the source instead.
+    """
+    main_def = next(
+        node for node in ast.parse(inspect.getsource(rts)).body
+        if isinstance(node, ast.FunctionDef) and node.name == 'main')
+    early_call_roots: Set[str] = set()
+    configures_logging = False
+    for statement in main_def.body:
+        calls = [node for node in ast.walk(statement) if isinstance(node, ast.Call)]
+        if any(isinstance(call.func, ast.Name) and call.func.id == 'configure_logging'
+               for call in calls):
+            configures_logging = True
+            break
+        for call in calls:
+            func = call.func
+            while isinstance(func, ast.Attribute):
+                func = func.value
+            early_call_roots.add(func.id if isinstance(func, ast.Name) else type(func).__name__)
+    assert configures_logging, "main() does not call configure_logging()"
+    # 'Constant' is a method of a string literal (a help text's .format()); 'os' reads a default.
+    cannot_log = {'argparse', 'parser', 'os', 'Constant'}
+    assert early_call_roots <= cannot_log, (
+        "main() calls these before configure_logging(): %s" % sorted(
+            early_call_roots - cannot_log))
+
+
+# ---------------------------------------------------------------------------------------------
+# A CSI failure must not take the diff's re-runs down with the failed-tests-on-baseline job.
+# ---------------------------------------------------------------------------------------------
+
+def test_diff_rerun_survives_a_failure_setting_up_the_baseline_suites(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """
+    The failed-tests-on-baseline job reports to CSI and is useless without it, but the diff's
+    re-runs decide the build result. So a failure creating the baseline's CSI suites drops that job
+    and runs
+    the re-run phase alone, recording why - it must not propagate, which is what killed a run
+    outright before: an unreachable CSI took the whole re-run phase with it.
+    """
+    diff_attempts = make_attempts("tests-x/a-test:::A.B", 2)
+    baseline_tests = [test_descriptor.TestDescriptor("tests-x/a-test:::A.B")]
+    status_file = tmp_path / "baseline_status.txt"
+    jobs: List[dict] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        jobs.append({'descriptors': list(test_descriptors), 'job_group': job_group})
+        return results_for(test_descriptors)
+
+    def exploding_launch_qid(launch: str) -> str:
+        raise RuntimeError("CSI unreachable")
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts.csi_report, "launch_qid", exploding_launch_qid)
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(status_file), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    results = rts.rerun_failed_tests_on_diff_and_baseline(
+        diff_rerun_descriptors=diff_attempts,
+        baseline_test_descriptors=baseline_tests,
+        conf=FAKE_CONF,
+        baseline_conf=FAKE_CONF,
+        env_vars=FAKE_ENV,
+        args=args)
+
+    # One job only - the diff's - and it carries every attempt.
+    assert len(jobs) == 1
+    assert descriptor_strs(jobs[0]['descriptors']) == descriptor_strs(diff_attempts)
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(diff_attempts)
+    assert status_file.read_text().strip() == 'skip-csi-setup-failed'
+
+
+def test_diff_rerun_survives_a_rejected_baseline_suite(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """
+    CSI reports a rejected create by returning an empty suite id, not by raising. An empty id
+    reaches the workers as an empty YB_CSI_<language>, where create_test reports nothing - so the
+    baseline tests would run and record nothing, and the outcome would still read 'done'. Treat it
+    like the raising failures: drop the job, say why, and let a re-run measure what still fails.
+    """
+    diff_attempts = make_attempts("tests-x/a-test:::A.B", 2)
+    baseline_tests = [test_descriptor.TestDescriptor("tests-x/a-test:::A.B")]
+    status_file = tmp_path / "baseline_status.txt"
+    jobs: List[dict] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        jobs.append({'descriptors': list(test_descriptors), 'job_group': job_group})
+        return results_for(test_descriptors)
+
+    def rejected_create_suite(**kwargs: Any) -> Any:
+        return ('YB_CSI_' + kwargs['suite_name'], '')
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts.csi_report, "launch_qid", lambda launch: '4242')
+    monkeypatch.setattr(rts.csi_report, "create_suite", rejected_create_suite)
+    # The empty id only means "rejected" when there is a server to reject it.
+    monkeypatch.setenv("CSI_SERVER", "http://csi.example")
+    monkeypatch.setenv("CSI_TOKEN", "token")
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(status_file), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    results = rts.rerun_failed_tests_on_diff_and_baseline(
+        diff_rerun_descriptors=diff_attempts,
+        baseline_test_descriptors=baseline_tests,
+        conf=FAKE_CONF,
+        baseline_conf=FAKE_CONF,
+        env_vars=FAKE_ENV,
+        args=args)
+
+    assert len(jobs) == 1
+    assert jobs[0]['job_group'] == rts.FAILED_TESTS_ON_DIFF_JOB_GROUP
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(diff_attempts)
+    assert status_file.read_text().strip() == 'skip-csi-setup-failed'
+
+
+def test_a_launch_csi_cannot_resolve_drops_the_baseline_job(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any, caplog: Any) -> None:
+    """
+    launch_qid logs and returns '' for a launch that is not there, rather than raising - and this
+    server then accepts create_suite against that same uuid, returning 201 for a launch no query
+    will ever match. Left alone the run reads `done` over a sample recorded nowhere. The empty qid
+    is the only signal, so it has to drop the job before any suite exists.
+    """
+    diff_attempts = make_attempts("tests-x/a-test:::A.B", 2)
+    status_file = tmp_path / "baseline_status.txt"
+    jobs: List[dict] = []
+    created: List[str] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        jobs.append({'descriptors': list(test_descriptors), 'job_group': job_group})
+        return results_for(test_descriptors)
+
+    def accepting_create_suite(**kwargs: Any) -> Any:
+        # What the real server does with a launch uuid it does not know: 201 and an id.
+        created.append(kwargs['suite_name'])
+        return ('YB_CSI_' + kwargs['suite_name'], 'a-suite-id')
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts.csi_report, "launch_qid", lambda launch: '')
+    monkeypatch.setattr(rts.csi_report, "create_suite", accepting_create_suite)
+    monkeypatch.setenv("CSI_SERVER", "http://csi.example")
+    monkeypatch.setenv("CSI_TOKEN", "token")
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='not-a-launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(status_file), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    with caplog.at_level('ERROR'):
+        results = rts.rerun_failed_tests_on_diff_and_baseline(
+            diff_rerun_descriptors=diff_attempts,
+            baseline_test_descriptors=[test_descriptor.TestDescriptor("tests-x/a-test:::A.B")],
+            conf=FAKE_CONF,
+            baseline_conf=FAKE_CONF,
+            env_vars=FAKE_ENV,
+            args=args)
+
+    assert status_file.read_text().strip() == 'skip-csi-setup-failed'
+    assert 'could not resolve the baseline launch' in caplog.text
+    # Dropped before any suite existed, so there is nothing left IN_PROGRESS in a shared launch.
+    assert created == []
+    assert len(jobs) == 1
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(diff_attempts)
+
+
+def test_a_suite_accepted_before_the_refused_one_is_closed(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """
+    The refusal can come on the second language, after the first suite was created. Bailing without
+    closing it would leave it IN_PROGRESS in the commit-scoped launch, which is shared with every
+    peer diff on this base commit - and the pipeline's launch finish would then mark it INTERRUPTED.
+    """
+    diff_attempts = make_attempts("tests-x/a-test:::A.B", 2)
+    # Two languages, so there is an accepted suite to leak before the refused one gives up.
+    baseline_tests = [test_descriptor.TestDescriptor("tests-x/a-test:::A.B"),
+                      test_descriptor.TestDescriptor("com.yugabyte.jedis.TestYBJedis#testPool")]
+    assert [d.language for d in baseline_tests] == ['C++', 'Java']
+    status_file = tmp_path / "baseline_status.txt"
+    closed: List[str] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        return results_for(test_descriptors)
+
+    def create_suite_refusing_java(**kwargs: Any) -> Any:
+        varname = 'YB_CSI_' + kwargs['suite_name']
+        if kwargs['suite_name'] == 'Java':
+            return (varname, '')
+        return (varname, 'cxx-suite-id')
+
+    def fake_close_item(item: str, time_sec: float, status: str, tags: Any,
+                        launch: str = '') -> str:
+        closed.append(item)
+        return ''
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts.csi_report, "launch_qid", lambda launch: '4242')
+    monkeypatch.setattr(rts.csi_report, "create_suite", create_suite_refusing_java)
+    monkeypatch.setattr(rts.csi_report, "close_item", fake_close_item)
+    monkeypatch.setenv("CSI_SERVER", "http://csi.example")
+    monkeypatch.setenv("CSI_TOKEN", "token")
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(status_file), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    rts.rerun_failed_tests_on_diff_and_baseline(
+        diff_rerun_descriptors=diff_attempts,
+        baseline_test_descriptors=baseline_tests,
+        conf=FAKE_CONF,
+        baseline_conf=FAKE_CONF,
+        env_vars=FAKE_ENV,
+        args=args)
+
+    assert status_file.read_text().strip() == 'skip-csi-setup-failed'
+    assert 'cxx-suite-id' in closed
+
+
+def test_baseline_still_runs_when_csi_is_not_configured(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """
+    Without CSI_SERVER/CSI_TOKEN every suite id is empty by design and nothing consumes the launch,
+    so an empty id there is not a rejection. Local runs must still get both jobs - this is how the
+    two-job phase is exercised outside Jenkins.
+    """
+    diff_attempts = make_attempts("tests-x/a-test:::A.B", 2)
+    baseline_tests = [test_descriptor.TestDescriptor("tests-x/a-test:::A.B")]
+    status_file = tmp_path / "baseline_status.txt"
+    jobs: List[dict] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        jobs.append({'descriptors': list(test_descriptors), 'job_group': job_group,
+                     'env_vars': dict(env_vars),
+                     'stop_on_failure_limit': stop_on_failure_limit})
+        return results_for(test_descriptors)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    # No head start to wait through: the ordering it gives is irrelevant to what this asserts.
+    monkeypatch.setattr(rts, "BASELINE_SUBMIT_ORDER_DELAY_SEC", 0)
+    # The real csi_report functions are used, and all of them return before any HTTP when
+    # not configured - which is the state under test.
+    monkeypatch.delenv("CSI_SERVER", raising=False)
+    monkeypatch.delenv("CSI_TOKEN", raising=False)
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(status_file), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    rts.rerun_failed_tests_on_diff_and_baseline(
+        diff_rerun_descriptors=diff_attempts,
+        baseline_test_descriptors=baseline_tests,
+        conf=FAKE_CONF,
+        baseline_conf=FAKE_CONF,
+        env_vars=FAKE_ENV,
+        args=args)
+
+    assert sorted(job['job_group'] for job in jobs) == sorted(
+        [rts.FAILED_TESTS_ON_DIFF_JOB_GROUP, rts.FAILED_TESTS_ON_BASELINE_JOB_GROUP])
+    assert status_file.read_text().strip() == 'done'
+    # The caller's env reaches both jobs, the same guarantee
+    # test_caller_env_reaches_every_submission makes for the single-job path. The baseline job
+    # additionally gets its own CSI vars on top.
+    for job in jobs:
+        assert job['env_vars']['YB_FAKE_ENV_MARKER'] == FAKE_ENV['YB_FAKE_ENV_MARKER']
+    baseline_job = next(job for job in jobs
+                        if job['job_group'] == rts.FAILED_TESTS_ON_BASELINE_JOB_GROUP)
+    assert baseline_job['env_vars']['YB_CSI_LID'] == 'launch-uuid'
+
+    # The failure limit exists to stop a job whose failures mean something is wrong. The
+    # failed tests on the baseline are the opposite: they already failed on the diff, and how many
+    # of them also fail on the base commit is the measurement, so a base commit bad enough to reach
+    # the limit would truncate exactly the sample that shows it. That job therefore runs
+    # without that limit, while the diff's re-runs keep it.
+    diff_job = next(job for job in jobs
+                    if job['job_group'] == rts.FAILED_TESTS_ON_DIFF_JOB_GROUP)
+    assert baseline_job['stop_on_failure_limit'] is False
+    assert diff_job['stop_on_failure_limit'] is True
+
+
+def test_baseline_job_runs_under_the_baseline_tree_s_thirdparty(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any, caplog: Any) -> None:
+    """
+    propagate_env_vars() hands both jobs the diff tree's YB_THIRDPARTY_DIR, and on the worker
+    find_or_download_thirdparty stops at that variable without consulting the build root's own
+    record. So the baseline job has to be given the baseline tree's value here, or its tests run
+    against the diff's thirdparty - and its binaries were linked against its own, not the diff's.
+    """
+    baseline_root = tmp_path / 'baseline-build-root'
+    baseline_root.mkdir()
+    (baseline_root / 'thirdparty_path.txt').write_text('/opt/yb-build/thirdparty/baseline\n')
+    (baseline_root / 'thirdparty_url.txt').write_text(
+        'https://example.invalid/baseline-tp.tar.gz\n')
+    baseline_conf = yb_dist_tests.TestConfig(
+        build_root=str(baseline_root),
+        build_type=FAKE_CONF.build_type,
+        yb_src_root=str(tmp_path),
+        archive_for_workers=None,
+        rel_build_root='build/baseline-build-root',
+        archive_sha256sum=None,
+        compiler_type=FAKE_CONF.compiler_type)
+    diff_env = dict(FAKE_ENV)
+    diff_env['YB_THIRDPARTY_DIR'] = '/opt/yb-build/thirdparty/diff'
+    diff_env['YB_THIRDPARTY_URL'] = 'https://example.invalid/diff-tp.tar.gz'
+    diff_env['YB_LLVM_TOOLCHAIN_DIR'] = '/opt/yb-build/llvm/diff'
+    jobs: List[dict] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        jobs.append({'job_group': job_group, 'env_vars': dict(env_vars)})
+        return results_for(test_descriptors)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "BASELINE_SUBMIT_ORDER_DELAY_SEC", 0)
+    monkeypatch.delenv("CSI_SERVER", raising=False)
+    monkeypatch.delenv("CSI_TOKEN", raising=False)
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(tmp_path / 'baseline_status.txt'), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    with caplog.at_level('INFO'):
+        rts.rerun_failed_tests_on_diff_and_baseline(
+            diff_rerun_descriptors=make_attempts("tests-x/a-test:::A.B", 2),
+            baseline_test_descriptors=[test_descriptor.TestDescriptor("tests-x/a-test:::A.B")],
+            conf=FAKE_CONF,
+            baseline_conf=baseline_conf,
+            env_vars=diff_env,
+            args=args)
+
+    baseline_job = next(job for job in jobs
+                        if job['job_group'] == rts.FAILED_TESTS_ON_BASELINE_JOB_GROUP)
+    assert baseline_job['env_vars']['YB_THIRDPARTY_DIR'] == '/opt/yb-build/thirdparty/baseline'
+    # The URL travels with it, or a worker that does not have that directory cannot fetch it.
+    assert baseline_job['env_vars']['YB_THIRDPARTY_URL'] == (
+        'https://example.invalid/baseline-tp.tar.gz')
+    # The toolchain stays the diff's: nothing on a worker fetches one, and llvm-symbolizer is
+    # looked up under YB_THIRDPARTY_DIR, which now is the baseline's.
+    assert baseline_job['env_vars']['YB_LLVM_TOOLCHAIN_DIR'] == '/opt/yb-build/llvm/diff'
+    # The diff's re-runs are the ones that decide the build result; they keep their own tree.
+    diff_job = next(job for job in jobs
+                    if job['job_group'] == rts.FAILED_TESTS_ON_DIFF_JOB_GROUP)
+    assert diff_job['env_vars']['YB_THIRDPARTY_DIR'] == '/opt/yb-build/thirdparty/diff'
+    assert diff_job['env_vars']['YB_THIRDPARTY_URL'] == 'https://example.invalid/diff-tp.tar.gz'
+    # The build log is the only place this is visible once the run ends - the per-test logs live in
+    # the baseline tree, which the pipeline drops - so the line naming both is what a reader of a
+    # finished build has to go on.
+    assert ('Baseline test run: thirdparty /opt/yb-build/thirdparty/baseline, '
+            "where the diff's is /opt/yb-build/thirdparty/diff") in caplog.text
+
+
+def test_unrecorded_baseline_thirdparty_is_reported(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any, caplog: Any) -> None:
+    """
+    Nothing can be done about it - a Spark worker is reused across tasks and
+    set_env_on_spark_worker only assigns, so dropping the key leaves the previous task's value
+    there.
+    """
+    baseline_root = tmp_path / 'baseline-build-root'
+    baseline_root.mkdir()
+    baseline_conf = yb_dist_tests.TestConfig(
+        build_root=str(baseline_root),
+        build_type=FAKE_CONF.build_type,
+        yb_src_root=str(tmp_path),
+        archive_for_workers=None,
+        rel_build_root='build/baseline-build-root',
+        archive_sha256sum=None,
+        compiler_type=FAKE_CONF.compiler_type)
+    diff_env = dict(FAKE_ENV)
+    diff_env['YB_THIRDPARTY_DIR'] = '/opt/yb-build/thirdparty/diff'
+    jobs: List[dict] = []
+
+    def fake_run_tests_job(test_descriptors: List[test_descriptor.TestDescriptor], rerun: bool,
+                           conf: Any, env_vars: Any, job_group: Any,
+                           shares_context: bool,
+                           stop_on_failure_limit: bool = True
+                           ) -> List[yb_dist_tests.TestResult]:
+        jobs.append({'job_group': job_group, 'env_vars': dict(env_vars)})
+        return results_for(test_descriptors)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "BASELINE_SUBMIT_ORDER_DELAY_SEC", 0)
+    monkeypatch.delenv("CSI_SERVER", raising=False)
+    monkeypatch.delenv("CSI_TOKEN", raising=False)
+
+    args = types.SimpleNamespace(
+        baseline_csi_launch='launch-uuid', baseline_repetitions=3,
+        baseline_status_file=str(tmp_path / 'baseline_status.txt'), baseline_test_list_file=None,
+        baseline_commit_id=None)
+    with caplog.at_level('WARNING'):
+        rts.rerun_failed_tests_on_diff_and_baseline(
+            diff_rerun_descriptors=make_attempts("tests-x/a-test:::A.B", 2),
+            baseline_test_descriptors=[test_descriptor.TestDescriptor("tests-x/a-test:::A.B")],
+            conf=FAKE_CONF,
+            baseline_conf=baseline_conf,
+            env_vars=diff_env,
+            args=args)
+
+    baseline_job = next(job for job in jobs
+                        if job['job_group'] == rts.FAILED_TESTS_ON_BASELINE_JOB_GROUP)
+    assert baseline_job['env_vars']['YB_THIRDPARTY_DIR'] == '/opt/yb-build/thirdparty/diff'
+    assert 'recorded no YB_THIRDPARTY_DIR' in caplog.text
+
+
+def test_a_stopped_context_is_detected_without_an_error(
+        monkeypatch: pytest.MonkeyPatch, caplog: Any) -> None:
+    """
+    SparkContext.stop() clears _jsc, so asking the JVM whether the context is stopped raises
+    AttributeError on the very context we just stopped - a known state, but the except branch logged
+    it as an error with a traceback, which is misleading when triaging a real failure.
+    """
+    monkeypatch.setattr(rts, "spark_context", types.SimpleNamespace(_jsc=None))
+    with caplog.at_level('ERROR'):
+        assert rts.spark_context_is_stopped() is True
+    assert caplog.records == []
+
+
+def test_the_two_trees_archives_have_different_basenames() -> None:
+    """
+    Spark's addFile flattens everything it distributes into one directory per executor, keyed by
+    basename, and the worker resolves its archive by basename out of that same directory. When both
+    trees used the shared name, addFile refused the second archive outright - "File ... exists and
+    does not match contents of ..." - and killed the run before any test ran. Equal basenames are
+    what matters here, not equal paths: the two trees always live at different paths.
+    """
+    diff_conf = yb_dist_tests.make_conf_for_build_root(
+        '/diff/yb-src-root/build/debug-clang17-dynamic-ninja', send_archive_to_workers=True,
+        archive_name=yb_dist_tests.ARCHIVE_FOR_WORKERS_NAME)
+    baseline_conf = yb_dist_tests.make_conf_for_build_root(
+        '/baseline/yb-src-root/build/debug-clang17-dynamic-ninja', send_archive_to_workers=True,
+        archive_name=yb_dist_tests.BASELINE_ARCHIVE_FOR_WORKERS_NAME)
+
+    assert diff_conf.archive_for_workers is not None
+    assert baseline_conf.archive_for_workers is not None
+    assert (os.path.basename(diff_conf.archive_for_workers) !=
+            os.path.basename(baseline_conf.archive_for_workers))
+    # Both must keep the suffix that stops Spark unpacking them for us.
+    for archive in (diff_conf.archive_for_workers, baseline_conf.archive_for_workers):
+        assert archive.endswith('.tar.gz.spark-no-extract')
+
+
+# ---------------------------------------------------------------------------------------------
+# A re-created Spark context must carry every archive the old one had.
+# ---------------------------------------------------------------------------------------------
+
+def test_recreated_context_gets_both_trees_archives(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    addFile is per SparkContext, so a context re-created after a lost application starts with
+    nothing distributed. The diff's archive comes back with the conf that re-creates it, but the
+    baseline's was sent against the previous context - if it is not replayed, every baseline task on
+    the new context fails with "Archive not found" and the repeat run the resubmit loop exists
+    for degrades to failed-no-results. This is invisible without archives, which is why the local
+    fault-injection run did not catch it.
+    """
+    sent: List[str] = []
+    monkeypatch.setattr(rts, "g_spark_archives", [])
+    monkeypatch.setattr(rts, "spark_context",
+                        types.SimpleNamespace(addFile=lambda path: sent.append(path)))
+
+    diff_archive = '/diff/build/flavor/archive.tar.gz.spark-no-extract'
+    baseline_archive = '/baseline/build/flavor/archive_baseline.tar.gz.spark-no-extract'
+    rts.remember_archive_for_workers(diff_archive)
+    rts.remember_archive_for_workers(baseline_archive)
+
+    # What init_spark_context() does on every creation, including a re-creation.
+    rts.send_archives_to_workers()
+
+    assert sent == [diff_archive, baseline_archive]
+
+    # Remembering is idempotent: re-registering the diff's archive must not send it twice.
+    rts.remember_archive_for_workers(diff_archive)
+    assert len(rts.g_spark_archives) == 2
+
+
+def test_baseline_cancellation_does_not_stop_the_diffs_resubmission(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Both jobs run concurrently and both go through run_spark_action, so cancellation has to be
+    tracked per job group. While it was one flag, a baseline that tripped its own failure threshold
+    - what a broken base commit produces - made the loop stop re-submitting the *diff's* missing
+    attempts, and main() then read the same flag as "expected" and reported success. Silent loss of
+    the diff's re-runs, caused entirely by the failed-tests-on-baseline job.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    baseline_tests = [test_descriptor.TestDescriptor("tests-x/a-test:::A.B")]
+    submissions: List[List[test_descriptor.TestDescriptor]] = []
+
+    def fake_phase(diff_rerun_descriptors: List[test_descriptor.TestDescriptor],
+                   baseline_test_descriptors: List[test_descriptor.TestDescriptor],
+                   conf: Any, baseline_conf: Any, env_vars: Any,
+                   args: Any) -> List[yb_dist_tests.TestResult]:
+        submissions.append(list(diff_rerun_descriptors))
+        # The baseline hits its failure threshold and its job group is cancelled.
+        rts.g_cancelled_job_groups.add(rts.FAILED_TESTS_ON_BASELINE_JOB_GROUP)
+        # The diff's job loses the results of two attempts, which must be re-submitted.
+        return results_for(diff_rerun_descriptors[:-2]) if len(submissions) == 1 \
+            else results_for(diff_rerun_descriptors)
+
+    monkeypatch.setattr(rts, "rerun_failed_tests_on_diff_and_baseline", fake_phase)
+
+    results = rts.run_tests_job_with_resubmits(
+        attempts, rerun=True, conf=FAKE_CONF, env_vars={}, baseline_conf=FAKE_CONF,
+        baseline_test_descriptors=baseline_tests, args=types.SimpleNamespace())
+
+    assert len(submissions) == 2                       # the diff re-submitted despite the baseline
+    assert len(submissions[1]) == 2                    # exactly the attempts that lost results
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+    # The diff's own group was never cancelled.
+    assert rts.FAILED_TESTS_ON_DIFF_JOB_GROUP not in rts.g_cancelled_job_groups
+
+
+# -------------------------------------------------------------------------------------------------
+# run_new_test_repetitions(): which tests get the extra runs.
+#
+# The selection decides what an integration lane spends extra test time on, and a wrong answer is
+# not a wrong number but a flood: every test of the lane read as "new" would repeat the whole lane.
+# So each guard that narrows the set is pinned here, with Spark and CSI faked out.
+# -------------------------------------------------------------------------------------------------
+
+def make_args(**overrides: Any) -> Any:
+    """main()'s parsed arguments, as far as run_new_test_repetitions reads them."""
+    args = dict(new_test_repetitions=20, num_repetitions=1, test_list=None, ignore_list=None,
+                max_tests=None, test_filter_re=None, test_conf=None,
+                known_test_list='/tmp/known_list.txt')
+    args.update(overrides)
+    return types.SimpleNamespace(**args)
+
+
+def capture_submissions(monkeypatch: pytest.MonkeyPatch,
+                        known: Any) -> List[Any]:
+    """
+    Fake out the known-test list the pipeline wrote and the Spark job, and record every submission
+    as (descriptors, rerun, env_vars).
+    """
+    submissions: List[Any] = []
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            **kwargs: Any) -> List[yb_dist_tests.TestResult]:
+        # Its own Spark job group, so the failure monitor cancels only this job and its
+        # cancellation cannot be mistaken for the main pass's.
+        assert kwargs.get('job_group') == rts.NEW_TESTS_ON_DIFF_JOB_GROUP
+        submissions.append((list(pending), rerun, env_vars))
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "load_known_test_list", lambda path: known)
+    return submissions
+
+
+def test_only_new_and_passing_tests_are_repeated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    New is "the previous launch of this lane did not report it". Of those, only the ones that
+    passed here are repeated: a new test that already failed is re-run by --fail_repetitions, and
+    repeating only the passing ones is what makes retry_kind=new_test_repetition mean "the first
+    attempt passed".
+    """
+    # What the previous launch of the lane reported, as the pipeline wrote it. The Gone ones are
+    # tests it ran that this build no longer has, which is why its list can be longer than this
+    # run's.
+    known = {"tests-x/a-test:::A.Old", "tests-x/a-test:::A.OldFlaky",
+             "tests-x/a-test:::A.Gone1", "tests-x/a-test:::A.Gone2"}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [
+        make_result("tests-x/a-test:::A.Old"),
+        make_result("tests-x/a-test:::A.OldFlaky", exit_code=1),
+        make_result("tests-x/a-test:::A.New"),
+        make_result("tests-x/a-test:::A.NewBroken", exit_code=1),
+    ]
+
+    rts.run_new_test_repetitions(
+        make_args(new_test_repetitions=20), FAKE_CONF, results, FAKE_ENV, False)
+
+    assert len(submissions) == 1
+    descriptors, rerun, env_vars = submissions[0]
+    # 19 more runs of the one new test that passed, numbered from 2 so they do not collide with
+    # the main pass's own attempt.
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_%d" % i for i in range(2, 21)
+    }
+    # Not a fail repetition: the kind those report would say this test's first attempt failed.
+    assert rerun is False
+    # The main pass's environment, which carries the CSI suite ids the workers report into, plus
+    # the marker that makes these executions report as new-test repetitions.
+    assert env_vars == dict(FAKE_ENV, YB_CSI_NEW_TEST='1')
+
+
+def test_a_new_test_that_skipped_itself_is_not_repeated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A test that skips itself (GTEST_SKIP, a platform gate) exits 0 and is reported to CSI as
+    skipped. It is not a pass: repeating it would hang executions of nothing on a skipped item
+    while the tag told readers its first attempt passed.
+    """
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [
+        make_result("tests-x/a-test:::A.NewSkipped", skipped=True),
+        make_result("tests-x/a-test:::A.New")]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
+
+
+def test_a_test_that_failed_in_a_lost_task_attempt_is_a_failed_one(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A test that failed, lost its results with the executor, and passed when Spark ran the task
+    again: its exit code is 0, and it is still failed for what acts on a failure. As a new test it
+    is not repeated as one whose first attempt passed.
+    """
+    passed = make_result("tests-x/a-test:::A.New")
+    failed_before = make_result("tests-x/a-test:::A.NewFailedBefore",
+                                failed_in_earlier_task_attempt=True)
+    assert not passed.failed
+    assert failed_before.exit_code == 0 and failed_before.failed
+    assert make_result("tests-x/a-test:::A.NewBroken", exit_code=1).failed
+
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [failed_before, passed]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
+
+
+def test_two_results_for_one_test_repeat_it_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Spark task that reported and was then resubmitted leaves two results for one test."""
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [
+        make_result("tests-x/a-test:::A.New"), make_result("tests-x/a-test:::A.New")]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert len(descriptors) == 2
+
+
+def test_nothing_is_repeated_without_a_known_test_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    No baseline, no notion of new: the first launch of a lane must not repeat all 12k tests. The
+    pipeline writes no list when the lane has no comparable previous launch, and an older pipeline
+    writes none at all, so the flag is simply absent.
+    """
+    submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
+
+    rts.run_new_test_repetitions(
+        make_args(known_test_list=None), FAKE_CONF, [make_result("tests-x/a-test:::A.New")],
+        FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_an_empty_known_test_list_repeats_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty file is not "no tests are known": it would make every test read as new."""
+    submissions = capture_submissions(monkeypatch, set())
+
+    rts.run_new_test_repetitions(
+        make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_load_known_test_list_reads_one_unique_id_per_line(tmp_path: Any) -> None:
+    """The file is what csi/lib.groovy writes: uniqueIds one per line, possibly with blank lines."""
+    path = tmp_path / "known_list.txt"
+    path.write_text("tests-x/a-test:::A.Old\n\n  tests-x/a-test:::A.Other  \n"
+                    "org.yb.SomeTest#testIt\n")
+
+    assert rts.load_known_test_list(str(path)) == {
+        "tests-x/a-test:::A.Old", "tests-x/a-test:::A.Other", "org.yb.SomeTest#testIt"}
+
+
+def test_a_short_previous_launch_is_not_a_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A launch that ended early reported a fraction of its tests, and every test it never reached
+    would read as new. Below NEW_TEST_MIN_KNOWN_RATIO of this run's tests, it is not used.
+    """
+    results = [make_result("tests-x/a-test:::A.T%d" % i) for i in range(100)]
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(50)}
+    submissions = capture_submissions(monkeypatch, known)
+
+    rts.run_new_test_repetitions(make_args(), FAKE_CONF, results, FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_too_many_new_tests_are_sampled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    One source change can create hundreds of new test names (a parameterized instantiation, a
+    renamed binary). Past NEW_TEST_LIMIT a sample of that size is repeated, not all of them.
+    """
+    results = [make_result("tests-x/a-test:::A.T%d" % i) for i in range(1200)]
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(1100)}
+    submissions = capture_submissions(monkeypatch, known)
+
+    rts.run_new_test_repetitions(
+        make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV, False)
+
+    descriptors = submissions[0][0]
+    repeated = set(td.descriptor_str_without_attempt_index for td in descriptors)
+    assert len(repeated) == rts.NEW_TEST_LIMIT
+    assert len(descriptors) == rts.NEW_TEST_LIMIT * 2
+    assert repeated.isdisjoint(known)
+
+
+@pytest.mark.parametrize('args', [
+    make_args(new_test_repetitions=0),    # off
+    make_args(new_test_repetitions=1),    # one run is what the main pass already did
+    make_args(num_repetitions=5),         # every test is already being repeated
+    make_args(test_list='/tmp/rerun_list.txt'),    # a re-run of named tests, not the lane's pass
+    make_args(ignore_list='/tmp/ignore_list.txt'),
+    make_args(max_tests=100),             # a sample of the lane, so "not run before" means nothing
+    make_args(test_filter_re='A.*'),
+    make_args(test_conf='/tmp/test_conf.json'),
+])
+def test_partial_runs_repeat_nothing(monkeypatch: pytest.MonkeyPatch, args: Any) -> None:
+    """
+    Only a full pass of the lane over its own test list can tell a new test from one this run was
+    never going to execute. Every other shape of run repeats nothing, and reads no list.
+    """
+    def fail_if_called(path: str) -> Any:
+        raise AssertionError("the known-test list must not be read for a partial run")
+
+    submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
+    monkeypatch.setattr(rts, "load_known_test_list", fail_if_called)
+
+    rts.run_new_test_repetitions(
+        args, FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_a_cancelled_main_pass_repeats_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The main pass was cancelled at the failure threshold, so this run's results are a partial
+    picture of the lane and the tests it never reached are not evidence of anything.
+    """
+    submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
+
+    rts.run_new_test_repetitions(
+        make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, True)
+
+    assert submissions == []
+
+
+# ------------------------------------------------------------------------------------------------
+# Packing several tests into one Spark task (--pack_target_sec)
+# ------------------------------------------------------------------------------------------------
+
+def cpp_tests(names: List[str]) -> List[test_descriptor.TestDescriptor]:
+    return [test_descriptor.TestDescriptor("tests-x/a-test:::A." + name) for name in names]
+
+
+def pack_names(packs: List[List[test_descriptor.TestDescriptor]]) -> List[List[str]]:
+    """The packs as sorted lists of descriptor strings, in a stable order, for comparing."""
+    return sorted(sorted(td.descriptor_str for td in pack) for pack in packs)
+
+
+def use_packing(monkeypatch: pytest.MonkeyPatch, target_sec: float, expected_sec: Any,
+                other_cores: Any) -> None:
+    """Packing with the given target and run times, on a cluster where other applications hold
+    other_cores cores."""
+    monkeypatch.setattr(rts, "g_pack_target_sec", target_sec)
+    monkeypatch.setattr(rts, "g_expected_test_time_sec", dict(expected_sec))
+    monkeypatch.setattr(rts, "get_cores_of_other_apps", lambda: other_cores)
+
+
+OWN_APP_ID = "app-20260131102030-0007"
+
+
+def use_master_status(monkeypatch: pytest.MonkeyPatch, cores: int,
+                      cores_by_app: Any) -> List[str]:
+    """
+    Makes the Spark master's status page show a cluster of that many cores and the given
+    applications holding theirs, and this application be OWN_APP_ID. Returns the URLs asked.
+    """
+    asked: List[str] = []
+    status_json = json.dumps({
+        "aliveworkers": cores, "cores": cores, "coresused": sum(cores_by_app.values()),
+        "activeapps": [{"id": app_id, "cores": app_cores,
+                        "state": "RUNNING" if app_cores else "WAITING"}
+                       for app_id, app_cores in cores_by_app.items()]}).encode('utf-8')
+
+    class OwnSparkContext:
+        applicationId = OWN_APP_ID  # noqa: N815
+
+    class FakeResponse:
+        def __enter__(self) -> 'FakeResponse':
+            return self
+
+        def __exit__(self, *exc_info: Any) -> None:
+            pass
+
+        def read(self) -> bytes:
+            return status_json
+
+    def fake_urlopen(url: str, timeout: float) -> FakeResponse:
+        asked.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(rts, "spark_context", OwnSparkContext())
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080/")
+    return asked
+
+
+def test_load_test_durations_skips_what_it_cannot_parse(tmp_path: Any) -> None:
+    """The file is what the pipeline writes from CSI: uniqueId, start time, end time."""
+    path = tmp_path / "test_durations.txt"
+    path.write_bytes(
+        b"tests-x/a-test:::A.Quick\t2026-01-31T10:20:30.250Z\t2026-01-31T10:20:31.750Z\n\n"
+        b"org.yb.SomeTest#testIt\t2026-01-31T23:58:00Z\t2026-02-01T00:02:00Z\n"
+        b"tests-x/a-test:::A.NoTimes\n"
+        b"tests-x/a-test:::A.NoEnd\t2026-01-31T10:20:30.250Z\n"
+        b"tests-x/a-test:::A.NotATime\tsoon\tlater\n"
+        b"tests-x/a-test:::A.EndsBeforeItStarts\t2026-01-31T10:20:31Z\t2026-01-31T10:20:30Z\n"
+        # Bytes that are not UTF-8 must not fail the read: the line is one that does not parse.
+        b"tests-x/a-test:::A.NotUtf8\t2026-01-31T10:20:30Z\t2026-01-31T10:20:\xff\xfe\n"
+        b"tests-x/a-test:::A.AfterIt\t2026-01-31T10:20:30Z\t2026-01-31T10:20:33Z\n")
+
+    assert rts.load_test_durations(str(path)) == {
+        "tests-x/a-test:::A.Quick": 1.5, "org.yb.SomeTest#testIt": 240.0,
+        "tests-x/a-test:::A.AfterIt": 3.0}
+
+
+def test_short_tests_share_tasks_up_to_the_target() -> None:
+    tests = cpp_tests(["A", "B", "C", "D", "E"])
+    expected_sec = {td.descriptor_str: 40.0 for td in tests}
+
+    packs = rts.pack_tests(tests, expected_sec, target_sec=100)
+
+    # Two 40-second tests fit under 100 seconds and a third does not.
+    assert sorted(len(pack) for pack in packs) == [1, 2, 2]
+    assert sorted(td.descriptor_str for pack in packs for td in pack) == sorted(
+        td.descriptor_str for td in tests)
+
+
+def test_a_long_test_and_a_test_without_history_are_alone() -> None:
+    tests = cpp_tests(["Long", "Unknown", "Quick1", "Quick2"])
+    expected_sec = {
+        "tests-x/a-test:::A.Long": 100.0,  # exactly the target: not packed
+        "tests-x/a-test:::A.Quick1": 10.0,
+        "tests-x/a-test:::A.Quick2": 10.0}
+
+    packs = rts.pack_tests(tests, expected_sec, target_sec=100)
+
+    assert pack_names(packs) == [
+        ["tests-x/a-test:::A.Long"],
+        ["tests-x/a-test:::A.Quick1", "tests-x/a-test:::A.Quick2"],
+        ["tests-x/a-test:::A.Unknown"]]
+
+
+def test_attempts_of_one_test_never_share_a_task() -> None:
+    """Ten repetitions of two quick tests: every task gets one attempt of each, never two of one."""
+    attempts = (make_attempts("tests-x/a-test:::A.Flaky", 10) +
+                make_attempts("org.yb.SomeTest#testIt", 10))
+    expected_sec = {"tests-x/a-test:::A.Flaky": 5.0, "org.yb.SomeTest#testIt": 5.0}
+
+    packs = rts.pack_tests(attempts, expected_sec, target_sec=600)
+
+    assert len(packs) == 10
+    for pack in packs:
+        assert sorted(td.descriptor_str_without_attempt_index for td in pack) == [
+            "org.yb.SomeTest#testIt", "tests-x/a-test:::A.Flaky"]
+
+
+def test_packing_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+    use_packing(monkeypatch, 0, {td.descriptor_str: 1.0 for td in tests}, 100)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_that_fits_the_cluster_is_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, other_cores=2)
+
+    packs = rts.plan_spark_tasks(tests, "a-job", False)
+
+    assert sorted(len(pack) for pack in packs) == [1, 3]
+
+
+@pytest.mark.parametrize("other_cores", [None, 0, 1])
+def test_a_job_the_cluster_cannot_hold_is_not_packed(
+        monkeypatch: pytest.MonkeyPatch, other_cores: Any) -> None:
+    """
+    Other applications hold an unknown number of cores, none, or fewer than the packed job has
+    tasks: one test per task, which is what the cluster scaling daemon knows how to grow a
+    cluster for.
+    """
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, other_cores)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_the_cluster_would_grow_for_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    120 one-second tests fit two tasks. With one test per task the scaling daemon would give
+    them 120 / 25 = 4 nodes, rounded down as the daemon does. So where other applications hold 3
+    cores the job is not packed, and where they hold 4 it is.
+    """
+    tests = cpp_tests(["Quick%d" % i for i in range(120)])
+    expected_sec = {td.descriptor_str: 1.0 for td in tests}
+    assert rts.SCALING_DAEMON_TASKS_PER_NODE == 25
+
+    use_packing(monkeypatch, 100, expected_sec, other_cores=3)
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+    use_packing(monkeypatch, 100, expected_sec, other_cores=4)
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
+
+
+def use_four_tests_of_two_tasks(
+        monkeypatch: pytest.MonkeyPatch) -> List[test_descriptor.TestDescriptor]:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    monkeypatch.setattr(rts, "g_pack_target_sec", 100)
+    monkeypatch.setattr(
+        rts, "g_expected_test_time_sec", {td.descriptor_str: 30.0 for td in tests})
+    return tests
+
+
+def test_a_job_is_packed_on_a_cluster_other_applications_fill(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Other applications hold every core of the cluster, none is idle: the job is packed."""
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 180, {"app-of-another-run": 178, "app-of-a-third-run": 2})
+
+    packs = rts.plan_spark_tasks(tests, "a-job", False)
+
+    assert sorted(len(pack) for pack in packs) == [1, 3]
+
+
+def test_idle_cores_and_this_applications_own_do_not_count(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A cluster of 180 cores where this application holds 30 from its earlier job, another one
+    holds 1 and the rest are idle. The scaling daemon is about to remove the idle ones, and all
+    of them once nothing runs, so the two tasks have one core to count on: not packed.
+    """
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 180, {OWN_APP_ID: 30, "app-of-another-run": 1})
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+@pytest.mark.parametrize("cores_by_app", [{}, {OWN_APP_ID: 0}])
+def test_a_job_on_an_empty_cluster_is_not_packed(
+        monkeypatch: pytest.MonkeyPatch, cores_by_app: Any) -> None:
+    """
+    A cluster that has scaled down to no workers, and this application the first to come to it,
+    whether or not the master lists it yet. The job runs one test per task, so that the scaling
+    daemon sizes the cluster from the number of tests, as it does without packing.
+    """
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 0, cores_by_app)
+
+    assert rts.get_cores_of_other_apps() == 0
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_beside_another_counts_half_the_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Two tasks fit the three cores other applications hold, but not the half of them a shared
+    context leaves. The same for the nodes of one test per task: 50 tests in one task would get 2.
+    """
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, other_cores=3)
+
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
+    assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
+
+    tests = cpp_tests(["Quick%d" % i for i in range(50)])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, other_cores=3)
+
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 1
+    assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
+
+
+def test_a_job_with_little_history_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """8 of 10 tests have an expected run time, under PACK_MIN_KNOWN_RATIO: none are packed."""
+    tests = cpp_tests([str(i) for i in range(10)])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, other_cores=100)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_over_the_size_limit_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, other_cores=100)
+
+    monkeypatch.setattr(rts, "PACK_MAX_TESTS", 4)
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 1
+    monkeypatch.setattr(rts, "PACK_MAX_TESTS", 3)
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_long_test_costs_the_job_one_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    300 one-second tests and 50 tests of twice the target make 3 + 50 tasks, which the 60 cores
+    other applications hold cover: a long test is alone in a task however long it is.
+    """
+    quick = cpp_tests(["Quick%d" % i for i in range(300)])
+    slow = cpp_tests(["Slow%d" % i for i in range(50)])
+    expected_sec = {td.descriptor_str: 1.0 for td in quick}
+    expected_sec.update({td.descriptor_str: 200.0 for td in slow})
+    use_packing(monkeypatch, 100, expected_sec, other_cores=60)
+
+    assert len(rts.plan_spark_tasks(quick + slow, "a-job", False)) == 53
+
+
+def test_cores_of_other_apps_are_read_from_the_master_status_page(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = use_master_status(
+        monkeypatch, 180, {OWN_APP_ID: 30, "app-of-another-run": 100, "app-waiting": 0})
+
+    # Not the 50 idle cores, and not the 30 this application holds.
+    assert rts.get_cores_of_other_apps() == 100
+    assert asked == ["http://spark-master.example.com:8080/json/"]
+
+
+def test_an_unreachable_master_leaves_the_cores_of_other_apps_unknown(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_urlopen(url: str, timeout: float) -> Any:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080")
+    assert rts.get_cores_of_other_apps() is None
+
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", None)
+    assert rts.get_cores_of_other_apps() is None
+
+
+class RecordingSparkContext(FakeSparkContext):
+    """A FakeSparkContext that keeps what run_tests_job hands to parallelize."""
+
+    def __init__(self) -> None:
+        super().__init__([])
+        self.parallelized: List[Any] = []
+        self.num_slices: List[int] = []
+
+    def accumulator(self, value: Any, accum_param: Any = None) -> FakeAccumulator:
+        return FakeAccumulator([] if accum_param is not None else 0)
+
+    def parallelize(self, values: Any, numSlices: int = 1) -> FakeRDD:  # noqa: N803
+        self.parallelized.append(values)
+        self.num_slices.append(numSlices)
+        return FakeRDD()
+
+
+def run_job_recording_its_tasks(
+        monkeypatch: pytest.MonkeyPatch,
+        tests: List[test_descriptor.TestDescriptor]) -> RecordingSparkContext:
+    spark_context = RecordingSparkContext()
+    monkeypatch.setattr(rts, "spark_context", spark_context)
+    rts.run_tests_job(
+        list(tests), rerun=False, conf=FAKE_CONF, env_vars=FAKE_ENV,
+        job_group=rts.ALL_TESTS_ON_DIFF_JOB_GROUP, shares_context=False,
+        stop_on_failure_limit=False)
+    return spark_context
+
+
+def test_without_packing_a_job_has_one_task_per_test(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+
+    spark_context = run_job_recording_its_tasks(monkeypatch, tests)
+
+    assert spark_context.num_slices == [3]
+    assert sorted(spark_context.parallelized[0]) == [[td.descriptor_str] for td in tests]
+
+
+def test_a_packed_job_has_one_task_per_pack(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, other_cores=5)
+
+    spark_context = run_job_recording_its_tasks(monkeypatch, tests)
+
+    assert spark_context.num_slices == [1]
+    assert [sorted(task) for task in spark_context.parallelized[0]] == [
+        [td.descriptor_str for td in tests]]
+
+
+# The worker archive through GCS (YB_SPARK_ARCHIVE_GCS_PREFIX).
+
+ARCHIVE_SHA = 'ab' * 32
+
+
+def make_archive_conf(tmp_path: Any, sha: str = ARCHIVE_SHA) -> yb_dist_tests.TestConfig:
+    archive = tmp_path / 'archive_for_tests_on_spark.tar.gz.spark-no-extract'
+    archive.write_bytes(b'archive')
+    return yb_dist_tests.TestConfig(
+        build_root=str(tmp_path / 'src' / 'build' / 'debug-clang21-dynamic-ninja'),
+        build_type='debug',
+        yb_src_root=str(tmp_path / 'src'),
+        archive_for_workers=str(archive),
+        rel_build_root='build/debug-clang21-dynamic-ninja',
+        archive_sha256sum=sha,
+        compiler_type='clang21')
+
+
+GCS_PREFIX = 'gs://a-bucket/spark-archives/'
+
+
+@pytest.fixture
+def gcs_publish(monkeypatch: pytest.MonkeyPatch) -> List[List[str]]:
+    """Linux, no object in GCS yet; returns the gcloud copy commands run."""
+    copies: List[List[str]] = []
+    monkeypatch.setattr(rts, 'is_macos', lambda: False)
+    monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: None)
+    monkeypatch.setattr(rts.subprocess, 'check_call', lambda args: copies.append(args))
+    return copies
+
+
+def test_the_archive_is_published_and_kept_out_of_spark(
+        gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    url = 'gs://a-bucket/spark-archives/%s.tar.gz' % ARCHIVE_SHA
+    assert conf.archive_gcs_url == url
+    assert gcs_publish == [['gcloud', 'storage', 'cp', conf.archive_for_workers, url]]
+    assert not rts.archive_sent_through_spark(conf)
+
+
+def test_a_recent_object_is_reused(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: 600.0)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is not None
+    assert gcs_publish == []
+
+
+def test_an_old_object_is_uploaded_again(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    """A lifecycle rule could delete it during the run, so it is replaced, which resets its age."""
+    monkeypatch.setattr(rts, 'gcs_object_age_sec',
+                        lambda url: rts.ARCHIVE_GCS_MAX_REUSE_AGE_SEC + 1.0)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert len(gcs_publish) == 1
+
+
+def test_a_failed_upload_falls_back_to_spark(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    def failing_copy(args: List[str]) -> None:
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(rts.subprocess, 'check_call', failing_copy)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert rts.archive_sent_through_spark(conf)
+
+
+@pytest.mark.parametrize(
+    'prefix', [None, '', 'a-bucket/spark-archives', 's3://a-bucket/spark-archives'])
+def test_without_a_gs_prefix_nothing_is_uploaded(
+        gcs_publish: List[List[str]], tmp_path: Any, prefix: Optional[str]) -> None:
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, prefix)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+
+
+def test_macos_keeps_the_spark_path(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    monkeypatch.setattr(rts, 'is_macos', lambda: True)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+
+
+def test_parse_gcs_url() -> None:
+    assert rts.parse_gcs_url('gs://a-bucket/a/b.tar.gz') == ('a-bucket', 'a/b.tar.gz')
+    for bad in ['s3://a-bucket/b', 'gs://a-bucket', 'gs:///b', 'a-bucket/b']:
+        with pytest.raises(ValueError):
+            rts.parse_gcs_url(bad)
+
+
+def fake_gcs(monkeypatch: pytest.MonkeyPatch, content: bytes) -> List[str]:
+    """Fakes the metadata server and GCS; returns the URLs requested."""
+    requested: List[str] = []
+
+    def fake_urlopen(request: Any, timeout: float) -> io.BytesIO:
+        requested.append(request.full_url)
+        if request.full_url == rts.GCP_METADATA_TOKEN_URL:
+            assert request.get_header('Metadata-flavor') == 'Google'
+            return io.BytesIO(b'{"access_token": "a-token"}')
+        assert request.get_header('Authorization') == 'Bearer a-token'
+        return io.BytesIO(content)
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
+    monkeypatch.setattr(rts.time, 'sleep', lambda sec: None)
+    return requested
+
+
+def test_the_download_is_checked_and_moved_into_place(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    content = b'the archive bytes' * 1000
+    requested = fake_gcs(monkeypatch, content)
+    dest = tmp_path / 'archive.tar.gz'
+    rts.download_archive_from_gcs(
+        'gs://a-bucket/spark-archives/x.tar.gz', str(dest), hashlib.sha256(content).hexdigest())
+    assert dest.read_bytes() == content
+    assert requested[-1] == ('https://storage.googleapis.com/storage/v1/b/a-bucket/o/'
+                             'spark-archives%2Fx.tar.gz?alt=media')
+    assert os.listdir(tmp_path) == ['archive.tar.gz']
+
+
+def test_a_corrupt_download_is_retried_then_refused(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    requested = fake_gcs(monkeypatch, b'truncated')
+    dest = tmp_path / 'archive.tar.gz'
+    with pytest.raises(IOError):
+        rts.download_archive_from_gcs('gs://a-bucket/x.tar.gz', str(dest), ARCHIVE_SHA)
+    # A token and a download per attempt, and nothing left behind.
+    assert len(requested) == 2 * rts.GCS_DOWNLOAD_ATTEMPTS
+    assert os.listdir(tmp_path) == []
+
+
+def test_an_extracted_tree_needs_no_download(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    os.makedirs(conf.yb_src_root)
+    with open(os.path.join(conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME), 'w') as sha_file:
+        sha_file.write(ARCHIVE_SHA + '\n')
+
+    def fail(*args: Any) -> None:
+        raise AssertionError("must not download")
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
+    rts.fetch_archive_from_gcs_if_needed(conf, str(tmp_path / 'fetched.tar.gz'))
+
+
+def test_a_different_tree_triggers_the_download(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    os.makedirs(conf.yb_src_root)
+    with open(os.path.join(conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME), 'w') as sha_file:
+        sha_file.write('cd' * 32)
+    downloads: List[Any] = []
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', lambda *args: downloads.append(args))
+    dest = str(tmp_path / 'fetched.tar.gz')
+    rts.fetch_archive_from_gcs_if_needed(conf, dest)
+    assert downloads == [('gs://a-bucket/x.tar.gz', dest, ARCHIVE_SHA)]
+
+
+def lock_is_held(lock_path: str) -> bool:
+    """Whether someone else holds the flock on lock_path (flock is per open file)."""
+    with open(lock_path, 'a') as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        return False
+
+
+def test_the_archive_lock_excludes_and_gives_up(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    lock_path = str(tmp_path / 'lock')
+    with rts.hold_archive_lock(lock_path):
+        assert lock_is_held(lock_path)
+        monkeypatch.setattr(rts, 'ARCHIVE_LOCK_WAIT_SEC', 0.05)
+        monkeypatch.setattr(rts, 'ARCHIVE_LOCK_POLL_SEC', 0.01)
+        with pytest.raises(IOError):
+            with rts.hold_archive_lock(lock_path):
+                pass
+    assert not lock_is_held(lock_path)
+    with rts.hold_archive_lock(lock_path):
+        pass
+
+
+class WorkerSide:
+    """A Spark worker about to set up a task: its Spark files directory, the conf of a one-file
+    tree, the archive of that tree (as the driver has it), and the untar scripts run."""
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        tree = tmp_path / 'tree-on-the-driver'
+        tree.mkdir()
+        (tree / 'a-file').write_text('content')
+        self.driver_archive = str(tmp_path / 'driver' / 'archive.tar.gz.spark-no-extract')
+        os.makedirs(os.path.dirname(self.driver_archive))
+        with tarfile.open(self.driver_archive, 'w:gz') as archive:
+            archive.add(str(tree / 'a-file'), arcname='a-file')
+        with open(self.driver_archive, 'rb') as archive_file:
+            sha = hashlib.sha256(archive_file.read()).hexdigest()
+        self.conf = make_archive_conf(tmp_path, sha)
+        self.conf.archive_for_workers = self.driver_archive
+        self.files_dir = str(tmp_path / 'spark-files')
+        os.makedirs(self.files_dir)
+        self.archive_path = os.path.join(self.files_dir, os.path.basename(self.driver_archive))
+        self.lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
+            self.conf.yb_src_root.replace('/', '__'))
+        # (the script's text, whether the caller held the lock while it ran, the descriptors the
+        # caller passed to it)
+        self.scripts: List[Any] = []
+
+        files_dir = self.files_dir
+
+        class FakeSparkFiles:
+            @staticmethod
+            def get(path: str) -> str:
+                return os.path.join(files_dir, os.path.basename(path))
+
+            @staticmethod
+            def getRootDirectory() -> str:
+                return files_dir
+
+        monkeypatch.setitem(
+            sys.modules, 'pyspark', types.SimpleNamespace(SparkFiles=FakeSparkFiles))
+        # initialize_remote_task sets these; monkeypatch restores them.
+        monkeypatch.setenv('BUILD_ROOT', '')
+        monkeypatch.setenv('YB_COMPILER_TYPE', '')
+        real_check_call = subprocess.check_call
+
+        def check_call(args: Any, **kwargs: Any) -> None:
+            if isinstance(args, str) and 'untar_archive_once_' in args:
+                with open(args) as script_file:
+                    self.scripts.append((script_file.read(), lock_is_held(self.lock_path),
+                                         kwargs.get('pass_fds', ())))
+            real_check_call(args, **kwargs)
+
+        monkeypatch.setattr(rts.subprocess, 'check_call', check_call)
+
+    def tree_sha(self) -> Optional[str]:
+        sha_file_path = os.path.join(self.conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME)
+        if not os.path.isfile(sha_file_path):
+            return None
+        with open(sha_file_path) as sha_file:
+            return sha_file.read().strip()
+
+
+@pytest.fixture
+def worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Iterator[WorkerSide]:
+    side = WorkerSide(monkeypatch, tmp_path)
+    yield side
+    if os.path.exists(side.lock_path):
+        os.remove(side.lock_path)
+
+
+def test_a_worker_downloads_and_extracts_under_one_hold_of_the_lock(
+        monkeypatch: pytest.MonkeyPatch, worker: WorkerSide) -> None:
+    worker.conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    downloads: List[bool] = []
+
+    def download(gcs_url: str, dest_path: str, sha: str) -> None:
+        assert (gcs_url, dest_path, sha) == (
+            'gs://a-bucket/x.tar.gz', worker.archive_path, worker.conf.archive_sha256sum)
+        downloads.append(lock_is_held(worker.lock_path))
+        shutil.copyfile(worker.driver_archive, dest_path)
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', download)
+    rts.initialize_remote_task(worker.conf, {})
+
+    with open(os.path.join(worker.conf.yb_src_root, 'a-file')) as extracted_file:
+        assert extracted_file.read() == 'content'
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+    # The download and the untar script both ran while this task held the lock, and the script
+    # was given the locked descriptor and did not wait for the lock again.
+    assert downloads == [True]
+    [(script, lock_held, passed_fds)] = worker.scripts
+    assert lock_held
+    assert len(passed_fds) == 1
+    assert rts.UNTAR_SCRIPT_LOCK_HELD_CMD in script
+    assert rts.UNTAR_SCRIPT_TAKE_LOCK_CMD not in script
+    assert not lock_is_held(worker.lock_path)
+
+    # A second task, in another executor's files directory, finds the tree and downloads nothing.
+    worker.files_dir = worker.files_dir + '-of-another-executor'
+
+    def fail(*args: Any) -> None:
+        raise AssertionError("must not download")
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
+    os.makedirs(worker.files_dir)
+    second = types.SimpleNamespace(
+        get=lambda path: os.path.join(worker.files_dir, os.path.basename(path)),
+        getRootDirectory=lambda: worker.files_dir)
+    monkeypatch.setitem(sys.modules, 'pyspark', types.SimpleNamespace(SparkFiles=second))
+    rts.initialize_remote_task(worker.conf, {})
+    assert len(worker.scripts) == 2
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+
+
+@pytest.mark.skipif(shutil.which('flock') is None, reason="the untar script needs flock")
+def test_an_archive_sent_through_spark_is_extracted_under_the_scripts_own_lock(
+        worker: WorkerSide) -> None:
+    shutil.copyfile(worker.driver_archive, worker.archive_path)
+    rts.initialize_remote_task(worker.conf, {})
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+    [(script, lock_held, passed_fds)] = worker.scripts
+    assert not lock_held
+    assert passed_fds == ()
+    assert rts.UNTAR_SCRIPT_TAKE_LOCK_CMD in script
+
+
+def test_an_archive_missing_on_the_spark_path_fails_the_task(worker: WorkerSide) -> None:
+    with pytest.raises(IOError, match="Archive not found"):
+        rts.initialize_remote_task(worker.conf, {})

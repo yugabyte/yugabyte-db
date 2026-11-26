@@ -3,17 +3,22 @@
 package com.yugabyte.yw.common.backuprestore.ybc;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -28,6 +33,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
@@ -36,6 +42,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -44,6 +51,9 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.YbcClient;
+import org.yb.ybc.BackupServiceTaskCreateRequest;
+import org.yb.ybc.BackupServiceTaskCreateResponse;
+import org.yb.ybc.BackupServiceTaskResultResponse;
 import org.yb.ybc.BackupServiceValidateCloudConfigRequest;
 import org.yb.ybc.BackupServiceValidateCloudConfigResponse;
 import org.yb.ybc.CloudStoreConfig;
@@ -53,6 +63,9 @@ import org.yb.ybc.RpcControllerStatus;
 
 @RunWith(JUnitParamsRunner.class)
 public class YbcManagerTest extends FakeDBApplication {
+
+  private static final String DSM_TASK_ID = "backup-uuid_YQL_TABLE_TYPE_foo_success_marker";
+  private static final String SUCCESS_MARKER_JSON = "{\"snapshot_url\":\"s3://foo/bar\"}";
 
   private CustomerConfigService mockCustomerConfigService;
   private RuntimeConfGetter mockConfGetter;
@@ -91,13 +104,13 @@ public class YbcManagerTest extends FakeDBApplication {
     YbcClient mockYbcClient_Ip2 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip3 = mock(YbcClient.class);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip1);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip2);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip3);
     when(spyYbcManager.ybcPingCheck(any(YbcClient.class))).thenReturn(true);
     Pair<YbcClient, String> clientIpPair =
@@ -113,13 +126,13 @@ public class YbcManagerTest extends FakeDBApplication {
     YbcClient mockYbcClient_Ip2 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip3 = mock(YbcClient.class);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip1);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip2);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip3);
 
     when(spyYbcManager.ybcPingCheck(eq(mockYbcClient_Ip2))).thenReturn(true);
@@ -134,11 +147,11 @@ public class YbcManagerTest extends FakeDBApplication {
     YbcClient mockYbcClient_Ip1 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip2 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip3 = mock(YbcClient.class);
-    when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), eq(null)))
+    when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip1);
-    when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), eq(null)))
+    when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip2);
-    when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
+    when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip3);
 
     when(spyYbcManager.ybcPingCheck(any(YbcClient.class))).thenReturn(false);
@@ -201,9 +214,7 @@ public class YbcManagerTest extends FakeDBApplication {
     ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 3);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.usek8sCustomResources))).thenReturn(true);
     YbcClient mockYbcClient = mock(YbcClient.class);
-    doReturn(mockYbcClient)
-        .when(spyYbcManager)
-        .getYbcClient(anyList(), anyInt(), nullable(String.class));
+    doReturn(mockYbcClient).when(spyYbcManager).getYbcClient(anyList(), anyInt(), any());
     // Initial flags
     NonRestartSettableControllerFlags.Builder ybcFlagsBuilder =
         NonRestartSettableControllerFlags.newBuilder();
@@ -228,8 +239,15 @@ public class YbcManagerTest extends FakeDBApplication {
         u.getNodesInCluster(c.uuid).stream()
             .filter(nD -> nD.isTserver)
             .collect(Collectors.toList());
+    Provider p =
+        Provider.getOrBadRequest(
+            u.getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .maybeGetSingleProviderUUID()
+                .get());
     spyYbcManager.populateControllerThrottleParamsMap(
-        u, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, false /* resetToDefaults */);
+        u, p, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, false /* resetToDefaults */);
     // Assert new values
     assertEquals(123456789l, paramBuilder.getDiskFlags().getDiskReadBytesPerSec());
     assertEquals(5, paramBuilder.getThrottleParams().getMaxConcurrentUploads());
@@ -255,9 +273,7 @@ public class YbcManagerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)))
         .thenReturn(diskWriteBytesDefault);
     YbcClient mockYbcClient = mock(YbcClient.class);
-    doReturn(mockYbcClient)
-        .when(spyYbcManager)
-        .getYbcClient(anyList(), anyInt(), nullable(String.class));
+    doReturn(mockYbcClient).when(spyYbcManager).getYbcClient(anyList(), anyInt(), any());
     // Initial flags
     NonRestartSettableControllerFlags.Builder ybcFlagsBuilder =
         NonRestartSettableControllerFlags.newBuilder();
@@ -279,8 +295,15 @@ public class YbcManagerTest extends FakeDBApplication {
         u.getNodesInCluster(c.uuid).stream()
             .filter(nD -> nD.isTserver)
             .collect(Collectors.toList());
+    Provider p =
+        Provider.getOrBadRequest(
+            u.getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .maybeGetSingleProviderUUID()
+                .get());
     spyYbcManager.populateControllerThrottleParamsMap(
-        u, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, true /* resetToDefaults */);
+        u, p, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, true /* resetToDefaults */);
     // Assert new values in builder
     assertEquals(diskReadBytesDefault, paramBuilder.getDiskFlags().getDiskReadBytesPerSec());
     assertEquals(diskWriteBytesDefault, paramBuilder.getDiskFlags().getDiskWriteBytesPerSec());
@@ -290,5 +313,137 @@ public class YbcManagerTest extends FakeDBApplication {
     assertEquals(0, paramBuilder.getThrottleParams().getMaxConcurrentDownloads());
     // Assert other settings did not change
     assertEquals(20, paramBuilder.getRetryFlags().getMaxRetries());
+  }
+
+  private BackupServiceTaskCreateResponse dsmCreateResponse(ControllerStatus status) {
+    return BackupServiceTaskCreateResponse.newBuilder()
+        .setStatus(RpcControllerStatus.newBuilder().setCode(status).build())
+        .build();
+  }
+
+  private BackupServiceTaskResultResponse dsmResultResponse(
+      ControllerStatus taskStatus, String metadataJson) {
+    return BackupServiceTaskResultResponse.newBuilder()
+        .setTaskStatus(taskStatus)
+        .setMetadataJson(metadataJson)
+        .build();
+  }
+
+  private String downloadSuccessMarker(YbcClient ybcClient) {
+    return spyYbcManager.downloadSuccessMarker(
+        BackupServiceTaskCreateRequest.getDefaultInstance(), DSM_TASK_ID, ybcClient);
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerTaskAlreadyExistsOnYbc() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs)))
+        .thenReturn(5);
+    // An earlier submit of the same task id already registered the task on YB-Controller.
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(dsmCreateResponse(ControllerStatus.EXISTS));
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenReturn(dsmResultResponse(ControllerStatus.OK, SUCCESS_MARKER_JSON));
+
+    assertEquals(SUCCESS_MARKER_JSON, downloadSuccessMarker(mockYbcClient));
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerSuccessDeletesTaskOnce() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs)))
+        .thenReturn(5);
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(dsmCreateResponse(ControllerStatus.OK));
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenReturn(dsmResultResponse(ControllerStatus.OK, SUCCESS_MARKER_JSON));
+
+    assertEquals(SUCCESS_MARKER_JSON, downloadSuccessMarker(mockYbcClient));
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerNullCreateResponse() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    // YbcClient returns null when it exhausts its own retries.
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(null);
+
+    assertNull(downloadSuccessMarker(mockYbcClient));
+    verify(mockYbcClient, never()).backupServiceTaskResult(any());
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerNullResultResponseKeepsPolling() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs)))
+        .thenReturn(30);
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(dsmCreateResponse(ControllerStatus.OK));
+    // First result RPC fails, polling should continue instead of erroring out.
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenReturn(null, dsmResultResponse(ControllerStatus.OK, SUCCESS_MARKER_JSON));
+
+    assertEquals(SUCCESS_MARKER_JSON, downloadSuccessMarker(mockYbcClient));
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerTimeout() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs)))
+        .thenReturn(1);
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(dsmCreateResponse(ControllerStatus.OK));
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenReturn(dsmResultResponse(ControllerStatus.IN_PROGRESS, ""));
+
+    assertNull(downloadSuccessMarker(mockYbcClient));
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerFailureStatus() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs)))
+        .thenReturn(5);
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(dsmCreateResponse(ControllerStatus.OK));
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenReturn(dsmResultResponse(ControllerStatus.NOT_FOUND, ""));
+
+    assertNull(downloadSuccessMarker(mockYbcClient));
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
+  }
+
+  @Test
+  public void testDownloadSuccessMarkerAbortPropagates() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    doNothing().when(spyYbcManager).deleteYbcBackupTask(anyString(), any(YbcClient.class));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs)))
+        .thenReturn(30);
+    when(mockYbcClient.restoreNamespace(any(BackupServiceTaskCreateRequest.class)))
+        .thenReturn(dsmCreateResponse(ControllerStatus.OK));
+    // Interrupting the task thread makes the polling wait throw, which surfaces as a
+    // CancellationException from RetryTaskUntilCondition.
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenAnswer(
+            invocation -> {
+              Thread.currentThread().interrupt();
+              return dsmResultResponse(ControllerStatus.IN_PROGRESS, "");
+            });
+
+    CancellationException ce =
+        assertThrows(CancellationException.class, () -> downloadSuccessMarker(mockYbcClient));
+    assertTrue(ce.getMessage().contains(DSM_TASK_ID));
+    verify(spyYbcManager, times(1)).deleteYbcBackupTask(eq(DSM_TASK_ID), eq(mockYbcClient));
   }
 }

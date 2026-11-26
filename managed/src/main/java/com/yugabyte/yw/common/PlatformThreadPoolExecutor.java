@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
 
-  private final Duration QUEUE_OFFER_TIMEOUT = Duration.ofSeconds(3);
+  static final Duration DEFAULT_QUEUE_OFFER_TIMEOUT = Duration.ofSeconds(3);
 
   PlatformThreadPoolExecutor(
       int corePoolSize,
@@ -51,18 +51,43 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
       TimeUnit unit,
       BlockingQueue<Runnable> queue,
       ThreadFactory threadFactory) {
+    this(
+        corePoolSize,
+        maximumPoolSize,
+        keepAliveTime,
+        unit,
+        queue,
+        threadFactory,
+        DEFAULT_QUEUE_OFFER_TIMEOUT);
+  }
+
+  /**
+   * @param queueOfferTimeout how long a submitting thread waits for room in the full queue before
+   *     the task is rejected. Zero rejects right away.
+   */
+  PlatformThreadPoolExecutor(
+      int corePoolSize,
+      int maximumPoolSize,
+      long keepAliveTime,
+      TimeUnit unit,
+      BlockingQueue<Runnable> queue,
+      ThreadFactory threadFactory,
+      Duration queueOfferTimeout) {
     super(
         corePoolSize,
         maximumPoolSize,
         keepAliveTime,
         unit,
-        new WrappedBlockingQueue<>(queue),
+        maybeWrapBlockingQueue(maximumPoolSize, queue),
         threadFactory);
     super.setRejectedExecutionHandler(
         (runnable, executor) -> {
+          if (executor.isShutdown()) {
+            new AbortPolicy().rejectedExecution(runnable, executor);
+          }
           // Add to the original queue
           try {
-            if (queue.offer(runnable, QUEUE_OFFER_TIMEOUT.getSeconds(), TimeUnit.SECONDS)) {
+            if (queue.offer(runnable, queueOfferTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
               if (log.isDebugEnabled()) {
                 log.debug(
                     "Queueing task - pool size: {}, active size: {}, "
@@ -88,7 +113,16 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
           new AbortPolicy().rejectedExecution(runnable, executor);
         });
 
-    ((WrappedBlockingQueue<Runnable>) super.getQueue()).setExecutor(this);
+    if (super.getQueue() instanceof WrappedBlockingQueue) {
+      ((WrappedBlockingQueue<Runnable>) super.getQueue()).setExecutor(this);
+    }
+  }
+
+  private static BlockingQueue<Runnable> maybeWrapBlockingQueue(
+      int maxPoolSize, BlockingQueue<Runnable> queue) {
+    // For a single thread executor, the queue does not need to be wrapped because
+    // there is no need to grow the pool size.
+    return maxPoolSize == 1 ? queue : new WrappedBlockingQueue<>(queue);
   }
 
   private static class WrappedBlockingQueue<E> extends ForwardingBlockingQueue<E> {

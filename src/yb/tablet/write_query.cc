@@ -13,6 +13,8 @@
 
 #include "yb/tablet/write_query.h"
 
+#include <algorithm>
+
 #include "yb/ash/wait_state.h"
 
 #include <boost/logic/tribool.hpp>
@@ -25,8 +27,10 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/txn_error_injection.h"
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
@@ -120,7 +124,24 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   if (client_request.has_xrepl_origin_id()) {
     out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
   }
+  if (client_request.has_xrepl_source_write_ht()) {
+    out_request->set_xrepl_source_write_ht(client_request.xrepl_source_write_ht());
+  }
   out_request->set_batch_idx(client_request.batch_idx());
+  // Lift the ops' write fence into the replicated message, which is all RaftConsensus sees. The
+  // earliest fence wins; the ops share a hybrid time, so they cannot be fenced apart.
+  HybridTime ignore_after_hybrid_time;
+  for (const auto& op : client_request.pgsql_write_batch()) {
+    const auto fence = HybridTime::FromPB(op.ignore_after_hybrid_time());
+    if (!fence) {  // Not set for this op.
+      continue;
+    }
+    ignore_after_hybrid_time =
+        ignore_after_hybrid_time ? std::min(ignore_after_hybrid_time, fence) : fence;
+  }
+  if (ignore_after_hybrid_time) {
+    out_request->set_ignore_after_hybrid_time(ignore_after_hybrid_time.ToPB());
+  }
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.
   // But in CDCServiceTest we have ql write batch with external time.
@@ -129,6 +150,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   }
   if (client_request.has_xcluster_target_applied()) {
     out_request->set_xcluster_target_applied(client_request.xcluster_target_applied());
+  }
+  if (client_request.has_origination_info()) {
+    *out_request->mutable_origination_info() = client_request.origination_info();
   }
 }
 
@@ -924,8 +948,7 @@ Status WriteQuery::DoExecute() {
   }
 
   // The request_id field should be populated for all write requests, but any read requests which
-  // trigger a write_query will not have it populated. In this case, we use -1 as the request_id,
-  // and conflict_resolution passes the serial_no to the wait queue as the request_id.
+  // trigger a write_query will not have it populated. In this case, we use -1 as the request_id.
   DCHECK(request().has_request_id() || request().write_batch().write_pairs_size() == 0);
   auto request_id = request().has_request_id() ? request().request_id() : -1;
 
@@ -1124,11 +1147,30 @@ Status WriteQuery::DoCompleteExecute() {
       ? docdb::InitMarkerBehavior::kRequired
       : docdb::InitMarkerBehavior::kOptional;
   auto& write_batch = *request().mutable_write_batch();
+  // Only a replication apply carries a source write time. A request can carry an origin without one
+  // (CDCSDK reports it), and is then a local write.
+  std::optional<CdrMetadata> cdr_metadata;
+  if (request().xrepl_source_write_ht()) {
+    cdr_metadata = CdrMetadata{
+        .source_origin = request().xrepl_origin_id(),
+        .source_write_ht = HybridTime::FromPB(request().xrepl_source_write_ht()),
+    };
+  }
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
         scoped_read_operation_, &write_batch, init_marker_behavior,
-        tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name()));
+        tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name(),
+        cdr_metadata));
+
+    if (!read_restart_data_.is_valid() &&
+        ShouldInjectReadRestart(read_operation_data.read_time)) {
+      const auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+      read_restart_data_ = ReadRestartData{
+          InjectedReadRestartTime(read_operation_data.read_time, safe_time), {}};
+      VLOG(3) << "Injected read restart " << read_restart_data_.restart_time
+              << " into write reading at " << read_operation_data.read_time;
+    }
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.

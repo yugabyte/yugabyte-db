@@ -702,8 +702,13 @@ public class YBClient implements YBClientApi {
       if (clientForHostAndPort == null) {
         String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
         LOG.warn(message);
+        continue;
       }
       clients.put(hostAndPort, clientForHostAndPort);
+    }
+    if (clients.isEmpty()) {
+      LOG.error("Couldn't resolve any master's host/port.");
+      return null;
     }
 
     CountDownLatch finished = new CountDownLatch(1);
@@ -2075,6 +2080,28 @@ public class YBClient implements YBClientApi {
       int walSegmentIndex,
       Long getchangesRespMaxSizeBytes)
       throws Exception {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+        needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex,
+        getchangesRespMaxSizeBytes, 0);
+  }
+
+  @Override
+  public GetChangesResponse getChangesCDCSDK(
+      YBTable table,
+      String streamId,
+      String tabletId,
+      long term,
+      long index,
+      byte[] key,
+      int write_id,
+      long time,
+      boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint,
+      long safeHybridTime,
+      int walSegmentIndex,
+      Long getchangesRespMaxSizeBytes,
+      long maxIndexInSortWindow)
+      throws Exception {
     Deferred<GetChangesResponse> d =
         asyncClient.getChangesCDCSDK(
             table,
@@ -2089,7 +2116,8 @@ public class YBClient implements YBClientApi {
             explicitCheckpoint,
             safeHybridTime,
             walSegmentIndex,
-            getchangesRespMaxSizeBytes);
+            getchangesRespMaxSizeBytes,
+            maxIndexInSortWindow);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 

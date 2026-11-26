@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.ITask;
@@ -36,17 +37,22 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DropTablespacesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
@@ -70,13 +76,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -89,12 +96,14 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CanaryPauseState;
@@ -104,6 +113,7 @@ import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -116,12 +126,17 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -137,8 +152,10 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -172,6 +189,10 @@ import play.libs.Json;
  */
 @Slf4j
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
+
+  // Collector config rewrites queued by queueOtelCollectorConfigRewrite, by node name.
+  private final Map<String, NodeDetails> otelRewriteNodes = new LinkedHashMap<>();
+  private final Map<String, Boolean> otelRewriteIgnoreErrors = new HashMap<>();
 
   @Inject
   protected UniverseDefinitionTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -708,7 +729,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param pi : the placement info in which the masters need to be placed.
    */
   public void selectNumMastersAZ(PlacementInfo pi) {
-    Cluster cluster = taskParams().getPrimaryCluster();
+    selectNumMastersAZ(pi, taskParams().getPrimaryCluster());
+  }
+
+  /**
+   * Same as {@link #selectNumMastersAZ(PlacementInfo)}, using the RF and master zones of the given
+   * primary cluster instead of the one in the task params.
+   */
+  public void selectNumMastersAZ(PlacementInfo pi, Cluster cluster) {
     UserIntent userIntent = cluster.userIntent;
     int numTotalMasters = userIntent.replicationFactor;
     PlacementInfoUtil.selectNumMastersAZ(
@@ -806,6 +834,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update all server conf files because there was a master change.
     createMasterInfoUpdateTask(
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
+    // In failover, also the old node, which stays a tserver. Failover is best effort for both: the
+    // old node is often unhealthy, and a collector error must not fail a failover.
+    Set<NodeDetails> rewriteNodes = new HashSet<>(nodeSet);
+    if (stoppingNode != null && keepTserverRunning && isStoppable) {
+      rewriteNodes.add(stoppingNode);
+    }
+    queueOtelCollectorConfigRewrite(rewriteNodes, keepTserverRunning /* ignoreErrors */);
   }
 
   public void ensureRemoteProcessState(
@@ -1083,7 +1118,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               UpgradeTaskParams.UpgradeTaskType.GFlags,
               null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1212,11 +1247,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       checkAndCreateConsistencyCheckTableTask(primaryCluster);
     }
 
+    checkAndCreateYbStorageDatabaseTask(primaryCluster);
+
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
-    if (primaryCluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)
-        && taskParams().useNewHelmNamingStyle) {
+    if (Util.isKubernetesBased(primaryCluster) && taskParams().useNewHelmNamingStyle) {
       // Create Pod Disruption Budget policy for the universe pods using the new Helm naming style.
       createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
           .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
@@ -1277,7 +1313,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add device info.
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set numVolumes if user did not set it
       if (params.deviceInfo.numVolumes == null) {
         params.deviceInfo.numVolumes =
@@ -1285,7 +1321,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .getUniverseDetails()
                 .getPrimaryCluster()
                 .userIntent
-                .getDeviceInfoForNode(node)
+                .evaluateDeviceInfoForNode(node)
                 .numVolumes;
       }
 
@@ -1402,7 +1438,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer.Params params, Cluster cluster, NodeDetails node) {
     UserIntent userIntent = cluster.userIntent;
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1437,9 +1473,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void fillCreateParamsForNode(
-      AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
+      UUID providerUUID,
+      AnsibleCreateServer.Params params,
+      UserIntent userIntent,
+      NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1458,12 +1497,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.assignPublicIP = cloudInfo.assignPublicIP;
     params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.setMachineImage(node.machineImage);
-    params.imageBundleUUID =
-        userIntent.getImageBundleUUIDForProvider(Util.getProviderByAz(node.azUuid).getUuid());
+    params.imageBundleUUID = userIntent.getImageBundleUUIDForProvider(providerUUID);
     params.sshUserOverride = node.sshUserOverride;
     params.sshPortOverride = node.sshPortOverride;
     params.setCmkArn(taskParams().getCmkArn());
-    params.ipArnString = userIntent.awsArnString;
+    params.ipArnString = userIntent.getAwsInstanceProfileForProvider(providerUUID);
     params.useSpotInstance = userIntent.useSpotInstance;
     params.spotPrice = userIntent.spotPrice;
   }
@@ -1513,7 +1551,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = cluster.userIntent;
       UUID providerUUID = cluster.getProviderUUIDForNode(node);
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
-      fillCreateParamsForNode(params, userIntent, node);
+      fillCreateParamsForNode(providerUUID, params, userIntent, node);
       params.creatingUser = taskParams().creatingUser;
       params.platformUrl = taskParams().platformUrl;
       params.tags = userIntent.getInstanceTagsForProvider(providerUUID);
@@ -1525,6 +1563,116 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Fans out per-node {@link ManageCloudFederation} tasks to configure ({@code enabled=true}) or
+   * tear down ({@code enabled=false}) cross-cloud federated IAM on the given nodes: a node running
+   * on AWS writes to GCS, a node running on GCP writes to S3. Each subtask picks its own direction
+   * from the cloud its node actually runs on, so one on-prem universe can mix both. The caller
+   * decides when to invoke this: the provider flag at create, the universe's {@code
+   * federationConfigured} flag at edit/add-node, or the v2 enable/disable API.
+   */
+  protected void createConfigureCloudFederationTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Collection<NodeDetails> nodes,
+      boolean enabled) {
+    if (nodes == null || nodes.isEmpty()) {
+      return;
+    }
+    Common.CloudType providerCloud = userIntent.providerType;
+    if ((providerCloud != Common.CloudType.aws
+            && providerCloud != Common.CloudType.onprem
+            && providerCloud != Common.CloudType.gcp)
+        || !NodeAgentClient.isCloudTypeSupported(providerCloud)) {
+      return;
+    }
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    // Every configured target is passed down rather than one resolved here: a provider can carry
+    // several, and which one a given node needs depends on the cloud that node physically runs on,
+    // which ManageCloudFederation only learns when it probes the node.
+    List<CrossCloudFederationTarget> targets =
+        CloudInfoInterface.getCrossCloudFederationTargets(provider);
+    if (enabled && targets.isEmpty()) {
+      log.warn(
+          "Federated IAM requested on provider {} but no target is configured; skipping",
+          provider.getUuid());
+      return;
+    }
+
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureCloudFederation");
+    for (NodeDetails node : nodes) {
+      ManageCloudFederation.Params params = new ManageCloudFederation.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.targets = targets;
+      params.enabled = enabled;
+      ManageCloudFederation task = createTask(ManageCloudFederation.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Configuring);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Creates the task that decides node_exporter's scheme for the whole universe and changes every
+   * node if it differs (see {@link ConfigureNodeExporterTls}). Only for tasks that already touch
+   * every node, so the change restarts no exporter the user did not expect to be touched. Null when
+   * the universe runs no node_exporter that node-agent manages.
+   */
+  public SubTaskGroup createUpdateNodeExporterTlsTask(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!details.extraDependencies.installNodeExporter
+        || details.clusters.stream()
+            .noneMatch(c -> NodeAgentClient.isCloudTypeSupported(c.userIntent.providerType))) {
+      return null;
+    }
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureNodeExporterTls");
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    ConfigureNodeExporterTls task = createTask(ConfigureNodeExporterTls.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Persists {@code userIntent.federationConfigured} per cluster. When {@code enabling}, a cluster
+   * is marked true iff its provider has federated IAM enabled with an audience (a non-eligible
+   * cluster like a GCP read replica stays false); when disabling, all clusters are set false.
+   * Enqueue this after the {@link #createConfigureCloudFederationTasks} subtask group so it runs
+   * only when every node subtask succeeded (a failed node subtask aborts the task first), so the
+   * flag is never left in a partial "true" state.
+   */
+  protected void createPersistFederationConfiguredTask(boolean enabling) {
+    createUpdateUniverseFieldsTask(
+            u ->
+                u.getUniverseDetails()
+                    .clusters
+                    .forEach(
+                        c -> {
+                          boolean configured = false;
+                          if (enabling) {
+                            Provider p =
+                                Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+                            configured =
+                                !CloudInfoInterface.getCrossCloudFederationTargets(p).isEmpty();
+                          }
+                          c.userIntent.setFederationConfigured(configured);
+                        }))
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /** True if this universe's primary cluster is (persisted) configured for federated IAM. */
+  protected boolean isUniverseFederationConfigured() {
+    Cluster primary = getUniverse().getUniverseDetails().getPrimaryCluster();
+    return primary != null && primary.userIntent.isFederationConfigured();
   }
 
   /**
@@ -1547,7 +1695,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           getBaseAnsibleServerTaskParams(
               userIntent, node, null /* processType */, null /* type */, null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1644,7 +1792,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
@@ -1708,9 +1856,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
-          cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
+          cluster.clusterType,
+          cluster.userIntent.numNodes,
+          cluster.userIntent.replicationFactor,
+          opType == UniverseOpType.EDIT && univCluster != null
+              ? univCluster.userIntent.replicationFactor
+              : null);
 
-      if (cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)) {
+      if (Util.isKubernetesBased(cluster)) {
         if (opType == UniverseOpType.EDIT
             && KubernetesUtil.needsFullMove(univCluster, cluster)
             && !KubernetesUtil.isFullMoveSupported(univCluster.userIntent.ybSoftwareVersion)) {
@@ -1723,6 +1876,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               || cluster.userIntent.azOverrides != null
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
+          }
+          if (opType == UniverseOpType.EDIT) {
+            // The read replica's services follow the primary cluster's expose service setting.
+            Cluster primaryCluster = taskParams().getPrimaryCluster();
+            if (primaryCluster == null) { // A read-replica-only edit.
+              primaryCluster = universeDetails.getPrimaryCluster();
+            }
+            ExposingServiceState exposingService = cluster.userIntent.enableExposingService;
+            if (exposingService != univCluster.userIntent.enableExposingService
+                && exposingService != primaryCluster.userIntent.enableExposingService) {
+              throw new IllegalArgumentException(
+                  "Readonly cluster's expose service setting follows the primary cluster and"
+                      + " can't be changed on its own.");
+            }
           }
         } else {
           if (opType == UniverseOpType.EDIT) {
@@ -1762,11 +1929,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               String newAZOverridesStr = newAZsOverrides.get(az);
               Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
               if (!curAZOverrides.equals(newAZOverrides)) {
+                // The overrides can hold secrets, and this goes to the client and the log.
                 throw new IllegalArgumentException(
                     String.format(
                         "Kubernetes overrides can't be modified during the edit operation. "
                             + "For AZ %s, previous overrides: %s, new overrides: %s",
-                        az, curAZOverridesStr, newAZOverridesStr));
+                        az,
+                        KubernetesOverridesRedactor.redact(curAZOverridesStr),
+                        KubernetesOverridesRedactor.redact(newAZOverridesStr)));
               }
             }
           }
@@ -1847,6 +2017,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       SubTaskGroupType subTaskGroupType,
       CertsRotateParams.CertRotationType rootCARotationType,
       CertsRotateParams.CertRotationType clientRootCARotationType) {
+    createCertUpdateTasks(
+        nodes,
+        certRotateAction,
+        subTaskGroupType,
+        rootCARotationType,
+        clientRootCARotationType,
+        params -> {});
+  }
+
+  protected void createCertUpdateTasks(
+      Collection<NodeDetails> nodes,
+      NodeManager.CertRotateAction certRotateAction,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType,
+      Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
@@ -1857,6 +2043,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleConfigureServers.Params params =
           createCertUpdateParams(
               userIntent, node, certRotateAction, rootCARotationType, clientRootCARotationType);
+      paramsCustomizer.accept(params);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(getUserTaskUUID());
@@ -2101,8 +2288,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**
@@ -2138,7 +2324,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                               UserIntent userIntent = cluster.userIntent;
                               params.nodeName = node.nodeName;
                               params.nodeUuid = node.nodeUuid;
-                              params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+                              params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
                               params.azUuid = node.azUuid;
                               params.placementUuid = node.placementUuid;
                               params.isMaster = node.isMaster;
@@ -2369,21 +2555,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task to do the provisioning via YNP.
-   *
-   * @param nodes a collection of nodes to be processed.
-   */
-  public SubTaskGroup createYNPProvisioningTask(
-      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
-    return createYNPProvisioningTask(universe, nodes, isYbPrebuiltImage, false /* isReprovision */);
-  }
-
   public SubTaskGroup createYNPProvisioningTask(
       Universe universe,
       Collection<NodeDetails> nodes,
-      boolean isYbPrebuiltImage,
-      boolean isReprovision) {
+      BiConsumer<NodeDetails, YNPProvisioning.Params> paramsCustomizer) {
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2398,24 +2573,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         n -> {
           UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
           YNPProvisioning.Params params = new YNPProvisioning.Params();
-          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           Provider provider = providerGetter.apply(n);
           if (imageBundleUtil != null) {
             params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
           }
-          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           params.nodeName = n.nodeName;
           params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
-          params.isYbPrebuiltImage = isYbPrebuiltImage;
-          params.isReprovision = isReprovision;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
           params.userIntent = userIntent;
+          paramsCustomizer.accept(n, params);
           YNPProvisioning task = createTask(YNPProvisioning.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
@@ -2454,6 +2628,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Whether the node's instance is a cloud VM that YBA creates and destroys. Only on public clouds:
+   * onprem nodes are pre-existing hardware, and kubernetes and local never go through instance
+   * destroy.
+   */
+  protected static boolean isCloudInstanceNode(Universe universe, NodeDetails node) {
+    return universe.getCluster(node.placementUuid).getProviderCloudType(node).isPublicCloud();
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2469,8 +2652,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
-
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2494,6 +2675,32 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Adding).build(),
             filteredNodes -> {
+              // An instance behind a node still in Adding state is a leftover from an attempt
+              // that did not finish, and its state cannot be trusted, so destroy it and create
+              // again rather than adopt it. The destroy is always planned, never only on a retry:
+              // YBA requires a retried task to plan the same subtasks as the original, and it is
+              // a no-op when there is no instance. Public clouds only: onprem nodes are
+              // pre-existing hardware, and kubernetes and local never go through instance destroy.
+              Set<NodeDetails> leftoverNodes =
+                  filteredNodes.stream()
+                      .filter(n -> isCloudInstanceNode(universe, n))
+                      .collect(Collectors.toSet());
+              if (!leftoverNodes.isEmpty()) {
+                // isForceDelete stays false: creating on top of a cleanup that silently failed is
+                // the class of bug this exists to remove. skipUpdateNodeState keeps the node in
+                // Adding for the create that follows - letting it reach Terminated would make a
+                // mid-task restart skip the node, since applyOnNodesWithStatus filters on the
+                // persisted status.
+                createDestroyServerTasks(
+                        universe,
+                        leftoverNodes,
+                        n -> false /* isForceDelete */,
+                        false /* deleteNode */,
+                        true /* deleteRootVolumes */,
+                        true /* skipDestroyPrecheck */,
+                        true /* skipUpdateNodeState */)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              }
               createCreateServerTasks(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
@@ -2537,8 +2744,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 boolean isYbPrebuiltImage =
                     !shouldInstallDbSoftware(
                         universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
-                createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
+                createYNPProvisioningTask(
+                        universe, filteredNodes, (n, p) -> p.isYbPrebuiltImage = isYbPrebuiltImage)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                if (universe.getUniverseDetails().fipsEnabled) {
+                  // Provisioning has put the node's kernel and crypto policy into FIPS mode, which
+                  // only takes effect on reboot. Inside this block so a retry that already moved
+                  // the node past Provisioned does not reboot it a second time.
+                  createRebootTasks(new ArrayList<>(filteredNodes), false /* isHardReboot */)
+                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                }
               }
               createInstallNodeAgentTasks(universe, filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -2880,6 +3095,117 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         return 4;
       default:
         return Integer.MAX_VALUE;
+    }
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    createManageOtelCollectorTasks(
+        userIntent, nodes, installOtelCollector, telemetryConfig, nodeToGflags, false);
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags,
+      boolean ignoreErrors) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    boolean otelCollectorEnabled =
+        installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+    for (NodeDetails node : nodes) {
+      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.installOtelCollector = installOtelCollector;
+      params.otelCollectorEnabled = otelCollectorEnabled;
+      params.telemetryConfig = telemetryConfig;
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
+      params.gflags = nodeToGflags.apply(node);
+      params.ignoreErrors = ignoreErrors;
+
+      ManageOtelCollector task = createTask(ManageOtelCollector.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Queues a collector config rewrite on the nodes for their new master role. It runs last, before
+   * the task succeeds, so it cannot delay the role change. A node fails fast if any caller asks.
+   */
+  protected void queueOtelCollectorConfigRewrite(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
+    for (NodeDetails node : nodes) {
+      otelRewriteNodes.putIfAbsent(node.nodeName, node);
+      otelRewriteIgnoreErrors.merge(node.nodeName, ignoreErrors, Boolean::logicalAnd);
+    }
+  }
+
+  @Override
+  protected void createFinalSubTasks() {
+    super.createFinalSubTasks();
+    for (boolean ignoreErrors : new boolean[] {false, true}) {
+      createOtelCollectorConfigRewriteTasks(
+          otelRewriteNodes.values().stream()
+              .filter(n -> otelRewriteIgnoreErrors.get(n.nodeName) == ignoreErrors)
+              .collect(Collectors.toList()),
+          ignoreErrors);
+    }
+    otelRewriteNodes.clear();
+    otelRewriteIgnoreErrors.clear();
+  }
+
+  private void createOtelCollectorConfigRewriteTasks(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
+    if (nodes.isEmpty()) {
+      return;
+    }
+    Universe universe = getUniverse();
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    if (!universe.getUniverseDetails().otelCollectorEnabled
+        || !OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+            telemetryConfig.getMetricsExportConfig())) {
+      return;
+    }
+    Map<UUID, List<NodeDetails>> nodesByCluster =
+        nodes.stream().collect(Collectors.groupingBy(n -> n.placementUuid));
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodesByCluster.entrySet()) {
+      Cluster cluster = universe.getCluster(entry.getKey());
+      // The collector on Kubernetes is a sidecar that helm upgrades configure.
+      List<NodeDetails> clusterNodes =
+          entry.getValue().stream()
+              .filter(n -> cluster.getProviderCloudType(n) != CloudType.kubernetes)
+              .collect(Collectors.toList());
+      if (clusterNodes.isEmpty()) {
+        continue;
+      }
+      createManageOtelCollectorTasks(
+          cluster.userIntent,
+          clusterNodes,
+          false /* installOtelCollector */,
+          telemetryConfig,
+          node ->
+              GFlagsUtil.getGFlagsForNode(
+                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+          ignoreErrors);
     }
   }
 
@@ -3225,9 +3551,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           continue;
         }
         DeviceInfo taskDeviceInfo =
-            cluster.userIntent.getDeviceInfoForAz(nodeDetails.azUuid, serverType);
+            cluster.userIntent.evaluateDeviceInfoForAz(nodeDetails.azUuid, serverType);
         DeviceInfo existingDeviceInfo =
-            existingUserIntent.getDeviceInfoForAz(nodeDetails.azUuid, serverType);
+            existingUserIntent.evaluateDeviceInfoForAz(nodeDetails.azUuid, serverType);
 
         if (taskDeviceInfo != null
             && existingDeviceInfo != null
@@ -3807,15 +4133,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         shellContext);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
       UserTaskDetails.SubTaskGroupType subTaskGroupType) {
-    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+    return addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
@@ -3829,6 +4155,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    return subTaskGroup;
   }
 
   protected RollMaxBatchSize getCurrentRollBatchSize(
@@ -3986,10 +4313,45 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
   }
 
+  /**
+   * Records {@code targetVersion} as the software version when the user intent still holds an older
+   * one. Finalize clears prevYBSoftwareConfig, the only other record of the target.
+   */
+  protected void createUpdateSoftwareVersionTaskIfStale(
+      Universe universe, String targetVersion, SubTaskGroupType subTaskGroupType) {
+    if (!targetVersion.equals(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      createUpdateSoftwareVersionTask(targetVersion, false /* isSoftwareUpdateViaVm */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+  }
+
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    createFinalizeUpgradeTasks(
+        upgradeSystemCatalog,
+        finalizeCatalogUpgrade,
+        requireAdditionalSuperUserForCatalogUpgrade,
+        true /* saveReadyState */,
+        false /* ignorePromoteAutoFlagsErrors */);
+  }
+
+  /**
+   * Finalize subtasks, ending with the Ready state unless {@code saveReadyState} is false; a caller
+   * that passes false must save Ready (rollback disallowed) itself, together with the version.
+   *
+   * <p>{@code ignorePromoteAutoFlagsErrors} must be true when finalizing inside an upgrade task. A
+   * failure there leaves the universe in UpgradeFailed after rollback was disallowed (and the YSQL
+   * major catalog possibly finalized), and retrying the upgrade re-allows rollback.
+   */
+  protected void createFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade,
+      boolean saveReadyState,
+      boolean ignorePromoteAutoFlagsErrors) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4006,7 +4368,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Promote all auto flags upto class External.
       createPromoteAutoFlagTask(
           universe.getUniverseUUID(),
-          true /* ignoreErrors */,
+          ignorePromoteAutoFlagsErrors /* ignoreErrors */,
           AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
       if (upgradeSystemCatalog) {
@@ -4026,9 +4388,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
     createEnablePitrConfigTask();
 
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
+    if (saveReadyState) {
+      createUpdateUniverseSoftwareUpgradeStateTask(
+          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+          false /* isSoftwareRollbackAllowed */);
+    }
   }
 
   protected void createEnablePitrConfigTask() {
@@ -4067,17 +4431,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.force = true;
               Map<String, String> gflags = new HashMap<>();
               gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
-              Cluster cluster = universe.getCluster(node.placementUuid);
-              Map<String, String> nodeGFlags =
-                  GFlagsUtil.getGFlagsForNode(
-                      node, serverType, cluster, universe.getUniverseDetails().clusters);
-              String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-              if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
-                gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
-              }
+              addUserYsqlPgConfCsv(gflags, universe, node, serverType);
               params.gflags = gflags;
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+  }
+
+  /**
+   * Adds the node's user ysql_pg_conf_csv, which SetFlagInMemory needs to rebuild the live value
+   * when the caller sets only a few flags.
+   */
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Universe universe, NodeDetails node, ServerType serverType) {
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    if (cluster == null) {
+      // Fail rather than drop the user ysql_pg_conf_csv from the live value.
+      throw new IllegalStateException(
+          String.format(
+              "No cluster for node %s (placementUuid %s) in universe %s",
+              node.nodeName, node.placementUuid, universe.getUniverseUUID()));
+    }
+    addUserYsqlPgConfCsv(
+        gflags,
+        GFlagsUtil.getGFlagsForNode(
+            node, serverType, cluster, universe.getUniverseDetails().clusters));
+  }
+
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Map<String, String> nodeGFlags) {
+    String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+    if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
+      gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
+    }
   }
 
   public void updateAndPersistAuditLoggingConfigTask() {
@@ -4126,10 +4511,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               boolean configureCgroup = true;
               // If any cluster cannot configure cgroup, set it to false.
               for (Cluster c : u.getUniverseDetails().clusters) {
-                Provider provider =
-                    Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-                boolean configure = Util.configureCgroup(c.userIntent, provider, true, confGetter);
-                configureCgroup = configure && configureCgroup;
+                for (UUID providerUUID : c.userIntent.getAllProviderUUIDs()) {
+                  Provider provider = Provider.getOrBadRequest(providerUUID);
+                  boolean configure =
+                      Util.configureCgroup(c.userIntent, provider, true, confGetter);
+                  configureCgroup = configure && configureCgroup;
+                }
               }
               u.getUniverseDetails()
                   .getPrimaryCluster()
@@ -4313,6 +4700,314 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
+  /**
+   * Creates the load balancers that the cluster calls for, or reconciles the ones that exist,
+   * including their zones and tags. Call it before node creation, so that a permission error fails
+   * the task before YBA creates VMs.
+   */
+  protected void createEnsureManagedLoadBalancerTasks(Cluster cluster) {
+    createEnsureManagedLoadBalancerTasks(
+        cluster,
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, getUniverse().getUniverseDetails().getManagedLoadBalancerState()));
+  }
+
+  protected void createEnsureManagedLoadBalancerTasks(
+      Cluster cluster, List<ManagedLoadBalancer> lbs) {
+    if (lbs.isEmpty()) {
+      return;
+    }
+    Universe universe = getUniverse();
+    UUID customerUUID = Customer.get(universe.getCustomerId()).getUuid();
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("EnsureManagedLoadBalancer", SubTaskGroupType.Provisioning);
+    for (ManagedLoadBalancer lb : lbs) {
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      UUID providerUUID = region.getProvider().getUuid();
+      EnsureManagedLoadBalancer.Params params = new EnsureManagedLoadBalancer.Params();
+      params.setUniverseUUID(universe.getUniverseUUID());
+      params.clusterUUID = cluster.uuid;
+      params.providerUUID = providerUUID;
+      params.regionUUID = lb.getRegionUuid();
+      params.regionCode = region.getCode();
+      params.lbName = lb.getName();
+      params.scheme = lb.getScheme();
+      params.azUUIDs = lb.getAzUuids();
+      params.tags =
+          ManagedLoadBalancerUtil.getTags(
+              universe.getUniverseUUID(),
+              cluster.userIntent.universeName,
+              customerUUID,
+              cluster.userIntent.getInstanceTagsForProvider(providerUUID));
+      EnsureManagedLoadBalancer task = createTask(EnsureManagedLoadBalancer.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Deletes the saved load balancers that the filter accepts. One a zone still names with lbName
+   * stays: a takeover clears lbName only on success, so until then it is the user's.
+   */
+  protected void createDeleteManagedLoadBalancerTasks(
+      Predicate<ManagedLoadBalancer> filter, boolean ignoreErrors) {
+    Universe universe = getUniverse();
+    ManagedLoadBalancerState state = universe.getUniverseDetails().getManagedLoadBalancerState();
+    if (state == null) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("DeleteManagedLoadBalancer", SubTaskGroupType.RemovingUnusedServers);
+    for (ManagedLoadBalancer lb : state.getLoadBalancers()) {
+      if (!filter.test(lb)
+          || ManagedLoadBalancerUtil.isNamedByZones(universe.getCluster(lb.getClusterUuid()), lb)) {
+        continue;
+      }
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      DeleteManagedLoadBalancer.Params params = new DeleteManagedLoadBalancer.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.clusterUUID = lb.getClusterUuid();
+      params.providerUUID = region.getProvider().getUuid();
+      params.regionUUID = lb.getRegionUuid();
+      params.regionCode = region.getCode();
+      params.lbName = lb.getName();
+      params.ignoreErrors = ignoreErrors;
+      DeleteManagedLoadBalancer task = createTask(DeleteManagedLoadBalancer.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  /**
+   * Retries the delete of load balancers whose cluster is gone, which a forced read replica delete
+   * leaves when its cloud delete fails. Errors are ignored, so the caller can't fail on a load
+   * balancer it doesn't use, and the entry stays for the next try.
+   */
+  protected void createDeleteOrphanedManagedLoadBalancerTasks() {
+    Universe universe = getUniverse();
+    createDeleteManagedLoadBalancerTasks(
+        lb -> universe.getCluster(lb.getClusterUuid()) == null, true /* ignoreErrors */);
+  }
+
+  /**
+   * Restarts, one at a time, the tservers whose YSQL or YCQL proxy doesn't listen where its gflags
+   * now say: GFlagsUtil binds the proxies of a GCP cluster with a load balancer to 0.0.0.0. A node
+   * whose running proxies already match is skipped. Plan it after the new settings are saved.
+   */
+  protected void createRebindProxiesTasks() {
+    createRebindProxiesTasks(
+        getUniverse().getUniverseDetails().clusters.stream()
+            .map(c -> c.uuid)
+            .collect(Collectors.toSet()),
+        Collections.emptySet(),
+        nodeName -> false);
+  }
+
+  /**
+   * Whether a tserver's cert lacks the load balancer names that the universe holds when the test
+   * runs. Only run time knows: ensure gives a load balancer deleted outside YBA a new address. A
+   * cert with no recorded names counts as stale.
+   */
+  protected Predicate<String> isLoadBalancerCertStale() {
+    return nodeName -> {
+      Universe universe = getUniverse();
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
+      return state == null
+          || !ManagedLoadBalancerUtil.getCertNameSet(details, universe.getNode(nodeName))
+              .equals(state.getCertNames().get(nodeName));
+    };
+  }
+
+  /**
+   * Live tservers of target's clusters that hasLoadBalancer accepts, whose client cert YBA signs:
+   * client TLS on, self-signed client root CA. Which of them get a new cert is decided at run time,
+   * after ensure saves the addresses.
+   */
+  protected Set<String> getLoadBalancerCertNodes(
+      UniverseDefinitionTaskParams target, Predicate<Cluster> hasLoadBalancer) {
+    UniverseDefinitionTaskParams details = getUniverse().getUniverseDetails();
+    CertificateInfo clientCa =
+        details.getClientRootCA() == null ? null : CertificateInfo.get(details.getClientRootCA());
+    if (clientCa == null || clientCa.getCertType() != CertConfigType.SelfSigned) {
+      return Set.of();
+    }
+    return target.clusters.stream()
+        .filter(cluster -> cluster.userIntent.enableClientToNodeEncrypt)
+        .filter(hasLoadBalancer)
+        .flatMap(cluster -> target.getNodesInCluster(cluster.uuid).stream())
+        .filter(n -> n.isTserver && n.state == NodeState.Live)
+        .map(n -> n.nodeName)
+        .collect(Collectors.toSet());
+  }
+
+  /**
+   * Copies a reissued client-facing cert to each of nodeNames whose cert is stale when the copy
+   * starts. A tserver loads it when createRebindProxiesTasks restarts it.
+   */
+  protected void createLoadBalancerCertCopyTasks(
+      Set<String> nodeNames, Predicate<String> isCertStale) {
+    // Processes keep the old cert until they restart; same CA, so TLS works in between. The
+    // restart records the names: recorded here, a retry would skip a tserver not yet restarted.
+    planToRunOnlyIf(
+        t -> isCertStale.test(t.getTaskParams().path("nodeName").asText()),
+        () ->
+            createCertUpdateTasks(
+                getUniverse().getNodes().stream()
+                    .filter(n -> nodeNames.contains(n.nodeName))
+                    .collect(Collectors.toList()),
+                NodeManager.CertRotateAction.ROTATE_CERTS,
+                SubTaskGroupType.RotatingCert,
+                CertsRotateParams.CertRotationType.None,
+                CertsRotateParams.CertRotationType.ServerCert,
+                params -> params.skipLoadBalancerCertRecord = true));
+  }
+
+  /**
+   * Restarts live tservers one at a time: rebind nodes of clusterUuids (gflags rewritten), and
+   * certNodeNames whose cert is stale when the restart starts (to load the copied cert). A node in
+   * both restarts once.
+   */
+  protected void createRebindProxiesTasks(
+      Set<UUID> clusterUuids, Set<String> certNodeNames, Predicate<String> isCertStale) {
+    Universe universe = getUniverse();
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    boolean restarts = !certNodeNames.isEmpty();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      boolean rebindCluster =
+          clusterUuids.contains(cluster.uuid) && GFlagsUtil.listensOnLoadBalancerAddress(cluster);
+      restarts |= rebindCluster;
+      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+        if (!node.isTserver || node.state != NodeState.Live) {
+          continue;
+        }
+        boolean certNode = certNodeNames.contains(node.nodeName);
+        if (rebindCluster && needsProxyRebind(universe, cluster, node, cloudEnabled)) {
+          // A rollback can't undo a restart: it would leave proxies on 0.0.0.0, and a tserver
+          // whose restart failed stays leader-blacklisted until a retry clears it below. The cert
+          // copy marks a cert-only restart.
+          createMarkRollbackUnsafeTaskOnce();
+          createTserverRestartTasks(node, true /* rebind */, certNode);
+        } else if (certNode) {
+          planToRunOnlyIf(
+              t -> isCertStale.test(node.nodeName),
+              () -> createTserverRestartTasks(node, false /* rebind */, true /* certNode */));
+        }
+      }
+    }
+    // A restart that failed after its stop left the tserver leader-blacklisted, and a retry skips
+    // it once its proxies and its cert match.
+    if (restarts && !isFirstTry()) {
+      clearLeaderBlacklistIfAvailable(SubTaskGroupType.StartingNodeProcesses);
+    }
+  }
+
+  private void createTserverRestartTasks(NodeDetails node, boolean rebind, boolean certNode) {
+    List<NodeDetails> nodes = Collections.singletonList(node);
+    Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
+    createCheckNodesAreSafeToTakeDownTask(
+        Collections.singletonList(UpgradeTaskBase.MastersAndTservers.from(node, tserver)),
+        null /* targetSoftwareVersion */,
+        false /* fallbackToSingleSplits */);
+    stopProcessesOnNodes(
+        nodes,
+        tserver,
+        false /* removeMasterFromQuorum */,
+        false /* deconfigure */,
+        false /* flushTablets */,
+        false /* ignoreStopError */,
+        SubTaskGroupType.StoppingNodeProcesses);
+    if (rebind) {
+      createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
+    }
+    startProcessesOnNode(
+        node,
+        tserver,
+        SubTaskGroupType.StartingNodeProcesses,
+        false /* addMasterToQuorum */,
+        true /* wasStopped */,
+        true /* waitForServerReady */);
+    // Followers catch up before the next stop, so no tablet loses its majority.
+    if (isFollowerLagCheckEnabled()) {
+      createCheckFollowerLagTask(node, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    }
+    // Last: until it runs, the cert counts as stale, so a retry restarts the tserver again.
+    if (certNode) {
+      createUpdateUniverseFieldsTask(
+              u -> {
+                UniverseDefinitionTaskParams details = u.getUniverseDetails();
+                Set<String> names =
+                    ManagedLoadBalancerUtil.getCertNameSet(details, u.getNode(node.nodeName));
+                details.updateManagedLoadBalancerState(
+                    state -> state.getCertNames().put(node.nodeName, names));
+              })
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    }
+  }
+
+  @Nullable private Predicate<ITask> plannedShouldRun;
+
+  // Each group that planner adds runs only if shouldRun holds when the group starts. Reaches the
+  // groups of helpers that don't return them, such as stopProcessesOnNodes.
+  private void planToRunOnlyIf(Predicate<ITask> shouldRun, Runnable planner) {
+    Predicate<ITask> outer = plannedShouldRun;
+    plannedShouldRun = outer == null ? shouldRun : outer.and(shouldRun);
+    try {
+      planner.run();
+    } finally {
+      plannedShouldRun = outer;
+    }
+  }
+
+  @Override
+  protected SubTaskGroup createSubTaskGroup(
+      String name, SubTaskGroupType defaultSubTaskGroupType, boolean ignoreErrors) {
+    SubTaskGroup group = super.createSubTaskGroup(name, defaultSubTaskGroupType, ignoreErrors);
+    return plannedShouldRun == null ? group : group.setShouldRunPredicate(plannedShouldRun);
+  }
+
+  private boolean needsProxyRebind(
+      Universe universe, Cluster cluster, NodeDetails node, boolean cloudEnabled) {
+    Map<String, String> target =
+        GFlagsUtil.calculateFinalGFlags(
+            node,
+            getAnsibleConfigureServerParams(
+                cluster.userIntent,
+                node,
+                ServerType.TSERVER,
+                UpgradeTaskType.GFlags,
+                UpgradeTaskSubType.None),
+            cluster.userIntent,
+            universe,
+            GFlagsUtil.getGFlagsForNode(
+                node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+            config,
+            confGetter);
+    Map<String, String> running =
+        GFlagsUtil.getActualGFlags(
+            node,
+            ServerType.TSERVER,
+            universe,
+            true /* inMemory */,
+            nodeUniverseManager,
+            nodeUIApiHelper,
+            cloudEnabled);
+    // Unknown: a restart is safe, a skip may leave the load balancer unable to connect.
+    if (running == null) {
+      return true;
+    }
+    return Stream.of(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, GFlagsUtil.CSQL_PROXY_BIND_ADDRESS)
+        .filter(target::containsKey)
+        .anyMatch(flag -> !Objects.equals(target.get(flag), running.get(flag)));
+  }
+
   protected void createTablespacesTasks(
       Collection<UniverseDefinitionTaskParams.PartitionInfo> partitionInfos,
       boolean ignoreCurrentPlacement) {
@@ -4423,19 +5118,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   protected SubTaskGroup createCheckDuplicateInstances(
       Universe universe, Collection<NodeDetails> nodes) {
-    // Cache cloud types for clusters to avoid multiple provider lookups.
-    final Map<UUID, CloudType> cloudTypes = new HashMap<>();
     return doInPrecheckSubTaskGroup(
         "CheckDuplicateInstances",
         subTaskGroup -> {
           for (NodeDetails node : nodes) {
             Cluster cluster = universe.getCluster(node.placementUuid);
-            CloudType cloudType =
-                cloudTypes.computeIfAbsent(
-                    node.placementUuid,
-                    k ->
-                        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider))
-                            .getCloudCode());
+            CloudType cloudType = cluster.getProviderCloudType(node);
             if (!cloudType.isPublicCloud()) {
               log.debug(
                   "Skipping duplicate instance check for non-CSP node {} in cluster {}",
@@ -4454,7 +5142,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               continue;
             }
             CheckDuplicateInstance.Params params = new CheckDuplicateInstance.Params();
-            params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+            params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
             params.azUuid = node.azUuid;
             params.placementUuid = node.placementUuid;
             params.nodeName = node.nodeName;
@@ -4542,5 +5230,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Which nodes may be force-destroyed: only onprem ones, where a failed cleanup leaves the node
+   * instance decommissioned. On a cloud, a failed terminate fails the task so the node stays
+   * tracked and blacklisted. A retry is safe because destroy succeeds when the instance is already
+   * gone.
+   */
+  protected static Function<NodeDetails, Boolean> forceDestroyOnlyOnOnprem(Universe universe) {
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    return node -> providerGetter.apply(node).getCloudCode() == CloudType.onprem;
   }
 }

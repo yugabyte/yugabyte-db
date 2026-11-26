@@ -88,7 +88,9 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
     options.extra_master_flags = {
         "--enable_load_balancing=false",
         "--initial_tserver_registration_duration_secs=0",
-        "--enforce_tablet_replica_limits=true"};
+        "--enforce_tablet_replica_limits=true",
+        // Split right after a cluster restart needs a leader before failure detection elects one.
+        "--TEST_hinted_leader_election_for_existing_tablets=true"};
     return options;
   }
 };

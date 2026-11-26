@@ -130,7 +130,7 @@ To map groups to roles, on the **Groups** tab, do the following:
 1. Select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
 
     - To assign a built-in role, on the **Built-in Role** tab, select a role. You can't assign the SuperAdmin role to a group.
-
     - To assign a custom role (only available if you have enabled RBAC for groups), on the **Custom Role** tab, select a role and scope.
 
 1. Click **Save**.
+

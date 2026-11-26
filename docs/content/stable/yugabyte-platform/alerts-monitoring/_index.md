@@ -25,7 +25,7 @@ YugabyteDB Anywhere provides preconfigured alerts to notify you of potential pro
 
 Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
 
-Integrate with third-party tools such as Datadog, Dynatrace, OTLP-compatible backends, and Splunk to export database metrics and audit logs for analysis.
+Integrate with third-party tools such as Datadog, Dynatrace, OTLP-compatible backends, and Splunk to export database metrics and logs for analysis.
 
 {{<index/block>}}
 
@@ -60,6 +60,12 @@ Integrate with third-party tools such as Datadog, Dynatrace, OTLP-compatible bac
     icon="fa-thin fa-user-robot">}}
 
   {{<index/item
+    title="Cluster Load"
+    body="See whether a universe was overloaded, and why."
+    href="cluster-load/"
+    icon="fa-thin fa-chart-column">}}
+
+  {{<index/item
     title="Latency histogram and P99 latencies"
     body="View latency histogram and P99 latency metrics."
     href="latency-histogram/"
@@ -73,7 +79,7 @@ Integrate with third-party tools such as Datadog, Dynatrace, OTLP-compatible bac
 
   {{<index/item
     title="Export metrics and logs"
-    body="Export audit logs and node-level metrics to third-party tools."
+    body="Export query and audit logs and node-level metrics to third-party tools."
     href="anywhere-export-configuration/"
     icon="fa-thin fa-file-export">}}
 

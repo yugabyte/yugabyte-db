@@ -44,6 +44,10 @@ class PgDmlWrite : public PgDml {
 
   [[nodiscard]] int32_t GetRowsAffectedCount() { return rows_affected_count_; }
 
+  [[nodiscard]] PgsqlResponsePB::PgsqlOnConflictOutcome GetOnConflictOutcome() const {
+    return on_conflict_outcome_;
+  }
+
   Status SetWriteTime(const HybridTime& write_time);
 
   Status BindRow(uint64_t ybctid, YbcBindColumn* columns, int count);
@@ -57,7 +61,7 @@ class PgDmlWrite : public PgDml {
 
   // Prepare write operations.
   Status Prepare(const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-                 bool skip_intents_write);
+                 const YbcPgSkipIntentsOptimizationInfo& skip_intents_info);
 
   // Allocate column expression.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
@@ -74,6 +78,9 @@ class PgDmlWrite : public PgDml {
   const YbcPgTransactionSetting transaction_setting_;
 
   int32_t rows_affected_count_ = 0;
+
+  PgsqlResponsePB::PgsqlOnConflictOutcome on_conflict_outcome_ =
+      PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
 
   bool packed_;
 

@@ -180,21 +180,37 @@ DROP INDEX s_10000_val2;
 DROP INDEX s_10000_val3;
 -- We have to make sure that selectivity does not apply for non YB tables (eg. foreign tables)
 CREATE EXTENSION file_fdw;
-COPY (SELECT * FROM s_100) TO '/tmp/tmp.csv' DELIMITER ',';
+-- Use the per-run output directory: a COPY to a shared path like /tmp/tmp.csv is truncated by
+-- concurrently running test instances, making the file size reported below flaky.
+\getenv abs_builddir PG_ABS_BUILDDIR
+\set csv_file :abs_builddir '/results/planner_size_estimates.csv'
+COPY (SELECT * FROM s_100) TO :'csv_file' DELIMITER ',';
 CREATE SERVER file_fdw_test_srv FOREIGN DATA WRAPPER file_fdw;
 CREATE FOREIGN TABLE temp_foreign (
     id INT,
     val INT
 ) SERVER file_fdw_test_srv
-OPTIONS (format 'csv', filename '/tmp/tmp.csv', header 'TRUE');
-EXPLAIN SELECT * FROM temp_foreign;
-                           QUERY PLAN                            
+OPTIONS (format 'csv', filename :'csv_file', header 'TRUE');
+-- Hides the run-specific directory of the foreign file.
+CREATE FUNCTION explain_filter(text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    ln text;
+BEGIN
+    FOR ln IN EXECUTE $1 LOOP
+        RETURN NEXT regexp_replace(ln, 'Foreign File: .*/', 'Foreign File: .../');
+    END LOOP;
+END;
+$$;
+SELECT explain_filter('EXPLAIN SELECT * FROM temp_foreign');
+                         explain_filter                          
 -----------------------------------------------------------------
  Foreign Scan on temp_foreign  (cost=0.00..2.80 rows=18 width=8)
-   Foreign File: /tmp/tmp.csv
+   Foreign File: .../planner_size_estimates.csv
    Foreign File Size: 584 b
 (3 rows)
 
+DROP FUNCTION explain_filter(text);
 DROP FOREIGN TABLE temp_foreign;
 DROP SERVER file_fdw_test_srv CASCADE;
 DROP EXTENSION file_fdw;
@@ -373,21 +389,37 @@ DROP INDEX s_10000_val2;
 DROP INDEX s_10000_val3;
 -- We have to make sure that selectivity does not apply for non YB tables (eg. foreign tables)
 CREATE EXTENSION file_fdw;
-COPY (SELECT * FROM s_100) TO '/tmp/tmp.csv' DELIMITER ',';
+-- Use the per-run output directory: a COPY to a shared path like /tmp/tmp.csv is truncated by
+-- concurrently running test instances, making the file size reported below flaky.
+\getenv abs_builddir PG_ABS_BUILDDIR
+\set csv_file :abs_builddir '/results/planner_size_estimates.csv'
+COPY (SELECT * FROM s_100) TO :'csv_file' DELIMITER ',';
 CREATE SERVER file_fdw_test_srv FOREIGN DATA WRAPPER file_fdw;
 CREATE FOREIGN TABLE temp_foreign (
     id INT,
     val INT
 ) SERVER file_fdw_test_srv
-OPTIONS (format 'csv', filename '/tmp/tmp.csv', header 'TRUE');
-EXPLAIN SELECT * FROM temp_foreign;
-                           QUERY PLAN                            
+OPTIONS (format 'csv', filename :'csv_file', header 'TRUE');
+-- Hides the run-specific directory of the foreign file.
+CREATE FUNCTION explain_filter(text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    ln text;
+BEGIN
+    FOR ln IN EXECUTE $1 LOOP
+        RETURN NEXT regexp_replace(ln, 'Foreign File: .*/', 'Foreign File: .../');
+    END LOOP;
+END;
+$$;
+SELECT explain_filter('EXPLAIN SELECT * FROM temp_foreign');
+                         explain_filter                          
 -----------------------------------------------------------------
  Foreign Scan on temp_foreign  (cost=0.00..2.80 rows=18 width=8)
-   Foreign File: /tmp/tmp.csv
+   Foreign File: .../planner_size_estimates.csv
    Foreign File Size: 584 b
 (3 rows)
 
+DROP FUNCTION explain_filter(text);
 DROP FOREIGN TABLE temp_foreign;
 DROP SERVER file_fdw_test_srv CASCADE;
 DROP EXTENSION file_fdw;

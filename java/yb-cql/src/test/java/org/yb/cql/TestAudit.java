@@ -480,6 +480,29 @@ public class TestAudit extends BaseCQLTest {
             dml));
   }
 
+  /** Verifies that a runtime change of a filter flag applies to the next statement. */
+  @Test
+  public void filteringChangedAtRuntime() throws Exception {
+    session.execute("CREATE TABLE t (id int PRIMARY KEY)");
+    String query = "SELECT * FROM t";
+    AuditLogEntry queryEntry = new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
+        null /* batchId */, DEFAULT_TEST_KEYSPACE, "t", query);
+
+    AuditConfig config = new AuditConfig();
+    config.enabled = true;
+    config.excludedCategories = "DDL";
+    applyAuditConfig(config);
+    assertAudit(query, (cql) -> Arrays.asList(queryEntry));
+
+    config.excludedCategories = "QUERY,DML";
+    applyAuditConfig(config);
+    assertAudit(query, (cql) -> Collections.emptyList());
+
+    config.excludedCategories = "DDL";
+    applyAuditConfig(config);
+    assertAudit(query, (cql) -> Arrays.asList(queryEntry));
+  }
+
   /** Verifies that only requests made by included non-excluded users should be logged. */
   @Test
   public void filteringByUser() throws Exception {

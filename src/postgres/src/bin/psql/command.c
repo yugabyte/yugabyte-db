@@ -122,6 +122,8 @@ static backslashResult exec_command_pset(PsqlScanState scan_state, bool active_b
 static backslashResult exec_command_quit(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_reset(PsqlScanState scan_state, bool active_branch,
 										  PQExpBuffer query_buf);
+static backslashResult exec_command_restrict(PsqlScanState scan_state, bool active_branch,
+											 const char *cmd);
 static backslashResult exec_command_s(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_set(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_setenv(PsqlScanState scan_state, bool active_branch,
@@ -131,6 +133,8 @@ static backslashResult exec_command_sf_sv(PsqlScanState scan_state, bool active_
 static backslashResult exec_command_t(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_T(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_timing(PsqlScanState scan_state, bool active_branch);
+static backslashResult exec_command_unrestrict(PsqlScanState scan_state, bool active_branch,
+											   const char *cmd);
 static backslashResult exec_command_unset(PsqlScanState scan_state, bool active_branch,
 										  const char *cmd);
 static backslashResult exec_command_write(PsqlScanState scan_state, bool active_branch,
@@ -179,6 +183,8 @@ static char *pset_value_string(const char *param, printQueryOpt *popt);
 static void checkWin32Codepage(void);
 #endif
 
+static bool restricted;
+static char *restrict_key;
 
 
 /*----------
@@ -224,8 +230,19 @@ HandleSlashCmds(PsqlScanState scan_state,
 	/* Parse off the command name */
 	cmd = psql_scan_slash_command(scan_state);
 
-	/* And try to execute it */
-	status = exec_command(cmd, scan_state, cstack, query_buf, previous_buf);
+	/*
+	 * And try to execute it.
+	 *
+	 * If we are in "restricted" mode, the only allowable backslash command is
+	 * \unrestrict (to exit restricted mode).
+	 */
+	if (restricted && strcmp(cmd, "unrestrict") != 0)
+	{
+		pg_log_error("backslash commands are restricted; only \\unrestrict is allowed");
+		status = PSQL_CMD_ERROR;
+	}
+	else
+		status = exec_command(cmd, scan_state, cstack, query_buf, previous_buf);
 
 	if (status == PSQL_CMD_UNKNOWN)
 	{
@@ -384,6 +401,8 @@ exec_command(const char *cmd,
 		status = exec_command_quit(scan_state, active_branch);
 	else if (strcmp(cmd, "r") == 0 || strcmp(cmd, "reset") == 0)
 		status = exec_command_reset(scan_state, active_branch, query_buf);
+	else if (strcmp(cmd, "restrict") == 0)
+		status = exec_command_restrict(scan_state, active_branch, cmd);
 	else if (strcmp(cmd, "s") == 0)
 		status = exec_command_s(scan_state, active_branch);
 	else if (strcmp(cmd, "set") == 0)
@@ -400,6 +419,8 @@ exec_command(const char *cmd,
 		status = exec_command_T(scan_state, active_branch);
 	else if (strcmp(cmd, "timing") == 0)
 		status = exec_command_timing(scan_state, active_branch);
+	else if (strcmp(cmd, "unrestrict") == 0)
+		status = exec_command_unrestrict(scan_state, active_branch, cmd);
 	else if (strcmp(cmd, "unset") == 0)
 		status = exec_command_unset(scan_state, active_branch, cmd);
 	else if (strcmp(cmd, "w") == 0 || strcmp(cmd, "write") == 0)
@@ -2325,6 +2346,43 @@ exec_command_reset(PsqlScanState scan_state, bool active_branch,
 }
 
 /*
+ * \restrict -- enter "restricted mode" with the provided key
+ */
+static backslashResult
+exec_command_restrict(PsqlScanState scan_state, bool active_branch,
+					  const char *cmd)
+{
+	if (active_branch)
+	{
+		char	   *opt;
+
+		Assert(!restricted);
+
+		/*
+		 * Unlike \unrestrict, this argument may safely undergo backquote and
+		 * variable expansion: HandleSlashCmds() rejects \restrict in
+		 * restricted mode before its argument is scanned, so we only get here
+		 * when the input could execute such things anyway.
+		 */
+		opt = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, true);
+		if (opt == NULL || opt[0] == '\0')
+		{
+			pg_log_error("\\%s: missing required argument", cmd);
+			free(opt);
+			return PSQL_CMD_ERROR;
+		}
+
+		restrict_key = pstrdup(opt);
+		free(opt);
+		restricted = true;
+	}
+	else
+		ignore_slash_options(scan_state);
+
+	return PSQL_CMD_SKIP_LINE;
+}
+
+/*
  * \s -- save history in a file or show it on the screen
  */
 static backslashResult
@@ -2610,6 +2668,59 @@ exec_command_timing(PsqlScanState scan_state, bool active_branch)
 		ignore_slash_options(scan_state);
 
 	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
+}
+
+/*
+ * \unrestrict -- exit "restricted mode" if provided key matches
+ */
+static backslashResult
+exec_command_unrestrict(PsqlScanState scan_state, bool active_branch,
+						const char *cmd)
+{
+	if (active_branch)
+	{
+		char	   *opt;
+		size_t		len;
+
+		opt = psql_scan_slash_option(scan_state, OT_WHOLE_LINE, NULL, true);
+		if (opt == NULL || opt[0] == '\0')
+		{
+			pg_log_error("\\%s: missing required argument", cmd);
+			free(opt);
+			return PSQL_CMD_ERROR;
+		}
+
+		/* strip any trailing spaces and semicolons */
+		len = strlen(opt);
+		while (len > 0 &&
+			   (opt[len - 1] == ';' ||
+				(isascii((unsigned char) opt[len - 1]) &&
+				 isspace((unsigned char) opt[len - 1]))))
+			opt[--len] = '\0';
+
+		if (!restricted)
+		{
+			pg_log_error("\\%s: not currently in restricted mode", cmd);
+			free(opt);
+			return PSQL_CMD_ERROR;
+		}
+		else if (strcmp(opt, restrict_key) == 0)
+		{
+			pfree(restrict_key);
+			restricted = false;
+			free(opt);
+		}
+		else
+		{
+			pg_log_error("\\%s: wrong key", cmd);
+			free(opt);
+			return PSQL_CMD_ERROR;
+		}
+	}
+	else
+		ignore_slash_whole_line(scan_state);
+
+	return PSQL_CMD_SKIP_LINE;
 }
 
 /*
@@ -3035,8 +3146,8 @@ is_branching_command(const char *cmd)
  * Prepare to possibly restore query buffer to its current state
  * (cf. discard_query_text).
  *
- * We need to remember the length of the query buffer, and the lexer's
- * notion of the parenthesis nesting depth.
+ * We need to remember the length of the query buffer, and assorted
+ * lexer internal state such as parenthesis nesting depth.
  */
 static void
 save_query_text_state(PsqlScanState scan_state, ConditionalStack cstack,
@@ -3044,8 +3155,8 @@ save_query_text_state(PsqlScanState scan_state, ConditionalStack cstack,
 {
 	if (query_buf)
 		conditional_stack_set_query_len(cstack, query_buf->len);
-	conditional_stack_set_paren_depth(cstack,
-									  psql_scan_get_paren_depth(scan_state));
+	conditional_stack_set_lex_state(cstack,
+									psql_scan_get_lex_state(scan_state));
 }
 
 /*
@@ -3054,9 +3165,7 @@ save_query_text_state(PsqlScanState scan_state, ConditionalStack cstack,
  * We must discard data that was appended to query_buf during an inactive
  * \if branch.  We don't have to do anything there if there's no query_buf.
  *
- * Also, reset the lexer state to the same paren depth there was before.
- * (The rest of its state doesn't need attention, since we could not be
- * inside a comment or literal or partial token.)
+ * Also, reset the lexer's state to what it was before.
  */
 static void
 discard_query_text(PsqlScanState scan_state, ConditionalStack cstack,
@@ -3070,8 +3179,8 @@ discard_query_text(PsqlScanState scan_state, ConditionalStack cstack,
 		query_buf->len = new_len;
 		query_buf->data[new_len] = '\0';
 	}
-	psql_scan_set_paren_depth(scan_state,
-							  conditional_stack_get_paren_depth(cstack));
+	psql_scan_set_lex_state(scan_state,
+							conditional_stack_get_lex_state(cstack));
 }
 
 /*

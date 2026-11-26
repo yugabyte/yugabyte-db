@@ -32,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/common_net.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -49,6 +50,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -56,7 +58,9 @@
 using std::string;
 
 DECLARE_bool(enable_data_block_fsync);
+DECLARE_bool(remote_bootstrap_from_leader_only);
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint32(retain_wal_secs_for_progressing_prevoter);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -109,19 +113,22 @@ class ConsensusQueueTest : public YBTest {
 
   virtual void SetupConsensus() { consensus_.reset(new TestRaftConsensusQueueIface()); }
 
-  void CloseAndReopenQueue() {
+  void CloseAndReopenQueue(
+      const CloudInfoPB& leader_cloud_info = CloudInfoPB(), ConsensusContext* context = nullptr) {
     // Blow away the memtrackers before creating the new queue. Otherwise we will get an error
     // trying to create a duplicate log cache memtracker.
     queue_.reset();
     auto notify_observers_strand = std::make_unique<rpc::Strand>(raft_notifications_pool_.get());
+    auto local_peer_pb = FakeRaftPeerPB(kLeaderUuid);
+    *local_peer_pb.mutable_cloud_info() = leader_cloud_info;
     queue_.reset(new PeerMessageQueue(metric_entity_,
                                       log_.get(),
                                       /*server_tracker=*/nullptr,
                                       /*parent_tracker=*/nullptr,
-                                      FakeRaftPeerPB(kLeaderUuid),
+                                      local_peer_pb,
                                       kTestTablet,
                                       clock_,
-                                      /*context=*/nullptr,
+                                      context,
                                       std::move(notify_observers_strand)));
     SetupConsensus();
     queue_->RegisterObserver(consensus_.get());
@@ -223,7 +230,55 @@ class ConsensusQueueTest : public YBTest {
     SetLastReceivedAndLastCommitted(response, last_received, last_received.index);
   }
 
+  // peer-0 leads, with no placement unless the queue was reopened with one, so by default it is
+  // outside every region. peer-1 and peer-2 are caught-up followers, and peer-3 will need remote
+  // bootstrap into zone z1 of region r1.
+  void SetUpRbsForPeer3(
+      const CloudInfoPB& peer1_cloud_info, bool peer1_pending_post_split_compaction,
+      const CloudInfoPB& peer2_cloud_info, bool peer2_pending_post_split_compaction) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_from_leader_only) = false;
+    auto config = BuildRaftConfigPBForTests(4);
+    *config.mutable_peers(1)->mutable_cloud_info() = peer1_cloud_info;
+    *config.mutable_peers(2)->mutable_cloud_info() = peer2_cloud_info;
+    *config.mutable_peers(3)->mutable_cloud_info() = MakeCloudInfoPB("cloud", "r1", "z1");
+
+    queue_->Init(OpId::Min());
+    queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), config);
+    for (int i = 1; i <= 3; ++i) {
+      queue_->TrackPeer(config.peers(i));
+    }
+    AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 5);
+    WaitForLocalPeerToAckIndex(5);
+
+    ThreadSafeArena arena;
+    for (const auto& [uuid, pending] : {
+        std::pair("peer-1", peer1_pending_post_split_compaction),
+        std::pair("peer-2", peer2_pending_post_split_compaction)}) {
+      LWConsensusResponsePB response(&arena);
+      response.ref_responder_uuid(uuid);
+      SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(5));
+      response.set_pending_post_split_compaction(pending);
+      queue_->ResponseFromPeer(uuid, response);
+    }
+  }
+
+  // Returns the source the leader picks for peer-3.
+  Result<std::string> PickRbsSourceForPeer3() {
+    ThreadSafeArena arena;
+    LWConsensusResponsePB response(&arena);
+    response.ref_responder_uuid("peer-3");
+    response.mutable_error()->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+    StatusToPB(STATUS(NotFound, "No such tablet"), response.mutable_error()->mutable_status());
+    queue_->ResponseFromPeer("peer-3", response);
+
+    StartRemoteBootstrapRequestPB rb_req;
+    RETURN_NOT_OK(queue_->GetRemoteBootstrapRequestForPeer("peer-3", &rb_req));
+    return rb_req.bootstrap_source_peer_uuid();
+  }
+
  protected:
+  // Before queue_ so that it outlives the queue, which unregisters its listener on close.
+  MockOperationFactory context_;
   std::unique_ptr<TestRaftConsensusQueueIface> consensus_;
   const Schema schema_;
   std::unique_ptr<FsManager> fs_manager_;
@@ -527,101 +582,6 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ASSERT_EQ(queue_->TEST_GetCommittedIndex(), expected_op_id);
   consensus_->WaitForMajorityReplicatedIndex(expected_op_id.index);
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), expected_op_id);
-}
-
-// Records the peer_got_all_ops field of every majority-replicated notification, and lets the test
-// cap the last-applied op id it reports back to the queue - simulating a leader whose apply
-// is lagging.
-class PeerGotAllOpsRecorder : public TestRaftConsensusQueueIface {
- public:
-  struct Notification {
-    OpId op_id;
-    TabletServerId peer_got_all_ops;
-  };
-
-  std::vector<Notification> notifications;
-  std::optional<OpId> last_applied_cap;
-
- protected:
-  void UpdateMajorityReplicated(
-      const MajorityReplicatedData& data, OpId* committed_index,
-      OpId* last_applied_op_id) override {
-    TestRaftConsensusQueueIface::UpdateMajorityReplicated(
-        data, committed_index, last_applied_op_id);
-    if (last_applied_cap && *last_applied_op_id > *last_applied_cap) {
-      *last_applied_op_id = *last_applied_cap;
-    }
-    notifications.push_back({data.op_id, data.peer_got_all_ops});
-  }
-};
-
-class ConsensusQueuePeerGotAllOpsTest : public ConsensusQueueTest {
- public:
-  void SetupConsensus() override {
-    auto recorder = std::make_unique<PeerGotAllOpsRecorder>();
-    recorder_ = recorder.get();
-    consensus_ = std::move(recorder);
-  }
-
- protected:
-  PeerGotAllOpsRecorder* recorder_ = nullptr;
-};
-
-// peer_got_all_ops must report a peer iff its log contains every op the leader has appended.
-TEST_F(ConsensusQueuePeerGotAllOpsTest, PeerGotAllOpsRequiresAllAppendedOps) {
-  queue_->Init(OpId::Min());
-  queue_->SetLeaderMode(
-      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
-  TrackPeer(*queue_, "peer-1");
-  TrackPeer(*queue_, "peer-2");
-
-  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 10);
-  WaitForLocalPeerToAckIndex(10);
-  const auto appended = MakeOpIdForIndex(10);
-  ASSERT_EQ(queue_->TEST_GetLastAppended(), appended);
-
-  ThreadSafeArena arena;
-  LWConsensusResponsePB response(&arena);
-  response.set_responder_term(1);
-  response.ref_responder_uuid("peer-1");
-
-  // peer-1 acks up to op 5: the majority (local peer + peer-1) is now op 5, and the observer
-  // advances the committed/applied watermarks to it. Ops 6..10 remain appended-but-uncommitted.
-  const auto applied = MakeOpIdForIndex(5);
-  SetLastReceivedAndLastCommitted(&response, applied, OpId::Min().index);
-  ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response));
-  queue_->TEST_WaitForNotificationToFinish();
-  ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), applied);
-
-  // Keep the applied watermark pinned at op 5 from here on (ops 6..10 stay unapplied).
-  recorder_->last_applied_cap = applied;
-
-  // A peer at the applied watermark (op 5) but missing appended entries 6..10 must not be reported.
-  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
-  queue_->TEST_WaitForNotificationToFinish();
-  for (const auto& notification : recorder_->notifications) {
-    ASSERT_NE(notification.peer_got_all_ops, "peer-1")
-        << "peer_got_all_ops fired at op " << notification.op_id << " for a peer at " << applied
-        << " that is missing appended entries up to " << appended;
-  }
-
-  // A peer with the full appended log must be reported, even if the leader's apply watermark
-  // is stuck behind at op 5.
-  const auto num_notifications_before = recorder_->notifications.size();
-  SetLastReceivedAndLastCommitted(&response, appended, applied.index);
-  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
-  queue_->TEST_WaitForNotificationToFinish();
-  ASSERT_EQ(queue_->GetTrackedPeerForTests("peer-1").last_received, appended);
-
-  const auto& notifications = recorder_->notifications;
-  ASSERT_GT(notifications.size(), num_notifications_before);
-  bool reported_caught_up_peer = false;
-  for (auto i = num_notifications_before; i < notifications.size(); ++i) {
-    reported_caught_up_peer |= (notifications[i].peer_got_all_ops == "peer-1");
-  }
-  ASSERT_TRUE(reported_caught_up_peer)
-      << "peer_got_all_ops did not fire for a peer whose log matches the leader's last appended op "
-      << appended;
 }
 
 TEST_F(ConsensusQueueTest, FindBestNewLeaderExcludesNonvoters) {
@@ -1024,6 +984,45 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
             rb_req.bootstrap_source_private_addr()[0].ShortDebugString());
 }
 
+// The closest follower still has the split parent's data, so the new peer should bootstrap from the
+// other follower in its region instead.
+TEST_F(ConsensusQueueTest, RbsSourceSkipsPeerWithPendingPostSplitCompaction) {
+  SetUpRbsForPeer3(
+      MakeCloudInfoPB("cloud", "r1", "z1"), /*peer1_pending_post_split_compaction=*/true,
+      MakeCloudInfoPB("cloud", "r1", "z2"), /*peer2_pending_post_split_compaction=*/false);
+  ASSERT_EQ("peer-2", ASSERT_RESULT(PickRbsSourceForPeer3()));
+}
+
+// The only sources without the split parent's data are in other regions, so the new peer should
+// still bootstrap from the closest follower.
+TEST_F(ConsensusQueueTest, RbsSourceStaysInRegionDespitePendingPostSplitCompaction) {
+  SetUpRbsForPeer3(
+      MakeCloudInfoPB("cloud", "r1", "z1"), /*peer1_pending_post_split_compaction=*/true,
+      MakeCloudInfoPB("cloud", "r2", "z1"), /*peer2_pending_post_split_compaction=*/false);
+  ASSERT_EQ("peer-1", ASSERT_RESULT(PickRbsSourceForPeer3()));
+}
+
+// The leader in the new peer's zone finished post-split compaction, so the new peer should
+// bootstrap from it rather than from a follower in another zone.
+TEST_F(ConsensusQueueTest, RbsSourcePrefersCompactedLeaderInSameZone) {
+  CloseAndReopenQueue(MakeCloudInfoPB("cloud", "r1", "z1"), &context_);
+  SetUpRbsForPeer3(
+      MakeCloudInfoPB("cloud", "r1", "z2"), /*peer1_pending_post_split_compaction=*/false,
+      MakeCloudInfoPB("cloud", "r2", "z1"), /*peer2_pending_post_split_compaction=*/false);
+  ASSERT_EQ(kLeaderUuid, ASSERT_RESULT(PickRbsSourceForPeer3()));
+}
+
+// The leader in the new peer's zone still has the split parent's data, so the new peer should
+// bootstrap from the follower in its region instead.
+TEST_F(ConsensusQueueTest, RbsSourceSkipsLeaderWithPendingPostSplitCompaction) {
+  context_.SetPendingPostSplitCompaction(true);
+  CloseAndReopenQueue(MakeCloudInfoPB("cloud", "r1", "z1"), &context_);
+  SetUpRbsForPeer3(
+      MakeCloudInfoPB("cloud", "r1", "z2"), /*peer1_pending_post_split_compaction=*/false,
+      MakeCloudInfoPB("cloud", "r2", "z1"), /*peer2_pending_post_split_compaction=*/false);
+  ASSERT_EQ("peer-1", ASSERT_RESULT(PickRbsSourceForPeer3()));
+}
+
 // Tests that TestReadReplicatedMessagesForCDC() only reads messages until the last known
 // committed index.
 TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
@@ -1155,6 +1154,254 @@ TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
   read_result = ASSERT_RESULT(read_wal_for_xcluster(MakeOpIdForIndex(start)));
   ASSERT_EQ(kMaxCommitOpId.index - start, read_result.result.messages.size());
   ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
+}
+
+// Leader-side half of the catch-up livelock.
+//
+// PeerMessageQueue::ResponseFromPeer decides where to send from using status().last_received(),
+// preferred but only if IsOpInLog() accepts it, else status().last_received_current_leader(). A
+// follower holding a conflicting entry reports a last_received that exists in no other log, so
+// everything rests on the fallback, which RaftConsensusCatchupProbeTest shows stays frozen.
+//
+// The two tests below pin both directions: the leader's send position never moves while the
+// reported fallback is frozen, and reaches the conflicting index as soon as the fallback
+// advances. That is why no leader-side change is needed.
+
+class ConsensusQueueCatchupTest : public ConsensusQueueTest {
+ public:
+  // Log tail, and the index the follower's conflicting entry sits at.
+  static constexpr int kConflictIndex = kNumMessages;
+
+  // Leader with kNumMessages ops, tracking a peer whose reported watermarks are those of a
+  // wedged follower: a last_received not in the leader's log, and a fallback stuck below it.
+  void SetUpWedgedPeer(LWConsensusRequestPB* request, LWConsensusResponsePB* response,
+                       OpId* conflicting_op, OpId* frozen_fallback) {
+    queue_->Init(OpId::Min());
+    queue_->SetLeaderMode(
+        OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(2));
+    AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
+
+    const auto leader_tail = MakeOpIdForIndex(kConflictIndex);
+    *conflicting_op = OpId(leader_tail.term + 1, leader_tail.index);
+    *frozen_fallback = MakeOpIdForIndex(kConflictIndex / 2);
+
+    ASSERT_TRUE(UpdatePeerWatermarkToOp(
+        request, response, *conflicting_op, *frozen_fallback, frozen_fallback->index));
+  }
+};
+
+// With the fallback frozen the leader re-derives the same send position every time, and each
+// exchange succeeds, so nothing else in the system reacts.
+TEST_F(ConsensusQueueCatchupTest, LeaderStaysBelowConflictWhileFollowerFallbackIsFrozen) {
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+  OpId conflicting_op, frozen_fallback;
+  ASSERT_NO_FATALS(SetUpWedgedPeer(&request, &response, &conflicting_op, &frozen_fallback));
+
+  const auto stuck_next_index = frozen_fallback.index + 1;
+  ASSERT_LT(stuck_next_index, kConflictIndex)
+      << "The frozen fallback must sit below the conflicting index, or there is nothing to be "
+      << "stuck behind.";
+
+  // A fixed point, not a slow drift.
+  for (int i = 0; i < 10; ++i) {
+    SCOPED_TRACE(Format("exchange $0", i));
+
+    LWReplicateMsgsHolder refs;
+    bool needs_remote_bootstrap = false;
+    request.mutable_ops()->clear();
+    ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+
+    ASSERT_FALSE(needs_remote_bootstrap)
+        << "Remote bootstrap would have rescued the peer; the livelock depends on it not firing.";
+
+    // The wedged follower answers with the same two watermarks every time.
+    SetLastReceivedAndLastCommitted(
+        &response, conflicting_op, frozen_fallback, frozen_fallback.index);
+    queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+    const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+    ASSERT_EQ(peer.next_index, stuck_next_index)
+        << "Leader moved its send position for the peer; the livelock premise does not hold.";
+    ASSERT_EQ(peer.last_received, frozen_fallback)
+        << "Leader positioned from something other than the frozen fallback.";
+  }
+
+  // The conflicting index, the one thing that would break the deadlock, is still ahead.
+  const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+  ASSERT_LT(peer.next_index, kConflictIndex)
+      << "Leader reached the conflicting index " << kConflictIndex << ", which would have healed "
+      << "the follower.";
+}
+
+// Given a fallback that advances to what the follower verifiably holds, the same leader walks
+// straight to the conflicting index.
+TEST_F(ConsensusQueueCatchupTest, LeaderReachesConflictOnceFollowerFallbackAdvances) {
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+  OpId conflicting_op, frozen_fallback;
+  ASSERT_NO_FATALS(SetUpWedgedPeer(&request, &response, &conflicting_op, &frozen_fallback));
+
+  ASSERT_EQ(queue_->GetTrackedPeerForTests(kPeerUuid).next_index, frozen_fallback.index + 1);
+
+  // A follower reporting the highest op it holds below its conflicting entry.
+  const auto advanced_fallback = MakeOpIdForIndex(kConflictIndex - 1);
+  ASSERT_GT(advanced_fallback, frozen_fallback);
+
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap = false;
+  request.mutable_ops()->clear();
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+
+  SetLastReceivedAndLastCommitted(
+      &response, conflicting_op, advanced_fallback, advanced_fallback.index);
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+  ASSERT_EQ(peer.next_index, kConflictIndex)
+      << "Leader did not advance to the conflicting index even though the follower's fallback "
+      << "moved; the follower-side fix alone would not be sufficient.";
+}
+
+// Watermarks carried inside a failed response must not advance the majority-replicated op id.
+//
+// A follower's error responses skip the durability wait and are filled from its in-memory
+// watermarks, so they can name ops that are not yet durable in its WAL. The leader stores those
+// watermarks for positioning (that is how preceding-entry catch-up finds where to resume;
+// UpdatePeerWatermarkToOp() above depends on it), but GetWatermark() counts only peers whose
+// last exchange succeeded, so a value acknowledged only inside a failed response never reaches
+// the commit rule. That check exists to skip unresponsive peers; this test pins the durability
+// role it also plays.
+TEST_F(ConsensusQueueTest, MajorityWatermarkIgnoresWatermarksCarriedByFailedResponses) {
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 10);
+  WaitForLocalPeerToAckIndex(10);
+
+  const auto majority_before = queue_->TEST_GetMajorityReplicatedOpId();
+
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+
+  // peer-1's only communication is an error response claiming the newest op id.
+  ASSERT_TRUE(UpdatePeerWatermarkToOp(
+      &request, &response, MakeOpIdForIndex(10), OpId::Min(), 0));
+
+  // The claim was stored for positioning, but the majority watermark did not move.
+  ASSERT_EQ(queue_->GetTrackedPeerForTests(kPeerUuid).last_received, MakeOpIdForIndex(10));
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), majority_before);
+
+  // peer-2 successfully acks an older op id. The majority watermark follows the successful
+  // acknowledgements (local peer at 10, peer-2 at 2): were peer-1's error-carried claim
+  // counted, this would be 10.
+  const char* kPeer2Uuid = "peer-2";
+  TrackPeer(*queue_, kPeer2Uuid);
+  response.ref_responder_uuid(kPeer2Uuid);
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap;
+  ASSERT_OK(queue_->RequestForPeer(kPeer2Uuid, &request, &refs, &needs_remote_bootstrap));
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(2), 0);
+  ASSERT_TRUE(queue_->ResponseFromPeer(kPeer2Uuid, response));
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(2));
+
+  // Once peer-1 acks inside a successful response, it participates again, with the value that
+  // response carried rather than the error-carried one.
+  refs.Reset();
+  request.mutable_ops()->clear();
+  response.mutable_status()->Clear();
+  response.ref_responder_uuid(kPeerUuid);
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(5), 0);
+  queue_->ResponseFromPeer(kPeerUuid, response);
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
+}
+
+TEST_F(ConsensusQueueTest, SetLeaderModeDoesNotResetPeerLiveness) {
+  auto raft_config = BuildRaftConfigPBForTests(2);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  TrackPeer(*queue_, kPeerUuid);
+  ASSERT_TRUE(queue_->IsPeerLive(kPeerUuid));
+
+  SleepFor(MonoDelta::FromMilliseconds(50));
+  const auto before =
+      queue_->GetTrackedPeerForTests(kPeerUuid).last_successful_communication_time;
+
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  const auto after =
+      queue_->GetTrackedPeerForTests(kPeerUuid).last_successful_communication_time;
+  ASSERT_EQ(before, after);
+  ASSERT_TRUE(queue_->IsPeerLive(kPeerUuid));
+}
+
+class ConsensusQueuePreVoterWalPinTest : public ConsensusQueueTest {
+ protected:
+  // peer-1 is a PRE_VOTER, peer-2 a VOTER, so the majority watermark follows peer-2.
+  void SetUpPreVoter() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retain_wal_secs_for_progressing_prevoter) = 1;
+    auto raft_config = BuildRaftConfigPBForTests(3);
+    raft_config.mutable_peers(1)->set_member_type(PeerMemberType::PRE_VOTER);
+    queue_->Init(OpId::Min());
+    queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+    AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 120);
+    WaitForLocalPeerToAckIndex(120);
+    queue_->TrackPeer(raft_config.peers(1));
+    queue_->TrackPeer(raft_config.peers(2));
+  }
+
+  void Ack(const std::string& uuid, int index) {
+    ThreadSafeArena arena;
+    LWConsensusResponsePB response(&arena);
+    response.ref_responder_uuid(uuid);
+    SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(index));
+    queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+  }
+
+  OpId MinPinnedPreVoterOpId() {
+    return queue_->GetWalGcPeerRetentionInfo().min_progressing_pre_voter_op_id;
+  }
+
+  google::FlagSaver saver_;
+};
+
+TEST_F(ConsensusQueuePreVoterWalPinTest, RenewsPinForProgressingPreVoter) {
+  SetUpPreVoter();
+  Ack("peer-2", 100);
+  Ack("peer-1", 80);
+  ASSERT_EQ(MinPinnedPreVoterOpId(), MakeOpIdForIndex(80));
+
+  // Within the window, the pin holds even though the PRE_VOTER is not keeping up.
+  Ack("peer-2", 110);
+  ASSERT_EQ(MinPinnedPreVoterOpId(), MakeOpIdForIndex(80));
+
+  // After the window, the PRE_VOTER advanced 15 ops vs the majority's 10, so the pin is renewed.
+  SleepFor(1200ms);
+  Ack("peer-2", 110);
+  Ack("peer-1", 95);
+  ASSERT_EQ(MinPinnedPreVoterOpId(), MakeOpIdForIndex(95));
+
+  // The renewed window uses the new baseline (95 / 110), so no further progress is required yet.
+  Ack("peer-2", 118);
+  ASSERT_EQ(MinPinnedPreVoterOpId(), MakeOpIdForIndex(95));
+}
+
+TEST_F(ConsensusQueuePreVoterWalPinTest, DropsPinForLaggingPreVoterAfterWindow) {
+  SetUpPreVoter();
+  Ack("peer-2", 100);
+  Ack("peer-1", 80);
+  ASSERT_EQ(MinPinnedPreVoterOpId(), MakeOpIdForIndex(80));
+
+  // After the window, the PRE_VOTER advanced 5 ops vs the majority's 10, so it is no longer pinned.
+  SleepFor(1200ms);
+  Ack("peer-2", 110);
+  Ack("peer-1", 85);
+  ASSERT_EQ(MinPinnedPreVoterOpId(), OpId::Max());
 }
 
 } // namespace yb::consensus

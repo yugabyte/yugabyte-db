@@ -336,6 +336,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow users to override default Gflags values",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipPrechecksForNonRollingGFlagsUpgrade =
+      new ConfKeyInfo<>(
+          "yb.gflags.skip_prechecks_for_non_rolling_upgrade",
+          ScopeType.UNIVERSE,
+          "Skip Prechecks for Non-Rolling GFlags Upgrade",
+          "Skip cluster consistency, node data directory disk space, consistency table, and "
+              + "ValidateGFlags checks during a non-rolling gflags upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTriggerAPI =
       new ConfKeyInfo<>(
           "yb.health.trigger_api.enabled",
@@ -427,6 +436,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If enabled, slow queries data will be stored for universe, once per hour.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> slowQueryDisableCommandLogging =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.disable_command_logging",
+          ScopeType.UNIVERSE,
+          "Disable Slow queries logs in yugabyte anywhere logging",
+          "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> paActiveTableMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.active_table_metrics.enabled",
+          ScopeType.UNIVERSE,
+          "Perf Advisor Collector active table metrics",
+          "Have Perf Advisor Collector push the universe's most active and largest tables to its"
+              + " TServers, so Prometheus scrapes that opt into filtering keep table-level metrics"
+              + " only for those tables",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
@@ -606,7 +633,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Skip TLS Cert Validation",
           "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME, NONE",
+              + "Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE",
           ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
@@ -625,6 +652,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow https on Master/TServer UI for a universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeExporterTlsEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_exporter.tls.enabled",
+          ScopeType.UNIVERSE,
+          "Enable TLS on Node Exporter",
+          "Serve node_exporter over HTTPS on universes with node-to-node encryption: on VMs once"
+              + " every node runs the user-level node_exporter unit, on Kubernetes through the"
+              + " node_exporter sidecar.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Long> helmTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.helm.timeout_secs",
@@ -706,6 +743,25 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Connection Pooling logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> systemLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.system_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "System logs regex pattern",
+          "System logs under /var/log to collect in the support bundle, with their rotations."
+              + " Defaults to messages (RHEL-family) and syslog (Debian/Ubuntu). Group 1 must"
+              + " capture the base log name.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> collectJournaldLogs =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.collect_journald_logs",
+          ScopeType.UNIVERSE,
+          "Collect journald logs",
+          "Collect the systemd journal for the requested time window in the support bundle, in"
+              + " addition to (never instead of) the /var/log system log files.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
       new ConfKeyInfo<>(
           "yb.upgrade.ysql_upgrade_timeout_sec",
@@ -714,6 +770,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL "
               + "subtask rpc calls.",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeCloudDetectionTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.node_cloud_detection.timeout",
+          ScopeType.UNIVERSE,
+          "Node cloud detection timeout",
+          "Bounds the instance-metadata probe that detects which cloud an on-prem node physically"
+              + " runs on. Each endpoint inside the probe is given 2 seconds, so lowering this"
+              + " below the total can cut the probe short and leave the node's cloud unknown.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> underReplicatedTabletsTimeout =
       new ConfKeyInfo<>(
@@ -1609,6 +1675,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " top of the hardcoded redaction list.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> emitLegacyExportAttributes =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.emit_legacy_export_attributes",
+          ScopeType.UNIVERSE,
+          "Emit legacy export attributes",
+          "If true, the OpenTelemetry collector also emits the legacy yugabyte.-prefixed"
+              + " node identity attributes (yugabyte.node_name, .universe_uuid, .region,"
+              + " .zone, .node_type, .cloud, .purpose) alongside the canonical"
+              + " swamper-aligned names (node_name, universe_uuid, node_region, node_az,"
+              + " node_cluster_type, node_cloud, export_purpose). Log payload attributes"
+              + " such as yugabyte.log_level and yugabyte.audit_type keep their prefix"
+              + " regardless of this flag. Takes effect when the collector config is next"
+              + " regenerated, not at flag-change time.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> tserverLogsAdditionalDropPatterns =
       new ConfKeyInfo<>(
           "yb.universe.telemetry.tserver_logs_additional_drop_patterns",
@@ -1725,6 +1806,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "NFS precheck buffer space",
           "Amount of space (in KB) we want as buffer for NFS precheck",
           ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> k8sMasterPvcGcReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.master_pvc_gc_ready_timeout",
+          ScopeType.UNIVERSE,
+          "Kubernetes master volume cleanup ready timeout",
+          "How long removing unused master volumes after a Kubernetes edit waits for the master"
+              + " StatefulSet to have all its pods ready before failing the task",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
       new ConfKeyInfo<>(
@@ -1884,7 +1974,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " is registered with Perf Advisor Service",
           "Enables new Performance Monitoring UI via Performance Tab",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // Node Script API configs (Internal)
   public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
       new ConfKeyInfo<>(
@@ -1900,6 +1990,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Enable Canary Upgrade",
           "Enable canary upgrade for the universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ociAllowBootVolumeReplaceForMarketplaceBasedImages =
+      new ConfKeyInfo<>(
+          "yb.oci.allow_boot_volume_replace_for_marketplace_based_images",
+          ScopeType.UNIVERSE,
+          "Allow OCI boot volume replacement with Marketplace-based images",
+          "When enabled, the OCI VM image upgrade precheck no longer blocks Marketplace images or"
+              + " custom images built from one. Use only when YBA's record of an image is wrong or"
+              + " missing.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> fullMoveRollBatchSize =
@@ -1963,5 +2063,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Wait Timeout",
           "Timeout for waiting for node agent server to be ready",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sNodeExporterEnabled =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.node_exporter.enabled",
+          ScopeType.UNIVERSE,
+          "Enable the node_exporter sidecar on Kubernetes universes",
+          "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics."
+              + " Pods change at their next Helm operation, for example a Kubernetes overrides"
+              + " edit",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

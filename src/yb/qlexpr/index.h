@@ -31,20 +31,24 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/stl_util.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb::qlexpr {
 
 // A class to maintain the information of an index.
 class IndexInfo {
  public:
-  explicit IndexInfo(const IndexInfoPB& pb);
+  // added_ht is when the index was added to the tablet, valid only for the index's own table on a
+  // tablet. The tablet backfills a vector index as of that time, so it is the birth time of a
+  // vector index that has none in pb.
+  IndexInfo(const IndexInfoPB& pb, HybridTime added_ht);
   IndexInfo(const IndexInfo& rhs);
   IndexInfo(IndexInfo&& rhs);
   IndexInfo();
@@ -114,12 +118,30 @@ class IndexInfo {
     return backfill_error_message_;
   }
 
+  // Non-OK only when backfill failed. Unlike backfill_error_message, preserves the error codes
+  // of the status backfill failed with.
+  const Status& backfill_status() const {
+    return backfill_status_;
+  }
+
   uint64_t num_rows_read_from_table_for_backfill() const {
     return num_rows_read_from_table_for_backfill_;
   }
 
   double num_rows_backfilled_in_index() const {
     return num_rows_backfilled_in_index_;
+  }
+
+  HybridTime birth_time() const {
+    return birth_time_;
+  }
+
+  IndexInfoPB::BirthTimeState birth_time_state() const {
+    return birth_time_state_;
+  }
+
+  const std::string& birth_time_pending_txn_id() const {
+    return birth_time_pending_txn_id_;
   }
 
   std::string ToString() const;
@@ -160,8 +182,12 @@ class IndexInfo {
   const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
   const IndexPermissions index_permissions_ = INDEX_PERM_READ_WRITE_AND_DELETE;
   const std::string backfill_error_message_;
+  const Status backfill_status_;
   const uint64_t num_rows_read_from_table_for_backfill_ = 0;
   const double num_rows_backfilled_in_index_ = 0;
+  const HybridTime birth_time_ = HybridTime::kInvalid;
+  const IndexInfoPB::BirthTimeState birth_time_state_ = IndexInfoPB::BIRTH_TIME_FINAL;
+  const std::string birth_time_pending_txn_id_;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;

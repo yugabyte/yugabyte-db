@@ -39,12 +39,14 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
+import "yb/common/transaction.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
+import "yb/rpc/lightweight_message.proto";
 
 service CDCService {
   option (yb.rpc.service_send_metadata) = true;
@@ -77,6 +79,8 @@ service CDCService {
   rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
   rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
       returns (UpdatePublicationTableListResponsePB);
+  rpc InvalidateStreamMetadataCache (InvalidateStreamMetadataCacheRequestPB)
+      returns (InvalidateStreamMetadataCacheResponsePB);
 }
 
 message CDCErrorPB {
@@ -168,7 +172,7 @@ message ReplicationSlotHashRangePB {
 
 message InitVirtualWALForCDCRequestPB {
   optional uint64 session_id = 1;
-  optional bytes stream_id = 2;
+  optional bytes stream_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   repeated string table_id = 3;
   // Represents the hash range constraints for replication slot i.e [start range, end range).
   // Tablets with start hash range falling in these slot's hash range will be polled.
@@ -187,7 +191,7 @@ message InitVirtualWALForCDCResponsePB {
 }
 
 message GetLagMetricsRequestPB {
-  optional bytes stream_id = 1;
+  optional bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
@@ -198,7 +202,7 @@ message GetLagMetricsResponsePB {
 
 message GetConsistentChangesRequestPB {
   optional uint64 session_id = 1;
-  optional bytes stream_id = 2;
+  optional bytes stream_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
@@ -217,8 +221,30 @@ message GetConsistentChangesResponsePB {
   // When true, the refresh was caused by an explicit ALTER PUBLICATION rather than a CREATE TABLE
   // auto-added to a FOR ALL TABLES publication. Tells the walsender to fire syscache callbacks so
   // pgoutput re-reads the publication and re-sends RELATION messages. Only relevant when
-  // 'needs_publication_table_list_refresh' is true.
+  // 'needs_publication_table_list_refresh' is true, except with transactional DDL: an update of the
+  // publication itself (ALTER PUBLICATION SET (...), RENAME, OWNER) doesn't change its table list,
+  // so it sets this field alone and the walsender only resets its caches.
   optional bool explicit_alter_publication_detected = 5;
+
+  // record_time of the catalog write that triggered this refresh. The walsender uses it as
+  // in_txn_limit. publication_refresh_time is the commit time, which is shared by every change in
+  // the transaction, so it cannot tell an earlier ALTER PUBLICATION from a later one.
+  // Left unset for a CREATE TABLE under FOR ALL TABLES, which the walsender reads at
+  // publication_refresh_time.
+  optional uint64 publication_refresh_record_time = 6;
+
+  // DocDB transaction id of that catalog write. in_txn_limit applies only to intents of this
+  // transaction. Only set together with publication_refresh_record_time.
+  optional bytes publication_refresh_txn_id = 7;
+
+  // Aborted subtransactions of the transactions whose BEGIN records the virtual WAL read for this
+  // response, keyed by DocDB transaction id.
+  map<string, CDCSDKAbortedSubtxnsPB> aborted_subtxns = 8;
+}
+
+message CDCSDKAbortedSubtxnsPB {
+  optional fixed64 commit_time = 1;
+  optional SubtxnSetPB aborted_subtxns = 2;
 }
 
 message DestroyVirtualWALForCDCRequestPB {
@@ -232,7 +258,7 @@ message DestroyVirtualWALForCDCResponsePB {
 
 message UpdateAndPersistLSNRequestPB {
   optional uint64 session_id = 1;
-  optional bytes stream_id = 2;
+  optional bytes stream_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional uint64 confirmed_flush_lsn = 3;
   // The hint given for the possible value of restart_lsn.
   // The actual value which is persisted might differ from this value
@@ -248,7 +274,7 @@ message UpdateAndPersistLSNResponsePB {
 
 message UpdatePublicationTableListRequestPB {
   optional uint64 session_id = 1;
-  optional bytes stream_id = 2;
+  optional bytes stream_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   repeated string table_id = 3;
   reserved 4; // ASH metadata is now passed in RequestHeader PB
   // Mapping of table's OID to relfilenode. This is used to detect table rewrites.
@@ -256,6 +282,13 @@ message UpdatePublicationTableListRequestPB {
 }
 
 message UpdatePublicationTableListResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message InvalidateStreamMetadataCacheRequestPB {
+}
+
+message InvalidateStreamMetadataCacheResponsePB {
   optional CDCErrorPB error = 1;
 }
 
@@ -282,7 +315,7 @@ message CreateCDCStreamResponsePB {
 }
 
 message DeleteCDCStreamRequestPB {
-  repeated bytes stream_id = 1;
+  repeated bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bool ignore_errors = 2 [default = false];
   optional bool force_delete = 3 [default = false];
 }
@@ -292,7 +325,7 @@ message DeleteCDCStreamResponsePB {
 }
 
 message ListTabletsRequestPB {
-  optional string stream_id = 1;
+  optional string stream_id = 1 [(yb.rpc.trace) = {enabled: true}];
   // local_only = true will only list tablets local to the tserver that receives the request.
   // local_only = false will list  all tablets for the stream.
   optional bool local_only = 2 [default = false];
@@ -337,9 +370,9 @@ enum CDCSDKRequestSource {
 }
 
 message GetChangesRequestPB {
-  optional bytes stream_id = 1;
+  optional bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // Tablet to get the changes for.
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Checkpoint to start reading from (exclusive).
   // Start reading from the first record after this checkpoint.
@@ -351,7 +384,7 @@ message GetChangesRequestPB {
   // Whether the caller knows the tablet address or needs to use us as a proxy.
   optional bool serve_as_proxy = 5 [default = true];
 
-  optional bytes db_stream_id = 6;
+  optional bytes db_stream_id = 6 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional bytes table_id = 7;
 
@@ -381,6 +414,12 @@ message GetChangesRequestPB {
 
   // If true, update the cdc_state checkpoint as part of this request.
   optional bool force_update_cdc_state_checkpoint = 17;
+
+  // This is the max index that was part of the sort window in the previous GetChanges call.
+  // Subsequent GetChanges call keeps reading WAL segments until the maximum op-index it has read
+  // is >= this value, so that all peers reconstruct an identical sort window regardless of their
+  // segment boundaries.
+  optional int64 max_index_in_sort_window = 18 [default = 0];
 }
 
 message KeyValuePairPB {
@@ -433,6 +472,11 @@ message CDCRecordPB {
   // Old vector IDs to tombstone on the target during UPDATE/DELETE.
   // See KeyValueWriteBatchPB.delete_vector_ids.
   optional bytes delete_vector_ids = 15;
+
+  // DocDB write time of the records, set only when it differs from time (the WAL op time). Index
+  // backfill writes at the backfill read time, below a concurrent DML's tombstone. The target must
+  // stamp the same time, or the stale entry wins over that tombstone (#25250).
+  optional uint64 external_hybrid_time = 16;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
@@ -570,6 +614,11 @@ message RowMessage {
 
   // Replication origin id associated with the transaction. Set on BEGIN, DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
+
+  // Subtransactions of the transaction rolled back to a savepoint. Only set on BEGIN records with
+  // transactional DDL, when not empty. The virtual WAL moves it to
+  // GetConsistentChangesResponsePB.aborted_subtxns.
+  optional SubtxnSetPB aborted_subtxns = 20;
 }
 
 message CDCSDKProtoRecordPB {
@@ -612,11 +661,14 @@ message GetChangesResponsePB {
   optional uint32 auto_flags_config_version = 12;
 
   optional yb.tserver.TabletConsensusInfoPB tablet_consensus_info = 13;
+
+  // Maximum WAL op-index read while building the commit-time sort window for this response.
+  optional int64 max_index_in_sort_window = 14 [default = 0];
 }
 
 message GetCheckpointRequestPB {
-  optional bytes stream_id = 1;
-  optional bytes tablet_id = 2;
+  optional bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // The table_id will be required in case of colocated tables.
   optional bytes table_id = 3;
   // Whether the caller knows the tablet address or needs to use us as a proxy.
@@ -633,23 +685,30 @@ message GetCheckpointResponsePB {
 
 message UpdateCdcReplicatedIndexRequestPB {
   // Old API. Deprecated.
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional int64 replicated_index = 2;
   optional int64 replicated_term = 3;
   // Batch API.
   // Tablets being updated.
-  repeated bytes tablet_ids = 4;
+  repeated bytes tablet_ids = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // Minimum replicated index for each tablet across all the streams.
   repeated int64 replicated_indices = 5;
   repeated int64 replicated_terms = 6;
   // Minimum checkpoint term and index  for CDCSDK stream, to do intent cleanup for this tablet.
   repeated OpIdPB cdc_sdk_consumed_ops = 7;
   repeated uint64 cdc_sdk_ops_expiration_ms = 8;
-  repeated bytes stream_ids = 9;
+  repeated bytes stream_ids = 9 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional fixed64 cdc_sdk_safe_time = 10;
   repeated fixed64 cdc_sdk_safe_times = 11;
   // Is this an initial retention barrier setting request
   optional bool initial_retention_barrier = 12;
+  // When set, this request must NOT move the corresponding retention barrier. Absent, as sent by
+  // older versions, means move all three barriers together. Only set once the
+  // cdcsdk_enable_selective_retention_barrier_revision AutoFlag is promoted, since a receiver that
+  // ignores these fields moves all three barriers.
+  optional bool skip_moving_wal_retention_barrier = 13;
+  optional bool skip_moving_intents_retention_barrier = 14;
+  optional bool skip_moving_history_retention_barrier = 15;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
@@ -659,9 +718,11 @@ message UpdateCdcReplicatedIndexResponsePB {
 message BootstrapProducerRequestPB {
   repeated string table_ids = 1;
   // If the stream_ids are not provided, a new stream for each table will be created.
-  repeated bytes xrepl_stream_ids = 2;
+  repeated bytes xrepl_stream_ids = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // Check if data bootstrap is required. Equivalent to the IsBootstrapRequired RPC.
   optional bool check_if_bootstrap_required = 3; // [default = false]
+  // Keep the cdc_state checkpoints that already exist instead of overwriting them.
+  optional bool keep_existing_checkpoints = 4; // [default = false]
 }
 
 message BootstrapProducerResponsePB {
@@ -675,8 +736,10 @@ message BootstrapProducerResponsePB {
 }
 
 message GetLatestEntryOpIdRequestPB {
-  optional bytes tablet_id = 1; // Deprecated.
-  repeated bytes tablet_ids = 2; // Batch param.
+  // Deprecated.
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
+  // Batch param.
+  repeated bytes tablet_ids = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message GetLatestEntryOpIdResponsePB {
@@ -688,12 +751,12 @@ message GetLatestEntryOpIdResponsePB {
 }
 
 message TableInfo {
-  optional bytes stream_id = 1;
+  optional bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bytes table_id = 2;
 }
 
 message GetCDCDBStreamInfoRequestPB {
-  optional bytes db_stream_id = 1;
+  optional bytes db_stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message GetCDCDBStreamInfoResponsePB {
@@ -706,8 +769,8 @@ message GetCDCDBStreamInfoResponsePB {
 message SetCDCCheckpointRequestPB {
   optional CDCCheckpointPB checkpoint = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
-  optional bytes stream_id = 3;
-  optional bytes tablet_id = 4;
+  optional bytes stream_id = 3 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
+  optional bytes tablet_id = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bool initial_checkpoint = 5 [default = false];
   optional bool bootstrap = 6 [default = false];
   optional fixed64 cdc_sdk_safe_time = 7;
@@ -726,7 +789,7 @@ message TabletCheckpointPair {
 
 message GetTabletListToPollForCDCRequestPB {
   optional TableInfo table_info = 1;
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message GetTabletListToPollForCDCResponsePB {
@@ -735,8 +798,8 @@ message GetTabletListToPollForCDCResponsePB {
 }
 
 message IsBootstrapRequiredRequestPB {
-  repeated string tablet_ids = 1;
-  optional string stream_id = 2;
+  repeated string tablet_ids = 1 [(yb.rpc.trace) = {enabled: true}];
+  optional string stream_id = 2 [(yb.rpc.trace) = {enabled: true}];
 }
 
 message IsBootstrapRequiredResponsePB {
@@ -746,7 +809,7 @@ message IsBootstrapRequiredResponsePB {
 
 // Metadata regarding replication status of a stream set up on a tablet.
 message StreamTabletDrainInfoPB {
-  required bytes stream_id = 1;
+  required bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   required bytes tablet_id = 2;
 }
 

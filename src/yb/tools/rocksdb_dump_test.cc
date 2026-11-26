@@ -32,6 +32,7 @@
 #include "yb/tools/data_gen_util.h"
 
 #include "yb/util/file_system.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -138,7 +139,7 @@ TEST_F(RocksDbDumpTest, VerifySingleKeyIsFound) {
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
-  string output_path = strings::Substitute(
+  string output_path = Format(
       "$0/$1", ASSERT_RESULT(Env::Default()->GetTestDirectory()), kRandomFileName);
 
   vector<string> argv = {

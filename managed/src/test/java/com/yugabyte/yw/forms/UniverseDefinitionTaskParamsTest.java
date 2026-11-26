@@ -13,18 +13,25 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Test;
@@ -43,7 +50,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException ex =
         assertThrows(
             IllegalStateException.class,
-            () -> cluster.validate(false, false, false, Collections.emptySet()));
+            () -> cluster.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
 
@@ -53,7 +60,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException exGcp =
         assertThrows(
             IllegalStateException.class,
-            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+            () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
   }
@@ -66,7 +73,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException ex =
         assertThrows(
             IllegalStateException.class,
-            () -> cluster.validate(false, false, false, Collections.emptySet()));
+            () -> cluster.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
 
@@ -76,19 +83,71 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException exGcp =
         assertThrows(
             IllegalStateException.class,
-            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+            () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void validateChecksOnlyNodesInThisCluster() {
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(false, false, false, Common.CloudType.aws);
+    NodeDetails thisClusterNode = node(cluster.uuid, "m5.large");
+    NodeDetails otherClusterEphemeral = node(UUID.randomUUID(), "i3.xlarge");
+
+    // i3 on another cluster is ephemeral; it must not fail this cluster's GP2 storage check.
+    cluster.validate(false, false, false, false, Set.of(thisClusterNode, otherClusterEphemeral));
+
+    NodeDetails thisClusterEphemeral = node(cluster.uuid, "i3.xlarge");
+    PlatformServiceException storageEx =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> cluster.validate(false, false, false, false, Set.of(thisClusterEphemeral)));
+    assertTrue(storageEx.getMessage().contains("ephemeral storage"));
+
+    UserIntent userIntent = new UserIntent();
+    TestUtils.specificationProviderInitializer(userIntent, UUID.randomUUID())
+        .setProviderType(Common.CloudType.gcp)
+        .setInstanceType("n1-standard-2")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
+    Cluster multicloud = new Cluster(ClusterType.PRIMARY, userIntent);
+    multicloud.uuid = UUID.randomUUID();
+    multicloud.placementInfo = new PlacementInfo();
+
+    multicloud.validate(false, false, false, false, Set.of(node(UUID.randomUUID(), "m5.large")));
+
+    assertThrows(
+        NoSuchElementException.class,
+        () ->
+            multicloud.validate(
+                false, false, false, false, Set.of(node(multicloud.uuid, "m5.large"))));
   }
 
   @Test
   public void validateAllowsMasterFieldsWhenDedicatedNodesEnabled() {
     Cluster cluster =
         buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
-    cluster.validate(false, false, false, Collections.emptySet());
+    cluster.validate(false, false, false, false, Collections.emptySet());
     Cluster clusterGcp =
         buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.gcp);
-    clusterGcp.validate(false, false, false, Collections.emptySet());
+    clusterGcp.validate(false, false, false, false, Collections.emptySet());
+  }
+
+  @Test
+  public void validateChecksClientCertGFlagsAgainstPrimarySetting() {
+    // A read replica's own intent leaves useNodeToNodeClientCerts false; the primary's applies.
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
+    cluster.userIntent.tserverGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID, "yugabyte"));
+
+    cluster.validate(false, false, false, false, Collections.emptySet());
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> cluster.validate(false, false, false, true, Collections.emptySet()));
+
+    assertTrue(ex.getMessage(), ex.getMessage().contains(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID));
   }
 
   @Test
@@ -643,36 +702,95 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     assertNull(overrides.getAzOverrides());
   }
 
+  private static NodeDetails node(UUID placementUuid, String instanceType) {
+    NodeDetails node = new NodeDetails();
+    node.placementUuid = placementUuid;
+    node.nodeName = "n-" + UUID.randomUUID();
+    node.azUuid = UUID.randomUUID();
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.instance_type = instanceType;
+    return node;
+  }
+
   private Cluster buildClusterForMasterFieldsValidation(
       boolean dedicatedNodes,
       boolean setMasterDeviceInfo,
       boolean setMasterInstanceType,
       Common.CloudType cloudType) {
     UserIntent userIntent = new UserIntent();
-    userIntent.providerType = cloudType;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    ProviderInitializer pi =
+        TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+            .setProviderType(cloudType)
+            .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
     userIntent.dedicatedNodes = dedicatedNodes;
     if (setMasterDeviceInfo) {
-      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+      pi.setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 50));
     }
     if (setMasterInstanceType) {
-      userIntent.masterInstanceType = "m5.large";
+      pi.setMasterInstanceType("m5.large");
     }
     if (cloudType.equals(Common.CloudType.kubernetes)) {
-      userIntent.deviceInfo.storageType = null;
-      if (userIntent.masterDeviceInfo != null) {
-        userIntent.masterDeviceInfo.storageType = null;
+      pi.updateDeviceInfo(di -> di.storageType = null);
+      if (setMasterDeviceInfo) {
+        pi.updateMasterDeviceInfo(mdi -> mdi.storageType = null);
       }
     } else if (cloudType.equals(Common.CloudType.gcp)) {
-      userIntent.deviceInfo.storageType = StorageType.Persistent;
-      if (userIntent.masterDeviceInfo != null) {
-        userIntent.masterDeviceInfo.storageType = StorageType.Persistent;
+      pi.updateDeviceInfo(di -> di.storageType = StorageType.Persistent);
+      if (setMasterDeviceInfo) {
+        pi.updateMasterDeviceInfo(mdi -> mdi.storageType = StorageType.Persistent);
       }
     }
-
     Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
     cluster.uuid = UUID.randomUUID();
     cluster.placementInfo = new PlacementInfo();
     return cluster;
+  }
+
+  private static DeviceInfo baseDeviceInfoWithStorageClass() {
+    DeviceInfo base = new DeviceInfo();
+    base.volumeSize = 375;
+    base.numVolumes = 1;
+    base.mountPoints = "/mnt/d0";
+    base.storageType = StorageType.Persistent;
+    base.storageClass = "standard";
+    return base;
+  }
+
+  @Test
+  public void mergeDeviceInfosKeepsBaseStorageClassWhenOverrideIsBlank() {
+    DeviceInfo base = baseDeviceInfoWithStorageClass();
+    // A partially populated override, e.g. the v2 resize API's per-process storage_spec, which
+    // maps only volumeSize. `storageClass` is "" from the field initializer, not null.
+    DeviceInfo override = new DeviceInfo();
+    override.volumeSize = 380;
+
+    DeviceInfo merged = UserIntent.mergeDeviceInfos(base, override);
+
+    assertEquals("standard", merged.storageClass);
+    assertEquals((Object) 380, merged.volumeSize);
+    // Fields the override leaves null still come from the base.
+    assertEquals((Object) 1, merged.numVolumes);
+    assertEquals("/mnt/d0", merged.mountPoints);
+    assertEquals(StorageType.Persistent, merged.storageType);
+  }
+
+  @Test
+  public void mergeDeviceInfosKeepsBaseStorageClassWhenOverrideIsNull() {
+    DeviceInfo base = baseDeviceInfoWithStorageClass();
+    DeviceInfo override = new DeviceInfo();
+    override.volumeSize = 380;
+    override.storageClass = null;
+
+    assertEquals("standard", UserIntent.mergeDeviceInfos(base, override).storageClass);
+  }
+
+  @Test
+  public void mergeDeviceInfosAppliesOverriddenStorageClass() {
+    DeviceInfo base = baseDeviceInfoWithStorageClass();
+    DeviceInfo override = new DeviceInfo();
+    override.storageClass = "premium";
+
+    // Only a blank storage class means "not overriden"; a real one must still win.
+    assertEquals("premium", UserIntent.mergeDeviceInfos(base, override).storageClass);
   }
 }

@@ -1,0 +1,11 @@
+cargo.allFeatures = false
+cargo.buildScripts.overrideCommand = [
+  "cargo",
+  "check",
+  "--quiet",
+  "--workspace",
+  "--message-format=json",
+  "--features",
+  "pg18", # ideally we'd use cargo.features but r-a whines that cargo-pgrx does not have "pg18"
+  "--keep-going",
+]

@@ -187,6 +187,12 @@ extern bool yb_enable_consistent_replication_from_hash_range;
 extern bool yb_enable_replication_slot_exclusive_lock;
 
 /*
+ * GUC variable bounding the number of advisory-lock RPC retries for
+ * DROP_REPLICATION_SLOT ... WAIT. 0 means retry indefinitely.
+ */
+extern int yb_replication_slot_wait_max_retries;
+
+/*
  * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
  * streams.
  */
@@ -198,7 +204,9 @@ extern bool yb_cdcsdk_stream_tables_without_primary_key;
  */
 extern bool yb_cdcsdk_allow_dml_without_pk;
 
-extern bool enable_object_locking_infra;
+extern bool yb_enable_replication_slot_transactional_ddl;
+
+extern bool yb_enable_global_object_locking_infra;
 
 extern bool yb_enable_ddl_savepoint_infra;
 
@@ -226,6 +234,9 @@ extern int yb_xcluster_consistency_level;
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
 extern bool yb_disable_catalog_version_check;
+
+/* Makes yb_read_time apply only to user tables; the catalog is read as of now. */
+extern bool yb_read_time_skip_catalog;
 
 /*
  * Allows for customizing the number of rows to be prefetched.
@@ -262,9 +273,14 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 /*
- * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
- * buffer, which is used in streaming changes via logical replication. After that changes are
- * spooled to disk.
+ * GUC flag: Specifies the maximum memory in kilobytes used by the reorder buffer before logical
+ * replication changes are streamed or spilled to disk.
+ */
+extern int yb_reorderbuffer_max_memory_kb;
+
+/*
+ * Deprecated GUC: use yb_reorderbuffer_max_memory_kb instead. Originally specified the
+ * maximum number of changes kept in memory per transaction in the reorder buffer.
  */
 extern int yb_reorderbuffer_max_changes_in_memory;
 
@@ -344,8 +360,6 @@ extern bool yb_use_internal_auto_analyze_service_conn;
 #define kEnableDdlTransactionBlocks false
 #endif
 extern bool yb_ddl_transaction_block_enabled;
-
-extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
 

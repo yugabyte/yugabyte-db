@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { KeyboardEvent, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { yba } from '@yugabyte-ui-library/core';
+import { mapProxySettingsToProxyConfig } from '../../create-universe/utils/createUniversePayload';
 import { EnableProxyServer } from '../../create-universe/fields';
 import { ProxyAdvancedProps } from '../../create-universe/steps/advanced-settings/dtos';
 import {
@@ -25,9 +26,7 @@ interface EditAdvancedSettingsModalProps {
 }
 
 export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSettingsModalProps) => {
-  const { t } = useTranslation('translation', {
-    keyPrefix: 'editUniverse.advanced'
-  });
+  const { t } = useTranslation();
   const { universeData } = useEditUniverseContext();
   const updateProxy = useUpdateProxyConfig();
   const universeUUID = universeData?.info?.universe_uuid;
@@ -64,17 +63,9 @@ export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSett
               networking_spec: {
                 ...(values?.enableProxyServer
                   ? {
-                      proxy_config: {
-                        http_proxy: !!values?.webProxy
-                          ? `${values?.webProxyServer}:${values?.webProxyPort}`
-                          : '',
-                        https_proxy: !!values?.secureWebProxy
-                          ? `${values?.secureWebProxyServer}:${values?.secureWebProxyPort}`
-                          : '',
-                        ...(!!values?.byPassProxyList
-                          ? { no_proxy_list: values?.byPassProxyListValues ?? [] }
-                          : {})
-                      }
+                      proxy_config: mapProxySettingsToProxyConfig(values, {
+                        clearNoProxyList: true
+                      })
                     }
                   : {})
               }
@@ -98,7 +89,7 @@ export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSett
     <YBModal
       open={visible}
       onClose={onClose}
-      title={t('proxyConfiguration')}
+      title={t('editUniverse.advanced.proxyConfiguration')}
       submitLabel={t('save', { keyPrefix: 'common' })}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       titleSeparator
@@ -109,7 +100,15 @@ export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSett
       onSubmit={handleFormSubmit}
     >
       <FormProvider {...methods}>
-        <EnableProxyServer disabled={false} />
+        <div
+          onKeyDown={(event: KeyboardEvent) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+            }
+          }}
+        >
+          <EnableProxyServer disabled={false} />
+        </div>
       </FormProvider>
     </YBModal>
   );

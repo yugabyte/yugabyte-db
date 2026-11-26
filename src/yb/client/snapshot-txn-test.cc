@@ -75,6 +75,7 @@ DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
@@ -799,7 +800,11 @@ void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
     auto se = ScopeExit([] {
       LOG(INFO) << "Read done";
     });
-    auto session = CreateSession();
+    // Read at an explicit read time taken from the client clock. Otherwise the read time is the
+    // tablet's safe time, which could lag behind the commit time of the transaction that wrote the
+    // key while leadership moves due to restarts, making the committed row invisible.
+    auto session = CreateSession(nullptr /* transaction */, clock_);
+    session->SetForceConsistentRead(ForceConsistentRead::kTrue);
     for (;;) {
       std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
       if (key == nullptr) {
@@ -812,6 +817,7 @@ void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
       SCOPED_TRACE(Format("Reading $0, written with: $1", key->value, key->txn_id));
       YBqlReadOpPtr op;
       for (;;) {
+        session->RestartNonTxnReadPoint(Restart::kTrue);
         op = ReadRow(session, key->value);
         auto flush_result = session->TEST_Flush();
         if (flush_result.ok()) {
@@ -971,6 +977,8 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   // Disable load balancing to avoid leader change after getting the leader peer.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // Widen the gap between setting local commit time and writing intents to regular DB.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 500;
 
   SetIgnoreApplyingProbability(0.5);
 
@@ -995,7 +1003,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     auto peer = peers[0];
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
-        peer->clock().Now(), CoarseTimePoint::max()));
+        peer->clock().Now(), CoarseTimePoint::max(), tablet::WaitForApply::kTrue));
     auto current_ht = clock_->Now();
     ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     bool found = false;

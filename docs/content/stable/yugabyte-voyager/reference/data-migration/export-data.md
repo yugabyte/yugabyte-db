@@ -28,6 +28,10 @@ For offline migration, export data [dumps](../../../migrate/migrate-steps/#expor
 
 For [live migration](../../../migrate/live-migrate/#export-data-from-source) (with [fall-forward](../../../migrate/live-fall-forward/#export-data-from-source) and [fall-back](../../../migrate/live-fall-back/#export-data-from-source)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data-from-source) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
+If a PostgreSQL live export fails because Debezium stopped while streaming changes, `export data` checks for schema drift and prints the result after the failure message.
+
+During live migration, `export data` skips columns whose type is built on an unsupported data type, and lists them in its unsupported-columns output. This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type, as well as arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types. For the list of unsupported types, see [Datatypes not supported by Voyager during live migration](../../../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+
 ### Syntax
 
 Syntax for export data is as follows:
@@ -61,6 +65,28 @@ export-data:
 ```
 
 |Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --disable-schema-snapshot-capture |
+
+```yaml{.nocopy}
+export-data:
+  disable-schema-snapshot-capture:
+(OR)
+export-data-from-source:
+  disable-schema-snapshot-capture:
+```
+
+| Turn off recording of source schema snapshots at export data start, periodically, and at exit. [schema detect-drift](../../schema-migration/detect-drift/) reads these snapshots. Recording is best effort and never fails the export. PostgreSQL only. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --schema-snapshot-capture-interval |
+
+```yaml{.nocopy}
+export-data:
+  schema-snapshot-capture-interval:
+(OR)
+export-data-from-source:
+  schema-snapshot-capture-interval:
+```
+
+| How often, in minutes, a source schema snapshot is recorded while export data runs. Covers both the snapshot and streaming phases. Must be at least 1. PostgreSQL only. <br>Default: 60 |
 | --export-type |
 
 ```yaml{.nocopy}
@@ -142,6 +168,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --source-db-host |
 
 ```yaml{.nocopy}
@@ -410,6 +452,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -536,6 +594,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --target-db-password |
 
 ```yaml{.nocopy}

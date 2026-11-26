@@ -68,13 +68,15 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 			excludePADatabase = false
 			excludePAFiles = false
 		}
+		script := fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+			common.GetActiveSymlink(), state.Version)
+		fips := viper.GetBool("fips.enabled") && common.BackupScriptSupportsFips(script)
 		err := RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
-			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
-				common.GetActiveSymlink(), state.Version),
+			script,
 			common.GetBaseInstall()+"/data/yb-platform",
 			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
 			common.GetActiveSymlink()+"/pgsql/bin/pg_restore",
-			excludePADatabase, excludePAFiles)
+			excludePADatabase, excludePAFiles, fips)
 		if err != nil {
 			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
 		}
@@ -131,7 +133,7 @@ func upgradeCmd() *cobra.Command {
 				}
 				targetVersion := ybactl.Version
 				if !common.LessVersions(installedVersion, targetVersion) {
-					log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
+					log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater than the installed "+
 						"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
 				}
 			}
@@ -169,10 +171,7 @@ func upgradeCmd() *cobra.Command {
 			// that were actually running before the upgrade.
 			var preUpgradeServices []components.Service
 			for s := range serviceManager.Services() {
-				if s.Name() == "node-exporter" && !state.Services.NodeExporter {
-					continue
-				}
-				if s.Name() == "yb-perf-advisor" && !state.Services.PerfAdvisor {
+				if opt := optionalServiceByName(s.Name()); opt != nil && !opt.installed(state) {
 					continue
 				}
 				preUpgradeServices = append(preUpgradeServices, s)
@@ -216,41 +215,22 @@ func upgradeCmd() *cobra.Command {
 					excludePADatabase = false
 					excludePAFiles = false
 				}
-				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
-					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
+				script := fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+					common.GetActiveSymlink(), state.Version)
+				fips := viper.GetBool("fips.enabled") && common.BackupScriptSupportsFips(script)
+				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(), script,
 					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
 					common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
 					true, true, false, true, false, usePromProtocol,
-					excludePADatabase, excludePAFiles); errB != nil {
+					excludePADatabase, excludePAFiles, fips); errB != nil {
 					log.Fatal("Failed taking backup of YBA, aborting upgrade: " + errB.Error())
 				}
 			}
-
-			/* This is the postgres major version upgrade workflow!
-			// First, stop platform and prometheus. Postgres will need to be running
-			// to take the backup for postgres upgrade.
-			services[YbPlatformServiceName].Stop()
-			services[PrometheusServiceName].Stop()
-
-			common.Upgrade(ybactl.Version)
-
-			for _, name := range serviceOrder {
-				services[name].Upgrade()
-			}
-
-			for _, name := range serviceOrder {
-				status := services[name].Status()
-				if !common.IsHappyStatus(status) {
-					log.Fatal(status.Service + " is not running! upgrade failed")
-				}
-			}
-			*/
 
 			if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
 				log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
 			}
 
-			// Here is the postgres minor version/no upgrade workflow
 			if err := common.PreUpgrade(ybactl.Version); err != nil {
 				if rollback {
 					rollbackUpgrade(backupDir, state)
@@ -298,44 +278,11 @@ func upgradeCmd() *cobra.Command {
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}
-			// If node-exporter is enabled now but was not installed in the prior
-			// install, run a full Install (which extracts the package, generates
-			// the systemd unit, etc.) instead of Upgrade, which assumes a previous
-			// install. After install we also flip state.Services so future upgrades
-			// see node-exporter as installed.
-			neFreshInstall := !state.Services.NodeExporter && viper.GetBool("nodeExporter.enabled")
+			// Upgrade doubles as the first install of an optional service that was enabled since the
+			// previous upgrade (see components.Service).
 			serviceActionFnc("upgrade", func(service components.Service) error {
-				if neFreshInstall && service.Name() == "node-exporter" {
-					log.Info("node-exporter was not installed previously; running first-time install.")
-					if err := service.Install(); err != nil {
-						return err
-					}
-					if err := service.Initialize(); err != nil {
-						return err
-					}
-					state.Services.NodeExporter = true
-					return nil
-				}
-				return service.Upgrade()
-			})
-
-			// If Perf Advisor is enabled now but was not installed in the prior
-			// install, run a full Install (which provisions the TLS keystore,
-			// extracts the package, etc.) instead of Upgrade, which assumes a
-			// previous install. After install we also need to flip state.Services
-			// so future upgrades see PA as installed.
-			paFreshInstall := !state.Services.PerfAdvisor && viper.GetBool("perfAdvisor.enabled")
-			serviceActionFnc("upgrade", func(service components.Service) error {
-				if paFreshInstall && service.Name() == "yb-perf-advisor" {
-					log.Info("Perf Advisor was not installed previously; running first-time install.")
-					if err := service.Install(); err != nil {
-						return err
-					}
-					if err := service.Initialize(); err != nil {
-						return err
-					}
-					state.Services.PerfAdvisor = true
-					return nil
+				if opt := optionalServiceByName(service.Name()); opt != nil && !opt.installed(state) {
+					log.Info(service.Name() + " was not installed previously; installing it now.")
 				}
 				return service.Upgrade()
 			})
@@ -354,6 +301,12 @@ func upgradeCmd() *cobra.Command {
 					log.Fatal("Failed restarting " + service.Name() + " after upgrade: " + err.Error())
 				}
 				log.Info("Completed restart of component " + service.Name())
+			}
+
+			if viper.GetBool("postgres.install.enabled") {
+				if err := serviceManager.ServiceByName(PostgresServiceName).(Postgres).MaybeVacuumStats(); err != nil {
+					log.Warn("unable to vacuum postgres stats after upgrade: " + err.Error())
+				}
 			}
 
 			if err := common.WaitForYBAReady(ybactl.Version); err != nil {
@@ -384,7 +337,6 @@ func upgradeCmd() *cobra.Command {
 				}
 			}
 			common.PrintStatus(state.CurrentStatus.String(), statuses...)
-			// Here ends the postgres minor version/no upgrade workflow
 
 			// Upgrade yba-ctl. Maybe make separate function for this?
 			if err := ybaCtl.Install(); err != nil {
@@ -394,9 +346,14 @@ func upgradeCmd() *cobra.Command {
 			state.CurrentStatus = ybactlstate.InstalledStatus
 			state.Version = ybactl.Version
 			state.RestoreDBOnRollback = false
+			for _, opt := range optionalServices {
+				opt.setInstalled(state, opt.enabled())
+			}
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}
+			// The upgrade can no longer roll back, so the previous version's packages are not needed.
+			common.PruneNodeAgentPackages(nodeAgentReleasesDir(), state.Version)
 			common.PostUpgrade()
 		},
 	}

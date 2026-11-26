@@ -1,0 +1,166 @@
+title: SupportBundleCreateSpec
+description: |
+  Support bundle collection request.
+
+  Differs from `SupportBundleSpec` in that it carries input-only knobs that are resolved
+  server side and not persisted with the bundle.
+
+  Leaving every `*_component_specs` list empty makes the server build
+  them from the support bundle manifest shipped with YBA, keeping the
+  entries named in `components`. Populating any one list turns the
+  fill off for all of them, and
+  each spec is then checked against the same manifest: a component it
+  doesn't list, a different script or entrypoint, or a `linux_user` other
+  than yugabyte is rejected with 400. Either way, each spec runs with the
+  manifest's Files and Bash arguments, YSQL and YCQL queries, yb-admin
+  arguments, timeout and tar path, whatever the request carries; the
+  request still chooses the components, `db_name` and `keyspace`, and the
+  yb-admin commands within the allowed set. Scalars the request does
+  send, such as `filter_pg_audit_logs`, `max_num_recent_cores`,
+  `max_core_file_size` and the `prom_*` fields, override what the manifest
+  carries. The fill applies to the universe create and estimate-size
+  endpoints; the YBA-only endpoints don't fill, but check their specs and
+  set the tar path the same way.
+type: object
+required:
+  - components
+properties:
+  components:
+    description: |
+      List of components to be included in the support bundle. On Kubernetes universes the server
+      drops what a yb-master / yb-tserver pod cannot produce (see the component spec fields below),
+      and a component type is dropped once every one of its sub-components has been dropped. The
+      persisted `SupportBundleSpec` and the bundle's manifest name only what was kept. Rejected with
+      a 400 when nothing collectable remains. K8sInfo is dropped on non-Kubernetes universes.
+    items:
+      $ref: "./SupportBundleComponentType.yaml"
+    type: array
+  start_date:
+    description: Start date to filter logs from. Defaults to 24 hours before end_date.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  end_date:
+    description: End date to filter logs till. Defaults to now.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  node_names:
+    description: |
+      Names of the universe nodes to collect node-level components from. When omitted or empty,
+      every node in the universe is considered. Global-level components (PrometheusMetrics,
+      YbaMetadata, TabletReport, ClusterConfig, PerfAdvisor, K8sInfo, ApplicationLogs) are collected once for the
+      universe and are not scoped by this list. Rejected with a 400 when none of the given names
+      exist in the universe; names that do not exist are ignored when at least one matches. Not
+      applicable to YBA-only support bundles.
+    type: array
+    items:
+      type: string
+    example:
+      - yb-15-universe-n1
+      - yb-15-universe-n2
+  files_component_specs:
+    description: |
+      Specs driving the generic node-level FilesComponent. Required when components contains
+      FilesComponent, unless the manifest fill applies. On Kubernetes universes the SystemLogs and
+      NodeAgent specs are dropped, since a pod has neither the host's /var/log nor a node agent, and
+      the YbcLogs spec is collected from tserver pods only.
+    type: array
+    items:
+      $ref: "./FilesComponentSpec.yaml"
+  bash_component_specs:
+    description: |
+      Specs driving the node-level BashComponent. Required when components contains BashComponent,
+      unless the manifest fill applies. On Kubernetes universes the collect_cdc_state and
+      collect_threadz_memz_rpcz_stats specs are collected from tserver pods only, and
+      collect_heap_snapshot skips its tserver endpoints on a master pod.
+    type: array
+    items:
+      $ref: "./BashComponentSpec.yaml"
+  ysql_component_specs:
+    description: |
+      Specs driving the node-level YSQLComponent. Required when components contains YSQLComponent,
+      unless the manifest fill applies. Collected from tserver pods only on Kubernetes universes.
+    type: array
+    items:
+      $ref: "./YSQLComponentSpec.yaml"
+  ycql_component_specs:
+    description: |
+      Specs driving the node-level YCQLComponent. Required when components contains YCQLComponent,
+      unless the manifest fill applies. Collected from tserver pods only on Kubernetes universes.
+    type: array
+    items:
+      $ref: "./YCQLComponentSpec.yaml"
+  yb_admin_component_specs:
+    description: 'Specs driving the node-level YbAdminComponent. Required when components contains YbAdminComponent, unless the manifest fill applies.'
+    type: array
+    items:
+      $ref: "./YbAdminComponentSpec.yaml"
+  yba_component_specs:
+    description: 'Specs driving the global-level YBAComponent. Required when components contains YBAComponent, unless the manifest fill applies.'
+    type: array
+    items:
+      $ref: "./YbaComponentSpec.yaml"
+  filter_pg_audit_logs:
+    description: Specifies if Postgres audit logs should be filtered out when collecting universe logs.
+    type: boolean
+  max_core_file_size:
+    description: Max size in bytes of the recent collected cores (if any).
+    type: integer
+    format: int64
+  max_num_recent_cores:
+    description: Max number of the most recent cores to collect (if any).
+    type: integer
+    format: int32
+  pa_dump_start_date:
+    description: Start date to filter Perf Advisor data.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  pa_dump_end_date:
+    description: End date to filter Perf Advisor data.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  pa_metrics_format:
+    description: Specifies Perf Advisor dump metrics format.
+    $ref: "./PrometheusMetricsFormat.yaml"
+  prom_dump_down_sample:
+    description: Whether to downsample Prometheus remote-read export data points.
+    type: boolean
+  prom_dump_start_date:
+    description: Start date to filter prometheus metrics from.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  prom_dump_end_date:
+    description: End date to filter prometheus metrics till.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  prom_export_type:
+    description: How to export Prometheus metrics.
+    $ref: "./PromExportType.yaml"
+  prom_metrics_format:
+    description: Format for Prometheus remote read export.
+    $ref: "./PrometheusMetricsFormat.yaml"
+  prom_queries:
+    description: Map of query names to custom PromQL queries to collect in promdump.
+    type: object
+    additionalProperties:
+      type: string
+  prometheus_metrics_types:
+    description: |
+      List of exports to be included in the prometheus dump. On Kubernetes universes NODE_EXPORT is
+      collected only where the node_exporter sidecar is monitored, and dropped otherwise.
+    type: array
+    items:
+      $ref: "./PrometheusMetricsType.yaml"
+  batch_duration_prom_dump_mins:
+    description: Batch duration for the prometheus dump (in minutes).
+    type: integer
+    format: int32
+  step_prom_dump_secs:
+    description: Metrics downsample step (in seconds) for the prometheus dump.
+    type: integer
+    format: int32

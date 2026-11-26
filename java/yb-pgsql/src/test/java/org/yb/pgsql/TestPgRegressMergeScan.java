@@ -37,6 +37,9 @@ public class TestPgRegressMergeScan extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // TODO(#29196): Remove this once cbo is on by default.
     appendToYsqlPgConf(flagMap, "yb_enable_cbo=on");
+    // The cbo flag above auto-enables auto analyze, whose unpredictable timing
+    // the schedule avoids by running ANALYZE itself.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

@@ -27,7 +27,7 @@ public class UserProfileFormData {
 
   @ApiModelProperty(value = "YbaApi Internal. Used to turn off new UI feature for particular user")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
-  private Boolean newUniverseUiEnabled = true;
+  private Boolean newUniverseUiEnabled = false;
 
   @ApiModelProperty(
       value = "YbaApi Internal. Whether the new UI tour was completed by particular user")

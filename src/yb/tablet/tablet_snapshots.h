@@ -13,6 +13,12 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
@@ -23,7 +29,11 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/rpc/scheduler.h"
+
+#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/threadpool.h"
 
 namespace rocksdb {
 
@@ -38,11 +48,20 @@ class FsManager;
 class RWOperationCounter;
 class rw_semaphore;
 
+namespace rpc {
+class Scheduler;
+}
+
 namespace tablet {
 
 class TabletRestorePatch;
 
 YB_DEFINE_ENUM(CreateCheckpointIn, (kSubDir)(kUseSuffix));
+
+// Logs that a step of a snapshot operation is done and how long it took since start: at INFO if
+// it took at least --tablet_snapshot_op_slow_log_threshold_ms, at VLOG(1) otherwise. Returns the
+// current time, to be used as the start of the next step.
+MonoTime LogSnapshotStepDone(const std::string& log_prefix, std::string_view step, MonoTime start);
 
 struct CreateSnapshotData {
   HybridTime snapshot_hybrid_time;
@@ -55,8 +74,13 @@ struct CreateSnapshotData {
 class TabletSnapshots : public TabletComponent {
  public:
   explicit TabletSnapshots(Tablet* tablet);
+  ~TabletSnapshots();
 
   Status Open();
+
+  void SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler);
+  void StartShutdown();
+  void CompleteShutdown();
 
   // Create snapshot for this tablet.
   Status Create(SnapshotOperation* operation);
@@ -72,9 +96,6 @@ class TabletSnapshots : public TabletComponent {
 
   Status RestoreFinished(SnapshotOperation* operation);
 
-  // Prepares the operation context for a snapshot operation.
-  Status Prepare(SnapshotOperation* operation);
-
   Result<std::string> RestoreToTemporary(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
   //------------------------------------------------------------------------------------------------
@@ -88,10 +109,15 @@ class TabletSnapshots : public TabletComponent {
   // than RPC timeouts.
   // In case of failure, the caller is responsible for cleanup.
   YB_STRONGLY_TYPED_BOOL(UseTryLock);
+  // The vector indexes are flushed after the regular DB checkpoint, so that their checkpoints hold
+  // the vectors of every row in it. A remote bootstrap session can skip that: the new replica
+  // replays the vector indexes from their flushed frontier.
+  YB_STRONGLY_TYPED_BOOL(SkipVectorIndexFlush);
   Status CreateCheckpoint(
       const std::string& dir,
       CreateCheckpointIn create_checkpoint_in = CreateCheckpointIn::kSubDir,
-      UseTryLock use_try_lock = UseTryLock::kFalse);
+      UseTryLock use_try_lock = UseTryLock::kFalse,
+      SkipVectorIndexFlush skip_vector_index_flush = SkipVectorIndexFlush::kFalse);
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
@@ -104,11 +130,21 @@ class TabletSnapshots : public TabletComponent {
 
   static bool IsTempSnapshotDir(const std::string& dir);
 
+  static bool IsDeletedSnapshotDir(const std::string& dir);
+
+  // Reconstructs the active snapshot path from an OpId-qualified deleted snapshot path.
+  static Result<std::string> ActiveSnapshotDirFromDeletedSnapshotDir(
+      const std::string& deleted_snapshot_dir);
+
+  static std::string DeletedSnapshotDir(
+      const std::string& snapshot_dir, const OpId& delete_op_id);
+
   static bool IsLastSnapshotTimeFilePath(const std::string& dir);
 
  private:
   struct RestoreMetadata;
   struct ColocatedTableMetadata;
+  struct Metrics;
 
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
@@ -130,9 +166,68 @@ class TabletSnapshots : public TabletComponent {
 
   Result<docdb::CotableIdsMap> GetCotableIdsMap(const std::string& snapshot_dir);
 
-  Status DoCreateCheckpoint(const std::string& dir, CreateCheckpointIn create_checkpoint_in);
+  enum class TombstoneState {
+    // Neither the active nor the tombstone directory exists: deletion is fully finished.
+    kComplete,
+    // The active directory was renamed to the tombstone and the parent directory was synced:
+    // logical deletion is durable, and only physical cleanup of the tombstone remains.
+    kTombstoned,
+    // Both the active and the tombstone directory exist (e.g. a stale tombstone from an earlier
+    // attempt): the tombstone must be removed before the active directory can be renamed.
+    kBothPresent,
+    // A transient failure (directory check, rename, or parent sync) occurred: retry later.
+    kRetry,
+  };
+
+  struct PendingSnapshotDeletion {
+    std::string active_dir;
+    std::string tombstone_dir;
+    MonoTime first_pending_at = MonoTime::Now();
+    // True until the active directory is durably tombstoned (renamed and parent-synced).
+    bool logical_pending = true;
+    // True while the tombstone directory still needs physical removal, including the parent sync
+    // that makes the removal durable.
+    bool physical_pending = false;
+    // True when the tombstone directory was recursively deleted but the parent-directory fsync
+    // that makes the removal durable still needs to be redone. Only the cleanup phase needs this
+    // flag: a failed parent sync while tombstoning leaves logical_pending set, and the retry
+    // re-drives that sync inside TryTombstoneSnapshotDir.
+    bool parent_sync_pending = false;
+    uint64_t epoch = 0;
+  };
+
+  TombstoneState TryTombstoneSnapshotDir(PendingSnapshotDeletion* deletion);
+  bool CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletion);
+  void ScanDeletedSnapshotDirs();
+  void ScheduleCleanup(PendingSnapshotDeletion deletion);
+  void SubmitCleanup();
+  void RunCleanup();
+  void ScheduleRetry();
+  void PublishPendingDeletionState(const PendingSnapshotDeletion& deletion);
+  void UpdatePendingMetricsUnlocked() REQUIRES(cleanup_mutex_);
+  uint64_t OldestPendingDeletionAgeMs();
+
+  Status DoCreateCheckpoint(
+      const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+      SkipVectorIndexFlush skip_vector_index_flush);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
+  std::unique_ptr<Metrics> metrics_;
+
+  // Protects the cleanup token, retry tracker, and pending deletion requests. Filesystem work runs
+  // without this mutex, and only the serial token may call RunCleanup.
+  std::mutex cleanup_mutex_;
+  std::unique_ptr<ThreadPoolToken> cleanup_token_ GUARDED_BY(cleanup_mutex_);
+  std::unordered_map<std::string, PendingSnapshotDeletion> pending_deletions_
+      GUARDED_BY(cleanup_mutex_);
+  rpc::ScheduledTaskTracker retry_task_tracker_;
+  uint64_t next_pending_deletion_epoch_ GUARDED_BY(cleanup_mutex_) = 0;
+  uint32_t retry_attempt_ GUARDED_BY(cleanup_mutex_) = 0;
+  bool cleanup_task_scheduled_ GUARDED_BY(cleanup_mutex_) = false;
+  bool retry_scheduled_ GUARDED_BY(cleanup_mutex_) = false;
+  bool shutting_down_ GUARDED_BY(cleanup_mutex_) = false;
+  // Declared after all state used by the function gauge so it detaches first during destruction.
+  std::shared_ptr<void> metrics_detacher_;
 
   std::mutex last_snapshot_ht_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime> last_snapshot_ht_

@@ -58,9 +58,19 @@ public class DevopsReleaseManifestTest {
                   "yb_platform_util.py"))
           .build();
 
+  // devops/supportbundle holds support bundle tests, which are not packaged.
+  // It also holds Go sources built at release time; only the resulting cross-compiled
+  // binaries under bin/ are packaged, so the sources are not manifest entries.
   private static final Set<String> PREFIXES_TO_SKIP =
       ImmutableSet.of(
-          "build", "python_virtual_env", "tests", "third-party", "vars", "venv", ".idea");
+          "build",
+          "python_virtual_env",
+          "tests",
+          "third-party",
+          "vars",
+          "venv",
+          ".idea",
+          "supportbundle");
 
   private static final Set<String> FILE_EXTENSIONS_TO_SKIP =
       ImmutableSet.of("gitignore", "retry", "pyc", "orig", "iml");

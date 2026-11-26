@@ -8,6 +8,8 @@
 --- 2. Incomplete bindings to hash keys.
 --- 3. Conditions whose operands don’t match in type. (including UDTs)
 --- 4. Unsupported RowComparisonExpressions
+--- 5. Non-equality SAOP conditions, which are filters rather than index
+---    conditions.
 
 \set explain_analyze 'EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)'
 SET enable_seqscan = off;
@@ -63,6 +65,12 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 :explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
 :explain_analyze /*+ IndexScan(t t_range_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
 
+-- an out-of-range equality means no row can match, so nothing is read, whether
+-- or not the hash columns are all bound
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h1 = 1 AND h2 = 2147483648;
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h2 = 2147483648;
+:explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 = 2147483648;
+
 DROP TABLE t_incomplete_binds;
 
 --- - ---
@@ -84,31 +92,68 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i2 = 1;
 :explain_analyze SELECT * FROM t_int WHERE i2 > 1;
 :explain_analyze SELECT * FROM t_int WHERE i2 < 1;
--- these are each out of range, so recheck is required
-:explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
-:explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
-:explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
-:explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
-
--- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i4 = 1;
 :explain_analyze SELECT * FROM t_int WHERE i4 > 1;
 :explain_analyze SELECT * FROM t_int WHERE i4 < 1;
--- these are each out of range, so recheck is required
-:explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
-:explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
-:explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
-:explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
-
--- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i8 = 1;
 :explain_analyze SELECT * FROM t_int WHERE i8 > 1;
 :explain_analyze SELECT * FROM t_int WHERE i8 < 1;
--- these are each out of range, so recheck is required
+:explain_analyze SELECT * FROM t_int WHERE s = 1;
+
+-- these equalities are out of range, so no row can match and nothing is read
+:explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
+:explain_analyze SELECT * FROM t_int WHERE i2 = -32769;
+:explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
+:explain_analyze SELECT * FROM t_int WHERE s = 2147483648;
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 = 9223372036854775809;
+
+-- these inequalities are out of range, so their key is not bound and recheck is
+-- required
+:explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
+:explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
+:explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
+:explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 > 9223372036854775809;
 :explain_analyze SELECT * FROM t_int WHERE i8 < 9223372036854775809;
+
+-- the out-of-range element is dropped from the IN list, so no recheck is
+-- required
+:explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
+:explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
+:explain_analyze SELECT * FROM t_int WHERE s IN (1, 2, 2147483647, 2147483648);
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 IN (1, 2, 9223372036854775807, 9223372036854775808);
+
+-- in-range and out-of-range equality as a parameter of a generic plan
+SET plan_cache_mode = force_generic_plan;
+PREPARE t_int_i2_eq(int4) AS SELECT * FROM t_int WHERE i2 = $1;
+:explain_analyze EXECUTE t_int_i2_eq(1);
+:explain_analyze EXECUTE t_int_i2_eq(32768);
+DEALLOCATE t_int_i2_eq;
+RESET plan_cache_mode;
+
+-- aggregate pushdown, which a constant out-of-range equality allows since the
+-- scan reads nothing
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+:explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
+SELECT count(*) FROM t_int WHERE s = 2147483648;
+
+-- aggregate pushdown with a subquery value, which is not yet known when the
+-- executor decides whether to push the aggregate down
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+:explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 
 DROP TABLE t_int;
 
@@ -248,3 +293,62 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7.0::real;
 
 DROP TABLE t_i2, t_i4, t_i8, t_f4, t_f8, t_num, t_txt;
+
+--- - ---
+--- 5 --- Non-equality SAOP (#35030)
+--- - ---
+
+CREATE TABLE t_nonequality_saop(g int, k int, PRIMARY KEY(g ASC, k ASC));
+INSERT INTO t_nonequality_saop SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+
+-- Test non-equality SAOP with no other condition on its column
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{NULL,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{}');
+
+-- Test Inequality + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+:explain_analyze SELECT count(*) FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+SET yb_enable_bitmapscan = true;
+:explain_analyze /*+ BitmapScan(t_nonequality_saop) */ SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+RESET yb_enable_bitmapscan;
+
+-- Test Equality + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
+
+-- Test SAOP + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
+
+-- Test Inequality + non-equality SAOP different types
+SET plan_cache_mode = force_generic_plan;
+PREPARE nonequality_saop_count(bigint[]) AS SELECT count(*) FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_saop_count('{5,3000000000}');
+EXECUTE nonequality_saop_count('{5,3000000000}');
+RESET plan_cache_mode;
+DEALLOCATE nonequality_saop_count;
+
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+RESET yb_enable_advanced_index_cond_fold;
+
+CREATE TABLE t_nonequality_saop_hash(h int, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash SELECT i % 10, i FROM generate_series(1, 100) i;
+CREATE TABLE t_nonequality_saop_hash_f4(h real, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
+
+-- Test non-equality SAOP on a hash column
+:explain_analyze SELECT count(*) FROM t_nonequality_saop_hash WHERE h > ANY ('{8,9}');
+
+-- Test Equality + non-equality SAOP on a hash column
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h > ANY ('{5,2}');
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h < ANY ('{7,9}');
+
+-- Test Equality + non-equality SAOP different types on a hash column (#37237)
+:explain_analyze SELECT * FROM t_nonequality_saop_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_saop_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+RESET yb_enable_advanced_index_cond_fold;
+
+DROP TABLE t_nonequality_saop, t_nonequality_saop_hash, t_nonequality_saop_hash_f4;

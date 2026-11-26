@@ -5,6 +5,8 @@
  * cooperative multitasking engine.
  */
 
+#include <sys/poll.h>
+
 #include <machinarium.h>
 #include <machinarium_private.h>
 
@@ -24,6 +26,15 @@ MACHINE_API machine_tls_t *machine_tls_create(void)
 	tls->ca_file = NULL;
 	tls->cert_file = NULL;
 	tls->key_file = NULL;
+	/* YB: Initialize to default values as in guc.c of Postgres */
+	tls->yb_crl_file = NULL;
+	tls->yb_crl_dir = NULL;
+	tls->yb_cipher_list = NULL;
+	tls->yb_prefer_server_ciphers = 1;
+	tls->yb_ecdh_curve = NULL;
+	tls->yb_dh_params_file = NULL;
+	tls->yb_passphrase_command = NULL;
+	tls->yb_max_protocol_version = NULL;
 	return (machine_tls_t *)tls;
 }
 
@@ -43,6 +54,21 @@ MACHINE_API void machine_tls_free(machine_tls_t *obj)
 		free(tls->cert_file);
 	if (tls->key_file)
 		free(tls->key_file);
+	/* YB: Free up if set */
+	if (tls->yb_crl_file)
+		free(tls->yb_crl_file);
+	if (tls->yb_crl_dir)
+		free(tls->yb_crl_dir);
+	if (tls->yb_cipher_list)
+		free(tls->yb_cipher_list);
+	if (tls->yb_ecdh_curve)
+		free(tls->yb_ecdh_curve);
+	if (tls->yb_dh_params_file)
+		free(tls->yb_dh_params_file);
+	if (tls->yb_passphrase_command)
+		free(tls->yb_passphrase_command);
+	if (tls->yb_max_protocol_version)
+		free(tls->yb_max_protocol_version);
 	free(tls);
 }
 
@@ -87,6 +113,22 @@ MACHINE_API int machine_tls_set_protocols(machine_tls_t *obj, char *protocols)
 	if (tls->protocols)
 		free(tls->protocols);
 	tls->protocols = string;
+	return 0;
+}
+
+MACHINE_API int
+yb_machine_tls_set_max_protocol_version(machine_tls_t *obj, char *protocol)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(protocol);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_max_protocol_version)
+		free(tls->yb_max_protocol_version);
+	tls->yb_max_protocol_version = string;
 	return 0;
 }
 
@@ -147,6 +189,107 @@ MACHINE_API int machine_tls_set_key_file(machine_tls_t *obj, char *path)
 	if (tls->key_file)
 		free(tls->key_file);
 	tls->key_file = string;
+	return 0;
+}
+
+MACHINE_API int yb_machine_tls_set_crl_file(machine_tls_t *obj, char *path)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(path);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_crl_file)
+		free(tls->yb_crl_file);
+	tls->yb_crl_file = string;
+	return 0;
+}
+
+MACHINE_API int yb_machine_tls_set_crl_dir(machine_tls_t *obj, char *path)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(path);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_crl_dir)
+		free(tls->yb_crl_dir);
+	tls->yb_crl_dir = string;
+	return 0;
+}
+
+MACHINE_API int yb_machine_tls_set_cipher_list(machine_tls_t *obj, char *ciphers)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(ciphers);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_cipher_list)
+		free(tls->yb_cipher_list);
+	tls->yb_cipher_list = string;
+	return 0;
+}
+
+MACHINE_API int
+yb_machine_tls_set_prefer_server_ciphers(machine_tls_t *obj, int prefer)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	tls->yb_prefer_server_ciphers = prefer;
+	return 0;
+}
+
+MACHINE_API int yb_machine_tls_set_ecdh_curve(machine_tls_t *obj, char *curve)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(curve);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_ecdh_curve)
+		free(tls->yb_ecdh_curve);
+	tls->yb_ecdh_curve = string;
+	return 0;
+}
+
+MACHINE_API int
+yb_machine_tls_set_dh_params_file(machine_tls_t *obj, char *path)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(path);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_dh_params_file)
+		free(tls->yb_dh_params_file);
+	tls->yb_dh_params_file = string;
+	return 0;
+}
+
+MACHINE_API int
+yb_machine_tls_set_passphrase_command(machine_tls_t *obj, char *command)
+{
+	mm_tls_t *tls = mm_cast(mm_tls_t *, obj);
+	mm_errno_set(0);
+	char *string = strdup(command);
+	if (string == NULL) {
+		mm_errno_set(ENOMEM);
+		return -1;
+	}
+	if (tls->yb_passphrase_command)
+		free(tls->yb_passphrase_command);
+	tls->yb_passphrase_command = string;
 	return 0;
 }
 
@@ -310,6 +453,40 @@ MACHINE_API int machine_io_verify(machine_io_t *obj, char *common_name)
 	return rc;
 }
 
+/*
+ * YB: Export the peer's leaf certificate as DER. Returns 0 on success, with
+ * *buf left NULL when the peer sent no certificate, and -1 when a certificate
+ * was presented but could not be encoded. The caller must free() *buf.
+ */
+MACHINE_API int yb_machine_io_get_peer_cert_der(machine_io_t *obj,
+					     unsigned char **buf, int *len)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	mm_errno_set(0);
+	if (io->tls == NULL || io->tls_ssl == NULL) {
+		mm_errno_set(EINVAL);
+		return -1;
+	}
+	return yb_mm_tls_get_peer_cert_der(io, buf, len);
+}
+
+/*
+ * YB: tls-server-end-point hash of the certificate this side presented. buf
+ * must have room for EVP_MAX_MD_SIZE (64) bytes. Returns 0 on a cache hit, 1
+ * when computed from the session's certificate, and -1 on failure.
+ */
+MACHINE_API int yb_machine_io_get_server_cert_hash(machine_io_t *obj,
+						unsigned char *buf, int *len)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	mm_errno_set(0);
+	if (io->tls == NULL || io->tls_ssl == NULL) {
+		mm_errno_set(EINVAL);
+		return -1;
+	}
+	return yb_mm_tls_get_server_cert_hash(io, buf, len);
+}
+
 int mm_io_socket_set(mm_io_t *io, int fd)
 {
 	io->fd = fd;
@@ -423,5 +600,50 @@ MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj)
 		}
 	}
 	/* Data is available, socket is still open */
+	return 0;
+}
+
+MACHINE_API int machine_io_poll(machine_io_t *obj)
+{
+	/* no need to check IN/OUT - we call read/write before awaiting anyway */
+
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	if (!io->attached) {
+		mm_errno_set(ENOTCONN);
+		return -1;
+	}
+
+	mm_fd_t *fd = &io->handle;
+
+	struct pollfd pfd;
+	memset(&pfd, 0, sizeof(struct pollfd));
+	pfd.fd = fd->fd;
+	pfd.events = POLLERR | POLLHUP | POLLRDHUP;
+
+	int rc = poll(&pfd, 1, 0);
+	if (rc < 0) {
+		mm_errno_set(errno);
+		return rc;
+	}
+
+	if (rc == 0) {
+		/* no events, ok */
+		return 0;
+	}
+
+	assert(rc == 1);
+
+	int events = pfd.revents;
+	int err = events & POLLERR;
+	int close = events & POLLHUP || events & POLLRDHUP;
+
+	/*
+	 * YB: this machinarium has no on_err/on_close fd handlers, so mark the
+	 * io disconnected directly, as mm_io_read/mm_io_write do on error/eof.
+	 */
+	if (err || close) {
+		io->connected = 0;
+	}
+
 	return 0;
 }

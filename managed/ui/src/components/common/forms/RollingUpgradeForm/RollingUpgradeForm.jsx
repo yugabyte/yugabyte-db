@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 
 import _ from 'lodash';
+import i18n from 'i18next';
 import { Component } from 'react';
 import { toast } from 'react-toastify';
 import { Field, FieldArray } from 'redux-form';
@@ -74,7 +75,8 @@ export default class RollingUpgradeForm extends Component {
         currentUniverse: {
           data: {
             universeDetails: { currentClusterType, clusters, nodePrefix, rootAndClientRootCASame },
-            universeUUID
+            universeUUID,
+            rollMaxBatchSize
           }
         }
       },
@@ -138,6 +140,11 @@ export default class RollingUpgradeForm extends Component {
       case 'rollingRestart': {
         payload.taskType = 'Restart';
         payload.upgradeOption = 'Rolling';
+        payload.rollMaxBatchSize = {
+          primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.primaryBatchSize,
+          readReplicaBatchSize:
+            values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.readReplicaBatchSize
+        };
         //send read replica clsuter details in payload only for k8s universe
         if (
           getIsKubernetesUniverse(this.props.universe.currentUniverse.data) &&
@@ -162,6 +169,13 @@ export default class RollingUpgradeForm extends Component {
         payload.azOverrides = values.azOverrides;
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
         payload.runOnlyPrechecks = values.runOnlyPrechecks;
+        if (values.rollingUpgrade) {
+          payload.rollMaxBatchSize = {
+            primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.primaryBatchSize,
+            readReplicaBatchSize:
+              values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.readReplicaBatchSize
+          };
+        }
         break;
       default:
         return;
@@ -329,6 +343,16 @@ export default class RollingUpgradeForm extends Component {
       </Alert>
     );
 
+    // Normalize once: the backend reports 1 when batching cannot be used, but guard against a
+    // missing or non-positive ceiling so the max attribute and the locked state stay consistent.
+    const maxBatchSizePrimary = Math.max(
+      1,
+      universe.currentUniverse?.data?.rollMaxBatchSize?.primaryBatchSize ?? 1
+    );
+    const isMaxBatchSizeLocked = maxBatchSizePrimary <= 1;
+    const clampToMaxBatchSize = (value) =>
+      Math.min(Math.max(Number(value) || 1, 1), maxBatchSizePrimary);
+
     switch (visibleModal) {
       case 'softwareUpgradesModal': {
         return (
@@ -444,11 +468,13 @@ export default class RollingUpgradeForm extends Component {
               this.props.change('rollingUpgrade', formValues.rollingUpgrade);
               this.props.change('timeDelay', formValues.timeDelay);
               this.props.change('runOnlyPrechecks', formValues.runOnlyPrechecks);
+              this.props.change('numNodesToUpgradePrimary', formValues.numNodesToUpgradePrimary);
               submitAction();
             }}
             editValues={editValues}
             editMode={true}
             forceUpdate={true}
+            rollMaxBatchSize={this.props.universe.currentUniverse.data.rollMaxBatchSize}
           />
         );
       }
@@ -660,6 +686,22 @@ export default class RollingUpgradeForm extends Component {
                 type="number"
                 component={YBInputField}
                 label="Rolling Restart Delay Between Servers (secs)"
+              />
+              <Field
+                name="numNodesToUpgradePrimary"
+                type="number"
+                component={YBInputField}
+                label={i18n.t('component.rollMaxBatchSize.label')}
+                infoContent={
+                  isMaxBatchSizeLocked
+                    ? i18n.t('component.rollMaxBatchSize.lockedTooltip')
+                    : i18n.t('component.rollMaxBatchSize.tooltip')
+                }
+                infoPlacement="top"
+                disabled={isMaxBatchSizeLocked}
+                min={1}
+                max={maxBatchSizePrimary}
+                normalize={clampToMaxBatchSize}
               />
             </div>
             {errorAlert}

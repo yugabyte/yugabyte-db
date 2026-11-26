@@ -5,6 +5,7 @@ import { mui, StatusType, YBButton, YBDropdown, YBSmartStatus } from '@yugabyte-
 
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { useEditUniverseContext, withUniverseResource } from '../../EditUniverseUtils';
 
 import EditIcon from '@app/redesign/assets/approved/edit.svg';
 import DropdownArrowIcon from '@app/redesign/assets/approved/triangle-arrow-down.svg';
@@ -162,6 +163,8 @@ export const LogConfigCard: FC<LogConfigCardProps> = (props) => {
   const classes = useStyles();
   const theme = useTheme();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const { universeData } = useEditUniverseContext();
+  const universeUUID = universeData?.info?.universe_uuid;
 
   const { icon, title, actionDisabled = false, actionTestId } = props;
 
@@ -182,7 +185,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = (props) => {
       <div className={classes.configuredCard}>
         <div className={classes.header}>
           {titleGroup}
-          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+          <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
             <YBDropdown
               growDirection="left"
               dataTestId={actionTestId}
@@ -255,7 +258,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = (props) => {
           </Link>
         </Typography>
       </div>
-      <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+      <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
         <YBButton
           dataTestId={actionTestId}
           variant="secondary"

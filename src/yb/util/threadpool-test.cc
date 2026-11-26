@@ -49,6 +49,7 @@
 #include "yb/util/barrier.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
@@ -66,7 +67,6 @@ using std::thread;
 using std::unique_ptr;
 using std::vector;
 
-using strings::Substitute;
 DECLARE_bool(enable_tracing);
 DECLARE_bool(threadpool_use_current_trace_for_tasks);
 
@@ -722,12 +722,12 @@ TEST_F(TestThreadPool, TestTokenConcurrency) {
     t.join();
   }
 
-  LOG(INFO) << Substitute("Tokens cycled ($0 threads): $1",
-                          kCycleThreads, total_num_tokens_cycled.load());
-  LOG(INFO) << Substitute("Tokens shutdown ($0 threads): $1",
-                          kShutdownThreads, total_num_tokens_shutdown.load());
-  LOG(INFO) << Substitute("Tokens submitted ($0 threads): $1",
-                          kSubmitThreads, total_num_tokens_submitted.load());
+  LOG(INFO) << Format("Tokens cycled ($0 threads): $1",
+                      kCycleThreads, total_num_tokens_cycled.load());
+  LOG(INFO) << Format("Tokens shutdown ($0 threads): $1",
+                      kShutdownThreads, total_num_tokens_shutdown.load());
+  LOG(INFO) << Format("Tokens submitted ($0 threads): $1",
+                      kSubmitThreads, total_num_tokens_submitted.load());
 }
 
 TEST_F(TestThreadPool, TestTaskRunnerStopWait) {

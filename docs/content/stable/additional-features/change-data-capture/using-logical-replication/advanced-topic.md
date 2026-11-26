@@ -115,6 +115,8 @@ As the publication was created for ALL TABLES, ALTER PUBLICATION is not required
 
 Available in v2026.1 and later.
 
+The mode is fixed per slot when the slot is created. A slot created with implicit publication can't stream if `ysql_yb_enable_implicit_dynamic_tables_logical_replication` is later set to `false`.
+
 When implicit publication is enabled (the default), changes to a publication are reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed. This behavior matches PostgreSQL. (Implicit publication applies only to the logical replication model of CDC.)
 
 Regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
@@ -136,10 +138,10 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 | Flag | Details |
 | :--- | :--- |
-| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodoc-publication). |
+| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodic-publication). |
 | cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
 
-### Periodoc publication
+### Periodic publication
 
 If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. (This is also the behavior in versions earlier than v2026.1.) Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
 

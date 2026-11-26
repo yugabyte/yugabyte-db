@@ -63,3 +63,15 @@ enum TestPBEnum {
 message UnsignedIntSetTestPB {
   repeated uint32 set = 1;
 }
+
+// Its nested types are used by ProtoContainerNestedTestPB.
+message ProtoContainerOuterTestPB {
+  message InnerPB {
+    enum KindPB {
+      FIRST = 1;
+    }
+    optional KindPB kind = 1;
+    optional ProtoContainerTestPB record = 2;
+  }
+  optional TestStringRequiredPB unused = 1;
+}

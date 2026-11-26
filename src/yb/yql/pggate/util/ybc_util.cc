@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -52,7 +53,6 @@
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
 
@@ -269,6 +269,12 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
+// The tserver response cache did not serve this read: either it was asked under lookup_only for
+// an entry it does not hold, or it sent the caller away from a fill already under way.
+bool YBCStatusIsResponseCacheMiss(YbcStatus s) {
+  return StatusWrapper(s)->IsIncomplete();
+}
+
 bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
@@ -277,12 +283,22 @@ bool YBCStatusIsTimedOut(YbcStatus s) {
   return StatusWrapper(s)->IsTimedOut();
 }
 
+bool YBCStatusIsRetryableRequestTooOld(YbcStatus s) {
+  StatusWrapper wrapper(s);
+  return wrapper->IsExpired() &&
+         MinRunningRequestIdStatusData::ValueFromStatus(*wrapper).has_value();
+}
+
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
+}
+
+bool YBCStatusIsNotSupported(YbcStatus s) {
+  return StatusWrapper(s)->IsNotSupported();
 }
 
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
@@ -513,6 +529,24 @@ uint32_t YBCWaitEventForWaitingOnTServer() {
   return std::to_underlying(ash::WaitStateCode::kWaitingOnTServer);
 }
 
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  switch (static_cast<ash::WaitStateCode>(wait_event_info & kWaitEventMask)) {
+    case ash::WaitStateCode::kWaitingOnTServer:
+      return YB_ASH_AUX_PGGATE_RPC;
+    case ash::WaitStateCode::kCatalogRead: [[fallthrough]];
+    case ash::WaitStateCode::kCatalogWrite: [[fallthrough]];
+    case ash::WaitStateCode::kStorageFlush: [[fallthrough]];
+    case ash::WaitStateCode::kTableRead: [[fallthrough]];
+    case ash::WaitStateCode::kTableWrite: [[fallthrough]];
+    case ash::WaitStateCode::kIndexRead: [[fallthrough]];
+    case ash::WaitStateCode::kIndexWrite:
+      return YB_ASH_AUX_RELATION_OID;
+    default:
+      return YB_ASH_AUX_NONE;
+  }
+}
+
 // Get a random integer between a and b
 int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
@@ -537,7 +571,10 @@ int YBCGetCircularBufferSizeInKiBs() {
 }
 
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
-  return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
+  // A sample may catch a backend between the aux and the wait event write, so
+  // check for safety
+  const auto rpc = static_cast<ash::PggateRPC>(pggate_rpc_enum_value);
+  return ash::ToCString(rpc) ? NoPrefixName(rpc) : "";
 }
 
 uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_bits_set) {
@@ -922,8 +959,29 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
-bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
+// False until PG makes the first YBCSetGlobalObjectLockingForCurrTxn() call of the backend from
+// StartTransaction. pggate only reads it inside a transaction, so the using_table_locks_globally
+// it sends to the tserver never comes from the unset value: PgTxnManager reads it through
+// UsingObjectLocksGloballyForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs
+// are only issued while a statement runs. A PG caller that reads it earlier sees false, that is,
+// no global object locks.
+static bool object_locking_for_curr_txn = false;
+static bool historical_catalog_read_for_curr_txn = false;
+
+void YBCSetGlobalObjectLockingForCurrTxn(bool enabled) {
+  object_locking_for_curr_txn = enabled;
+}
+
+void YBCSetHistoricalCatalogReadForCurrTxn(bool historical_catalog_read) {
+  historical_catalog_read_for_curr_txn = historical_catalog_read;
+}
+
+bool YBCIsObjectLockingLatchedForCurrTxn() {
+  return object_locking_for_curr_txn;
+}
+
+bool YBCIsHistoricalCatalogReadForCurrTxn() {
+  return historical_catalog_read_for_curr_txn;
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

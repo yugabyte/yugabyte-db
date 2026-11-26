@@ -9,7 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use pgrx::prelude::*;
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[pg_extern]
 fn range(s: i32, e: i32) -> pgrx::Range<i32> {

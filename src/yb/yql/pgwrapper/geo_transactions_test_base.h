@@ -80,6 +80,8 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void WaitForStatusTabletsVersion(uint64_t version);
 
+  uint64_t WaitForStatusTabletsVersionForCreate(uint64_t current_version, uint64_t num_tables = 1);
+
   void WaitForLoadBalanceCompletion();
 
   Status StartTabletServersByRegion(int region);

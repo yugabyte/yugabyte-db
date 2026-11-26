@@ -51,5 +51,5 @@ yugabyte=# DEALLOCATE ins;
 
 ## See also
 
-- [`EXECUTE`](../perf_execute)
-- [`PREPARE`](../perf_prepare)
+- [EXECUTE](../perf_execute)
+- [PREPARE](../perf_prepare)

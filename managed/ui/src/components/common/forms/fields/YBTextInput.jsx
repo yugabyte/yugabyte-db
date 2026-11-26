@@ -26,6 +26,9 @@ export class YBTextInput extends Component {
       placeHolder,
       onValueChanged,
       isReadOnly,
+      disabled,
+      min,
+      max,
       normalizeOnBlur,
       autocomplete = 'on'
     } = this.props;
@@ -59,6 +62,9 @@ export class YBTextInput extends Component {
         className={className}
         onChange={onChange}
         readOnly={isReadOnly}
+        disabled={disabled}
+        min={min}
+        max={max}
         onBlur={onBlur}
         autocomplete={autocomplete}
       />

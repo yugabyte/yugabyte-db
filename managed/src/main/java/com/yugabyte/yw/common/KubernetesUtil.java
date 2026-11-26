@@ -9,10 +9,12 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -49,6 +51,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -86,6 +89,10 @@ public class KubernetesUtil {
   public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE = "2026.1.0.0-b1";
   public static String MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW = "2.29.0.0-b603";
   public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
+  public static String MIN_VERSION_NON_ROOT_DB_PREVIEW = "2.31.0.0-b0";
+  public static String MIN_VERSION_NON_ROOT_DB_STABLE = "2026.1.2.0-b0";
+  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW = "2.33.0.0-b58";
+  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b15";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -94,6 +101,37 @@ public class KubernetesUtil {
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
             true)
         >= 0;
+  }
+
+  /** Whether the pods of this K8s universe, at its recorded DB version, get the sidecar. */
+  public static boolean isNodeExporterSidecarEnabled(
+      Universe universe, RuntimeConfGetter confGetter) {
+    return Util.isKubernetesBasedUniverse(universe)
+        && isNodeExporterSidecarEnabled(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            universe,
+            confGetter);
+  }
+
+  public static boolean isNodeExporterSidecarEnabled(
+      @Nullable String universeSoftwareVersion, Universe universe, RuntimeConfGetter confGetter) {
+    return universeSoftwareVersion != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.k8sNodeExporterEnabled)
+        && Util.compareYBVersions(
+                universeSoftwareVersion,
+                MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
+                MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW,
+                true)
+            >= 0;
+  }
+
+  /** Whether YBA renders the node_exporter sidecar with TLS for a pod running this DB version. */
+  public static boolean isNodeExporterSidecarTlsEnabled(
+      @Nullable String universeSoftwareVersion, Universe universe, RuntimeConfGetter confGetter) {
+    return isNodeExporterSidecarEnabled(universeSoftwareVersion, universe, confGetter)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt
+        && ConfigureNodeExporterTls.isNodeExporterTlsAllowed(
+            confGetter, Customer.get(universe.getCustomerId()), universe);
   }
 
   public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {
@@ -150,6 +188,80 @@ public class KubernetesUtil {
         >= 0;
   }
 
+  public static boolean isNonRootDbByDefault(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_NON_ROOT_DB_STABLE,
+            MIN_VERSION_NON_ROOT_DB_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  /** The UID the DB containers will actually run as, derived from a set of Helm values. */
+  @Nullable
+  public static Integer getEffectiveDbRunAsUser(Map<String, Object> helmValues) {
+    if (MapUtils.isEmpty(helmValues)) {
+      return null;
+    }
+    if (isSecurityContextEnabled(helmValues, "containerSecurityContext")) {
+      return getRunAsUser(helmValues, "containerSecurityContext");
+    }
+    boolean isOcp = getNestedBoolean(helmValues, "ocpCompatibility", "enabled");
+    if (isOcp) {
+      return null;
+    }
+    if (isSecurityContextEnabled(helmValues, "podSecurityContext")) {
+      return getRunAsUser(helmValues, "podSecurityContext");
+    }
+    // No securityContext rendered: the containers run as the image's USER, which is root for the
+    // standard images. UBI images default to 10001, but YBA always enables podSecurityContext for
+    // those, so they are handled above.
+    return 0;
+  }
+
+  private static boolean isSecurityContextEnabled(Map<String, Object> values, String key) {
+    return getNestedBoolean(values, key, "enabled");
+  }
+
+  @Nullable
+  private static int getRunAsUser(Map<String, Object> values, String key) {
+    Object runAsUser = getNested(values, key, "runAsUser");
+    if (runAsUser instanceof Number) {
+      return ((Number) runAsUser).intValue();
+    }
+    if (runAsUser instanceof String && StringUtils.isNumeric((String) runAsUser)) {
+      return Integer.parseInt((String) runAsUser);
+    }
+    throw new IllegalStateException(
+        String.format(
+            "%s is enabled but %s.runAsUser is not a usable value in the helm values: %s (%s)",
+            key,
+            key,
+            runAsUser,
+            runAsUser == null ? "absent" : runAsUser.getClass().getSimpleName()));
+  }
+
+  private static boolean getNestedBoolean(Map<String, Object> values, String key, String subKey) {
+    Object value = getNested(values, key, subKey);
+    if (value == null) {
+      return false;
+    }
+    if (value instanceof Boolean) {
+      return (Boolean) value;
+    }
+    throw new IllegalStateException(
+        String.format(
+            "Expected %s.%s to be a boolean in the helm values, got %s (%s)",
+            key, subKey, value, value.getClass().getSimpleName()));
+  }
+
+  @Nullable
+  @SuppressWarnings("unchecked")
+  private static Object getNested(Map<String, Object> values, String key, String subKey) {
+    Object nested = values.get(key);
+    return nested instanceof Map ? ((Map<String, Object>) nested).get(subKey) : null;
+  }
+
   // ToDo: Old k8s provider needs to be fixed, so that we can get
   // rid of the old merging logic, & start treating them same as the
   // new providers.
@@ -173,6 +285,32 @@ public class KubernetesUtil {
       }
     }
 
+    return azToConfig;
+  }
+
+  /**
+   * Every zone of the provider with its config merged as getConfigPerAZ merges it for the tasks.
+   * Zones with no kubeconfig at any level are left out, since no pods can be deployed to them.
+   * Zones keep the provider's region and zone order.
+   */
+  public static Map<UUID, Map<String, String>> getConfigPerProviderZone(Provider provider) {
+    Map<UUID, Map<String, String>> azToConfig = new LinkedHashMap<>();
+    boolean providerHasKubeConfig =
+        CloudInfoInterface.fetchEnvVars(provider).containsKey("KUBECONFIG");
+    for (Region region : Region.getByProvider(provider.getUuid())) {
+      boolean regionHasKubeConfig =
+          providerHasKubeConfig
+              || CloudInfoInterface.fetchEnvVars(region).containsKey("KUBECONFIG");
+      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
+        if (!regionHasKubeConfig
+            && !CloudInfoInterface.fetchEnvVars(az).containsKey("KUBECONFIG")) {
+          continue;
+        }
+        PlacementInfo pi = new PlacementInfo();
+        PlacementInfoUtil.addPlacementZone(az.getUuid(), pi);
+        azToConfig.putAll(getConfigPerAZ(pi));
+      }
+    }
     return azToConfig;
   }
 
@@ -698,6 +836,20 @@ public class KubernetesUtil {
         + "-";
   }
 
+  public static String getDataVolumeName(String helmReleaseName, boolean newNamingStyle) {
+    if (!newNamingStyle) {
+      return "datadir0";
+    }
+    return getHelmFullName(helmReleaseName) + "-datadir0";
+  }
+
+  /** The chart's yugabyte.fullname for a release YBA installs with fullnameOverride set. */
+  public static String getHelmFullName(String helmReleaseName) {
+    // trunc then trimSuffix, matching the helm pipeline order: truncation can expose a trailing
+    // "-".
+    return StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
+  }
+
   /**
    * Replaces the placeholders from the template with given values and return the resultant string.
    *
@@ -730,18 +882,18 @@ public class KubernetesUtil {
   }
 
   private static boolean isMCSEnabled(UniverseDefinitionTaskParams universeDetails) {
-    UUID providerUUID = Util.getSingleProviderUUID(universeDetails.getPrimaryCluster());
-    Provider provider = Provider.getOrBadRequest(providerUUID);
-    if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
-      List<Region> regions = Region.getByProvider(provider.getUuid());
-      for (Region region : regions) {
-        List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
-        for (AvailabilityZone zone : zones) {
-          if (zone.getDetails().getCloudInfo().getKubernetes() != null
-              && StringUtils.isNotBlank(
-                  zone.getDetails().getCloudInfo().getKubernetes().getKubePodAddressTemplate())) {
-            return true;
-          }
+    if (!Util.isKubernetesBased(universeDetails.getPrimaryCluster())) {
+      return false;
+    }
+    Provider provider = Util.getSingleProvider(universeDetails.getPrimaryCluster());
+    List<Region> regions = Region.getByProvider(provider.getUuid());
+    for (Region region : regions) {
+      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
+      for (AvailabilityZone zone : zones) {
+        if (zone.getDetails().getCloudInfo().getKubernetes() != null
+            && StringUtils.isNotBlank(
+                zone.getDetails().getCloudInfo().getKubernetes().getKubePodAddressTemplate())) {
+          return true;
         }
       }
     }
@@ -960,7 +1112,8 @@ public class KubernetesUtil {
       UniverseDefinitionTaskParams universeParams, ClusterType clusterType) {
     Set<String> namespaces = new HashSet<>();
     for (Cluster cluster : universeParams.clusters) {
-      if (cluster.userIntent.providerType != CloudType.kubernetes) {
+
+      if (!Util.isKubernetesBased(cluster)) {
         continue;
       }
       if ((clusterType != null) && (clusterType != cluster.clusterType)) {
@@ -1007,7 +1160,7 @@ public class KubernetesUtil {
       azsOverridesStr = new HashMap<>();
     }
     for (Cluster cluster : universeParams.clusters) {
-      if (cluster.userIntent.providerType != CloudType.kubernetes) {
+      if (!Util.isKubernetesBased(cluster)) {
         continue;
       }
       if ((clusterType != null) && (clusterType != cluster.clusterType)) {
@@ -1504,10 +1657,13 @@ public class KubernetesUtil {
       NodeDetails nodeDetails) {
 
     String serverType = nodeDetails.isTserver ? "tserver" : "master";
-    Double UserIntentcpuCoreCount =
+    UserIntent.K8SNodeResourceSpec resourceSpec =
         nodeDetails.isTserver
-            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
-            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+            ? userIntent.tserverK8SNodeResourceSpec
+            : userIntent.masterK8SNodeResourceSpec;
+    // Using the default spec when there is none, since that is what the pods are deployed with.
+    Double UserIntentcpuCoreCount =
+        (resourceSpec == null ? new UserIntent.K8SNodeResourceSpec() : resourceSpec).cpuCoreCount;
     try {
       Object azOverrides = finalUniverseOverridesAZMap.get(nodeDetails.azUuid);
       // Traverse the overrides map to find the specific CPU core count for the server type
@@ -1521,13 +1677,13 @@ public class KubernetesUtil {
       }
       return (azOverrides == null || azOverrides.toString().isEmpty())
           ? UserIntentcpuCoreCount
-          : Double.parseDouble(azOverrides.toString());
+          : Quantity.getAmountInBytes(new Quantity(azOverrides.toString())).doubleValue();
     } catch (Exception e) {
+      // The overrides can hold secrets, so they are not logged.
       log.warn(
-          "Failed to get core count for node {} with user intent {} and overrides {}",
+          "Failed to get core count for node {} with user intent {}",
           nodeDetails.nodeName,
           userIntent,
-          finalUniverseOverridesAZMap,
           e);
       return UserIntentcpuCoreCount;
     }
@@ -1780,15 +1936,15 @@ public class KubernetesUtil {
         continue;
       }
       DeviceInfo oldDeviceInfo, newDeviceInfo;
-      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
-      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      oldDeviceInfo = currCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      newDeviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.TSERVER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         return true;
       }
-      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
-      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      oldDeviceInfo = currCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      newDeviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.MASTER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {

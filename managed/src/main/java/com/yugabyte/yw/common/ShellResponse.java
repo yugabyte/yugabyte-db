@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 
 import com.cronutils.utils.VisibleForTesting;
 import java.util.concurrent.CancellationException;
+import java.util.function.Supplier;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -36,12 +37,20 @@ public class ShellResponse {
 
   // Call this method to process or validate the exit code if required.
   public ShellResponse processErrors() {
-    return processErrors(null);
+    return processErrors(() -> null);
   }
 
   // Call this method to process or validate the exit code with custom error message if required.
   public ShellResponse processErrors(String errorMessage) {
+    return processErrors(() -> errorMessage);
+  }
+
+  // Call this method to process or validate the exit code with custom error message supplier if
+  // required. It performs delayed evaluation of the error message only when the code is not success
+  // and avoids unnecessary computation of the error message when the code is success.
+  public ShellResponse processErrors(Supplier<String> errorMessageSupplier) {
     if (code != ERROR_CODE_SUCCESS) {
+      String errorMessage = errorMessageSupplier.get();
       String formatted = StringUtils.isBlank(errorMessage) ? "Error occurred" : errorMessage;
       try {
         switch (code) {

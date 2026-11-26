@@ -593,6 +593,7 @@ typedef struct
     uint32_t		brc_mask;	// Read mask.
     uint8_t const *	brc_curp;	// Current byte.
     size_t			brc_used;	// Used bits.
+    uint8_t const *	yb_brc_endp;	// YB: end of the buffer (exclusive).
 
 } bitstream_read_cursor_t;
 
@@ -627,12 +628,25 @@ static uint32_t
 bitstream_unpack(bitstream_read_cursor_t * brcp)
 {
     uint32_t retval;
+    uint64_t qw;
+    // YB: the quadword load below overreads near the end of the buffer, see
+    // citusdata/postgresql-hll#84, still unfixed upstream.
+    if ((size_t) (brcp->yb_brc_endp - brcp->brc_curp) >= sizeof(qw))
+    {
+        // Fetch the quadword containing our data.
+        qw = * (uint64_t const *) brcp->brc_curp;
 
-    // Fetch the quadword containing our data.
-    uint64_t qw = * (uint64_t const *) brcp->brc_curp;
-
-    // Swap the bytes.
-    qw = bswap_64(qw);
+        // Swap the bytes.
+        qw = bswap_64(qw);
+    }
+    else
+    {
+        // YB: assemble the quadword byte-wise, zero-padded past the end.
+        size_t avail = brcp->yb_brc_endp - brcp->brc_curp;
+        qw = 0;
+        for (size_t ii = 0; ii < sizeof(qw); ++ii)
+            qw = (qw << 8) | (ii < avail ? brcp->brc_curp[ii] : 0);
+    }
 
     // Shift the bits we want into place.
     qw >>= 64 - brcp->brc_nbits - brcp->brc_used;
@@ -687,6 +701,8 @@ compressed_unpack(compreg_t * i_regp,
     brc.brc_curp = i_bitp;
     brc.brc_used = 0;
 
+    brc.yb_brc_endp = i_bitp + i_size;
+
     for (size_t ndx = 0; ndx < i_nregs; ++ndx)
     {
         uint32_t val = bitstream_unpack(&brc);
@@ -725,6 +741,8 @@ sparse_unpack(compreg_t * i_regp,
     brc.brc_mask = (1 << chunksz) - 1;
     brc.brc_curp = i_bitp;
     brc.brc_used = 0;
+
+    brc.yb_brc_endp = i_bitp + i_size;
 
     for (size_t ii = 0; ii < i_nfilled; ++ii)
     {
@@ -2835,16 +2853,16 @@ hll_set_max_sparse(PG_FUNCTION_ARGS)
                 (errcode(ERRCODE_DATA_EXCEPTION),
                  errmsg("sparse threshold must be in range [-1,MAXINT]")));
 
+    g_max_sparse = maxsparse;
+
     // YB: The max sparse threshold is set only on the backend where the query is executed.
     // To ensure that the logical connection uses the same physical connection, we make the
     // connection sticky.
     if (YbIsClientYsqlConnMgr())
     {
-        elog(LOG, "Incrementing sticky object count for setting hll max sparse to %d", maxsparse);
-        increment_sticky_object_count();
+        elog(LOG, "Making connection sticky for setting hll max sparse to %d", maxsparse);
+        yb_ysql_conn_mgr_sticky_nontxn_object = true;
     }
-
-    g_max_sparse = maxsparse;
 
     PG_RETURN_INT32(old_maxsparse);
 }
@@ -2874,6 +2892,13 @@ hll_set_defaults(PG_FUNCTION_ARGS)
     g_default_regwidth = regwidth;
     g_default_expthresh = expthresh;
     g_default_sparseon = sparseon;
+
+    /* YB: The defaults are backend state, so make the connection sticky */
+    if (YbIsClientYsqlConnMgr())
+    {
+        elog(LOG, "Making connection sticky for setting hll defaults");
+        yb_ysql_conn_mgr_sticky_nontxn_object = true;
+    }
 
     // Build the result tuple.
 	{

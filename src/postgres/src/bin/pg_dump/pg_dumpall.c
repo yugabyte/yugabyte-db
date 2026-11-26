@@ -110,6 +110,8 @@ static char *filename = NULL;
 static SimpleStringList database_exclude_patterns = {NULL, NULL};
 static SimpleStringList database_exclude_names = {NULL, NULL};
 
+static char *restrict_key;
+
 #define exit_nicely(code) exit(code)
 
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
@@ -187,6 +189,7 @@ main(int argc, char *argv[])
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
 		{"statistics-only", no_argument, &statistics_only, 1},
+		{"restrict-key", required_argument, NULL, 9},
 		{"include-yb-metadata", no_argument, &include_yb_metadata, 1},
 		{"dump-role-checks", no_argument, &yb_dump_role_checks, 1},
 		{"dump-single-database", no_argument, &dump_single_database, 1},
@@ -373,6 +376,12 @@ main(int argc, char *argv[])
 				appendShellString(pgdumpopts, optarg);
 				break;
 
+			case 9:
+				restrict_key = pg_strdup(optarg);
+				appendPQExpBufferStr(pgdumpopts, " --restrict-key ");
+				appendShellString(pgdumpopts, optarg);
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -501,6 +510,16 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --dump-role-checks");
 
 	/*
+	 * If you don't provide a restrict key, one will be appointed for you.
+	 */
+	if (!restrict_key)
+		restrict_key = generate_restrict_key();
+	if (!restrict_key)
+		pg_fatal("could not generate restrict key");
+	if (!valid_restrict_key(restrict_key))
+		pg_fatal("invalid restrict key");
+
+	/*
 	 * If there was a database specified on the command line, use that,
 	 * otherwise try to connect to database "postgres", and failing that
 	 * "template1".
@@ -583,9 +602,26 @@ main(int argc, char *argv[])
 	if (quote_all_identifiers)
 		executeCommand(conn, "SET quote_all_identifiers = true");
 
+	/*
+	 * YB: ysql_dumpall writes rolvaliduntil as text. ISO makes that
+	 * timestamp portable, so restore stores the same calendar date.
+	 * ysql_dump does this in setup_connection().
+	 */
+	executeCommand(conn, "SET DATESTYLE = ISO");
+
 	fprintf(OPF, "--\n-- YSQL database cluster dump\n--\n\n");
 	if (verbose)
 		dumpTimestamp("Started on");
+
+	/*
+	 * Enter restricted mode to block any unexpected psql meta-commands.  A
+	 * malicious source might try to inject a variety of things via bogus
+	 * responses to queries.  While we cannot prevent such sources from
+	 * affecting the destination at restore time, we can block psql
+	 * meta-commands so that the client machine that runs psql with the dump
+	 * output remains unaffected.
+	 */
+	fprintf(OPF, "\\restrict %s\n\n", restrict_key);
 
 	/*
 	 * We used to emit \connect postgres here, but that served no purpose
@@ -596,6 +632,15 @@ main(int argc, char *argv[])
 
 	/* Restore will need to write to the target cluster */
 	fprintf(OPF, "SET default_transaction_read_only = off;\n\n");
+
+	/*
+	 * YB: backup restore replays hashed role passwords. yb_binary_restore is
+	 * what lets AlterRole accept a verifier while yb_allow_prehashed_passwords
+	 * is off. Binary upgrade does not use this flag; that backend is already
+	 * in binary-upgrade mode, and setting this would skip authid OID preservation.
+	 */
+	if (include_yb_metadata)
+		fprintf(OPF, "SET yb_binary_restore = true;\n\n");
 
 	/* Replicate encoding and std_strings in output */
 	fprintf(OPF, "SET client_encoding = '%s';\n",
@@ -661,6 +706,12 @@ main(int argc, char *argv[])
 		if (!roles_only && !no_tablespaces)
 			dumpTablespaces(conn);
 	}
+
+	/*
+	 * Exit restricted mode just before dumping the databases.  pg_dump will
+	 * handle entering restricted mode again as appropriate.
+	 */
+	fprintf(OPF, "\\unrestrict %s\n\n", restrict_key);
 
 	if (!globals_only && !roles_only && !tablespaces_only)
 		/* YB: Dump one DB only with '--dump-single-database'. */
@@ -743,6 +794,7 @@ help(void)
 	printf(_("  --no-yb-profiles             do not dump yb profile and role profile data\n"));
 	printf(_("  --on-conflict-do-nothing     add ON CONFLICT DO NOTHING to INSERT commands\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
+	printf(_("  --restrict-key=RESTRICT_KEY  use provided string as psql \\restrict key\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --statistics-only            dump only the statistics, not schema or data\n"));
 	printf(_("  --use-set-session-authorization\n"
@@ -899,12 +951,21 @@ dumpRoles(PGconn *conn)
 		fprintf(OPF, "--\n-- Roles\n--\n\n");
 
 		if (include_yb_metadata)
-			fprintf(OPF,
-					"-- Set variable ignore_existing_roles (if not already set)\n"
-					"\\if :{?ignore_existing_roles}\n"
-					"\\else\n"
-					"\\set ignore_existing_roles false\n"
-					"\\endif\n\n");
+		{
+			PQExpBuffer pre = createPQExpBuffer();
+
+			appendPQExpBufferStr(pre,
+								 "-- Set variable ignore_existing_roles (if not already set)\n");
+			ybAppendUnrestrict(pre, restrict_key);
+			appendPQExpBufferStr(pre,
+								 "\\if :{?ignore_existing_roles}\n"
+								 "\\else\n"
+								 "\\set ignore_existing_roles false\n"
+								 "\\endif\n");
+			ybAppendRestrict(pre, restrict_key);
+			fprintf(OPF, "%s\n", pre->data);
+			destroyPQExpBuffer(pre);
+		}
 	}
 
 	for (i = 0; i < PQntuples(res); i++)
@@ -990,6 +1051,7 @@ dumpRoles(PGconn *conn)
 			{
 				yb_need_endif = true;
 				yb_indent = "    ";
+				ybAppendUnrestrict(buf, restrict_key);
 				appendPQExpBuffer(buf,
 								  "\\set role_exists false\n"
 								  "\\if :ignore_existing_roles\n"
@@ -1000,8 +1062,10 @@ dumpRoles(PGconn *conn)
 								  ") AS role_exists \\gset\n"
 								  "\\endif\n"
 								  "\\if :role_exists\n"
-								  "%s\\echo 'Role already exists:' %s\n"
-								  "\\else\n", yb_indent, yb_frolename);
+								  "%s\\echo 'Role already exists:' ", yb_indent);
+				ybAppendPsqlMetaLiteral(buf, rolename);
+				appendPQExpBufferStr(buf, "\n\\else\n");
+				ybAppendRestrict(buf, restrict_key);
 			}
 
 			appendPQExpBuffer(buf, "%sCREATE ROLE %s;\n", yb_indent, yb_frolename);
@@ -1074,7 +1138,11 @@ dumpRoles(PGconn *conn)
 							 buf, yb_indent);
 
 		if (yb_need_endif)
+		{
+			ybAppendUnrestrict(buf, restrict_key);
 			appendPQExpBufferStr(buf, "\\endif\n");
+			ybAppendRestrict(buf, restrict_key);
+		}
 
 		if (include_yb_metadata)
 			appendPQExpBufferStr(buf, "\n");
@@ -1166,7 +1234,7 @@ dumpRoleMembership(PGconn *conn)
 								yb_grantor, /* role2; note: yb_grantor can be
 											 * NULL */
 								NULL,	/* role3 */
-								yb_sql);
+								yb_sql, restrict_key);
 			destroyPQExpBuffer(yb_source_sql);
 		}
 
@@ -1223,7 +1291,8 @@ dumpRoleGUCPrivs(PGconn *conn)
 
 		if (!buildACLCommands(conn, fparname, NULL, NULL, "PARAMETER",
 							  paracl, acldefault,
-							  parowner, "", server_version, yb_dump_role_checks, buf))
+							  parowner, "", server_version, yb_dump_role_checks,
+							  restrict_key, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for parameter \"%s\"",
 						 paracl, parname);
@@ -1306,12 +1375,21 @@ dumpTablespaces(PGconn *conn)
 		fprintf(OPF, "--\n-- Tablespaces\n--\n\n");
 
 		if (include_yb_metadata)
-			fprintf(OPF,
-					"-- Set variable ignore_existing_tablespaces (if not already set)\n"
-					"\\if :{?ignore_existing_tablespaces}\n"
-					"\\else\n"
-					"\\set ignore_existing_tablespaces false\n"
-					"\\endif\n\n");
+		{
+			PQExpBuffer pre = createPQExpBuffer();
+
+			appendPQExpBufferStr(pre,
+								 "-- Set variable ignore_existing_tablespaces (if not already set)\n");
+			ybAppendUnrestrict(pre, restrict_key);
+			appendPQExpBufferStr(pre,
+								 "\\if :{?ignore_existing_tablespaces}\n"
+								 "\\else\n"
+								 "\\set ignore_existing_tablespaces false\n"
+								 "\\endif\n");
+			ybAppendRestrict(pre, restrict_key);
+			fprintf(OPF, "%s\n", pre->data);
+			destroyPQExpBuffer(pre);
+		}
 	}
 
 	for (i = 0; i < PQntuples(res); i++)
@@ -1337,15 +1415,24 @@ dumpTablespaces(PGconn *conn)
 		}
 
 		if (include_yb_metadata)
-			appendPQExpBuffer(buf,
-							  "\\set tablespace_exists false\n"
-							  "\\if :ignore_existing_tablespaces\n"
-							  "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = '%s')"
-							  " AS tablespace_exists \\gset\n"
-							  "\\endif\n"
-							  "\\if :tablespace_exists\n"
-							  "    \\echo 'Tablespace %s already exists.'\n"
-							  "\\else\n    ", fspcname, fspcname);
+		{
+			ybAppendUnrestrict(buf, restrict_key);
+			appendPQExpBufferStr(buf,
+								 "\\set tablespace_exists false\n"
+								 "\\if :ignore_existing_tablespaces\n"
+								 "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = ");
+			appendStringLiteralConn(buf, spcname, conn);
+			appendPQExpBufferStr(buf,
+								 ") AS tablespace_exists \\gset\n"
+								 "\\endif\n"
+								 "\\if :tablespace_exists\n"
+								 "    \\echo 'Tablespace' ");
+			ybAppendPsqlMetaLiteral(buf, spcname);
+			appendPQExpBufferStr(buf, " 'already exists.'\n"
+								 "\\else\n");
+			ybAppendRestrict(buf, restrict_key);
+			appendPQExpBufferStr(buf, "    ");
+		}
 
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
@@ -1362,14 +1449,19 @@ dumpTablespaces(PGconn *conn)
 		appendPQExpBufferStr(buf, ";\n");
 
 		if (include_yb_metadata)
+		{
+			ybAppendUnrestrict(buf, restrict_key);
 			appendPQExpBufferStr(buf, "\\endif\n");
+			ybAppendRestrict(buf, restrict_key);
+		}
 
 		/* tablespaces can't have initprivs */
 
 		if (!skip_acls &&
 			!buildACLCommands(conn, fspcname, NULL, NULL, "TABLESPACE",
 							  spcacl, acldefault,
-							  spcowner, "", server_version, yb_dump_role_checks, buf))
+							  spcowner, "", server_version, yb_dump_role_checks,
+							  restrict_key, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for tablespace \"%s\"",
 						 spcacl, spcname);
@@ -1448,6 +1540,13 @@ dropDBs(PGconn *conn)
 		char	   *dbname = PQgetvalue(res, i, 0);
 
 		/*
+		 * YB: Skip yb_system, the internal LISTEN/NOTIFY database.  The restore
+		 * target manages its own copy.  This must agree with dumpDatabases().
+		 */
+		if (strcmp(dbname, "yb_system") == 0)
+			continue;
+
+		/*
 		 * Skip "postgres" and "template1"; dumpDatabases() will deal with
 		 * them specially.  Also, be sure to skip "template0", even if for
 		 * some reason it's not marked !datallowconn.
@@ -1487,14 +1586,20 @@ dumpUserConfig(PGconn *conn, const char *username)
 	res = executeQuery(conn, buf->data);
 
 	if (PQntuples(res) > 0)
-		fprintf(OPF, "\n--\n-- User Config \"%s\"\n--\n\n", username);
+	{
+		char	   *sanitized;
+
+		sanitized = sanitize_line(username, true);
+		fprintf(OPF, "\n--\n-- User Config \"%s\"\n--\n\n", sanitized);
+		free(sanitized);
+	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(buf);
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "ROLE", username, NULL, NULL,
-							   yb_dump_role_checks, buf);
+							   yb_dump_role_checks, restrict_key, buf);
 		fprintf(OPF, "%s", buf->data);
 	}
 
@@ -1589,6 +1694,7 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		char	   *dbname = PQgetvalue(res, i, 0);
+		char	   *sanitized;
 		const char *create_opts;
 		int			ret;
 
@@ -1597,6 +1703,10 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 
 		/* Skip template0, even if it's not marked !datallowconn. */
 		if (strcmp(dbname, "template0") == 0)
+			continue;
+
+		/* YB: Skip yb_system.  This must agree with dropDBs(). */
+		if (strcmp(dbname, "yb_system") == 0)
 			continue;
 
 		/* Skip any explicitly excluded database */
@@ -1608,7 +1718,9 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 
 		pg_log_info("dumping database \"%s\"", dbname);
 
-		fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
+		sanitized = sanitize_line(dbname, true);
+		fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", sanitized);
+		free(sanitized);
 
 		/*
 		 * We assume that "template1" and "postgres" already exist in the
@@ -2200,7 +2312,7 @@ dumpYbRoleProfiles(PGconn *conn)
 								role_name,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
-								stmt);
+								stmt, restrict_key);
 			destroyPQExpBuffer(yb_source_sql);
 		}
 

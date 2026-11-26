@@ -28,6 +28,7 @@ public interface TaskMapper {
 
   @Mapping(target = "uuid", source = "id")
   @Mapping(target = "targetUuid", source = "targetUUID")
+  @Mapping(target = "originalTaskUuid", source = "originalTaskUUID")
   @Mapping(target = "details", ignore = true)
   TaskInfo toTaskInfo(CustomerTaskFormData source);
 

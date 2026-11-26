@@ -23,6 +23,7 @@ import api.v2.models.ClusterStorageBase;
 import api.v2.models.ClusterStorageSpec;
 import api.v2.models.ClusterStorageType;
 import api.v2.models.ExposingServiceState;
+import api.v2.models.ManagedLoadBalancerSpec;
 import api.v2.models.NodeProxyConfig;
 import api.v2.models.PerProcessNodeSpec;
 import api.v2.models.PerProviderResizeNodesSpec;
@@ -43,12 +44,14 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -197,6 +200,8 @@ public interface UserIntentMapper {
     }
     ClusterNetworkingSpec clusterNetworkingSpec = new ClusterNetworkingSpec();
     clusterNetworkingSpec.setEnableLb(userIntent.enableLB);
+    clusterNetworkingSpec.setManagedLoadBalancer(
+        toV2ManagedLoadBalancerSpec(userIntent.getManagedLoadBalancer()));
     clusterNetworkingSpec.setEnableExposingService(
         toV2ExposingServiceState(userIntent.enableExposingService));
     clusterNetworkingSpec.setProxyConfig(toV2ProxyConfig(userIntent.getProxyConfig()));
@@ -217,6 +222,8 @@ public interface UserIntentMapper {
   }
 
   NodeProxyConfig toV2ProxyConfig(ProxyConfig v1ProxyConfig);
+
+  ManagedLoadBalancerSpec toV2ManagedLoadBalancerSpec(ManagedLoadBalancerConfig v1Config);
 
   ExposingServiceState toV2ExposingServiceState(
       UniverseDefinitionTaskParams.ExposingServiceState v1ExposingServiceState);
@@ -267,7 +274,10 @@ public interface UserIntentMapper {
   @Mapping(target = "imageBundleUuid", source = "imageBundleUUID")
   @Mapping(target = "helmOverrides", source = "universeOverrides")
   @Mapping(target = "azHelmOverrides", source = "azOverrides")
-  @Mapping(target = "provider", expression = "java(UUID.fromString(userIntent.provider))")
+  @Mapping(
+      target = "provider",
+      expression =
+          "java(userIntent.provider == null ? null : UUID.fromString(userIntent.provider))")
   ClusterProviderSpec userIntentToClusterProviderSpec(UserIntent userIntent);
 
   // v2 to v1 mappings begin here
@@ -397,7 +407,9 @@ public interface UserIntentMapper {
       fillUserIntentFromClusterResizeNodeSpec(source.getNodeSpec(), userIntent);
     }
     // node_spec / provider_nodes_specs may be omitted for gflags-only resize requests
-    userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    if (source.getGflags() != null) {
+      userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    }
     return userIntent;
   }
 
@@ -648,13 +660,15 @@ public interface UserIntentMapper {
       }
       perProcess.put(ServerType.TSERVER, tserverOverrides);
     }
+    // When az_node_spec is present, fully replace existing AZ overrides (same semantics as
+    // az_gflags). Omitting the field leaves existing overrides unchanged; an empty map clears them.
     if (clusterNodeSpec.getAzNodeSpec() != null) {
+      UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
+      Map<UUID, AZOverrides> azOverridesMap = new HashMap<>();
       clusterNodeSpec
           .getAzNodeSpec()
           .forEach(
               (azUuid, azNode) -> {
-                UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
-                Map<UUID, AZOverrides> azOverridesMap = getOrCreateAzOverrides(overrides);
                 AZOverrides azOverrides = new AZOverrides();
                 azOverrides.setInstanceType(azNode.getInstanceType());
                 azOverrides.setDeviceInfo(storageSpecToDeviceInfo(azNode.getStorageSpec()));
@@ -675,6 +689,7 @@ public interface UserIntentMapper {
                 }
                 azOverridesMap.put(UUID.fromString(azUuid), azOverrides);
               });
+      overrides.setAzOverrides(azOverridesMap);
     }
     return userIntent;
   }
@@ -771,11 +786,7 @@ public interface UserIntentMapper {
       if (clusterResizeNodeSpec.getTserver().getStorageSpec() != null) {
         DeviceInfo incoming =
             resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getTserver().getStorageSpec());
-        if (tserverOverrides.getDeviceInfo() == null) {
-          tserverOverrides.setDeviceInfo(incoming);
-        } else {
-          tserverOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
-        }
+        tserverOverrides.setDeviceInfo(incoming);
         hasChanges = true;
       }
       if (hasChanges) {
@@ -786,6 +797,15 @@ public interface UserIntentMapper {
         }
         PerProcessDetails existingTserverOverrides =
             perProcess.getOrDefault(ServerType.TSERVER, new PerProcessDetails());
+        // mergeWith() replaces deviceInfo wholesale, and the request only carries
+        // volumeSize/diskIops/throughput - merge field-wise first so the existing override keeps
+        // what this request does not mention.
+        if (tserverOverrides.getDeviceInfo() != null
+            && existingTserverOverrides.getDeviceInfo() != null) {
+          DeviceInfo merged = existingTserverOverrides.getDeviceInfo().clone();
+          merged.mergeDeviceInfo(tserverOverrides.getDeviceInfo());
+          tserverOverrides.setDeviceInfo(merged);
+        }
         existingTserverOverrides.mergeWith(tserverOverrides);
         perProcess.put(ServerType.TSERVER, existingTserverOverrides);
       }
@@ -890,6 +910,8 @@ public interface UserIntentMapper {
 
   ProxyConfig toV1ProxyConfig(NodeProxyConfig nodeProxyConfig);
 
+  ManagedLoadBalancerConfig toV1ManagedLoadBalancerConfig(ManagedLoadBalancerSpec v2Spec);
+
   UniverseDefinitionTaskParams.ExposingServiceState toV1ExposingServiceState(
       ExposingServiceState v2ExposingServiceState);
 
@@ -905,7 +927,11 @@ public interface UserIntentMapper {
     if (clusterNetworkingSpec == null) {
       return userIntent;
     }
-    userIntent.enableLB = clusterNetworkingSpec.getEnableLb();
+    if (clusterNetworkingSpec.getEnableLb() != null) {
+      userIntent.enableLB = clusterNetworkingSpec.getEnableLb();
+    }
+    userIntent.setManagedLoadBalancer(
+        toV1ManagedLoadBalancerConfig(clusterNetworkingSpec.getManagedLoadBalancer()));
     userIntent.setProxyConfig(toV1ProxyConfig(clusterNetworkingSpec.getProxyConfig()));
     userIntent.enableExposingService =
         toV1ExposingServiceState(clusterNetworkingSpec.getEnableExposingService());
@@ -921,18 +947,13 @@ public interface UserIntentMapper {
       userIntent.enableExposingService =
           toV1ExposingServiceState(clusterNetworkingEditSpec.getEnableExposingService());
     }
-    return userIntent;
-  }
-
-  // Used by ClusterMapper.deepCopyClusterEditSpecWithoutPlacementSpec when inheriting
-  // primary ClusterSpec networking into ClusterEditSpec.
-  default ClusterNetworkingEditSpec toClusterNetworkingEditSpec(ClusterNetworkingSpec source) {
-    if (source == null) {
-      return null;
+    if (clusterNetworkingEditSpec.getManagedLoadBalancer() != null) {
+      userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              userIntent.getManagedLoadBalancer(),
+              toV1ManagedLoadBalancerConfig(clusterNetworkingEditSpec.getManagedLoadBalancer())));
     }
-    ClusterNetworkingEditSpec editSpec = new ClusterNetworkingEditSpec();
-    editSpec.setEnableExposingService(source.getEnableExposingService());
-    return editSpec;
+    return userIntent;
   }
 
   default UserIntent fillUserIntentFromUpdateProxyConfigSpec(
@@ -1009,17 +1030,30 @@ public interface UserIntentMapper {
   }
 
   default SpecificGFlags v1SpecificGFlagsFromClusterGFlags(ClusterGFlags v2ClusterGFlags) {
+    return toSpecificGFlags(v2ClusterGFlags, false);
+  }
+
+  /**
+   * omittedAsEmpty maps an omitted master or tserver map to an empty one, which create and
+   * add-cluster need because SpecificGFlags.construct and clone() throw on a null map. Resize must
+   * leave it off: there an empty map would replace the stored gflags.
+   */
+  private static SpecificGFlags toSpecificGFlags(
+      ClusterGFlags v2ClusterGFlags, boolean omittedAsEmpty) {
     if (v2ClusterGFlags == null) {
       return new SpecificGFlags();
     }
     SpecificGFlags specificGFlags =
-        SpecificGFlags.construct(v2ClusterGFlags.getMaster(), v2ClusterGFlags.getTserver());
+        SpecificGFlags.construct(
+            processGFlags(v2ClusterGFlags.getMaster(), omittedAsEmpty),
+            processGFlags(v2ClusterGFlags.getTserver(), omittedAsEmpty));
     if (v2ClusterGFlags.getAzGflags() != null) {
       Map<UUID, PerProcessFlags> perAz = new HashMap<>();
       for (Entry<String, AvailabilityZoneGFlags> entry : v2ClusterGFlags.getAzGflags().entrySet()) {
+        AvailabilityZoneGFlags azGFlags = entry.getValue();
         PerProcessFlags perProc = new PerProcessFlags();
-        perProc.value.put(ServerType.MASTER, entry.getValue().getMaster());
-        perProc.value.put(ServerType.TSERVER, entry.getValue().getTserver());
+        perProc.value.put(ServerType.MASTER, processGFlags(azGFlags.getMaster(), omittedAsEmpty));
+        perProc.value.put(ServerType.TSERVER, processGFlags(azGFlags.getTserver(), omittedAsEmpty));
         perAz.put(UUID.fromString(entry.getKey()), perProc);
       }
       specificGFlags.setPerAZ(perAz);
@@ -1032,8 +1066,13 @@ public interface UserIntentMapper {
     return specificGFlags;
   }
 
+  private static Map<String, String> processGFlags(
+      Map<String, String> gflags, boolean omittedAsEmpty) {
+    return gflags == null && omittedAsEmpty ? new HashMap<>() : gflags;
+  }
+
   default SpecificGFlags clusterSpecToSpecificGFlags(ClusterSpec clusterSpec) {
-    SpecificGFlags specificGFlags = v1SpecificGFlagsFromClusterGFlags(clusterSpec.getGflags());
+    SpecificGFlags specificGFlags = toSpecificGFlags(clusterSpec.getGflags(), true);
     if (clusterSpec.getClusterType() != null
         && !clusterSpec.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
       // do not set inherit from primary as v2 manually defaults to true behaviour
@@ -1043,7 +1082,7 @@ public interface UserIntentMapper {
   }
 
   default SpecificGFlags clusterAddSpecToSpecificGFlags(ClusterAddSpec clusterAddSpec) {
-    SpecificGFlags specificGFlags = v1SpecificGFlagsFromClusterGFlags(clusterAddSpec.getGflags());
+    SpecificGFlags specificGFlags = toSpecificGFlags(clusterAddSpec.getGflags(), true);
     // do not set inherit from primary as v2 manually defaults to true behaviour
     specificGFlags.setInheritFromPrimary(false);
     return specificGFlags;

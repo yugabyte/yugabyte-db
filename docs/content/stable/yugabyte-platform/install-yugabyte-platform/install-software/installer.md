@@ -471,10 +471,12 @@ OAuth related settings are described in the following table. With the exception 
 
 #### Proxy
 
-When configuring proxy values for YBA, all values must be set correctly.
+Set `enable` to true to use a proxy. The remaining fields are unused while `enable` is false.
+
+YBA applies proxy settings in two places that yba-ctl does not keep in sync: environment variables (`http_proxy`, `https_proxy`, `no_proxy`) and Java flags (`java_*_proxy_host`, `java_*_proxy_port`, `java_non_proxy`). Fill both with the same host, port, and exclusions. Use commas in `no_proxy` and pipes (`|`) in `java_non_proxy`.
 
 {{< note title="Using a proxy with cloud providers" >}}
-On AWS, GCP, or Azure, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the VM instance metadata.
+On AWS, GCP, Azure, or OCI, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the VM instance metadata.
 {{< /note >}}
 
 If you are setting these values on an existing system, run `yba-ctl reconfigure` to set the new values for YBA.
@@ -537,5 +539,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 | `port` | Port PostgreSQL is running on. | |
 | `username` and `password` | Used to authenticate with PostgreSQL. | |
 | `pg_dump_path`<br/>`pg_restore_path` | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install. | |
+
+The PostgreSQL instance must already have a database named `yugaware`. If Performance Advisor is enabled, YBA Installer also creates its database, `ts`, on the same instance, which requires the user to have the `CREATEDB` privilege; otherwise, create the `ts` database in advance.
 
 {{<icon/partial>}} You can't change this setting after installation.

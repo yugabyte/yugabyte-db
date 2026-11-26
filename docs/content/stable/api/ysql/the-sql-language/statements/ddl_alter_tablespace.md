@@ -31,7 +31,7 @@ Specify the name of the tablespace to alter.
 
 ### tablespace_option
 
-Can be one of `replica_placement` or `read_replica_placement`.
+Can be one of `replica_placement` or `read_replica_placement`. The JSON for each option is defined in [CREATE TABLESPACE](../ddl_create_tablespace/).
 
 - Use `replica_placement` to specify the number of live replicas and how they are distributed across clouds, regions, and zones.
 - Use `read_replica_placement` to specify read replica placement. `read_replica_placement` requires `replica_placement` to be set.

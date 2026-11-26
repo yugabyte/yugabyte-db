@@ -6,7 +6,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -16,17 +19,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
+import com.oracle.bmc.core.model.Image;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.oci.OCICloudImpl;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -39,17 +48,29 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ImageBundleControllerTest extends FakeDBApplication {
 
+  private static final String OCI_REGION = "us-ashburn-1";
+  private static final String MARKETPLACE_IMAGE = "ocid1.image.oc1.iad.marketplace";
+  private static final String PLATFORM_IMAGE = "ocid1.image.oc1.iad.platform";
+
   private Customer customer;
   private Provider provider;
   private Users user;
   private final ObjectMapper mapper = Json.mapper();
+  private final OCICloudImpl mockOCICloudImpl = mock(OCICloudImpl.class);
   SettableRuntimeConfigFactory runtimeConfigFactory;
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    return super.configureApplication(builder)
+        .overrides(bind(OCICloudImpl.class).toInstance(mockOCICloudImpl));
+  }
 
   @Before
   public void setUp() {
@@ -369,6 +390,91 @@ public class ImageBundleControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     ib2.refresh();
     assertEquals(true, ib2.getUseAsDefault());
+  }
+
+  private Provider ociProviderWithRegion() {
+    Provider ociProvider = ModelFactory.ociProvider(customer);
+    Region.create(ociProvider, OCI_REGION, OCI_REGION, null);
+    return ociProvider;
+  }
+
+  private ImageBundle createOciBundle(Provider ociProvider, String ybImage, Boolean marketplace) {
+    BundleInfo info = new BundleInfo();
+    info.setYbImage(ybImage);
+    info.setIsImageMarketplaceBased(marketplace);
+    Map<String, BundleInfo> regions = new HashMap<>();
+    regions.put(OCI_REGION, info);
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setArch(Architecture.x86_64);
+    details.setRegions(regions);
+    return ImageBundle.create(ociProvider, "oci-bundle", details, true);
+  }
+
+  private void stubOciImage(String imageId, String compartmentId) {
+    when(mockOCICloudImpl.getImageOrBadRequest(any(Provider.class), eq(OCI_REGION), eq(imageId)))
+        .thenReturn(Image.builder().id(imageId).compartmentId(compartmentId).build());
+  }
+
+  private Result editOciBundle(
+      Provider ociProvider, ImageBundle bundle, String ybImage, Boolean sentFlag) {
+    ObjectNode body = (ObjectNode) Json.toJson(ImageBundle.get(bundle.getUuid()));
+    ObjectNode region = (ObjectNode) body.get("details").get("regions").get(OCI_REGION);
+    region.put("ybImage", ybImage);
+    region.put("isImageMarketplaceBased", sentFlag);
+    return editImageBundle(customer.getUuid(), ociProvider.getUuid(), bundle.getUuid(), body);
+  }
+
+  private BundleInfo storedOciRegion(ImageBundle bundle) {
+    return ImageBundle.get(bundle.getUuid()).getDetails().getRegions().get(OCI_REGION);
+  }
+
+  private void useInUniverse(ImageBundle bundle) {
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.allowUsedBundleEdit.getKey(), "true");
+    Universe universe =
+        ModelFactory.createUniverse("oci-universe", customer.getId(), CloudType.oci);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.imageBundleUUID =
+                bundle.getUuid());
+  }
+
+  @Test
+  public void testResaveInUseOciBundleRecordsFlag() {
+    Provider ociProvider = ociProviderWithRegion();
+    ImageBundle bundle = createOciBundle(ociProvider, PLATFORM_IMAGE, null);
+    useInUniverse(bundle);
+    stubOciImage(PLATFORM_IMAGE, null);
+
+    Result result = editOciBundle(ociProvider, bundle, PLATFORM_IMAGE, null);
+    assertEquals(OK, result.status());
+    assertEquals(false, storedOciRegion(bundle).getIsImageMarketplaceBased());
+  }
+
+  @Test
+  public void testEditInUseOciBundleToMarketplaceAllowed() {
+    Provider ociProvider = ociProviderWithRegion();
+    ImageBundle bundle = createOciBundle(ociProvider, PLATFORM_IMAGE, false);
+    useInUniverse(bundle);
+    stubOciImage(MARKETPLACE_IMAGE, "publisherCompartment");
+
+    Result result = editOciBundle(ociProvider, bundle, MARKETPLACE_IMAGE, false);
+    assertEquals(OK, result.status());
+    assertEquals(true, storedOciRegion(bundle).getIsImageMarketplaceBased());
+  }
+
+  @Test
+  public void testEditOciBundleTakesMarketplaceFlagFromOci() {
+    Provider ociProvider = ociProviderWithRegion();
+    ImageBundle bundle = createOciBundle(ociProvider, MARKETPLACE_IMAGE, true);
+    stubOciImage(PLATFORM_IMAGE, null);
+
+    Result result = editOciBundle(ociProvider, bundle, PLATFORM_IMAGE, true);
+    assertEquals(OK, result.status());
+    assertEquals(PLATFORM_IMAGE, storedOciRegion(bundle).getYbImage());
+    assertEquals(false, storedOciRegion(bundle).getIsImageMarketplaceBased());
   }
 
   @Test

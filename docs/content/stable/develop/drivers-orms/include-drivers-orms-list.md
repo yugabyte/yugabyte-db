@@ -15,9 +15,9 @@ block_indexing = true
 | YugabyteDB JDBC Smart Driver<br/>[Recommended] | [{{< version-driver-java >}}](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/{{< version-driver-java >}}) | Full | [CRUD](/stable/develop/drivers-orms/java/yugabyte-jdbc/) |
 | YugabyteDB R2DBC Smart Driver | [1.1.0-yb-2](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/stable/develop/drivers-orms/java/yb-r2dbc/) |
 | PostgreSQL JDBC Driver  | [42.7.3](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.7.3) | Full | [CRUD](/stable/develop/drivers-orms/java/postgres-jdbc/) |
-| Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
+| Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-pg-client/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
 | YugabyteDB Java Driver for YCQL | [3.10.3-yb-3](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-3) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql/) |
-| YugabyteDB Java Driver for YCQL | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
+| YugabyteDB Java Driver for YCQL | [4.19.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.19.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
 | **ORMs** | | | |
 | Ebean                   | 13.23.0 | Full | [CRUD](/stable/develop/drivers-orms/java/ebean/) |
 | Hibernate               | 5.4.19  | Full | [CRUD](/stable/develop/drivers-orms/java/hibernate/) |
@@ -37,7 +37,7 @@ block_indexing = true
 | YugabyteDB PGX Smart Driver<br/>[Recommended] | [v5](https://pkg.go.dev/github.com/yugabyte/pgx/v5) | Full | [CRUD](/stable/develop/drivers-orms/go/yb-pgx/) |
 | PGX Driver | [v5](https://pkg.go.dev/github.com/jackc/pgx/v5) | Full | [CRUD](/stable/develop/drivers-orms/go/pgx/) |
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/stable/develop/drivers-orms/go/pq/) |
-| YugabyteDB Go Driver for YCQL | [v1.6.0-yb-1](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
+| YugabyteDB Go Driver for YCQL | [v2.1.2-yb-1](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
 | **ORMs** | | | |
 | GORM       | [1.9.16](https://github.com/go-gorm/gorm) | Full | [CRUD](/stable/develop/drivers-orms/go/gorm/) |
 | PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/stable/develop/drivers-orms/go/pg/) |
@@ -50,7 +50,7 @@ block_indexing = true
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
 | YugabyteDB Psycopg 2 Smart Driver<br/>[Recommended] | [2.9.3.5](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg2/) |
-| YugabyteDB Psycopg 3 Smart Driver | [3.3.4.1](https://pypi.org/project/psycopg-yugabytedb/) | Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg3/) |
+| YugabyteDB Psycopg 3 Smart Driver | [3.3.4.2](https://pypi.org/project/psycopg-yugabytedb/) | Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg3/) |
 | PostgreSQL Psycopg 2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg2/) |
 | PostgreSQL Psycopg 3 Driver | [3.3.4](https://github.com/psycopg/psycopg) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg3/) |
 | aiopg      | 1.4          | Full | [Hello World](/stable/develop/drivers-orms/python/aiopg/) |
@@ -156,7 +156,7 @@ block_indexing = true
 
 | Driver     | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
-| YugabyteDB Java Driver for YCQL | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | Full | [CRUD](/stable/develop/drivers-orms/scala/ycql/) |
+| YugabyteDB Java Driver for YCQL | [3.10.3-yb-3](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-3) | Full | [CRUD](/stable/develop/drivers-orms/scala/ycql/) |
 
   {{% /tab %}}
 

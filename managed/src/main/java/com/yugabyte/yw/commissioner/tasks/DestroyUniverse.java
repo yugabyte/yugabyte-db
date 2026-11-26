@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -62,6 +64,7 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
     this.supportBundleUtil = supportBundleUtil;
   }
 
+  @JsonDeserialize(converter = Params.Converter.class)
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID customerUUID;
     public Boolean isForceDelete;
@@ -72,6 +75,8 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
     @Getter
     @Setter
     KubernetesResourceDetails kubernetesResourceDetails;
+
+    public static class Converter extends BaseConverter<Params> {}
   }
 
   public Params params() {
@@ -147,6 +152,14 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
       createDestroyEncryptionAtRestTask()
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
+      // Release capacity reservations while VMs still hold them. For GCP, deletion only proceeds
+      // when the reservation is fully utilized (inUseCount == count); destroying nodes first would
+      // drop utilization and skip cleanup of shared reservations that are safe to release.
+      if (universe.getUniverseDetails().getCapacityReservationState() != null
+          && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
+        createDeleteCapacityReservationTask();
+      }
+
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -187,10 +200,9 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
                 true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
-      if (universe.getUniverseDetails().getCapacityReservationState() != null
-          && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
-        createDeleteCapacityReservationTask();
-      }
+
+      // After node teardown. A force delete removes the universe even if a delete fails.
+      createDeleteManagedLoadBalancerTasks(lb -> true, params().isForceDelete /* ignoreErrors */);
 
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask().setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
@@ -383,6 +395,12 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
     if (!supportBundles.isEmpty()) {
       for (SupportBundle supportBundle : supportBundles) {
         supportBundleUtil.deleteSupportBundle(supportBundle);
+      }
+    }
+    List<SupportBundleV2> supportBundlesV2 = SupportBundleV2.getAll(universeUUID);
+    if (!supportBundlesV2.isEmpty()) {
+      for (SupportBundleV2 supportBundle : supportBundlesV2) {
+        supportBundleUtil.deleteSupportBundleV2(supportBundle);
       }
     }
   }

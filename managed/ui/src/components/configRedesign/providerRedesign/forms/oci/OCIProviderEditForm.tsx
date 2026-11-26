@@ -796,6 +796,7 @@ const constructDefaultFormValues = (
     code: region.code,
     name: region.name,
     vnet: region.details?.cloudInfo?.oci?.vnet ?? '',
+    instanceTemplate: region.details?.cloudInfo?.oci?.instanceTemplate ?? '',
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
@@ -899,6 +900,9 @@ const constructProviderPayload = async (
                 ...existingRegion?.details.cloudInfo.oci,
                 ...(regionFormValues.vnet && {
                   vnet: regionFormValues.vnet
+                }),
+                ...(regionFormValues.instanceTemplate && {
+                  instanceTemplate: regionFormValues.instanceTemplate
                 })
               }
             }

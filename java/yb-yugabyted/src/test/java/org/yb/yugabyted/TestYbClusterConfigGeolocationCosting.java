@@ -41,10 +41,14 @@ import org.yb.yugabyted.BaseYbdClientTest;
     clusterConfigurations.add(nodeConfigurations);
   }
 
-  static final double LOCAL_ZONE_STARTUP_COST = 21.08;
-  static final double INTER_ZONE_STARTUP_COST = 23.08;
-  static final double INTER_REGION_STARTUP_COST = 41.08;
-  static final double INTER_CLOUD_STARTUP_COST = 41.08;
+  static final double LOCAL_ZONE_STARTUP_COST = 83.28;
+  static final double INTER_ZONE_STARTUP_COST = 86.01;
+  static final double INTER_REGION_STARTUP_COST = 110.53;
+  static final double INTER_CLOUD_STARTUP_COST = 110.53;
+  // A storage filter matching a single row leaves the whole scan in
+  // startup_cost: the one result page cannot come back until DocDB has
+  // scanned the table, so locality is a rounding error on top of it.
+  static final double INTER_ZONE_FILTERED_STARTUP_COST = 767.74;
   static final double STARTUP_COST_EPSILON = 0.2;
 
   static void checkIndexScanPlan(Statement stmt, String query, String nodeType,
@@ -184,7 +188,8 @@ import org.yb.yugabyted.BaseYbdClientTest;
     try (Connection conn = connectToTserverNode(1)) {
       try (Statement stmt = conn.createStatement()) {
         checkStartupCost(stmt, "SELECT * FROM test", INTER_ZONE_STARTUP_COST);
-        checkStartupCost(stmt, "SELECT v1 FROM test WHERE v1 = 1234", INTER_ZONE_STARTUP_COST);
+        checkStartupCost(stmt, "SELECT v1 FROM test WHERE v1 = 1234",
+                         INTER_ZONE_FILTERED_STARTUP_COST);
         checkStartupCost(stmt, "SELECT * FROM t_c0_r0_z0", INTER_ZONE_STARTUP_COST);
         checkStartupCost(stmt, "SELECT * FROM t_multi_zone", INTER_ZONE_STARTUP_COST);
       }

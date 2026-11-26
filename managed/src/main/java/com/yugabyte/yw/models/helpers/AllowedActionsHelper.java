@@ -13,7 +13,6 @@ package com.yugabyte.yw.models.helpers;
 import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -61,12 +60,7 @@ public class AllowedActionsHelper {
       LOG.trace(nodeActionAllowedErr);
       return false;
     }
-    if (universe
-        .getUniverseDetails()
-        .getPrimaryCluster()
-        .userIntent
-        .providerType
-        .equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       if (nodeActionType == NodeActionType.REPLACE) {
         return false;
       }
@@ -130,7 +124,7 @@ public class AllowedActionsHelper {
             .filter(n -> node.dedicatedTo == null || n.dedicatedTo == node.dedicatedTo)
             .filter(additionalFilter)
             .count();
-    LOG.debug(
+    LOG.trace(
         "Found {} nodes equivalent to current node {} (dedicatedTo={}, isMaster={}, isTserver={})",
         numNodesToCheck,
         node.nodeName,

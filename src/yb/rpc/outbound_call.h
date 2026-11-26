@@ -72,12 +72,12 @@
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/dist_trace_fwd.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -309,6 +309,10 @@ class OutboundCall : public RpcCall {
   // Returns true if the state transition was successful.
   WARN_UNUSED_RESULT bool SetSent();
 
+  // True once the whole request has been handed to the socket, even if the call failed later.
+  // A call that times out mid-transfer stays false although the rest of its request is still sent.
+  bool WasSent() const { return was_sent_; }
+
   // Outbound call could be moved to final state only once,
   // so only one of SetFinished/SetTimedOut/SetFailed/SetResponse can be called.
 
@@ -349,6 +353,11 @@ class OutboundCall : public RpcCall {
   void SetConnectionId(const ConnectionId& value, const std::string* hostname) {
     conn_id_ = value;
     hostname_ = hostname;
+    if (otel_span_) {
+      const auto& remote = value.remote();
+      otel_span_->SetAttribute("network.peer.address", remote.address().to_string());
+      otel_span_->SetAttribute("network.peer.port", static_cast<int64_t>(remote.port()));
+    }
   }
 
   void SetThreadPoolFailure(const Status& status) EXCLUDES(mtx_) {
@@ -448,6 +457,8 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
+  void DoSetTimedOut(Status status) EXCLUDES(mtx_);
+
   // See appropriate comments in CallResponse.
   virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
   virtual size_t GetSidecarsCount() const;
@@ -472,6 +483,10 @@ class OutboundCall : public RpcCall {
   // before the call is queued, so no synchronization is needed.
   ConnectionId conn_id_;
 
+  // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
+  // completion.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
+
  private:
   friend class RpcController;
 
@@ -481,7 +496,7 @@ class OutboundCall : public RpcCall {
 
   void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
-  MUST_USE_RESULT bool SetState(State new_state);
+  MUST_USE_RESULT bool SetState(State new_state, const Status& status = Status::OK());
   State state() const;
 
   // return current status
@@ -565,6 +580,7 @@ class OutboundCall : public RpcCall {
   std::atomic<ActiveCallState> active_call_state_{ActiveCallState::kNotAdded};
 
   std::atomic<CoarseTimePoint> sent_time_{CoarseTimePoint::min()};
+  std::atomic<bool> was_sent_{false};
   std::atomic<CoarseTimePoint> trigger_callback_time_{CoarseTimePoint::min()};
   std::atomic<CoarseTimePoint> invoke_callback_time_{CoarseTimePoint::min()};
 
@@ -595,9 +611,9 @@ class OutboundCall : public RpcCall {
 
   std::unique_ptr<MetadataSerializer> metadata_serializer_;
 
-  // OpenTelemetry span for distributed tracing. Created when the call starts if there is an
-  // active trace context, ended when the call completes (success, failure, or timeout).
-  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
+  // The trace context active when this call was constructed -- its PARENT, re-activated around the
+  // completion callback so follow-on RPCs nest as SIBLINGS of this call.
+  dist_trace::TraceParent trace_parent_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.

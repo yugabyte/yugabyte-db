@@ -85,6 +85,8 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
     boolean requireAdditionalSuperUserForCatalogUpgrade =
         softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
             universe, currentVersion, newVersion);
+    boolean upgradeRequireFinalize =
+        softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
     runUpgrade(
         () -> {
           createUpdateUniverseSoftwareUpgradeStateTask(
@@ -93,13 +95,17 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
 
-          // Disable PITR configs at the start of software upgrade
-          createDisablePitrConfigTask();
+          // Only an upgrade that waits for finalize disables PITR; finalize or rollback
+          // re-creates the snapshot schedules.
+          if (upgradeRequireFinalize) {
+            createDisablePitrConfigTask();
+          }
 
           String password = null;
           boolean catalogUpgradeCompleted = false;
 
           if (ysqlMajorVersionUpgrade) {
+            boolean rollbackMasters = false;
             if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
               YsqlMajorCatalogUpgradeState state =
                   softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
@@ -113,28 +119,50 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 log.info(
                     "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
                 createRollbackYsqlMajorVersionCatalogUpgradeTask();
+                // Masters stay on PG15 after catalog rollback; roll them to the previous image
+                // before CREATE USER so DDLs are allowed again.
+                rollbackMasters = true;
               } else if (state.equals(
                   YsqlMajorCatalogUpgradeState
                       .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)) {
                 catalogUpgradeCompleted = true;
+              } else if (requireAdditionalSuperUserForCatalogUpgrade
+                  && state.equals(
+                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+                // Abort after last master (or .pgpass deleted on failure): all masters are PG15
+                // but catalog is still PENDING. Roll masters back so CREATE USER DDLs are allowed.
+                rollbackMasters = true;
               } else {
                 log.info(
                     "YSQL catalog upgrade is in a pending state. Proceeding with all upgrade"
                         + " subtasks.");
               }
+            } else if (requireAdditionalSuperUserForCatalogUpgrade
+                && softwareUpgradeHelper.isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
+                    universe, "15")) {
+              // Partial master upgrade (e.g. abort after first master): PG15 catalog leader blocks
+              // DDLs needed to create yugabyte_upgrade. Match VM recovery by rolling masters back.
+              rollbackMasters = true;
             }
 
-            // Set ysql_yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
-            // upgrade.
-            // This gflag change also reverts the master in case of a retry to enable DDLs for the
-            // upgrade
-            // user, as it performs a helm upgrade with the previous Yugabyte image which can revert
-            // masters
-            // if they are on a different version. Fortunately, this works in our favor as during a
-            // retry we
-            // want to revert masters to the previous version and proceed with the ysql major
-            // upgrade.
             if (!catalogUpgradeCompleted) {
+              if (rollbackMasters) {
+                log.info(
+                    "Rolling back master before upgrade to enable DDLs to create upgrade user.");
+                createUpgradeTask(
+                    getUniverse(),
+                    currentVersion,
+                    true /* upgradeMasters */,
+                    false /* upgradeTservers */,
+                    taskParams().isEnableYbc(),
+                    confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+                    getSoftwareUpgradeContext(
+                        currentVersion, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS));
+              }
+
+              // Set ysql_yb_major_version_upgrade_compatibility to 11 for masters/tservers for
+              // ysql major upgrade (non-restart helm). Master image revert on retry is handled by
+              // the rolling createUpgradeTask above when mixed/failed masters are detected.
               createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
                   universe, currentVersion, YsqlMajorVersionUpgradeState.IN_PROGRESS);
 
@@ -190,6 +218,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
 
+          // A per-AZ image override can leave pods Ready on the old build. Fail before recording
+          // the upgrade or promoting auto flags.
+          createCheckSoftwareVersionTaskForPods(universe, newVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
+
           if (ysqlMajorVersionUpgrade) {
             createUpdateSoftwareUpdatePrevConfigTask(
                 true /* canRollbackCatalogUpgrade */,
@@ -203,9 +236,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
           }
 
+          // Any promotion failure fails the upgrade, except the outcomes PromoteAutoFlags treats as
+          // success (nothing to promote, AutoFlags management disabled).
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),
-              true /* ignoreErrors*/,
+              false /* ignoreErrors*/,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
           if (taskParams().isEnableYbc()) {
@@ -218,28 +253,33 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
+          UniverseDefinitionTaskParams.SoftwareUpgradeState endState;
+          Boolean isSoftwareRollbackAllowed = null;
           if (!taskParams().rollbackSupport) {
             createFinalizeUpgradeTasks(
                 taskParams().upgradeSystemCatalog,
                 ysqlMajorVersionUpgrade,
-                requireAdditionalSuperUserForCatalogUpgrade);
+                requireAdditionalSuperUserForCatalogUpgrade,
+                false /* saveReadyState */,
+                true /* ignorePromoteAutoFlagsErrors */);
+            endState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+            isSoftwareRollbackAllowed = false;
           } else {
-            boolean upgradeRequireFinalize =
-                softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
-            if (upgradeRequireFinalize) {
-              createUpdateUniverseSoftwareUpgradeStateTask(
-                  UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
-                  true /* isSoftwareRollbackAllowed */);
-            } else {
-              createUpdateUniverseSoftwareUpgradeStateTask(
-                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-                  true /* isSoftwareRollbackAllowed */);
-            }
+            endState =
+                upgradeRequireFinalize
+                    ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
+                    : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
           }
-          // Also idempotent can be run again here.
-          // Mark the final software version on the universe (last subtask).
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+          // Mark the final software version on the universe, with the end state in the same save
+          // (PLAT-23182). Also idempotent can be run again here.
+          createUpdateSoftwareVersionTask(
+                  taskParams().ybSoftwareVersion,
+                  false /* isSoftwareUpdateViaVm */,
+                  endState,
+                  isSoftwareRollbackAllowed)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         },
         () -> {
           if (requireAdditionalSuperUserForCatalogUpgrade) {

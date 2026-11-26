@@ -106,6 +106,10 @@ export const DataCenterConfigRedesign = ({
     globalRuntimeConfigs?.data?.configEntries?.find(
       (c: any) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
     )?.value === 'true';
+  const isPaOnlineModeEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_PA_ONLINE_MODE
+    )?.value === 'true';
 
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
     ? ConfigTabKey.INFRA
@@ -291,6 +295,7 @@ export const DataCenterConfigRedesign = ({
               <PerfAdvisorOverview
                 activeTab={params.section}
                 isEmbeddedPAEnabled={isEmbeddedPAEnabled}
+                isPaOnlineModeEnabled={isPaOnlineModeEnabled}
               />
             </Tab>
           )}

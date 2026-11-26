@@ -1,0 +1,13 @@
+title: PerfAdvisorEndpointType
+description: |
+  PerfAdvisorEndpointType
+
+  What kind of destination a Perf Advisor Endpoint points at. The kinds carry the same fields and
+  differ only in which values are valid, so this selects validation rather than the shape of the
+  configuration. PA_ONLINE is reserved for the Yugabyte-hosted service and is rejected until that
+  exists.
+type: string
+enum:
+  - BYOC
+  - PA_ONLINE
+example: BYOC

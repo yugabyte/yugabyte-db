@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { CloudType, InstanceType, InstanceTypeWithGroup, RunTimeConfigEntry } from '../../../utils/dto';
+import { CloudType, InstanceType, InstanceTypeWithGroup, RunTimeConfigEntry, VolumeType } from '../../../utils/dto';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
   'gr6','i3','i3en','i4g','i4i','im4gn',
@@ -54,6 +54,27 @@ export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
     instance.instanceTypeCode?.split?.('.')[0].includes('d'))
   );
 };
+
+export const isEphemeralOciStorageInstance = (instance?: InstanceType | null) => {
+  if (!instance) {
+    return false;
+  }
+  // DenseIO / HPC names are OCI-only. Do not require providerCode — some list
+  // payloads omit it, and the backend already keys off the shape name.
+  if (instance.providerCode && instance.providerCode !== CloudType.oci) {
+    return false;
+  }
+  const volumeType = instance.instanceTypeDetails?.volumeDetailsList?.[0]?.volumeType;
+  if (volumeType === VolumeType.NVME) {
+    return true;
+  }
+  const code = instance.instanceTypeCode ?? '';
+  return /DenseIO|HPC/.test(code);
+};
+
+export const isEphemeralStorageInstance = (instance?: InstanceType | null) =>
+  !!instance &&
+  (isEphemeralAwsStorageInstance(instance) || isEphemeralOciStorageInstance(instance));
 
 export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): InstanceTypeWithGroup[] => {
   if (!data) return [];

@@ -24,3 +24,23 @@ bool HasSkipIntents(const PB& pb) {
     return pb.skip_intents_read();
   }
 }
+
+template<class PB>
+bool ReadAtInTxnLimit(const PB& pb) {
+  return pb.read_at_in_txn_limit();
+}
+
+// Grouped aggregate pushdown is an aggregate request with a column-ref target (the group key).
+// Plain aggregate pushdown has only aggregate targets.
+template<class PB>
+bool IsGroupedAggregateRead(const PB& req) {
+  if (!req.is_aggregate()) {
+    return false;
+  }
+  for (const auto& target : req.targets()) {
+    if (target.has_column_id()) {
+      return true;
+    }
+  }
+  return false;
+}

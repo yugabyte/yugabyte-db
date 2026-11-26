@@ -42,5 +42,6 @@ yba storage-config [flags]
 * [yba storage-config gcs](yba_storage-config_gcs.md)	 - Manage a YugabyteDB Anywhere GCS storage configuration
 * [yba storage-config list](yba_storage-config_list.md)	 - List YugabyteDB Anywhere storage-configurations
 * [yba storage-config nfs](yba_storage-config_nfs.md)	 - Manage a YugabyteDB Anywhere NFS storage configuration
+* [yba storage-config oci](yba_storage-config_oci.md)	 - Manage a YugabyteDB Anywhere OCI storage configuration
 * [yba storage-config s3](yba_storage-config_s3.md)	 - Manage a YugabyteDB Anywhere S3 storage configuration
 

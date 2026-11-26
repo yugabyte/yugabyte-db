@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -68,6 +69,8 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -227,16 +230,16 @@ public class YbcManager {
       Map<String, String> currentYbcFlagsMap =
           new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
 
-      ControllerFlagsSetRequest controllerFlagsSetRequest =
-          prepareFlagsSetRequest(universe, throttleParams, currentYbcFlagsMap);
-      // Stream through clusters to set throttle param values.
-      universe.getUniverseDetails().clusters.stream()
-          .forEach(
-              c -> {
-                List<NodeDetails> nodes = universe.getTserversInCluster(c.uuid);
-                // On node by node basis set the throttle params.
-                setThrottleParamsOnYbcServers(universe, nodes, controllerFlagsSetRequest);
-              });
+      Map<UUID, List<NodeDetails>> byProvider = Util.splitTserversByProviders(universe);
+      byProvider.forEach(
+          (providerUUID, nodes) -> {
+            setThrottleParamsOnServers(
+                universe,
+                Provider.getOrBadRequest(providerUUID),
+                nodes,
+                throttleParams,
+                currentYbcFlagsMap);
+          });
 
       // Update universe details with modified values.
       UniverseUpdater updater =
@@ -259,6 +262,26 @@ public class YbcManager {
     }
   }
 
+  private void setThrottleParamsOnServers(
+      Universe universe,
+      Provider provider,
+      List<NodeDetails> nodes,
+      YbcThrottleParameters throttleParams,
+      Map<String, String> currentYbcFlagsMap) {
+    ControllerFlagsSetRequest controllerFlagsSetRequest =
+        prepareFlagsSetRequest(universe, provider, nodes, throttleParams, currentYbcFlagsMap);
+
+    // Stream through clusters to set throttle param values.
+    universe.getUniverseDetails().clusters.stream()
+        .forEach(
+            c -> {
+              List<NodeDetails> clusterNodes =
+                  nodes.stream().filter(n -> n.isInPlacement(c.uuid)).collect(Collectors.toList());
+              // On node by node basis set the throttle params.
+              setThrottleParamsOnYbcServers(universe, clusterNodes, controllerFlagsSetRequest);
+            });
+  }
+
   /**
    * Prepare ControllerFlagsSetRequest and modify the currentYbcFlagsMap with modified gflags.
    *
@@ -269,6 +292,8 @@ public class YbcManager {
    */
   public ControllerFlagsSetRequest prepareFlagsSetRequest(
       Universe universe,
+      Provider provider,
+      List<NodeDetails> nodes,
       YbcThrottleParameters throttleParams,
       Map<String, String> currentYbcFlagsMap) {
     ControllerFlagsSetRequest.Builder controllerFlagsSetterBuilder =
@@ -280,7 +305,6 @@ public class YbcManager {
     List<String> toRemove = new ArrayList<>();
     Map<String, String> toAddModify = new HashMap<>();
     Map<String, Long> paramsToSet = throttleParams.getThrottleFlagsMap();
-    List<NodeDetails> tsNodes = universe.getTServersInPrimaryCluster();
     if (throttleParams.resetDefaults) {
       toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
     }
@@ -288,7 +312,8 @@ public class YbcManager {
     // values.
     populateControllerThrottleParamsMap(
         universe,
-        tsNodes,
+        provider,
+        nodes,
         toAddModify,
         nonRestartSettableControllerFlagsBuilder,
         paramsToSet,
@@ -304,15 +329,14 @@ public class YbcManager {
 
   public void populateControllerThrottleParamsMap(
       Universe universe,
+      Provider provider,
       List<NodeDetails> tsNodes,
       Map<String, String> toAddModify,
       NonRestartSettableControllerFlags.Builder nonRestartSettableControllerFlagsBuilder,
       Map<String, Long> paramsToSet,
       boolean resetToDefaults) {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    UUID providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     List<String> tsIPs =
         tsNodes.stream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
 
@@ -320,7 +344,7 @@ public class YbcManager {
     NonRestartSettableControllerFlags currentFlags = null;
     // Get already present throttle values on YBC and add to builder
     try {
-      ybcClient = getYbcClient(tsIPs, ybcPort, certFile);
+      ybcClient = getYbcClient(tsIPs, ybcPort, universe);
       currentFlags = getControllerFlags(ybcClient);
     } finally {
       ybcClientService.closeClient(ybcClient);
@@ -333,12 +357,14 @@ public class YbcManager {
       cInstanceTypeCores =
           (int)
               Math.ceil(
-                  InstanceType.getOrBadRequest(providerUUID, tsNodes.get(0).cloudInfo.instance_type)
+                  InstanceType.getOrBadRequest(
+                          provider.getUuid(), tsNodes.get(0).cloudInfo.instance_type)
                       .getNumCores());
     } else {
-      if (primaryCluster.userIntent.tserverK8SNodeResourceSpec != null) {
-        cInstanceTypeCores =
-            (int) Math.ceil(primaryCluster.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      UserIntent.K8SNodeResourceSpec tserverK8SNodeResourceSpec =
+          primaryCluster.userIntent.getTserverK8SNodeResourceSpec(provider.getUuid());
+      if (tserverK8SNodeResourceSpec != null) {
+        cInstanceTypeCores = (int) Math.ceil(tserverK8SNodeResourceSpec.cpuCoreCount);
       } else {
         throw new RuntimeException("Could not determine number of cores based on resource spec");
       }
@@ -417,7 +443,6 @@ public class YbcManager {
       List<NodeDetails> tsNodes,
       ControllerFlagsSetRequest controllerFlagsSetRequest) {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     tsNodes.forEach(
         (n) -> {
           YbcClient client = null;
@@ -426,7 +451,7 @@ public class YbcManager {
             if (nodeIp == null || !n.isTserver) {
               return;
             }
-            client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+            client = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
             ControllerFlagsSetResponse controllerFlagsSetResponse =
                 client.controllerFlagsSetRequest(controllerFlagsSetRequest);
             if (controllerFlagsSetResponse != null
@@ -705,35 +730,63 @@ public class YbcManager {
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
       String taskID,
       YbcClient ybcClient) {
-    String successMarker = null;
     try {
       BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
           ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
-      if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
-        throw new Exception(
+      if (downloadSuccessMarkerResponse == null) {
+        throw new RuntimeException(
+            "No response from YB-Controller for the download success marker request");
+      }
+      ControllerStatus createStatus = downloadSuccessMarkerResponse.getStatus().getCode();
+      // EXISTS means an earlier submit of this same task id already registered the task on
+      // YB-Controller. YbcClient retries UNAVAILABLE/DEADLINE_EXCEEDED internally, so the same
+      // request can reach the server more than once, and the result of the already registered
+      // task is still fetchable.
+      if (!(createStatus.equals(ControllerStatus.OK)
+          || createStatus.equals(ControllerStatus.EXISTS))) {
+        throw new RuntimeException(
             String.format(
                 "Failed to send download success marker request, failure status: %s",
-                downloadSuccessMarkerResponse.getStatus().getCode().name()));
+                createStatus.name()));
       }
       BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
-      BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
       Integer timeoutSecs =
           confGetter.getGlobalConf(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs);
       // RetryTaskUntilCondition
+      AtomicReference<BackupServiceTaskResultResponse> lastResult = new AtomicReference<>();
       Supplier<BackupServiceTaskResultResponse> dsmResponseSupplier =
-          () -> ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+          () -> {
+            BackupServiceTaskResultResponse dsmResponse =
+                ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+            if (dsmResponse != null) {
+              lastResult.set(dsmResponse);
+            }
+            return dsmResponse;
+          };
+      // A null response means the result RPC itself failed, keep polling until the timeout.
       Predicate<BackupServiceTaskResultResponse> stopRetries =
           (dsmResponse) ->
-              !(dsmResponse.getTaskStatus().equals(ControllerStatus.IN_PROGRESS)
-                  || dsmResponse.getTaskStatus().equals(ControllerStatus.NOT_STARTED));
+              dsmResponse != null
+                  && !(dsmResponse.getTaskStatus().equals(ControllerStatus.IN_PROGRESS)
+                      || dsmResponse.getTaskStatus().equals(ControllerStatus.NOT_STARTED));
       RetryTaskUntilCondition<BackupServiceTaskResultResponse> pollSuccessMarkerDownloadProgress =
           new RetryTaskUntilCondition<>(dsmResponseSupplier, stopRetries);
-      pollSuccessMarkerDownloadProgress.retryUntilCond(
-          WAIT_EACH_SHORT_ATTEMPT_MS / 1000, timeoutSecs);
-
-      downloadSuccessMarkerResultResponse =
-          ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+      boolean downloadCompleted =
+          pollSuccessMarkerDownloadProgress.retryUntilCond(
+              WAIT_EACH_SHORT_ATTEMPT_MS / 1000, timeoutSecs);
+      if (!downloadCompleted) {
+        BackupServiceTaskResultResponse lastSeenResponse = lastResult.get();
+        throw new RuntimeException(
+            String.format(
+                "Timed out after %d seconds waiting for success marker download, last known"
+                    + " status: %s",
+                timeoutSecs,
+                lastSeenResponse == null
+                    ? "no response from YB-Controller"
+                    : lastSeenResponse.getTaskStatus().name()));
+      }
+      BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = lastResult.get();
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
@@ -741,15 +794,23 @@ public class YbcManager {
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
-      successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
-      deleteYbcBackupTask(taskID, ybcClient);
-      return successMarker;
+      return downloadSuccessMarkerResultResponse.getMetadataJson();
+    } catch (CancellationException ce) {
+      LOG.warn("Task {} on YB-Controller to fetch success marker was aborted.", taskID);
+      // Rethrown with a non-null message, callers inspect the cancellation message.
+      throw new CancellationException(
+          String.format("Success marker download aborted for task %s", taskID));
     } catch (Exception e) {
       LOG.error(
-          "Task {} on YB-Controller to fetch success marker for restore failed. Error: {}",
+          "Task {} on YB-Controller to fetch success marker failed. Error: {}",
           taskID,
-          e.getMessage());
-      return successMarker;
+          e.getMessage(),
+          e);
+      return null;
+    } finally {
+      // A task left registered on YB-Controller makes every subsequent attempt with the same
+      // task id fail with EXISTS, so clean up on all paths.
+      deleteYbcBackupTask(taskID, ybcClient);
     }
   }
 
@@ -778,10 +839,9 @@ public class YbcManager {
   public void validateCloudConfigIgnoreIfYbcUnavailable(
       String nodeIP, Universe universe, CloudStoreConfig csConfig) {
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     YbcClient ybcClient = null;
     try {
-      ybcClient = getYbcClient(nodeIP, ybcPort, certFile);
+      ybcClient = getYbcClient(nodeIP, ybcPort, universe);
     } catch (Exception e) {
       LOG.warn("Cannot check cloud config on node {} as YBC server is not available.", nodeIP);
       return;
@@ -797,7 +857,6 @@ public class YbcManager {
    * Validate Cloud store config credentials on YBC server. Throws exception on failure.
    *
    * @param nodeIP The node ip on which YBC client is created
-   * @param universe The universe
    * @param csConfig The cloud store config to validate
    */
   public void validateCloudConfigWithClient(
@@ -899,10 +958,10 @@ public class YbcManager {
   }
 
   // Ping check for YbcClient.
-  public boolean ybcPingCheck(String nodeIp, String certDir, int port) {
+  public boolean ybcPingCheck(String nodeIp, Universe universe, int port) {
     YbcClient ybcClient = null;
     try {
-      ybcClient = ybcClientService.getNewClient(nodeIp, port, certDir);
+      ybcClient = ybcClientService.getNewClient(nodeIp, port, universe);
       return ybcPingCheck(ybcClient);
     } finally {
       try {
@@ -943,9 +1002,8 @@ public class YbcManager {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (enablePreference) {
       List<String> nodeIPsWithPreference = getPreferenceBasedYBCNodeIPsList(universe);
-      String certFile = universe.getCertificateNodetoNode();
       int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-      return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, certFile);
+      return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, universe);
     } else {
       return getAvailableYbcClientIpPair(universe, null);
     }
@@ -967,7 +1025,6 @@ public class YbcManager {
 
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       Universe universe, @Nullable List<String> nodeIPListOverride) {
-    String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     List<String> nodeIPs = new ArrayList<>();
     if (CollectionUtils.isNotEmpty(nodeIPListOverride)) {
@@ -978,15 +1035,15 @@ public class YbcManager {
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }
-    return getAvailableYbcClientIpPair(nodeIPs, ybcPort, certFile);
+    return getAvailableYbcClientIpPair(nodeIPs, ybcPort, universe);
   }
 
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
-      List<String> nodeIps, int ybcPort, String certFile) {
+      List<String> nodeIps, int ybcPort, Universe universe) {
     for (String nodeIp : nodeIps) {
       YbcClient ybcClient = null;
       try {
-        ybcClient = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        ybcClient = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
         if (ybcPingCheck(ybcClient)) {
           return new Pair<YbcClient, String>(ybcClient, nodeIp);
         }
@@ -1006,7 +1063,7 @@ public class YbcManager {
 
   public static List<String> getPreferenceBasedYBCNodeIPsList(
       Universe universe, Set<String> excludeNodeIPs) {
-    NodeDetails leaderMasterNodeDetails = universe.getMasterLeaderNode();
+    NodeDetails leaderMasterNodeDetails = universe.getMasterLeaderNodeOrThrow();
     List<String> nodesToCheckInPreference = new ArrayList<>();
     String masterLeaderIP = leaderMasterNodeDetails.cloudInfo.private_ip;
     // Add master leader to first preference.
@@ -1044,13 +1101,13 @@ public class YbcManager {
     return nodesToCheckInPreference;
   }
 
-  public YbcClient getYbcClient(String nodeIp, int ybcPort, String certFile) {
-    return getAvailableYbcClientIpPair(Collections.singletonList(nodeIp), ybcPort, certFile)
+  public YbcClient getYbcClient(String nodeIp, int ybcPort, Universe universe) {
+    return getAvailableYbcClientIpPair(Collections.singletonList(nodeIp), ybcPort, universe)
         .getFirst();
   }
 
-  public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, String certFile) {
-    return getAvailableYbcClientIpPair(nodeIps, ybcPort, certFile).getFirst();
+  public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, Universe universe) {
+    return getAvailableYbcClientIpPair(nodeIps, ybcPort, universe).getFirst();
   }
 
   public YbcClient getYbcClient(UUID universeUUID) {
@@ -1152,6 +1209,9 @@ public class YbcManager {
             hardwareConcurrency,
             ybcGflagsMap,
             confGetter);
+    if (RpcClientCert.isClientCertRequired(universe)) {
+      ybcGflags.putIfAbsent(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES, "true");
+    }
     try {
       Path confFilePath =
           fileHelperService.createTempFile(
@@ -1203,7 +1263,6 @@ public class YbcManager {
   }
 
   public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet, int numRetries) {
-    String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String errMsg = "";
 
@@ -1216,7 +1275,7 @@ public class YbcManager {
       LOG.info("Node IP: {} to connect to YBC", nodeIp);
 
       try {
-        client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        client = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
         if (client == null) {
           throw new Exception("Could not create Ybc client.");
         }
@@ -1295,7 +1354,7 @@ public class YbcManager {
     params.gflags = gflags;
 
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the az uuid.

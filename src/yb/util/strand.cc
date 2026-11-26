@@ -14,6 +14,7 @@
 
 #include <thread>
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -94,6 +95,9 @@ class Strand::Task : public ThreadPoolTask {
  private:
   void Done(const Status& status) override;
 
+  // The wrapper only drains the queue; each queued task carries its own parent.
+  void set_trace_parent(std::optional<dist_trace::trace::SpanContext>) override {}
+
   void Run() override {
   }
 
@@ -121,6 +125,7 @@ Strand::~Strand() {
 }
 
 bool Strand::Enqueue(StrandTask* task) {
+  task->set_trace_parent(dist_trace::GetActiveSpanContext());
   return EnqueueHelper([this, task](bool ok) {
     if (ok) {
       if (task_->Enqueue(task)) {
@@ -153,6 +158,7 @@ void Strand::Task::Done(const Status& status) {
 
       auto running = active_enqueues_.load(std::memory_order_acquire) < Strand::kStopMark;
       const auto& actual_status = running ? status : StrandAbortedStatus();
+      dist_trace::ScopedAdoptSpan parent_scope(task->trace_parent());
       if (actual_status.ok()) {
         task->Run();
       }

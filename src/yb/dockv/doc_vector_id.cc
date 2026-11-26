@@ -23,6 +23,7 @@
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/fast_varint.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
@@ -46,6 +47,12 @@ constexpr const size_t kEncodedVectorIdSize = kEncodedVectorIdValueSize + 1;
 
 constexpr const char kDocVectorMetaValueFormatVersion = 0x01;
 
+// Flags in the first byte of the vector payload, see DocVectorIndexPayload.
+constexpr uint8_t kDocVectorIndexPayloadYbctid = 0x01;
+constexpr uint8_t kDocVectorIndexPayloadTenantPrefix = 0x02;
+constexpr uint8_t kDocVectorIndexPayloadKnownFlags =
+    kDocVectorIndexPayloadYbctid | kDocVectorIndexPayloadTenantPrefix;
+
 // kVectorIndexMetadata (1 byte) + format version (1 byte).
 constexpr const size_t kEncodedDocVectorMetaValueHeaderSize =
     1 + sizeof(kDocVectorMetaValueFormatVersion);
@@ -59,6 +66,22 @@ char* GrowAtLeast(std::string* buffer, size_t size) {
 
 char* GrowAtLeast(ValueBuffer* buffer, size_t size) {
   return buffer->GrowByAtLeast(size);
+}
+
+// Consumes the flags and the ybctid, which goes first in the payload, see DocVectorIndexPayload.
+Result<Slice> ConsumeDocVectorIndexPayloadYbctid(Slice* payload, uint8_t* flags) {
+  const auto original_payload = *payload;
+  *flags = payload->empty() ? 0 : payload->consume_byte();
+  SCHECK(
+      *flags & kDocVectorIndexPayloadYbctid, Corruption,
+      Format("Unsupported vector payload format: $0", original_payload.ToDebugHexString()));
+  auto size = VERIFY_RESULT(FastDecodeUnsignedVarInt(payload));
+  SCHECK_LE(
+      size, payload->size(), Corruption,
+      Format("Broken vector payload: $0", original_payload.ToDebugHexString()));
+  auto ybctid = payload->Prefix(size);
+  payload->remove_prefix(size);
+  return ybctid;
 }
 
 } // namespace
@@ -184,10 +207,9 @@ Result<QLValuePB> EncodeVectorSchemaMissingValue(
       raw_pgvector_value.value_case(), QLValuePB::kBinaryValue, InvalidArgument,
       "Value calue should be QLValuePB::kBinaryValue");
 
-  const char prefix = format == VectorValueFormat::kTyped
-      ? ValueEntryTypeAsChar::kVector : ValueEntryTypeAsChar::kString;
   std::string encoded;
-  AppendEncodedBinaryValue(prefix, raw_pgvector_value, &encoded);
+  AppendEncodedBinaryValue(
+      DocVectorValue::ValueTypePrefix(format), raw_pgvector_value, &encoded);
   encoded.push_back(char{0});
   result.set_binary_value(std::move(encoded));
   return result;
@@ -378,6 +400,46 @@ KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId colum
   KeyEntryValue::MakeColumnId(column_id).AppendToKey(&key);
 
   return key;
+}
+
+ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size) {
+  DCHECK(!ybctid.empty());
+  DCHECK_LE(tenant_prefix_size, ybctid.size());
+  char header[1 + kMaxVarIntBufferSize];
+  header[0] = kDocVectorIndexPayloadYbctid |
+              (tenant_prefix_size ? kDocVectorIndexPayloadTenantPrefix : 0);
+  auto header_size = 1 + FastEncodeUnsignedVarInt(ybctid.size(), header + 1);
+  ValueBuffer result;
+  result.Assign(Slice(header, header_size), ybctid);
+  if (tenant_prefix_size) {
+    FastAppendUnsignedVarInt(tenant_prefix_size, &result);
+  }
+  return result;
+}
+
+Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload) {
+  const auto original_payload = payload;
+  uint8_t flags = 0;
+  DocVectorIndexPayloadContent result {
+    .ybctid = VERIFY_RESULT(ConsumeDocVectorIndexPayloadYbctid(&payload, &flags)),
+    .tenant = Slice(),
+  };
+  SCHECK_EQ(
+      flags & ~kDocVectorIndexPayloadKnownFlags, 0, Corruption,
+      Format("Unknown vector payload flags: $0", original_payload.ToDebugHexString()));
+  if (flags & kDocVectorIndexPayloadTenantPrefix) {
+    auto tenant_prefix_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&payload));
+    SCHECK_LE(
+        tenant_prefix_size, result.ybctid.size(), Corruption,
+        Format("Broken vector payload tenant: $0", original_payload.ToDebugHexString()));
+    result.tenant = result.ybctid.Prefix(tenant_prefix_size);
+  }
+  return result;
+}
+
+Result<Slice> DocVectorIndexPayloadYbctid(Slice payload) {
+  uint8_t flags = 0;
+  return ConsumeDocVectorIndexPayloadYbctid(&payload, &flags);
 }
 
 } // namespace yb::dockv

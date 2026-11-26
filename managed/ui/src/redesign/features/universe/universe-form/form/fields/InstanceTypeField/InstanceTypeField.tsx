@@ -17,6 +17,7 @@ import {
   sortAndGroup,
   getDefaultInstanceType,
   isEphemeralAwsStorageInstance,
+  isEphemeralOciStorageInstance,
   canUseSpotInstance
 } from './InstanceTypeFieldHelper';
 import { NodeType } from '../../../../../../utils/dtos';
@@ -164,6 +165,8 @@ export const InstanceTypeField = ({
         //is ephemeral storage
         const isAWSEphemeralStorage =
           value && provider.code === CloudType.aws && isEphemeralAwsStorageInstance(value);
+        const isOCIEphemeralStorage =
+          value && isEphemeralOciStorageInstance(value);
         const isGCPEphemeralStorage =
           value &&
           provider.code === CloudType.gcp &&
@@ -208,7 +211,7 @@ export const InstanceTypeField = ({
                   }
                 />
 
-                {(isAWSEphemeralStorage || isGCPEphemeralStorage) && (
+                {(isAWSEphemeralStorage || isGCPEphemeralStorage || isOCIEphemeralStorage) && (
                   <YBHelper
                     dataTestId={`InstanceTypeField-${nodeTypeTag}-Helper`}
                     variant={YBHelperVariants.warning}

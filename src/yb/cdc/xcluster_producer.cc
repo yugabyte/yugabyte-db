@@ -34,6 +34,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 
 DEPRECATE_FLAG(int32, cdc_transaction_timeout_ms, "05_2021");
@@ -147,6 +148,9 @@ Status PopulateWriteRecord(
 
       // Process intent records.
       record->set_time(msg.hybrid_time());
+      if (msg.write().has_external_hybrid_time()) {
+        record->set_external_hybrid_time(msg.write().external_hybrid_time());
+      }
       if (batch.has_transaction()) {
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());
@@ -261,6 +265,22 @@ Result<bool> PopulateChangeMetadataRecord(
     return false;
   }
 
+  if (kIsDebug) {
+    // Today the target skips CM ops that have a colocation id in a non-colocated tablet,
+    // assuming they are for a vector index (XClusterOutputClient::ProcessChangeMetadataOp).
+    const auto& colocated_table_id =
+        msg.change_metadata_request().schema().colocated_table_id();
+    auto metadata = context.tablet_peer->tablet_metadata();
+    if (colocated_table_id.has_colocation_id() &&
+        colocated_table_id.colocation_id() != kColocationIdNotSet && !metadata->colocated()) {
+      auto table_info = metadata->GetTableInfo(colocated_table_id.colocation_id());
+      DCHECK(!table_info.ok() || (*table_info)->IsVectorIndex())
+          << "Table with colocation id " << colocated_table_id.colocation_id()
+          << " in non-colocated tablet " << context.tablet_id
+          << " is not a vector index, but the xCluster target would skip its schema changes";
+    }
+  }
+
   auto* record = context.resp->add_records();
   record->set_operation(CDCRecordPB::CHANGE_METADATA);
   record->set_time(msg.hybrid_time());
@@ -318,7 +338,7 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
   //  1. last_apply_safe_time = Tablet Safe time
-  //  2. Resolve all intents and apply all the committed intents
+  //  2. Resolve all intents, so the APPLY records of committed transactions are in the WAL
   //  3. Set apply_safe_time_checkpoint_op_id = max raft-replicated opId
   //  4. If we send all records including apply_safe_time_checkpoint_op_id in the
   //     GetChangesResponsePB
@@ -326,7 +346,10 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   //    b. Reset last_apply_safe_time and apply_safe_time_checkpoint_op_id
   //  5. Else don't set any response.apply_safe_time. The next GetChanges RPC will reuse the
   //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
-  if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+  // ResolveIntents waits for the transaction loader, so while it loads, records are sent without
+  // an apply safe time instead of blocking the poll.
+  if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid() &&
+      txn_participant->AllTransactionsLoaded()) {
     // See if its time to update the apply safe time.
     if (txn_participant->GetNumRunningTransactions() == 0 ||
         !stream_tablet_metadata->last_apply_safe_time_update_time_ ||
@@ -334,8 +357,10 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
                 (FLAGS_xcluster_consistent_wal_safe_time_frequency_ms * 1ms) <
             now) {
       update_apply_safe_time = true;
-      // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
-      RETURN_NOT_OK(txn_participant->ResolveIntents(leader_safe_time, context.deadline));
+      // Resolve intents, so the APPLY records of transactions committed at or before
+      // leader_safe_time are in the WAL, making it a valid apply_safe_time candidate.
+      RETURN_NOT_OK(txn_participant->ResolveIntents(
+          leader_safe_time, context.deadline, tablet::WaitForApply::kFalse));
     }
   }
 

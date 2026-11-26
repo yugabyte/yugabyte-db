@@ -47,7 +47,6 @@
 #include "yb/dockv/partial_row.h"
 
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/qlexpr/ql_rowblock.h"
 
@@ -57,6 +56,7 @@
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -99,7 +99,8 @@ class CompositePushdownTest : public YBTabletTest {
             QLAddInt8HashValue(&req, day);
             QLAddStringHashValue(&req, kTestHostnames[host_idx]);
             QLAddStringColumnValue(&req, kFirstColumnId + 4,
-                StringPrintf("%d/%02d/%02d-%s", year, month, day, kTestHostnames[host_idx]));
+                Format("$0/$1/$2-$3", year, ZeroPadded(month, 2), ZeroPadded(day, 2),
+                       kTestHostnames[host_idx]));
             ASSERT_OK_FAST(writer.Write(&req));
 
             if (i == nrows * 9 / 10) {

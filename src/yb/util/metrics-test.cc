@@ -254,6 +254,7 @@ TEST_F(MetricsTest, AggregationTest) {
     entity_attr["tablet_id"] = tablet_id + "_id";
     entity_attr["table_name"] = table_id;
     entity_attr["table_id"] = table_id + "_id";
+    entity_attr["table_type"] = "PGSQL_TABLE_TYPE";
     auto entity = METRIC_ENTITY_tablet.Instantiate(&registry_, tablet_id, entity_attr);
 
     // Test SUM aggregation
@@ -335,6 +336,44 @@ TEST_F(MetricsTest, AggregationTest) {
     attributes["table_id"] = "table_2_id";
     attributes["table_name"] = "table_2";
     CheckPreStoredAndScrapeTimeAttributes(writer, "table_2_id", attributes, attributes);
+  }
+  {
+    // Under v2, an active-table list restricts table level aggregation to the listed tables.
+    opts.version = kFilterVersionTwo;
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+        std::initializer_list<std::string>{"table_1_id"});
+    std::stringstream filtered_output;
+    PrometheusWriter writer(&filtered_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_STR_CONTAINS(filtered_output.str(), R"#(table_id="table_1_id")#");
+    ASSERT_STR_NOT_CONTAINS(filtered_output.str(), R"#(table_id="table_2_id")#");
+    // Server level aggregation still covers every table, including the filtered out ones.
+    CheckPreAggreatedAndScrapeTimeValues(
+        writer, kSumGaugeName, kServerLevelAggregationId, 34, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(
+        writer, kMaxGaugeName, kServerLevelAggregationId, std::nullopt, 10);
+    CheckPreAggreatedAndScrapeTimeValues(
+        writer, kSumCounterName, kServerLevelAggregationId, 34, std::nullopt);
+    ASSERT_STR_CONTAINS(filtered_output.str(), Format("$0{", kSumGaugeName));
+    ASSERT_STR_CONTAINS(filtered_output.str(), Format("$0{", kMaxGaugeName));
+
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+    std::stringstream empty_output;
+    PrometheusWriter empty_writer(&empty_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&empty_writer, opts));
+    ASSERT_STR_NOT_CONTAINS(empty_output.str(), "table_id=");
+    ASSERT_STR_CONTAINS(empty_output.str(), Format("$0{", kSumGaugeName));
+
+    // Under v1 the list is ignored: table level metrics have no server level copy there, so
+    // filtering them would make node totals undercount.
+    opts.version = kFilterVersionOne;
+    std::stringstream v1_output;
+    PrometheusWriter v1_writer(&v1_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&v1_writer, opts));
+    ASSERT_STR_CONTAINS(v1_output.str(), R"#(table_id="table_1_id")#");
+    ASSERT_STR_CONTAINS(v1_output.str(), R"#(table_id="table_2_id")#");
+
+    opts.active_table_ids.reset();
   }
   {
     // Check server level aggregation
@@ -725,6 +764,8 @@ METRIC_DEFINE_histogram(server, t_hist, "Test Histogram Label",
     MetricUnit::kMilliseconds, "Test histogram description", 100000000L, 2);
 METRIC_DEFINE_event_stats(xcluster, t_event_stats, "Test EventStats Label",
     MetricUnit::kMilliseconds, "Test event stats description");
+METRIC_DEFINE_counter(xcluster, t_xcluster_counter, "Test xCluster Counter Label",
+    MetricUnit::kMilliseconds, "Test xCluster counter description");
 METRIC_DEFINE_counter(tablet, t_counter, "Test Counter Label", MetricUnit::kMilliseconds,
     "Test counter description");
 METRIC_DEFINE_gauge_int32(tablet, t_gauge, "Test Gauge Label", MetricUnit::kMilliseconds,
@@ -783,6 +824,41 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   // Check lag output.
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_lag Test lag description\n# TYPE t_lag gauge"));
+}
+
+// The active-table list applies to table and tablet entities only. xCluster series are aggregated
+// per stream but carry a table id as well, so they must survive the filter.
+TEST_F(MetricsTest, ActiveTableIdsOnlyFilterTableAndTabletEntities) {
+  MetricEntity::AttributeMap entity_attr;
+  entity_attr["tablet_id"] = "tablet_id_60";
+  entity_attr["table_name"] = "test_table";
+  entity_attr["table_id"] = "table_id_61";
+  entity_attr["table_type"] = "PGSQL_TABLE_TYPE";
+  auto tablet_entity =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_62", entity_attr);
+  entity_attr["stream_id"] = "stream_id_63";
+  auto xcluster_entity =
+      METRIC_ENTITY_xcluster.Instantiate(&registry_, "xcluster_entity_id_64", entity_attr);
+
+  scoped_refptr<Counter> tablet_counter = METRIC_t_counter.Instantiate(tablet_entity);
+  scoped_refptr<Counter> xcluster_counter = METRIC_t_xcluster_counter.Instantiate(xcluster_entity);
+  tablet_counter->Increment();
+  xcluster_counter->Increment();
+
+  MetricPrometheusOptions opts;
+  opts.version = kFilterVersionTwo;
+  // Leave out the server level copy, so that only table level series of the tablet counter could
+  // appear in the output.
+  opts.server_allowlist_string = "";
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+  std::stringstream output;
+  PrometheusWriter writer(&output, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+
+  const auto output_str = output.str();
+  ASSERT_STR_NOT_CONTAINS(output_str, METRIC_t_counter.name());
+  ASSERT_STR_CONTAINS(output_str, METRIC_t_xcluster_counter.name());
+  ASSERT_STR_CONTAINS(output_str, R"#(stream_id="stream_id_63")#");
 }
 
 TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
@@ -919,7 +995,8 @@ TEST_F(MetricsTest, MetricsAggregatorCreateCleanupRace) {
   auto creator_fn = [&]() {
     while (!stop.load(std::memory_order_relaxed)) {
       int id = metric_id.fetch_add(1, std::memory_order_relaxed);
-      std::string name = Format("race_metric_$0", id);
+      // Reused names go through the shared lock lookup, unless cleanup has just erased them.
+      std::string name = Format("race_metric_$0", id % 2 ? id % 8 : id);
 
       MetricEntity::AttributeMap attrs;
       attrs["table_id"] = "table_1";

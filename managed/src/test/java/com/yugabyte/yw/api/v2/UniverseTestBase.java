@@ -584,8 +584,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
                           .build())
                   .build());
           userIntent.providerSpecifications = new ArrayList<>(List.of(providerSpecification));
-          userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-          userIntent.deviceInfo = deviceInfo;
+          //          userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+          //          userIntent.deviceInfo = deviceInfo;
         },
         false);
     return Universe.getOrBadRequest(universe.getUniverseUUID());
@@ -605,7 +605,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
     ClusterSpec primary = universeCreateSpec.getSpec().getClusters().get(0);
     ClusterSpec rrClusterSpec = new ClusterSpec();
-    // Any property not specified for the RR cluster will inherit its value from primary cluster
+    // Unset RR properties inherit from primary, except placement/partitions/nodeSpec.
     // TODO: Rename ASYNC to READ_REPLICA
     rrClusterSpec.setClusterType(ClusterTypeEnum.ASYNC);
     rrClusterSpec.setNumNodes(3);
@@ -702,14 +702,39 @@ public class UniverseTestBase extends UniverseControllerTestBase {
   }
 
   private void validateUniverseEditNetworkingSpec(
-      UniverseNetworkingSpec v2EditNetworking, UniverseDefinitionTaskParams v1EditParams) {
+      UniverseNetworkingSpec v2EditNetworking,
+      UniverseDefinitionTaskParams v1EditParams,
+      UniverseNetworkingSpec currentNetworking) {
     if (v2EditNetworking.getCommunicationPorts() != null) {
       validateCommunicationPorts(
           v2EditNetworking.getCommunicationPorts(),
           v1EditParams.communicationPorts,
           Universe.getOrBadRequest(universeUuid).getUniverseDetails().communicationPorts);
     }
-    validateUniverseNetworkingUserIntentFlags(v2EditNetworking, v1EditParams);
+    UserIntent primaryUserIntent = v1EditParams.getPrimaryCluster().userIntent;
+    assertEditFlagUnchangedWhenOmitted(
+        v2EditNetworking.getAssignPublicIp(),
+        primaryUserIntent.assignPublicIP,
+        currentNetworking == null ? null : currentNetworking.getAssignPublicIp());
+    assertEditFlagUnchangedWhenOmitted(
+        v2EditNetworking.getAssignStaticPublicIp(),
+        primaryUserIntent.assignStaticPublicIP,
+        currentNetworking == null ? null : currentNetworking.getAssignStaticPublicIp());
+    assertEditFlagUnchangedWhenOmitted(
+        v2EditNetworking.getEnableIpv6(),
+        primaryUserIntent.enableIPV6,
+        currentNetworking == null ? null : currentNetworking.getEnableIpv6());
+  }
+
+  private void assertEditFlagUnchangedWhenOmitted(
+      Boolean requested, boolean mapped, Boolean current) {
+    if (requested == null) {
+      if (current != null) {
+        assertThat(mapped, is(current));
+      }
+    } else {
+      assertThat(requested, is(mapped));
+    }
   }
 
   private void validateCommunicationPorts(
@@ -1542,7 +1567,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     Context context = new Context(mockRuntimeConfig, dbUniverse);
     com.yugabyte.yw.cloud.UniverseResourceDetails v1UniverseResourceDetails =
         com.yugabyte.yw.cloud.UniverseResourceDetails.create(
-            dbUniverse.getUniverseDetails(), context);
+            Optional.empty(),
+            dbUniverse.getNodes(),
+            dbUniverse.getUniverseDetails(),
+            context,
+            true);
     validateUniverseInfoResources(v2UnivInfo.getResources(), v1UniverseResourceDetails);
     assertThat(
         v2UnivInfo.getSoftwareUpgradeState().getValue(), is(dbUniv.softwareUpgradeState.name()));
@@ -1769,6 +1798,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     assertThat(v2CloudInfo.getAz(), is(dbCloudInfo.az));
     assertThat(v2CloudInfo.getCloud(), is(dbCloudInfo.cloud));
+    assertThat(v2CloudInfo.getId(), is(dbCloudInfo.id));
     assertThat(v2CloudInfo.getInstanceType(), is(dbCloudInfo.instance_type));
     assertThat(v2CloudInfo.getKubernetesNamespace(), is(dbCloudInfo.kubernetesNamespace));
     assertThat(v2CloudInfo.getKubernetesPodName(), is(dbCloudInfo.kubernetesPodName));
@@ -1805,14 +1835,23 @@ public class UniverseTestBase extends UniverseControllerTestBase {
           universeEditSpec.getExpectedUniverseVersion(), is(v1EditParams.expectedUniverseVersion));
     }
     if (universeEditSpec.getNetworkingSpec() != null) {
-      validateUniverseEditNetworkingSpec(universeEditSpec.getNetworkingSpec(), v1EditParams);
+      validateUniverseEditNetworkingSpec(
+          universeEditSpec.getNetworkingSpec(), v1EditParams, v2dbUniverseSpec.getNetworkingSpec());
     }
     validateClustersEditSpec(
         universeEditSpec.getClusters(), v1EditParams.clusters, v2dbUniverseSpec.getClusters());
-    if (universeEditSpec.getUniverseSettings() != null
-        && universeEditSpec.getUniverseSettings().getExpertMode() != null) {
-      assertThat(
-          getExpertMode(v1EditParams), is(universeEditSpec.getUniverseSettings().getExpertMode()));
+    if (universeEditSpec.getUniverseSettings() != null) {
+      if (universeEditSpec.getUniverseSettings().getExpertMode() != null) {
+        assertThat(
+            getExpertMode(v1EditParams),
+            is(universeEditSpec.getUniverseSettings().getExpertMode()));
+      } else {
+        Boolean currentExpert =
+            v2dbUniverseSpec.getUniverseSettings() == null
+                ? null
+                : v2dbUniverseSpec.getUniverseSettings().getExpertMode();
+        assertThat(getExpertMode(v1EditParams), is(currentExpert));
+      }
     }
   }
 

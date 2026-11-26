@@ -359,6 +359,12 @@ INSERT INTO pk_comp VALUES (-5, 'q'), (-1, 'p'), (0, 'a'), (3, 'z');
 -- Lower bound above int4 range: no row qualifies.
 \set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, ''p'') ORDER BY a, b;'
 \i :run_query
+-- NULL on a varlena key column must not crash while binding row bounds
+-- (YbDatumToBinary used to detoast a null pointer).
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;'
+\i :run_query
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;'
+\i :run_query
 DROP TABLE pk_comp;
 
 -- Same tests as above but the overflowing subkey is in the middle of PK

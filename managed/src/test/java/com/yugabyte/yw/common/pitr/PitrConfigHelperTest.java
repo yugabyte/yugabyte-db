@@ -5,7 +5,9 @@ package com.yugabyte.yw.common.pitr;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -97,6 +99,7 @@ public class PitrConfigHelperTest extends FakeDBApplication {
     lenient()
         .when(mockYbClientConfigFactory.create(any(), any(), anyLong()))
         .thenReturn(mockYbClientConfig);
+    lenient().when(mockYbClientConfig.withClientCertOf(any())).thenReturn(mockYbClientConfig);
     lenient()
         .when(mockYbClientService.getClientWithConfig(mockYbClientConfig))
         .thenReturn(mockYbClient);
@@ -166,24 +169,26 @@ public class PitrConfigHelperTest extends FakeDBApplication {
   }
 
   @Test
-  public void listPitrConfigs_dbRowMissingFromMaster_returnsUnknown() throws Exception {
-    UUID scheduleUuid = createPitrConfigInDb("orphan-db").getUuid();
+  public void listPitrConfigs_dbRowMissingFromMaster_isExcluded() throws Exception {
+    createPitrConfigInDb("orphan-db");
     stubMasterSchedules(List.of());
 
     List<PitrConfig> result = helper.listPitrConfigs(customer, universe);
 
-    assertEquals(State.UNKNOWN, findByUuid(result, scheduleUuid).getState());
+    assertEquals(0, result.size());
   }
 
   @Test
   public void listPitrConfigs_masterErrorResponse_returnsUnknown() throws Exception {
     UUID scheduleUuid = createPitrConfigInDb("master-error-db").getUuid();
     when(mockListSnapshotSchedulesResponse.hasError()).thenReturn(true);
+    when(mockListSnapshotSchedulesResponse.errorMessage()).thenReturn("master error");
     when(mockYbClient.listSnapshotSchedules(isNull()))
         .thenReturn(mockListSnapshotSchedulesResponse);
 
     List<PitrConfig> result = helper.listPitrConfigs(customer, universe);
 
+    assertEquals(1, result.size());
     assertEquals(State.UNKNOWN, findByUuid(result, scheduleUuid).getState());
   }
 
@@ -294,7 +299,7 @@ public class PitrConfigHelperTest extends FakeDBApplication {
 
     List<PitrConfig> secondList = helper.listPitrConfigs(customer, universe);
 
-    assertEquals(1, secondList.size());
+    assertEquals(0, secondList.size());
     verifyMasterListCalledOnce();
   }
 
@@ -357,6 +362,47 @@ public class PitrConfigHelperTest extends FakeDBApplication {
     assertThat(paged.getTotalCount(), greaterThanOrEqualTo(1));
     assertEquals(State.COMPLETE, findByUuid(paged.getList(), scheduleUuid).getState());
     verifyMasterListCalledOnce();
+  }
+
+  @Test
+  public void listPitrConfigsPaged_excludesConfigsMissingFromMaster() throws Exception {
+    UUID visibleUuid = createPitrConfigInDb("visible-db").getUuid();
+    createPitrConfigInDb("orphan-db");
+    stubMasterSchedules(
+        List.of(
+            scheduleWithSnapshots(
+                visibleUuid, List.of(completeSnapshot(System.currentTimeMillis())))));
+
+    PagedList<PitrConfig> paged =
+        helper.listPitrConfigsPaged(universe, new NormalizedPaginationSpec(0, 10, "asc"));
+
+    assertEquals(1, paged.getTotalCount());
+    assertEquals(1, paged.getList().size());
+    assertEquals(visibleUuid, paged.getList().get(0).getUuid());
+    assertFalse(paged.hasNext());
+  }
+
+  @Test
+  public void listPitrConfigsPaged_paginatesOnlyVisibleConfigs() throws Exception {
+    UUID first = createPitrConfigInDb("a-visible").getUuid();
+    UUID second = createPitrConfigInDb("b-visible").getUuid();
+    createPitrConfigInDb("z-orphan");
+    stubMasterSchedules(
+        List.of(
+            scheduleWithSnapshots(first, List.of(completeSnapshot(System.currentTimeMillis()))),
+            scheduleWithSnapshots(second, List.of(completeSnapshot(System.currentTimeMillis())))));
+
+    PagedList<PitrConfig> firstPage =
+        helper.listPitrConfigsPaged(universe, new NormalizedPaginationSpec(0, 1, "asc"));
+    assertEquals(2, firstPage.getTotalCount());
+    assertEquals(1, firstPage.getList().size());
+    assertTrue(firstPage.hasNext());
+
+    PagedList<PitrConfig> secondPage =
+        helper.listPitrConfigsPaged(universe, new NormalizedPaginationSpec(1, 1, "asc"));
+    assertEquals(2, secondPage.getTotalCount());
+    assertEquals(1, secondPage.getList().size());
+    assertFalse(secondPage.hasNext());
   }
 
   @Test

@@ -47,7 +47,6 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -116,7 +115,7 @@ IndexNext(IndexScanState *node)
 
 	/*
 	 * YB relation scans are optimized for the "Don't care about order"
-	 * direction.
+	 * direction (see create_index_path).
 	 */
 	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
@@ -167,7 +166,7 @@ IndexNext(IndexScanState *node)
 		IndexScan  *plan;
 
 		scandesc->yb_exec_params = &estate->yb_exec_params;
-		scandesc->yb_exec_params->rowmark = -1;
+		scandesc->yb_exec_params->rowmark = YBC_NO_ROW_MARK;
 
 		/* Add row marks. */
 		plan = castNode(IndexScan, node->ss.ps.plan);
@@ -2063,10 +2062,13 @@ yb_init_index_scandesc(IndexScanState *node)
 
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
+		YbResetScanPushdownCxt(node->yb_iss_pushdown_cxt);
 		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
+			YbInstantiateScanPushdownExprs(&node->yb_iss_pushdown_cxt, estate,
+										   &plan->yb_rel_pushdown);
 		scandesc->yb_idx_pushdown =
-			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
+			YbInstantiateScanPushdownExprs(&node->yb_iss_pushdown_cxt, estate,
+										   &plan->yb_idx_pushdown);
 		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		scandesc->fetch_ybctids_only = false;

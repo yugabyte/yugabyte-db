@@ -85,8 +85,9 @@ struct ElectionResult;
 
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
-YB_STRONGLY_TYPED_BOOL(WriteEmpty);
+YB_STRONGLY_TYPED_BOOL(IgnorePeersInTransition);
 YB_STRONGLY_TYPED_BOOL(PreElected);
+YB_STRONGLY_TYPED_BOOL(WriteEmpty);
 
 YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
@@ -164,6 +165,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Status StepDown(const LeaderStepDownRequestPB* req,
                   LeaderStepDownResponsePB* resp) override;
 
+  // With ignore_peers_in_transition, steps down even while a live PRE_VOTER or PRE_OBSERVER may
+  // still be in remote bootstrap.  That remote bootstrap must then be redone if the new leader has
+  // GCed the WAL its new peer needs to catch up.
+  Status StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp,
+                  IgnorePeersInTransition ignore_peers_in_transition);
+
   Status TEST_Replicate(const ConsensusRoundPtr& round) override;
   Status ReplicateBatch(const ConsensusRounds& rounds) override;
 
@@ -239,8 +246,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
             .op_id = majority_replicated,
             .leader_lease_expiration = CoarseTimePoint::min(),
             .ht_lease_expiration = HybridTime::kMin.GetPhysicalValueMicros(),
-            .num_sst_files = 0,
-            .peer_got_all_ops = {}},
+            .num_sst_files = 0},
         committed_index, last_committed_op_id);
   }
 
@@ -248,9 +254,29 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   OpId GetLastCommittedOpId() override;
 
+  // Same as GetLastCommittedOpId, but does not wait for the operations being applied.
+  OpId GetLastCommittedOpIdLockFree() const;
+
   OpId GetLastAppliedOpId() override;
 
   OpId GetAllAppliedOpId();
+
+  // Index of the last op replicated to all peers, as known by the leader. On a follower it is the
+  // value most recently sent by a leader.
+  int64_t GetAllReplicatedIndex() const;
+
+  struct WalGcRetentionOpIdInfo {
+    OpId committed_op_id = OpId::Max();
+    OpId majority_replicated_op_id = OpId::Max();
+    OpId min_progressing_pre_voter_op_id = OpId::Max();
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(
+          committed_op_id, majority_replicated_op_id, min_progressing_pre_voter_op_id);
+    }
+  };
+
+  WalGcRetentionOpIdInfo GetWalGcRetentionOpIdInfo();
 
   Status CheckReadyAsRbsSource();
 
@@ -269,6 +295,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  // NotFound if the entry was GCed.
+  Result<OpId> LookupOpId(int64_t op_index) const;
+
   const scoped_refptr<log::Log>& log() { return log_; }
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
@@ -277,6 +306,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     reject_mode_.store(value, std::memory_order_release);
   }
 
+  // Delays each Update by duration. Setting it to zero also releases any hold in progress.
   void TEST_DelayUpdate(MonoDelta duration) {
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
@@ -359,7 +389,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   virtual Status AppendNewRoundsToQueueUnlocked(
       const ConsensusRounds& rounds, size_t* processed_rounds);
 
-  Status CheckLeasesUnlocked(const ConsensusRoundPtr& round);
+  Status CheckLeasesUnlocked(const LWReplicateMsg& replicate_msg);
 
   // As a follower, start a consensus round not associated with a Operation.
   // Only virtual and protected for mocking purposes.
@@ -407,6 +437,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
         const ConsensusRounds& rounds, size_t* processed_rounds,
         std::vector<ReplicateMsgPtr>* replicate_msgs);
 
+  // Fails a round that ConsensusContext::CheckReplicateAllowed rejected, i.e., after
+  // NotifyAddedToLeader and before the round was added as pending.  The round is then unbound, and
+  // the caller must skip it.
+  void RejectRoundUnlocked(const ConsensusRoundPtr& round, const Status& status);
+
   // Control whether printing of log messages should be done for a particular
   // function call.
   enum AllowLogging {
@@ -453,6 +488,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   struct UpdateReplicaResult {
     OpId wait_for_op_id;
+
+    // The request carried no ops, so the wait is bounded tighter. See Update().
+    bool empty_request = false;
 
     // Start an election after the writes are committed?
     bool start_election = false;
@@ -634,10 +672,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                               const std::string& server_uuid);
 
   // Increment the term to the next term, resetting the current leader, etc.
-  Status IncrementTermUnlocked();
+  Status IncrementTermUnlocked(FlushConsensusMeta flush);
 
   // Handle when the term has advanced beyond the current term.
-  Status HandleTermAdvanceUnlocked(ConsensusTerm new_term);
+  Status HandleTermAdvanceUnlocked(
+      ConsensusTerm new_term, FlushConsensusMeta flush = FlushConsensusMeta::kTrue);
 
   // Notify the tablet peer that the consensus configuration
   // has changed, thus reporting it back to the master. This is performed inline.
@@ -669,9 +708,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // being shut down).
   void ReportFailureDetectedTask();
 
-  // Helper API to check if the pending/committed configuration has a PRE_VOTER. Non-null return
-  // string implies there are servers in transit.
-  std::string ServersInTransitionMessage();
+  // OK unless a live PRE_VOTER/PRE_OBSERVER is in the active or committed config.
+  // Unreachable transitioning peers (follower_unavailable_considered_failed_sec) do not count.
+  Status CheckNoLiveServersInTransitionUnlocked();
 
   // Prevent starting new election for some time, after we stepped down.
   // protege_uuid - in case of step down we remember our protege.
@@ -698,7 +737,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Wait until the operation with op id equal to wait_for_op_id is flushed in the WAL.
   // If term was changed during wait from the specified one - exit with error.
-  Status WaitForWrites(int64_t term, const OpId& wait_for_op_id);
+  // If the op is still not flushed when the deadline expires - exit with TimedOut.
+  Status WaitForWrites(int64_t term, const OpId& wait_for_op_id, CoarseTimePoint deadline);
 
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
@@ -714,6 +754,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
+
+  void SignalDeferredRequest(const Status& status);
+
+  // Whether the delayed step down protege has received every operation present in our log.
+  bool ProtegeSynchronizedUnlocked() const;
 
   void ClearPendingConfigUnlocked();
 
@@ -741,6 +786,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // nodes from disturbing the healthy leader.
   std::atomic<MonoTime> withhold_votes_until_;
 
+  std::atomic<int64_t> all_replicated_index_from_leader_{0};
+
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
 
@@ -763,6 +810,15 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   DelayedStepDown delayed_step_down_;
   rpc::ScheduledTaskTracker step_down_check_tracker_;
+
+  // Holds the signal deferred by raft_deferred_update_delay_ms.
+  rpc::ScheduledTaskTracker deferred_signal_tracker_;
+  // Last op index in the log when the pending deferred signal was armed.
+  std::atomic<int64_t> deferred_signal_op_index_{0};
+  // Set (under the replica lock) by whoever schedules the deferred signal and cleared when it runs
+  // or is aborted. At most one task is armed, so its deadline is fixed by the first arming and a
+  // run of deferrable appends cannot keep pushing the send out.
+  std::atomic<bool> deferred_signal_armed_{false};
 
   // The number of times this node has called and lost a leader election since
   // the last time it saw a stable leader (either itself or another node).

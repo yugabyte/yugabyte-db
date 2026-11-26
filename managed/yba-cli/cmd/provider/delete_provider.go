@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -40,7 +41,7 @@ func init() {
 		"[Required] The name of the provider to be deleted.")
 	deleteProviderCmd.Flags().StringP("code", "c", "",
 		"[Optional] Code of the provider. "+
-			"Allowed values: aws, gcp, azu, onprem, kubernetes.")
+			"Allowed values: "+util.ProviderCodesString()+".")
 	deleteProviderCmd.MarkFlagRequired("name")
 	deleteProviderCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")

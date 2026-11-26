@@ -7,9 +7,9 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+use pgrx_pg_sys::PgTryBuilder;
 use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use pgrx_pg_sys::panic::CaughtError;
-use pgrx_pg_sys::PgTryBuilder;
 
 use super::error::Error;
 use crate::datum::numeric::make_typmod;

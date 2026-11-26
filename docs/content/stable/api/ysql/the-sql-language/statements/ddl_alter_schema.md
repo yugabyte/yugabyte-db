@@ -124,5 +124,5 @@ yugabyte=# \dn
 
 ## See also
 
-- [`CREATE SCHEMA`](../ddl_create_schema)
-- [`DROP SCHEMA`](../ddl_drop_schema)
+- [CREATE SCHEMA](../ddl_create_schema)
+- [DROP SCHEMA](../ddl_drop_schema)

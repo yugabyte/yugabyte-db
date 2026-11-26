@@ -32,6 +32,7 @@
 #include <mutex>
 #include <unordered_set>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
@@ -48,7 +49,6 @@
 
 using std::unordered_set;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 namespace threadlocal {
@@ -197,7 +197,7 @@ static void TestThreadLocalCounters(CounterRegistry* registry, const int num_thr
   CountDownLatch reader_done(1);
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("t$0", i),
         &RegisterCounterAndLoopIncr, registry, &counters_ready, &reader_ready,
         &counters_done, &reader_done, &new_thread));
     threads.push_back(new_thread);
@@ -304,9 +304,9 @@ TEST_F(ThreadLocalTest, TestTLSMember) {
     readers_ready.push_back(new CountDownLatch(1));
     out_strings.push_back(new std::string());
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("t$0", i),
         &RunAndAssign, writers_ready[i], readers_ready[i],
-        &all_done, &threads_exiting, Substitute("$0", i), out_strings[i], &new_thread));
+        &all_done, &threads_exiting, Format("$0", i), out_strings[i], &new_thread));
     threads.push_back(new_thread);
   }
 
@@ -323,7 +323,7 @@ TEST_F(ThreadLocalTest, TestTLSMember) {
   // threads_exiting acts as a memory barrier.
   threads_exiting.Wait();
   for (int i = 0; i < num_threads; i++) {
-    ASSERT_EQ(Substitute("$0", i), *out_strings[i]);
+    ASSERT_EQ(Format("$0", i), *out_strings[i]);
     LOG(INFO) << "Read " << *out_strings[i];
   }
 

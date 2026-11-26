@@ -24,6 +24,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
@@ -56,7 +57,6 @@ DEFINE_test_flag(int32, callhome_destructor_sleep_ms, 0,
     "How long to sleep at the beginning of the call home base class destructor.");
 
 using google::CommandlineFlagsIntoString;
-using strings::Substitute;
 using yb::server::RpcAndWebServerBase;
 
 namespace yb {
@@ -148,7 +148,7 @@ class RpcsCollector : public Collector {
     }
 
     faststring buf;
-    auto url = Substitute("http://$0/rpcz", yb::ToString(*addr_));
+    auto url = Format("http://$0/rpcz", yb::ToString(*addr_));
     auto status = curl_.FetchURL(url, &buf);
     if (!status.ok()) {
       LOG(WARNING) << "Unable to read url " << url;
@@ -212,7 +212,7 @@ class GFlagsCollector : public Collector {
 
     string escaped_gflags;
     JsonEscape(gflags.str(), &escaped_gflags);
-    json_ = Substitute("\"gflags\":\"$0\"", escaped_gflags);
+    json_ = Format("\"gflags\":\"$0\"", escaped_gflags);
   }
 
   string collector_name() { return "GFlagsCollector"; }
@@ -250,7 +250,7 @@ std::string CallHome::BuildJson() {
   }
   if (!FLAGS_callhome_tag.empty()) {
     str += comma;
-    str += Substitute("\"tag\":\"$0\"", FLAGS_callhome_tag);
+    str += Format("\"tag\":\"$0\"", FLAGS_callhome_tag);
   }
   str += "}";
 

@@ -17,7 +17,7 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -176,6 +176,38 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes) {
 #endif
 }
 
+void TCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms) {
+#if YB_GOOGLE_TCMALLOC
+  const auto short_interval = tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval();
+  const auto long_interval = tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(
+      absl::Milliseconds(short_interval_ms));
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Milliseconds(long_interval_ms));
+  TCMallocReleaseMemoryToSystem(bytes);
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
+#else
+  TCMallocReleaseMemoryToSystem(bytes);
+#endif
+}
+
+void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
+  TCMallocReleaseMemoryToSystemWithLookbacks(bytes, 0, 0);
+}
+
+void TCMallocDrainCpuCaches() {
+#if YB_GOOGLE_TCMALLOC
+  if (!tcmalloc::MallocExtension::PerCpuCachesActive()) {
+    return;
+  }
+  static const int num_cpus = base::MaxCPUIndex() + 1;
+  for (int cpu = 0; cpu < num_cpus; ++cpu) {
+    tcmalloc::MallocExtension::ReleaseCpuMemory(cpu);
+  }
+#endif
+}
+
 #if YB_GOOGLE_TCMALLOC
 // Sets the given property to the given value in Google tcmalloc using a Set... function and
 // immediately calls the corresponding Get... function to verify the effective new value of the
@@ -243,7 +275,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    const auto path = strings::Substitute(
+    const auto path = Format(
         "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }

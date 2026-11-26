@@ -11,38 +11,36 @@ package com.yugabyte.yw.common.config.impl;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigPreChangeValidator;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.apache.commons.collections4.CollectionUtils;
 
 @Singleton
 public class DbAuditLoggingEnabledValidator implements RuntimeConfigPreChangeValidator {
+  @Inject private Config staticConfig;
+
   public String getKeyPath() {
     return "yb.universe.audit_logging_enabled";
   }
 
   @Override
   public void validateConfigGlobal(UUID scopeUUID, String path, String newValue) {
-    String value = null;
-    Optional<RuntimeConfigEntry> runtimeConfigEntry = RuntimeConfigEntry.maybeGet(scopeUUID, path);
-    if (runtimeConfigEntry.isPresent()) {
-      value = runtimeConfigEntry.get().getValue();
+    if (!isEnabled(scopeUUID, path) || Boolean.parseBoolean(newValue)) {
+      return;
     }
 
     Set<String> universesWithDbAuditLoggingEnabled = getUniversesWithDbAuditLogging();
 
-    if (value != null
-        && value.equals("true")
-        && newValue.equals("false")
-        && CollectionUtils.isNotEmpty(universesWithDbAuditLoggingEnabled)) {
+    if (CollectionUtils.isNotEmpty(universesWithDbAuditLoggingEnabled)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "yb.universe.audit_logging_enabled cannot be turned off, since the following universes"
@@ -53,14 +51,17 @@ public class DbAuditLoggingEnabledValidator implements RuntimeConfigPreChangeVal
 
   @Override
   public void validateDeleteConfig(UUID scopeUUID, String path) {
-    Set<String> universesWithDbAuditLoggingEnabled = getUniversesWithDbAuditLogging();
-    if (CollectionUtils.isNotEmpty(universesWithDbAuditLoggingEnabled)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "yb.universe.audit_logging_enabled cannot be reset, since the following universes"
-              + " have DB audit logging enabled: "
-              + universesWithDbAuditLoggingEnabled);
-    }
+    // A reset is a set to the application.conf default.
+    validateConfigGlobal(scopeUUID, path, String.valueOf(staticConfig.getBoolean(path)));
+  }
+
+  // An absent runtime config row means the key still holds its application.conf default, so
+  // absence reads as "enabled" for keys that default to true. Treating it as "not set to true"
+  // would silently skip this guard on any install that never wrote the row.
+  private boolean isEnabled(UUID scopeUUID, String path) {
+    return RuntimeConfigEntry.maybeGet(scopeUUID, path)
+        .map(entry -> Boolean.parseBoolean(entry.getValue()))
+        .orElseGet(() -> staticConfig.getBoolean(path));
   }
 
   public Set<String> getUniversesWithDbAuditLogging() {

@@ -44,12 +44,11 @@
 #include "yb/client/client.h"
 #include "yb/client/table_handle.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/tools/ysck_remote.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
@@ -59,7 +58,6 @@ using std::vector;
 
 namespace yb {
 
-using strings::Substitute;
 using tools::Ysck;
 using tools::YsckCluster;
 using tools::YsckMaster;
@@ -144,11 +142,11 @@ Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
   size_t count = boost::size(client::TableRange(table, options));
 
   if (mode == AT_LEAST && count < expected_row_count) {
-    return STATUS(Corruption, Substitute("row count $0 is not at least expected value $1",
-                                         count, expected_row_count));
+    return STATUS(Corruption, Format("row count $0 is not at least expected value $1",
+                                     count, expected_row_count));
   } else if (mode == EXACTLY && count != expected_row_count) {
-    return STATUS(Corruption, Substitute("row count $0 is not exactly expected value $1",
-                                         count, expected_row_count));
+    return STATUS(Corruption, Format("row count $0 is not exactly expected value $1",
+                                     count, expected_row_count));
   }
   return Status::OK();
 }

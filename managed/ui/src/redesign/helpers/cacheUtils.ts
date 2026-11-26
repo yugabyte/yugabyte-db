@@ -27,15 +27,15 @@ export const useRefreshUniverseDetailsCache = (universeUuid: string) => {
   };
 };
 
-export const useRefreshUniverseTasksCache = (universeUuid: string) => {
-  const queryClient = useQueryClient();
+/**
+ * Reloads the customer task list in the Redux store, which many global task components depend on.
+ *
+ * Not universe scoped — safe for tasks that target a backup, provider, or schedule.
+ */
+export const useRefreshCustomerTasks = () => {
   const dispatch = useDispatch();
-  const refreshUniverseDetailsCache = useRefreshUniverseDetailsCache(universeUuid);
 
   return () => {
-    queryClient.invalidateQueries(taskQueryKey.universe(universeUuid));
-
-    // Many global task components depend on the customer tasks list, so we need to refresh it.
     dispatch(fetchCustomerTasks() as any).then((response: any) => {
       if (!response.error) {
         dispatch(fetchCustomerTasksSuccess(response.payload));
@@ -43,6 +43,18 @@ export const useRefreshUniverseTasksCache = (universeUuid: string) => {
         dispatch(fetchCustomerTasksFailure(response.payload));
       }
     });
+  };
+};
+
+export const useRefreshUniverseTasksCache = (universeUuid: string) => {
+  const queryClient = useQueryClient();
+  const refreshCustomerTasks = useRefreshCustomerTasks();
+  const refreshUniverseDetailsCache = useRefreshUniverseDetailsCache(universeUuid);
+
+  return () => {
+    queryClient.invalidateQueries(taskQueryKey.universe(universeUuid));
+
+    refreshCustomerTasks();
     setTimeout(() => {
       // Universe details are not updated immediately. Adding a small delay gives little bit
       // of time for the task to be picked up and the universe to be updated.

@@ -98,9 +98,17 @@ class ClusterLoadBalancer {
   // Sets whether to enable or disable the cluster balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
+  // Tiered storage, tests only: age every awaiting-report entry past the task deadline.
+  void TEST_ExpireTierMigrationsAwaitingReport();
+
   bool IsLoadBalancerEnabled() const;
 
   bool CanBalanceGlobalLoad() const;
+
+  // Minimum global load variance between two tservers for a global tablet move. Widened by the
+  // tablets missing from the global counts because their table was skipped this run. Global leader
+  // moves do not use this, they keep kMinLoadVarianceToBalance.
+  double MinGlobalLoadVarianceToBalance() const;
 
   void ReportMetrics();
 
@@ -108,6 +116,8 @@ class ClusterLoadBalancer {
 
   Status IsIdle() const;
   ClusterBalancerActivityInfo GetLatestActivityInfo() const;
+
+  const ClusterBalancerActivityBuffer& TEST_activity_buffer() const { return activity_buffer_; }
 
   // Returns the TableInfo of all the tables for whom cluster balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
@@ -151,7 +161,8 @@ class ClusterLoadBalancer {
   virtual void GetPendingTasks(const TableInfoPtr& table,
                                TabletToTabletServerMap* add_replica_tasks,
                                TabletToTabletServerMap* remove_replica_tasks,
-                               TabletToTabletServerMap* stepdown_leader_tasks);
+                               TabletToTabletServerMap* stepdown_leader_tasks,
+                               TabletToTabletServersMap* tier_migration_tasks);
 
   // Issue the calls to CatalogManager to change the config for this particular tablet.
   virtual Status SendAddReplica(
@@ -163,6 +174,10 @@ class ClusterLoadBalancer {
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
       bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid = "");
+  // Tiered storage: tell the replica of 'tablet' on 'ts_uuid' to move its SSTs to 'target_tier'.
+  virtual Status SendAlterTabletTier(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+      const std::string& reason);
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
   consensus::PeerMemberType GetDefaultMemberType();
@@ -194,6 +209,15 @@ class ClusterLoadBalancer {
   Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
+  // Tiered storage: sends one AlterTabletTier to a replica of this table whose tablespace asks
+  // for another tier than the replica targets. Bounded by the in-flight caps. A replica whose
+  // migration the tserver gave up on (FAILED) is logged and left alone, and a split parent about
+  // to be deleted is skipped. Returns true if one was sent.
+  Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
+
+  // Tiered storage: drops the awaiting-report entries no table's tier step visited this run.
+  void PruneTierMigrationsAwaitingReport();
+
   // Processes any required replica removals, as part of having added an extra replica to a
   // tablet's set of peers, which caused its quorum to be larger than the configured number.
   //
@@ -219,6 +243,15 @@ class ClusterLoadBalancer {
   //
   // Returns true if a move was actually made.
   Result<bool> HandleAddIfWrongPlacement(
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
+
+  // Moves a replica from a placement block above its maximum to one with remaining capacity, for
+  // tablets that are neither missing replicas nor over-replicated (those are owned by their own
+  // paths; see tablets_over_max_placements_). Like HandleAddIfWrongPlacement, this adds the
+  // destination replica first, temporarily over-replicating the tablet; the remove path then drops
+  // a replica from the offending block. Runs after HandleAddIfWrongPlacement (draining blacklisted
+  // or wrongly-placed servers unblocks node decommissioning) and before normal load balancing.
+  Result<bool> HandleAddIfOverMaxPlacement(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // If we find a tablet with peers that violate the placement information, we first over-replicate
@@ -327,6 +360,11 @@ class ClusterLoadBalancer {
   size_t get_total_blacklisted_servers() const;
   size_t get_total_leader_blacklisted_servers() const;
 
+  // Estimates the number of replica adds that would take the current table from its load
+  // distribution to the goal one. Only reported through the total_table_load_difference and
+  // estimated_data_to_balance_bytes metrics; the algorithm does not use it.
+  Result<size_t> EstimateTableLoadDifference() const;
+
   std::unordered_map<TableId, std::unique_ptr<PerTableLoadState>> per_table_states_;
   // The state of the table load in the cluster, as far as this run of the algorithm is concerned.
   // It points to the appropriate object in per_table_states_.
@@ -384,7 +422,12 @@ class ClusterLoadBalancer {
   // Goes over all table states and returns a priority-sorted list of under-replicated tablets.
   std::vector<UnderReplicatedTabletInfo> CollectUnderReplicatedTablets();
 
-  // Checks if we are at our RBS or overreplicated tablets limit.
+  // Checks if we are at our RBS limit. Used by adds to tablets below RF, which skip the
+  // overreplicated tablets limit.
+  Status CheckRemoteBootstrapLimits();
+
+  // Checks if we are at our RBS or overreplicated tablets limit. Used by any add that
+  // over-replicates a tablet.
   Status CanAddReplicas();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
@@ -398,8 +441,8 @@ class ClusterLoadBalancer {
 
   // Check if we are able to balance global load. With the current algorithm, we only allow for
   // global load balancing once all tables are themselves balanced.
-  // This value is only set to true once is_idle_ becomes true, and this value is only set to false
-  // once we perform a non-global move.
+  // This value is only set to true once ClusterBalancerActivityInfo::CanPerformGlobalMoves()
+  // becomes true, and this value is only set to false once we perform a non-global move.
   bool can_perform_global_operations_ = false;
 
   typedef rw_spinlock LockType;
@@ -419,6 +462,27 @@ class ClusterLoadBalancer {
   void UpdatePerRunMetrics();
 
   LeaderEpoch epoch_;
+
+  // Tiered storage: the AlterTabletTier sends whose replica has not reported the new intent yet,
+  // keyed by tablet id and tserver uuid. The task completes on the tserver's reply and the report
+  // that carries the target arrives a heartbeat later, so without this record a run in between
+  // would see the replica in neither the pending tasks nor its report: not counted against the
+  // caps, and told again. An entry is dropped when the replica reports the target sent with its
+  // migration IN_PROGRESS, DONE or FAILED, when it is older than the task's own deadline
+  // (unresponsive_ts_rpc_timeout_ms: the task gave up and no report is coming, e.g. the tablet
+  // was gone), and at the end of a run whose tier step did not visit it. Only the balancer's own
+  // thread touches it.
+  struct TierMigrationAwaitingReport {
+    std::string target_tier;
+    TableId table_id;
+    MonoTime sent_at;
+    uint64_t seen_in_run = 0;
+  };
+  std::unordered_map<std::string, TierMigrationAwaitingReport> tier_migrations_awaiting_report_;
+
+  // Counts full runs (live placement plus read replicas), for
+  // TierMigrationAwaitingReport::seen_in_run.
+  uint64_t tier_migration_run_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

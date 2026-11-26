@@ -125,7 +125,20 @@ public class KmsConfig extends Model {
 
   public static KmsConfig createKMSConfig(
       UUID customerUUID, KeyProvider keyProvider, ObjectNode authConfig, String name) {
+    return createKMSConfig(customerUUID, keyProvider, authConfig, name, null /* configUUID */);
+  }
+
+  /** {@code configUUID} may be pre-minted by the caller; null lets Ebean assign one. */
+  public static KmsConfig createKMSConfig(
+      UUID customerUUID,
+      KeyProvider keyProvider,
+      ObjectNode authConfig,
+      String name,
+      UUID configUUID) {
     KmsConfig kmsConfig = new KmsConfig();
+    if (configUUID != null) {
+      kmsConfig.setConfigUUID(configUUID);
+    }
     kmsConfig.setKeyProvider(keyProvider);
     kmsConfig.setCustomerUUID(customerUUID);
     kmsConfig.setAuthConfig(authConfig);
@@ -161,6 +174,19 @@ public class KmsConfig extends Model {
 
   public static List<KmsConfig> listAllKMSConfigs() {
     return KmsConfig.find.query().where().eq("version", SCHEMA_VERSION).findList();
+  }
+
+  /**
+   * Lists all KMS configs without their auth config, which is decrypted in the database for every
+   * row that loads it. Use {@link #getKMSAuthObj(UUID)} for the auth config of a returned config.
+   */
+  public static List<KmsConfig> listAllKMSConfigsWithoutAuthConfig() {
+    return KmsConfig.find
+        .query()
+        .select("configUUID, name, customerUUID, keyProvider, version")
+        .where()
+        .eq("version", SCHEMA_VERSION)
+        .findList();
   }
 
   public static KmsConfig updateKMSConfig(UUID configUUID, ObjectNode updatedConfig) {

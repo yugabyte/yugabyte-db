@@ -10,15 +10,15 @@
  
 [package]
 name = "pgrx-macros"
-version = "0.14.1"
-authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
-license = "MIT"
+version = "0.18.1"
+authors.workspace = true
+license.workspace = true
 description = "Proc Macros for 'pgrx'"
-homepage = "https://github.com/pgcentralfoundation/pgrx/"
-repository = "https://github.com/pgcentralfoundation/pgrx/"
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/pgrx-macros"
 readme = "README.md"
-edition = "2021"
+edition.workspace = true
 
 [lib]
 proc-macro = true

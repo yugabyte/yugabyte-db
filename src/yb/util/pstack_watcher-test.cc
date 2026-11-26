@@ -36,17 +36,15 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 
@@ -70,7 +68,7 @@ TEST(TestPstackWatcher, YB_DISABLE_TEST_ON_MACOS(TestDumpStacks)) {
 static shared_ptr<FILE> RedirectStdout(string *temp_path) {
   string temp_dir;
   CHECK_OK(Env::Default()->GetTestDirectory(&temp_dir));
-  *temp_path = Substitute("$0/pstack_watcher-dump.$1.txt",
+  *temp_path = Format("$0/pstack_watcher-dump.$1.txt",
                       temp_dir, getpid());
   return shared_ptr<FILE>(
       freopen(temp_path->c_str(), "w", stdout), fclose);

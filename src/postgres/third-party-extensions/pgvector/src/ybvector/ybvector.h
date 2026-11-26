@@ -25,7 +25,7 @@
 #pragma once
 
 #include "access/amapi.h"
-#include "access/yb_scan.h"
+#include "access/yb_scan_core.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "src/vector.h"
@@ -35,7 +35,7 @@
 typedef struct YbVectorScanOpaqueData
 {
 	/* The internal YB scan descriptor for the underlying Select statement. */
-	YbScanDesc yb_scan_desc;
+	YbOpaque yb_scan_desc;
 
 	/* The query vector on which we will do ANN. */
 	Datum query_vector;
@@ -83,7 +83,8 @@ extern bool ybvectorinsert(Relation rel, Datum *values, bool *isnull,
 						struct IndexInfo *indexInfo, bool shared_insert);
 extern void ybvectordelete(Relation rel, Datum *values, bool *isnull,
 						Datum ybctid, Relation heapRel,
-						struct IndexInfo *indexInfo);
+						struct IndexInfo *indexInfo,
+						bool persist_missing_row);
 extern void ybvectorinupdate(Relation index, Datum *values, bool *isnull,
 						  Datum oldYbctid, Datum newYbctid, Relation heap,
 						  struct IndexInfo *indexInfo);
@@ -103,7 +104,7 @@ extern bool ybvectorcopartitionedinsert(Relation rel, Datum *values,
 
 extern void ybvectorcopartitioneddelete(Relation rel, Datum *values,
 	bool *isnull, Datum ybctid, Relation heapRel,
-	struct IndexInfo *indexInfo);
+	struct IndexInfo *indexInfo, bool persist_missing_row);
 
 extern IndexBuildResult *ybvectorcopartitionedbuild(Relation heap,
 	Relation index, struct IndexInfo *indexInfo);

@@ -12,7 +12,9 @@
 
 #include <chrono>
 #include <optional>
+#include <tuple>
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
@@ -24,6 +26,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -147,7 +150,8 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
       YsqlDdlTransactionState{TxnState::kUnknown,
                               txn.status_tablet,
                               YsqlDdlVerificationState::kDdlInProgress,
-                              {table}, {} /* processed_tables */, {} /* nochange_tables */});
+                              {table}, {} /* processed_tables */, {} /* nochange_tables */,
+                              ysql_ddl_txns_release_all_deferred_.erase(txn.transaction_id) > 0});
   return true;
 }
 
@@ -196,9 +200,17 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
-bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
+bool CatalogManager::DeferObjectLockReleaseToDdlVerifier(
+    const TransactionId& txn, bool release_all) {
   LockGuard lock(ddl_txn_verifier_mutex_);
-  return ysql_ddl_txn_verfication_state_map_.contains(txn);
+  auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
+  if (!verifier_state) {
+    return false;
+  }
+  if (release_all) {
+    verifier_state->release_all_deferred = true;
+  }
+  return true;
 }
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
@@ -258,6 +270,15 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (verifier_state->txn_state != TxnState::kCommitted &&
           verifier_state->txn_state != TxnState::kAborted) {
         verifier_state->txn_state = txn_state;
+      } else if (txn_state != verifier_state->txn_state) {
+        // The outcome is already known (e.g. reported by PG) and a retry after a failed post
+        // processing must not override it: schema comparison can be wrong once a newer DDL has
+        // changed the table.
+        LOG(WARNING) << "Using already known state " << verifier_state->txn_state
+                     << " for transaction " << txn << " instead of " << txn_state
+                     << ", debug_caller_info " << debug_caller_info;
+        txn_state = verifier_state->txn_state;
+        is_committed = txn_state == TxnState::kCommitted;
       }
       verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
     }
@@ -312,6 +333,11 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (schema_version_txn != ddl_txns_waiting_for_schema_version.cend()) {
         LOG(INFO) << "table " << table->id() << " has no txn id but is waiting for "
                   << schema_version_txn->first << ". So it is still bound by txn " << txn;
+        // The alter may never have been sent (e.g. the helper failed after committing the new
+        // version), and this call resets a failed state, so resend it to avoid a hang.
+        if (!SendAlterTableRequestInternal(table, TransactionId::Nil(), epoch).ok()) {
+          ddl_verification_success = false;
+        }
         continue;
       }
 
@@ -330,16 +356,24 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       RemoveDdlTransactionState(table->id(), {txn});
       continue;
     }
-    if (table->is_index() && is_committed.has_value()) {
-      // This is an index. If the indexed table is being deleted or marked for deletion, then skip
-      // doing anything as the deletion of the table will delete this index.
+    if (table->is_index() && is_committed.has_value() &&
+        table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+      // Skip an index that is already being deleted, or that is deleted along with its indexed
+      // table: the indexed table is running, is being dropped by this transaction, and lists the
+      // index. Any other index being dropped, including one whose indexed table is already gone,
+      // is dropped on its own.
       const auto& indexed_table_id = table->indexed_table_id();
-      auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
-      if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
-          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+      auto indexed_table = GetTableInfo(indexed_table_id);
+      const bool index_deletion_started = table->LockForRead()->started_deleting();
+      TEST_SYNC_POINT("YsqlDdlTxnCompleteCallback::AfterIndexStateRead");
+      const bool dropped_with_indexed_table =
+          indexed_table && indexed_table->LockForRead()->is_running() &&
+          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
+          !indexed_table->GetIndexInfo(table->id()).table_id().empty();
+      if (index_deletion_started || dropped_with_indexed_table) {
         LOG(INFO) << "Skipping DDL transaction verification for index " << table->ToString()
-                << " as the indexed table " << indexed_table->ToString()
-                << " is also being dropped";
+                  << " as it is already being deleted or is dropped together with its indexed "
+                  << "table " << indexed_table_id;
         continue;
       }
     }
@@ -352,6 +386,9 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
 
     auto s = background_tasks_thread_pool_->SubmitFunc([this, table, txn, is_committed, epoch]() {
       auto s = YsqlDdlTxnCompleteCallbackInternal(table.get(), txn, is_committed, epoch);
+      auto sync_point_arg = std::make_tuple(table.get(), &txn, &s);
+      TEST_SYNC_POINT_CALLBACK(
+          "YsqlDdlTxnCompleteCallback::TableVerificationDone", &sync_point_arg);
       if (!s.ok()) {
         LOG(WARNING) << "YsqlDdlTxnCompleteCallback failed for table " << table->ToString()
                      << " txn " << txn << ": " << s.ToString();
@@ -375,6 +412,11 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
   const auto& req_txn = req->transaction_id();
   SCHECK(!req_txn.empty(), IllegalState,
       "Received ReportYsqlDdlTxnStatus request without transaction id");
+  // Move the clock past the commit time before handling the DDL (see
+  // HandleSuccessfulYsqlDdlTxn).
+  if (req->has_propagated_hybrid_time()) {
+    master_->clock()->Update(HybridTime(req->propagated_hybrid_time()));
+  }
   // When req->is_committed() is known (i.e., not kNoChange), the first argument table is not
   // needed.
   RETURN_NOT_OK(YsqlDdlTxnCompleteCallback(
@@ -415,6 +457,18 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
                       << (success.has_value() ? (*success ? "true" : "false") : "nullopt")
                       << " ysql_ddl_txn_verifier_state: "
                       << AsString(l->ysql_ddl_txn_verifier_state());
+
+  // A table this transaction drops on commit, or created and drops on abort, can already be
+  // deleting, for example an index deleted by the drop of its indexed table. Its drop is then
+  // already under way.
+  const bool txn_success = success.value_or(true);
+  if (l->started_deleting() &&
+      ((l->is_being_created_by_ysql_ddl_txn() && !txn_success) ||
+       (l->is_being_deleted_by_ysql_ddl_txn() && txn_success))) {
+    LOG_WITH_FUNC(INFO) << table->ToString() << " is already being deleted";
+    TEST_SYNC_POINT_CALLBACK("YsqlDdlTxnCompleteCallbackInternal::AlreadyDeleting", table);
+    return Status::OK();
+  }
 
   auto& metadata = l.mutable_data()->pb;
 
@@ -464,8 +518,67 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
         cols_being_dropped.push_back(col.name());
     }
   }
+
+  // A nonconcurrently built index was populated inline by the CREATE INDEX transaction and is
+  // finalized here, now that the transaction has committed (see IndexInfoPB.birth_time_state).
+  // Online (backfilled) indexes are in BIRTH_TIME_PENDING_BACKFILL at this point and are finalized
+  // when backfill completes, so they are skipped.
+  const bool finalize_index_birth_time =
+      txn_data.table->is_index() && l->pb.has_index_info() &&
+      l->pb.index_info().birth_time_state() == IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+  if (finalize_index_birth_time) {
+    // An inline build never retains delete markers; that is only done while backfilling.
+    LOG_IF(DFATAL, l->pb.schema().table_properties().retain_delete_markers())
+        << "Nonconcurrent index " << txn_data.table->ToString() << " retains delete markers";
+    // Index tables have no columns marked for deletion, and the tablets are only updated below.
+    LOG_IF(DFATAL, !cols_being_dropped.empty())
+        << "Nonconcurrent index " << txn_data.table->ToString() << " has columns being dropped";
+  }
+
   if (cols_being_dropped.empty()) {
-    return ClearYsqlDdlTxnState(txn_data);
+    uint64_t index_birth_time = 0;
+    if (finalize_index_birth_time) {
+      auto* index_info = mutable_pb.mutable_index_info();
+      // birth_time must be >= the commit time, so that reads before birth_time are rejected with
+      // SnapshotTooOld and reads at/after it see the complete index. The commit time is picked by
+      // the transaction coordinator. The master's clock is moved past it before this runs: by the
+      // hybrid time propagated on ReportYsqlDdlTxnStatus, or, when the master polls the
+      // transaction instead, by the GetTransactionStatus response (PollTransactionStatusBase).
+      // xCluster automatic-mode targets get birth_time from the source (TODO(#33155)), so don't
+      // stamp one there, but still mark it final so the target index becomes readable.
+      if (!GetXClusterManager()->IsTableReplicationConsumer(txn_data.table->id())) {
+        index_birth_time = master_->clock()->Now().ToUint64();
+        index_info->set_birth_time(index_birth_time);
+      }
+      index_info->clear_birth_time_state();
+      index_info->clear_birth_time_pending_txn_id();
+    }
+    RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
+    // Propagate birth time related information so that the index starts accepting reads.
+    // The DDL transaction state is already cleared, so a retry would not get here again: don't
+    // fail on a single tablet, but try to reach all of them.
+    // TODO(#37622): the master does not resend this if a tablet misses it (e.g. on master
+    // failover). The tablet validator usually repairs that, but not if its single check ran
+    // while the index was still pending.
+    if (finalize_index_birth_time) {
+      auto tablets = txn_data.table->GetTablets();
+      if (!tablets.ok()) {
+        LOG(WARNING) << "Failed to get tablets of " << txn_data.table->ToString()
+                     << " to mark the non-concurrent index done: " << tablets.status();
+        return Status::OK();
+      }
+      for (const auto& tablet : *tablets) {
+        auto call = std::make_shared<AsyncMarkNonConcurrentIndexDone>(
+            master_, AsyncTaskPool(), tablet, txn_data.table->id(), txn_data.epoch,
+            index_birth_time);
+        tablet->table()->AddTask(call);
+        WARN_NOT_OK(
+            ScheduleTask(call),
+            Format("Failed to schedule marking the non-concurrent index done on $0",
+                   tablet->tablet_id()));
+      }
+    }
+    return Status::OK();
   }
   Schema current_schema;
   RETURN_NOT_OK(SchemaFromPB(mutable_pb.schema(), &current_schema));
@@ -482,7 +595,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
   }
   SchemaToPB(builder.Build(), mutable_pb.mutable_schema());
   return YsqlDdlTxnAlterTableHelper(
-      txn_data, ddl_log_entries, /*new_table_name=*/"", /*success=*/true);
+      txn_data, ddl_log_entries, /*success=*/true);
 }
 
 Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data) {
@@ -558,7 +671,7 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
     mutable_pb.set_next_column_id(first_ddl_state.previous_next_column_id());
   }
   return YsqlDdlTxnAlterTableHelper(
-      txn_data, ddl_log_entries, new_table_name, /*success=*/false,
+      txn_data, ddl_log_entries, /*success=*/false,
       rollback_till_ddl_state_index);
 }
 
@@ -594,12 +707,18 @@ Status CatalogManager::ClearYsqlDdlTxnState(
     RemoveDdlTxnVerifierStateFromIndex(pb, rollback_till_ddl_state_index);
   }
 
+  const bool xcluster_has_pending_wal_anchor_deletion =
+      pb.has_xcluster_pending_wal_anchor_deletion_source_table_id();
+
   RETURN_NOT_OK(sys_catalog_->Upsert(txn_data.epoch, txn_data.table));
   if (RandomActWithProbability(
       FLAGS_TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification)) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
   txn_data.write_lock.Commit();
+  if (xcluster_has_pending_wal_anchor_deletion) {
+    GetXClusterManager()->MarkWalAnchorDeletionPending(txn_data.table->id());
+  }
   if (final_cleanup) {
     RemoveDdlTransactionState(txn_data.table->id(), {txn_data.ddl_txn_id});
   } else {
@@ -610,7 +729,6 @@ Status CatalogManager::ClearYsqlDdlTxnState(
 
 Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                                   const std::vector<DdlLogEntry>& ddl_log_entries,
-                                                  const string& new_table_name,
                                                   bool success,
                                                   int rollback_till_ddl_state_index) {
   RSTATUS_DCHECK(
@@ -623,7 +741,7 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   table_pb.set_updates_only_index_permissions(false);
   table_pb.set_state(SysTablesEntryPB::ALTERING);
   table_pb.set_state_msg(
-    strings::Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+    Format("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
   auto final_cleanup = rollback_till_ddl_state_index == 0;
   if (final_cleanup) {
@@ -642,8 +760,6 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
         txn_data.table,
         ddl_log_entries,
-        "" /* new_namespace_id */,
-        new_table_name,
         txn_data.epoch,
         nullptr /* resp */));
 
@@ -761,6 +877,22 @@ void CatalogManager::UpdateDdlVerificationState(const TransactionId& txn,
   UpdateDdlVerificationStateUnlocked(txn, state);
 }
 
+void CatalogManager::HandleAlterTableTaskFailed(const TableInfo& table) {
+  const auto waiting_txns = table.GetDdlTxnsWaitingForSchemaVersion();
+  if (waiting_txns.empty()) {
+    return;
+  }
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  for (const auto& [schema_version, txn] : waiting_txns) {
+    auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
+    if (verifier_state && verifier_state->state == YsqlDdlVerificationState::kDdlPostProcessing) {
+      LOG(INFO) << "Alter of table " << table.id() << " to schema version " << schema_version
+                << " gave up, marking txn " << txn << " for re-verification";
+      verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessingFailed;
+    }
+  }
+}
+
 void CatalogManager::UpdateDdlRollbackToSubTxnStateUnlocked(
     const TransactionId& txn, const SubTransactionId sub_txn_id,
     YsqlDdlSubTransactionRollbackState state) {
@@ -805,19 +937,24 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     }
 
     if (tables.empty()) {
-      LOG(INFO) << "Erasing DDL Verification state for " << txn_id;
+      // A rollback to savepoint can undo every DDL of a txn that is still running (txn_state is
+      // kUnknown until the verifier sees the txn finish; state is no signal, since a failed
+      // verification task can set kDdlPostProcessingFailed while the txn runs). Such a txn still
+      // holds its object locks and releases them itself when it finishes, unless a previous
+      // release-all from it was already dropped because this entry existed.
+      const bool release_locks =
+          iter->second.txn_state != TxnState::kUnknown || iter->second.release_all_deferred;
+      LOG(INFO) << "Erasing DDL Verification state for " << txn_id << ", "
+                << (release_locks ? "releasing its object locks"
+                                  : "txn is still running, deferring its object lock release");
       ysql_ddl_txn_verfication_state_map_.erase(iter);
       // At this point, we can be sure that the docdb schema changes have been applied.
       // For instance, consider the case of an ALTER.
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      if (!FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
-        WARN_NOT_OK(
-            background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
-              DoReleaseObjectLocksIfNecessary(txn_id);
-            }),
-            Format("Failed to submit task for releasing exclusive object locks of txn $0", txn_id));
+      if (release_locks) {
+        ScheduleReleaseObjectLocks(txn_id);
       }
     } else {
       VLOG(1) << "DDL Verification state for " << txn_id << " has "
@@ -1046,6 +1183,32 @@ void CatalogManager::DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id
   object_lock_info_manager_->ReleaseLocksForTxn(txn_id);
 }
 
+void CatalogManager::ScheduleReleaseObjectLocks(const TransactionId& txn_id) {
+  if (FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+    return;
+  }
+  WARN_NOT_OK(
+      background_tasks_thread_pool_->SubmitFunc(
+          [this, txn_id]() { DoReleaseObjectLocksIfNecessary(txn_id); }),
+      Format("Failed to submit task for releasing object locks of txn $0", txn_id));
+}
+
+void CatalogManager::ReleaseObjectLocksOfDeferredTxnsPostLoad() {
+  std::unordered_set<TransactionId> txns;
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    txns.swap(ysql_ddl_txns_release_all_deferred_);
+  }
+  if (FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+    return;
+  }
+  for (const auto& txn_id : txns) {
+    LOG(INFO) << "No DDL verification state for " << txn_id
+              << " after sys catalog reload, releasing its deferred object locks";
+    DoReleaseObjectLocksIfNecessary(txn_id);
+  }
+}
+
 Status CatalogManager::RollbackDocdbSchemaToSubtxn(
   const RollbackDocdbSchemaToSubtxnRequestPB* req,
   RollbackDocdbSchemaToSubtxnResponsePB* resp,
@@ -1076,8 +1239,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
-    if (!verifier_state || verifier_state->state != YsqlDdlVerificationState::kDdlInProgress ||
-        verifier_state->txn_state != TxnState::kUnknown) {
+    if (!verifier_state || verifier_state->txn_state != TxnState::kUnknown) {
       VLOG(3) << "Rolling back to sub-transaction for an already completed "
               << " transaction: " << txn
               << ", verifier_state: "
@@ -1146,13 +1308,14 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
 
     bool is_table_index = false;
     if (table->is_index()) {
-      // This is an index. If the indexed table is being deleted or marked for deletion due to the
-      // sub-transaction rollback, then skip doing anything as the deletion of the table will delete
-      // this index.
+      // This is an index. If the indexed table lists this index and is being deleted or marked for
+      // deletion due to the sub-transaction rollback, then skip doing anything as the deletion of
+      // the table will delete this index.
       const auto& indexed_table_id = table->indexed_table_id();
       auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
       if (table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
-          indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id)) {
+          indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
+          !indexed_table->GetIndexInfo(table->id()).table_id().empty()) {
         LOG(INFO) << "Will skip rollback to sub-transaction for index " << table->ToString()
                   << " as the indexed table " << indexed_table->ToString()
                   << " is also being dropped";
@@ -1210,6 +1373,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper(
   TableInfo* table, const TransactionId& txn_id, const SubTransactionId sub_txn_id,
   const LeaderEpoch& epoch) {
   const auto id = "table id: " + table->id();
+  TEST_SYNC_POINT("CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper:Start");
 
   auto l = table->LockForWrite();
   if (!VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(txn_id))) {
@@ -1306,9 +1470,15 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
 
   bool is_done = false;
   bool is_success = false;
+  std::vector<TableInfoPtr> txn_tables;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     const auto itr = ysql_ddl_txn_undergoing_subtransaction_rollback_map_.find(req_txn);
+    if (itr == ysql_ddl_txn_undergoing_subtransaction_rollback_map_.end()) {
+      if (const auto* verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, req_txn)) {
+        txn_tables = verifier_state->tables;
+      }
+    }
     // Rollback is done if:
     // 1. We don't have the state - indicates that the state was cleaned up after a successful
     // rollback.
@@ -1324,6 +1494,27 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
     is_success = itr == ysql_ddl_txn_undergoing_subtransaction_rollback_map_.end() ||
                  itr->second.sub_txn != sub_txn_id;
   }
+
+  // The rollback map is in memory only, so a new master leader has no entry for a rollback that
+  // the old leader started tracking but did not trigger. A finished rollback removes the table's
+  // DDL states at or after sub_txn_id, so any left on a running table mean the rollback was lost.
+  // Since the rollback was lost, don't report it as done. Return an error instead so that the
+  // caller can handle it. Reporting it as not done would only lead to a timeout, since no rollback
+  // is in progress.
+  for (const auto& table : txn_tables) {
+    auto l = table->LockForRead();
+    if (l->is_running() && VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(req_txn)) &&
+        l->ysql_first_ddl_state_at_or_after_sub_txn(sub_txn_id) <
+            l->ysql_ddl_txn_verifier_state().size()) {
+      resp->set_done(true);
+      return STATUS_FORMAT(
+          IllegalState,
+          "Rollback to sub-transaction $0 of transaction $1 was not applied to table $2, likely "
+          "due to a master leader change",
+          sub_txn_id, req_txn, table->ToString());
+    }
+  }
+
   resp->set_done(is_done);
   VLOG(1) << "Received IsRollbackDocdbSchemaToSubtxnDoneRequestPB request for transaction "
           << req_txn << ", sub_transaction_id: " << sub_txn_id

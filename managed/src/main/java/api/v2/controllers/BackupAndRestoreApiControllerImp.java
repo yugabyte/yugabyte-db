@@ -6,6 +6,8 @@ import api.v2.handlers.BackupAndRestoreHandler;
 import api.v2.models.BackupPagedQuerySpec;
 import api.v2.models.BackupPagedResp;
 import api.v2.models.GflagMetadata;
+import api.v2.models.IncrementalBackupPagedQuerySpec;
+import api.v2.models.IncrementalBackupPagedResp;
 import api.v2.models.RestoreKeyspacePagedQuerySpec;
 import api.v2.models.RestoreKeyspacePagedResp;
 import api.v2.models.RestorePagedQuerySpec;
@@ -42,6 +44,16 @@ public class BackupAndRestoreApiControllerImp extends BackupAndRestoreApiControl
       Http.Request request, UUID cUUID, BackupPagedQuerySpec backupPagedQuerySpec)
       throws Exception {
     return handler.pageListBackups(cUUID, backupPagedQuerySpec);
+  }
+
+  @Override
+  public IncrementalBackupPagedResp pageListIncrementalBackups(
+      Http.Request request,
+      UUID cUUID,
+      UUID bUUID,
+      IncrementalBackupPagedQuerySpec incrementalBackupPagedQuerySpec)
+      throws Exception {
+    return handler.pageListIncrementalBackups(cUUID, bUUID, incrementalBackupPagedQuerySpec);
   }
 
   @Override

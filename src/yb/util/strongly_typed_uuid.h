@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <limits>
 #include <random>
 
 #include <boost/preprocessor/cat.hpp>
@@ -135,6 +136,12 @@ class StronglyTypedUuid {
   // Represents an invalid UUID.
   static StronglyTypedUuid<Tag> Nil() {
     return StronglyTypedUuid(Uuid::Nil());
+  }
+
+  // Represents the greatest UUID, i.e. all bytes set to 0xFF.
+  static StronglyTypedUuid<Tag> Max() {
+    constexpr auto kAllOnes = std::numeric_limits<uint64_t>::max();
+    return StronglyTypedUuid<Tag>(kAllOnes, kAllOnes);
   }
 
   // Converts a UUID to a string, returns "<Undefined{ClassName}>" if UUID is undefined, where

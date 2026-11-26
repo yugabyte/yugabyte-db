@@ -238,7 +238,8 @@ class ReplicaState {
 
   // Checks if the term change is legal. If so, sets 'current_term'
   // to 'new_term' and sets 'has voted' to no for the current term.
-  Status SetCurrentTermUnlocked(int64_t new_term);
+  // Without flush the caller must flush the consensus metadata before acting on the new term.
+  Status SetCurrentTermUnlocked(int64_t new_term, FlushConsensusMeta flush);
 
   // Returns the term set in the last config change round.
   const int64_t GetCurrentTermUnlocked() const;
@@ -308,6 +309,11 @@ class ReplicaState {
   // This must be called under a lock.
   const OpId& GetCommittedOpIdUnlocked() const;
 
+  // Same as GetCommittedOpIdUnlocked, but does not need the lock.
+  OpId GetCommittedOpIdLockFree() const {
+    return last_committed_op_id_copy_.load(std::memory_order_acquire);
+  }
+
   // Returns the watermark below which all operations are known to be applied according to
   // consensus.
   const OpId& GetLastAppliedOpIdUnlocked() const {
@@ -325,6 +331,9 @@ class ReplicaState {
   // Updates the last received operation from current leader.
   // This must be called under a lock.
   void UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id);
+
+  // Same, but advances monotonically instead of only setting when empty. Call under a lock.
+  void UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(const OpId& op_id);
 
   // Returns the last received op id. This must be called under the lock.
   const OpId& GetLastReceivedOpIdUnlocked() const;
@@ -483,6 +492,9 @@ class ReplicaState {
 
   void SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id);
 
+  // Returns true if the context postpones applying the operation.
+  bool PostponeApplyUnlocked(const ConsensusRound& round);
+
   // Applies committed config change.
   void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
 
@@ -538,6 +550,14 @@ class ReplicaState {
   // NOTE: due to implementation details at this and lower layers all operations up to
   // last_committed_op_id_ are guaranteed to be already applied.
   OpId last_committed_op_id_;
+
+  // Copy of last_committed_op_id_, read without update_lock_ by tasks on the transaction
+  // participant strand, because a Raft apply could wait for them under update_lock_.
+  std::atomic<OpId> last_committed_op_id_copy_{OpId()};
+
+  // The last operation that ConsensusContext::PostponeApply postponed, and its state.
+  OpId postponed_op_id_;
+  PostponedApplyPtr postponed_apply_;
 
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
   OpId pending_election_opid_;

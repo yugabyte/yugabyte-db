@@ -93,6 +93,48 @@ export const useExportTelemetryStyles = makeStyles((theme) => ({
 
     width: 'fit-content'
   },
+  advancedSectionContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+
+    width: '100%'
+  },
+  advancedToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+
+    width: 'fit-content',
+    padding: 0,
+
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer'
+  },
+  advancedToggleLabel: {
+    color: theme.palette.grey[900],
+    fontSize: 13,
+    fontWeight: 600,
+    lineHeight: '16px'
+  },
+  advancedToggleIcon: {
+    display: 'flex',
+    flexShrink: 0,
+
+    width: 24,
+    height: 24,
+
+    transition: theme.transitions.create('transform')
+  },
+  advancedToggleIconCollapsed: {
+    transform: 'rotate(-90deg)'
+  },
+  advancedSection: {
+    display: 'flex',
+    flexDirection: 'column',
+
+    width: '100%'
+  },
   headerRow: {
     display: 'flex',
     alignItems: 'flex-start',

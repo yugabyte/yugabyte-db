@@ -33,6 +33,8 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(ycql_packed_row_size_limit);
 DECLARE_uint64(ysql_packed_row_size_limit);
 
+using namespace std::literals;
+
 namespace yb {
 
 void SetUpPackedRowTestFlags() {
@@ -45,7 +47,15 @@ void SetUpPackedRowTestFlags() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 }
 
+Status WaitAllPeersApplied(MiniCluster* cluster) {
+  return WaitAllReplicasSynchronizedWithLeader(
+      cluster, 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue);
+}
+
 void CheckNumRecords(MiniCluster* cluster, size_t expected_num_records) {
+  // TEST_CountDBRecords reads raw RocksDB with no apply wait, and a LEADER_NOT_READY leader may
+  // not have applied every acknowledged write.
+  ASSERT_OK(WaitAllPeersApplied(cluster));
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
 
   for (const auto& peer : peers) {

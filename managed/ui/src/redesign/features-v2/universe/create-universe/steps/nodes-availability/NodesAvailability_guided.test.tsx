@@ -46,6 +46,20 @@ vi.mock('react-i18next', () => ({
   }) => children ?? i18nKey ?? null
 }));
 
+vi.mock('../../helpers/utils', () => ({
+  useRuntimeConfigValues: () => ({
+    enablePrimaryRf9: false,
+    osPatchingEnabled: false,
+    useK8CustomResources: false,
+    maxVolumeCount: 32,
+    canUseSpotInstance: false,
+    ebsVolumeEnabled: false,
+    enableAzOverridesK8s: false,
+    isRuntimeConfigLoading: false,
+    isProviderRuntimeConfigLoading: false
+  })
+}));
+
 const mockMoveToNextPage = vi.fn();
 const mockSaveNodesAvailabilitySettings = vi.fn();
 const mockMoveToPreviousPage = vi.fn();
@@ -388,6 +402,24 @@ describe('NodesAvailabilitySchema', () => {
 });
 
 describe('assignRegionsAZNodeByReplicationFactor', () => {
+  it('REGION_LEVEL puts exactly one AZ per region (nodes may stack on that AZ)', () => {
+    const availabilityZones = assignRegionsAZNodeByReplicationFactor({
+      [RESILIENCE_TYPE]: ResilienceType.REGULAR,
+      [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.REGION_LEVEL,
+      [RESILIENCE_FACTOR]: 2, // needs 5 nodes across 3 regions → 2+2+1
+      [NODE_COUNT]: 1,
+      [REGIONS_FIELD]: [makeRegion('r0', 4), makeRegion('r1', 4), makeRegion('r2', 4)] as any
+    });
+
+    expect(availabilityZones.r0).toHaveLength(1);
+    expect(availabilityZones.r1).toHaveLength(1);
+    expect(availabilityZones.r2).toHaveLength(1);
+    expect(availabilityZones.r0[0].nodeCount).toBe(2);
+    expect(availabilityZones.r1[0].nodeCount).toBe(2);
+    expect(availabilityZones.r2[0].nodeCount).toBe(1);
+  });
+
   it('AZ_LEVEL RF1 with 2 regions splits 3 AZs as 2+1 (Figma guided defaults)', () => {
     const availabilityZones = assignRegionsAZNodeByReplicationFactor({
       [RESILIENCE_TYPE]: ResilienceType.REGULAR,

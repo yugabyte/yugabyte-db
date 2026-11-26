@@ -44,7 +44,7 @@ yugabyte=# drop owned by john;
 
 ## See also
 
-- [`REASSIGN OWNED`](../dcl_reassign_owned)
-- [`CREATE ROLE`](../dcl_create_role)
-- [`GRANT`](../dcl_grant)
-- [`REVOKE`](../dcl_revoke)
+- [REASSIGN OWNED](../dcl_reassign_owned)
+- [CREATE ROLE](../dcl_create_role)
+- [GRANT](../dcl_grant)
+- [REVOKE](../dcl_revoke)

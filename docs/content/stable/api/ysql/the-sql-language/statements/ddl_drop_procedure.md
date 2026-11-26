@@ -46,8 +46,8 @@ DROP PROCEDURE IF EXISTS transfer(integer, integer, dec) CASCADE;
 
 ## See also
 
-- [`CREATE PROCEDURE`](../ddl_create_procedure)
-- [`ALTER PROCEDURE`](../ddl_alter_procedure)
-- [`CREATE FUNCTION`](../ddl_create_function)
-- [`ALTER FUNCTION`](../ddl_alter_function)
-- [`DROP FUNCTION`](../ddl_drop_function)
+- [CREATE PROCEDURE](../ddl_create_procedure)
+- [ALTER PROCEDURE](../ddl_alter_procedure)
+- [CREATE FUNCTION](../ddl_create_function)
+- [ALTER FUNCTION](../ddl_alter_function)
+- [DROP FUNCTION](../ddl_drop_function)

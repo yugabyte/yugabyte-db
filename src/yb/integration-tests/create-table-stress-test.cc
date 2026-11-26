@@ -72,6 +72,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -117,7 +118,6 @@ using std::string;
 using std::vector;
 using std::thread;
 using std::unique_ptr;
-using strings::Substitute;
 
 namespace yb {
 
@@ -657,7 +657,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
     YBTableName table_name(
-        YQL_DATABASE_CQL, "my_keyspace", Substitute("test-$0", num_tables_created));
+        YQL_DATABASE_CQL, "my_keyspace", Format("test-$0", num_tables_created));
     LOG(INFO) << "Creating table " << table_name.ToString();
     Status s = client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                                    table_name.namespace_type());

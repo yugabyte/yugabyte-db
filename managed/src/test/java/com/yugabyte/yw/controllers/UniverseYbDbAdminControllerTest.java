@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
@@ -352,6 +353,36 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         result,
         "Disabling YSQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
             + " disable DB API");
+  }
+
+  @Test
+  public void testConfigureYSQLDisableAuthWithYsqlHbaGFlag() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, true, true, false);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .tserverGFlags
+                .put(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5"));
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", false)
+            .put("ysqlPassword", "Admin@123");
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result, "Cannot disable YSQL auth while ysql_hba_conf_csv or ysql_hba_conf is set.");
   }
 
   @Test

@@ -103,6 +103,8 @@ class IntentAwareIterator final {
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
 
+  ~IntentAwareIterator();
+
   void Revalidate(SeekFilter seek_filter);
 
   // Seek to the smallest key which is greater or equal than doc_key.
@@ -323,6 +325,11 @@ class IntentAwareIterator final {
   // Does initial steps for prev doc key/sub doc key seek.
   // Returns true if prepare succeed.
   bool PreparePrev(Slice key);
+
+  // Positions the intent iterator on the latest suitable intent before the given key with a real
+  // seek, whatever its current position. Returns false on error. The intent iterator must be
+  // initialized.
+  bool IntentSeekBeforeKey(Slice key);
 
   bool SatisfyBounds(Slice slice);
 

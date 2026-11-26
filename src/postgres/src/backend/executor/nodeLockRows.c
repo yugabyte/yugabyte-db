@@ -30,7 +30,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_lockrows.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
 static bool
@@ -253,7 +253,7 @@ lnext:
 		Assert(IsYBBackedRelation(erm->relation) == yb_mode);
 		if (yb_mode)
 		{
-			if (!YbCanSkipIntentsWrite(erm->relation))
+			if (!YbGetSkipIntentsOptimizationInfoWrite(erm->relation).skip_intents)
 				test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy, estate,
 									handle);
 			else
@@ -394,7 +394,9 @@ ExecLockRows(PlanState *pstate)
 	if (!yb_mode || !lrstate->yb_info.buffered_slots_capacity)
 		return ExecLockRowsImpl(pstate, yb_mode, NULL);
 	YbLockRowsStateInfo *yb_info = &lrstate->yb_info;
-	for (Tuplestorestate *buffered = yb_info->buffered_slots; buffered; )
+	Tuplestorestate *buffered = yb_info->buffered_slots;
+	Assert(buffered);
+	do
 	{
 		TupleTableSlot *result = NULL;
 		for (;!tuplestore_ateof(buffered);)
@@ -409,9 +411,9 @@ ExecLockRows(PlanState *pstate)
 			}
 		}
 
+		tuplestore_clear(buffered);
 		if (yb_info->end_reached)
 			break;
-		tuplestore_clear(buffered);
 		yb_info->buffered_slot_index = 0;
 		uint64_t max_read_ahead =
 			likely(lrstate->ps.state->yb_read_ahead_allowed) ? yb_info->buffered_slots_capacity : 1;
@@ -440,10 +442,7 @@ ExecLockRows(PlanState *pstate)
 			tuplestore_puttupleslot(buffered, slot);
 			yb_info->check_handles[i] = handle;
 		}
-		if (!tuplestore_tuple_count(buffered))
-			break;
-	}
-	YbReleaseBufferedTuplestore(lrstate);
+	} while (tuplestore_tuple_count(buffered));
 	return NULL;
 }
 

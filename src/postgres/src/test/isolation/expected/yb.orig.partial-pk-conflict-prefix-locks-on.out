@@ -1,0 +1,1400 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_begin_rr s1_full_keyshare s2_begin_rr s2_part_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_keyshare s2_begin_rr s2_part_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_keyshare s2_begin_rr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_keyshare s2_begin_rr s2_part_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_share s2_begin_rr s2_part_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_share s2_begin_rr s2_part_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_share s2_begin_rr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_share s2_begin_rr s2_part_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_nokeyupd s2_begin_rr s2_part_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_nokeyupd s2_begin_rr s2_part_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_nokeyupd s2_begin_rr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_nokeyupd s2_begin_rr s2_part_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_upd s2_begin_rr s2_part_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_keyshare: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_upd s2_begin_rr s2_part_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_upd s2_begin_rr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_full_upd s2_begin_rr s2_part_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_keyshare s2_begin_rr s2_full_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_keyshare s2_begin_rr s2_full_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_keyshare s2_begin_rr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_keyshare s2_begin_rr s2_full_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_share s2_begin_rr s2_full_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_share s2_begin_rr s2_full_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_share s2_begin_rr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_share s2_begin_rr s2_full_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_nokeyupd s2_begin_rr s2_full_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_nokeyupd s2_begin_rr s2_full_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_nokeyupd s2_begin_rr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_nokeyupd s2_begin_rr s2_full_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s2_begin_rr s2_full_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_keyshare: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s2_begin_rr s2_full_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s2_begin_rr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s2_begin_rr s2_full_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_keyshare s2_begin_sr s2_part_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_keyshare s2_begin_sr s2_part_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_keyshare s2_begin_sr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_keyshare s2_begin_sr s2_part_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_share s2_begin_sr s2_part_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_share s2_begin_sr s2_part_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_share s2_begin_sr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_share s2_begin_sr s2_part_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_nokeyupd s2_begin_sr s2_part_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_keyshare: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_nokeyupd s2_begin_sr s2_part_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_nokeyupd s2_begin_sr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_nokeyupd s2_begin_sr s2_part_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_upd s2_begin_sr s2_part_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_keyshare: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_upd s2_begin_sr s2_part_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_upd s2_begin_sr s2_part_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_full_upd s2_begin_sr s2_part_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_part_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_keyshare s2_begin_sr s2_full_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_keyshare s2_begin_sr s2_full_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_keyshare s2_begin_sr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_keyshare s2_begin_sr s2_full_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_share s2_begin_sr s2_full_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_share s2_begin_sr s2_full_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_share s2_begin_sr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_share s2_begin_sr s2_full_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_nokeyupd s2_begin_sr s2_full_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_nokeyupd s2_begin_sr s2_full_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_nokeyupd s2_begin_sr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_nokeyupd s2_begin_sr s2_full_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_upd s2_begin_sr s2_full_keyshare s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_keyshare: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_keyshare: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_upd s2_begin_sr s2_full_share s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_share: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_share: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_upd s2_begin_sr s2_full_nokeyupd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_nokeyupd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_upd s2_begin_sr s2_full_upd s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_full_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 2 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_full_upd: <... completed>
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_keyshare s2_begin_rr s2_ins_prefix s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_share s2_begin_rr s2_ins_prefix s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_nokeyupd s2_begin_rr s2_ins_prefix s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s2_begin_rr s2_ins_prefix s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s3_ins_prefix s2_begin_rr s2_new_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s3_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_new_upd: SELECT h, r FROM partial_key WHERE h = 1 AND r = 9 FOR UPDATE;
+h|r
+-+-
+1|9
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s3_ins_prefix s2_begin_rr s2_new_update s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s3_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_new_update: UPDATE partial_key SET v = 10 WHERE h = 1 AND r = 9;
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_part_upd s3_ins_prefix s2_begin_rr s2_new_delete s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s3_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9);
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_new_delete: DELETE FROM partial_key WHERE h = 1 AND r = 9;
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_keyshare s2_begin_sr s2_ins_prefix s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9); <waiting ...>
+step s1_commit: COMMIT;
+step s2_ins_prefix: <... completed>
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_keyshare s2_begin_sr s2_ins_other s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_keyshare: SELECT h, r FROM partial_key WHERE h = 1 FOR KEY SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_other: INSERT INTO partial_key VALUES (2, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_share s2_begin_sr s2_ins_prefix s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9); <waiting ...>
+step s1_commit: COMMIT;
+step s2_ins_prefix: <... completed>
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_share s2_begin_sr s2_ins_other s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_share: SELECT h, r FROM partial_key WHERE h = 1 FOR SHARE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_other: INSERT INTO partial_key VALUES (2, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_nokeyupd s2_begin_sr s2_ins_prefix s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9); <waiting ...>
+step s1_commit: COMMIT;
+step s2_ins_prefix: <... completed>
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_nokeyupd s2_begin_sr s2_ins_other s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_nokeyupd: SELECT h, r FROM partial_key WHERE h = 1 FOR NO KEY UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_other: INSERT INTO partial_key VALUES (2, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_upd s2_begin_sr s2_ins_prefix s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_prefix: INSERT INTO partial_key VALUES (1, 9, 9); <waiting ...>
+step s1_commit: COMMIT;
+step s2_ins_prefix: <... completed>
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_part_upd s2_begin_sr s2_ins_other s1_commit s2_commit
+step s1_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_part_upd: SELECT h, r FROM partial_key WHERE h = 1 FOR UPDATE;
+h|r
+-+-
+1|2
+(1 row)
+
+step s2_begin_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_ins_other: INSERT INTO partial_key VALUES (2, 9, 9);
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;

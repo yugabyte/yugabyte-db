@@ -8,6 +8,8 @@
 --- 2. Incomplete bindings to hash keys.
 --- 3. Conditions whose operands don’t match in type. (including UDTs)
 --- 4. Unsupported RowComparisonExpressions
+--- 5. Non-equality SAOP conditions, which are filters rather than index
+---    conditions.
 \set explain_analyze 'EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)'
 SET enable_seqscan = off;
 --- - ---
@@ -223,6 +225,29 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
    Storage Index Rows Scanned: 40
 (8 rows)
 
+-- an out-of-range equality means no row can match, so nothing is read, whether
+-- or not the hash columns are all bound
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h1 = 1 AND h2 = 2147483648;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_hash_hash on t_incomplete_binds t (actual rows=0 loops=1)
+   Index Cond: ((h1 = 1) AND (h2 = '2147483648'::bigint))
+(2 rows)
+
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h2 = 2147483648;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_hash_hash on t_incomplete_binds t (actual rows=0 loops=1)
+   Index Cond: (h2 = '2147483648'::bigint)
+(2 rows)
+
+:explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 = 2147483648;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using t_hash_range on t_incomplete_binds t (actual rows=0 loops=1)
+   Index Cond: (r2 = '2147483648'::bigint)
+(2 rows)
+
 DROP TABLE t_incomplete_binds;
 --- - ---
 --- 3 --- Cross type index comparisons
@@ -277,62 +302,6 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Storage Index Rows Scanned: 1
 (8 rows)
 
--- these are each out of range, so recheck is required
-:explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
-   Index Cond: (i2 = 32768)
-   Rows Removed by Index Recheck: 4
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 4
-(9 rows)
-
-:explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=4 loops=1)
-   Index Cond: (i2 < 32768)
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 4
-(8 rows)
-
-:explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
-   Index Cond: (i2 > 32768)
-   Rows Removed by Index Recheck: 4
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 4
-(9 rows)
-
-:explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=3 loops=1)
-   Index Cond: (i2 = ANY ('{1,2,32767,32768}'::integer[]))
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 3
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 3
-(8 rows)
-
--- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i4 = 1;
                          QUERY PLAN                         
 ------------------------------------------------------------
@@ -372,62 +341,6 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Storage Index Rows Scanned: 1
 (8 rows)
 
--- these are each out of range, so recheck is required
-:explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
-   Index Cond: (i4 = '2147483648'::bigint)
-   Rows Removed by Index Recheck: 4
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 4
-(9 rows)
-
-:explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
-   Index Cond: (i4 > '2147483648'::bigint)
-   Rows Removed by Index Recheck: 4
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 4
-(9 rows)
-
-:explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=4 loops=1)
-   Index Cond: (i4 < '2147483648'::bigint)
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 4
-(8 rows)
-
-:explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=3 loops=1)
-   Index Cond: (i4 = ANY ('{1,2,2147483647,2147483648}'::bigint[]))
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 3
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 3
-(8 rows)
-
--- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i8 = 1;
                          QUERY PLAN                         
 ------------------------------------------------------------
@@ -467,7 +380,47 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Storage Index Rows Scanned: 1
 (8 rows)
 
--- these are each out of range, so recheck is required
+:explain_analyze SELECT * FROM t_int WHERE s = 1;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Index Scan using t_int_pkey on t_int (actual rows=1 loops=1)
+   Index Cond: (s = 1)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+(5 rows)
+
+-- these equalities are out of range, so no row can match and nothing is read
+:explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+   Index Cond: (i2 = 32768)
+(2 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE i2 = -32769;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+   Index Cond: (i2 = '-32769'::integer)
+(2 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+   Index Cond: (i4 = '2147483648'::bigint)
+(2 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE s = 2147483648;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Index Scan using t_int_pkey on t_int (actual rows=0 loops=1)
+   Index Cond: (s = '2147483648'::bigint)
+(2 rows)
+
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 = 9223372036854775809;
                              QUERY PLAN                             
 --------------------------------------------------------------------
@@ -478,6 +431,64 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Storage Table Rows Scanned: 4
 (5 rows)
 
+-- these inequalities are out of range, so their key is not bound and recheck is
+-- required
+:explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=4 loops=1)
+   Index Cond: (i2 < 32768)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 4
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 4
+(8 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+   Index Cond: (i2 > 32768)
+   Rows Removed by Index Recheck: 4
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 4
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 4
+(9 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+   Index Cond: (i4 > '2147483648'::bigint)
+   Rows Removed by Index Recheck: 4
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 4
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 4
+(9 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=4 loops=1)
+   Index Cond: (i4 < '2147483648'::bigint)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 4
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 4
+(8 rows)
+
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 > 9223372036854775809;
                              QUERY PLAN                             
 --------------------------------------------------------------------
@@ -498,6 +509,46 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Storage Table Rows Scanned: 4
 (5 rows)
 
+-- the out-of-range element is dropped from the IN list, so no recheck is
+-- required
+:explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=3 loops=1)
+   Index Cond: (i2 = ANY ('{1,2,32767,32768}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 3
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 3
+(8 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=3 loops=1)
+   Index Cond: (i4 = ANY ('{1,2,2147483647,2147483648}'::bigint[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 3
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 3
+(8 rows)
+
+:explain_analyze SELECT * FROM t_int WHERE s IN (1, 2, 2147483647, 2147483648);
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_int_pkey on t_int (actual rows=2 loops=1)
+   Index Cond: (s = ANY ('{1,2,2147483647,2147483648}'::bigint[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 2
+(5 rows)
+
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 IN (1, 2, 9223372036854775807, 9223372036854775808);
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
@@ -507,6 +558,133 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
 (5 rows)
+
+-- in-range and out-of-range equality as a parameter of a generic plan
+SET plan_cache_mode = force_generic_plan;
+PREPARE t_int_i2_eq(int4) AS SELECT * FROM t_int WHERE i2 = $1;
+:explain_analyze EXECUTE t_int_i2_eq(1);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=1 loops=1)
+   Index Cond: (i2 = $1)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+   Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
+   Storage Index Rows Scanned: 1
+(8 rows)
+
+:explain_analyze EXECUTE t_int_i2_eq(32768);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+   Index Cond: (i2 = $1)
+(2 rows)
+
+DEALLOCATE t_int_i2_eq;
+RESET plan_cache_mode;
+-- aggregate pushdown, which a constant out-of-range equality allows since the
+-- scan reads nothing
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Only Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = '2147483648'::bigint)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(5 rows)
+
+SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = '2147483648'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+:explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_int_pkey on t_int (actual rows=0 loops=1)
+         Index Cond: (s = '2147483648'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+SELECT count(*) FROM t_int WHERE s = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+-- aggregate pushdown with a subquery value, which is not yet known when the
+-- executor decides whether to push the aggregate down
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Index Only Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = $0)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(7 rows)
+
+SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+ count 
+-------
+     0
+(1 row)
+
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = $0)
+         Partial Aggregate: true
+(6 rows)
+
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+ count 
+-------
+     0
+(1 row)
+
+:explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Index Scan using t_int_pkey on t_int (actual rows=0 loops=1)
+         Index Cond: (s = $0)
+         Partial Aggregate: true
+(6 rows)
+
+SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+ count 
+-------
+     0
+(1 row)
 
 DROP TABLE t_int;
 ----- float comparisons ----
@@ -1027,3 +1205,230 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 (6 rows)
 
 DROP TABLE t_i2, t_i4, t_i8, t_f4, t_f8, t_num, t_txt;
+--- - ---
+--- 5 --- Non-equality SAOP (#35030)
+--- - ---
+CREATE TABLE t_nonequality_saop(g int, k int, PRIMARY KEY(g ASC, k ASC));
+INSERT INTO t_nonequality_saop SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+-- Test non-equality SAOP with no other condition on its column
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{2,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=7 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k > ANY ('{2,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{NULL,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=4 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k > ANY ('{NULL,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=0 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k > ANY ('{}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+-- Test Inequality + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=7 loops=1)
+   Index Cond: ((g = 0) AND (k >= 0))
+   Storage Filter: (k > ANY ('{2,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=5 loops=1)
+   Index Cond: ((g = 0) AND (k <= 9))
+   Storage Filter: (k < ANY ('{2,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT count(*) FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=1 loops=1)
+         Index Cond: ((g = 0) AND (k >= 0))
+         Storage Filter: (k > ANY ('{2,5}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 10
+         Partial Aggregate: true
+(8 rows)
+
+SET yb_enable_bitmapscan = true;
+:explain_analyze /*+ BitmapScan(t_nonequality_saop) */ SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ YB Bitmap Table Scan on t_nonequality_saop (actual rows=7 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 7
+   ->  Bitmap Index Scan on t_nonequality_saop_pkey (actual rows=7 loops=1)
+         Index Cond: ((g = 0) AND (k >= 0))
+         Storage Index Filter: (k > ANY ('{2,5}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 10
+(10 rows)
+
+RESET yb_enable_bitmapscan;
+-- Test Equality + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=1 loops=1)
+   Index Cond: ((g = 0) AND (k = 5))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+(5 rows)
+
+-- Test SAOP + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=2 loops=1)
+   Index Cond: ((g = 0) AND (k = ANY ('{1,4,8}'::integer[])))
+   Storage Filter: (k > ANY ('{2,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 3
+(6 rows)
+
+-- Test Inequality + non-equality SAOP different types
+SET plan_cache_mode = force_generic_plan;
+PREPARE nonequality_saop_count(bigint[]) AS SELECT count(*) FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_saop_count('{5,3000000000}');
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=1 loops=1)
+         Index Cond: ((g = 0) AND (k >= 0))
+         Storage Filter: (k > ANY ($1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 10
+         Partial Aggregate: true
+(8 rows)
+
+EXECUTE nonequality_saop_count('{5,3000000000}');
+ count 
+-------
+     4
+(1 row)
+
+RESET plan_cache_mode;
+DEALLOCATE nonequality_saop_count;
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=7 loops=1)
+   Index Cond: ((g = 0) AND (k >= 0))
+   Storage Filter: (k > ANY ('{2,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_pkey on t_nonequality_saop (actual rows=5 loops=1)
+   Index Cond: ((g = 0) AND (k <= 9))
+   Storage Filter: (k < ANY ('{2,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+RESET yb_enable_advanced_index_cond_fold;
+CREATE TABLE t_nonequality_saop_hash(h int, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash SELECT i % 10, i FROM generate_series(1, 100) i;
+CREATE TABLE t_nonequality_saop_hash_f4(h real, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
+-- Test non-equality SAOP on a hash column
+:explain_analyze SELECT count(*) FROM t_nonequality_saop_hash WHERE h > ANY ('{8,9}');
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on t_nonequality_saop_hash (actual rows=1 loops=1)
+         Storage Filter: (h > ANY ('{8,9}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 100
+         Partial Aggregate: true
+(7 rows)
+
+-- Test Equality + non-equality SAOP on a hash column
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h > ANY ('{5,2}');
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_pkey on t_nonequality_saop_hash (actual rows=10 loops=1)
+   Index Cond: (h = 6)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(5 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h < ANY ('{7,9}');
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_pkey on t_nonequality_saop_hash (actual rows=10 loops=1)
+   Index Cond: (h = 6)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(5 rows)
+
+-- Test Equality + non-equality SAOP different types on a hash column (#37237)
+:explain_analyze SELECT * FROM t_nonequality_saop_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_f4_pkey on t_nonequality_saop_hash_f4 (actual rows=1 loops=1)
+   Index Cond: (h = '1.5'::double precision)
+   Rows Removed by Index Recheck: 2
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 3
+(6 rows)
+
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_saop_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_f4_pkey on t_nonequality_saop_hash_f4 (actual rows=1 loops=1)
+   Index Cond: (h = '1.5'::double precision)
+   Rows Removed by Index Recheck: 2
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 3
+(6 rows)
+
+RESET yb_enable_advanced_index_cond_fold;
+DROP TABLE t_nonequality_saop, t_nonequality_saop_hash, t_nonequality_saop_hash_f4;

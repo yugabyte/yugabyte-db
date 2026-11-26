@@ -13,12 +13,10 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 namespace ql {
@@ -64,26 +62,26 @@ TEST_F(TestQLDeleteTable, TestQLDeleteTableSimple) {
 
   for (int idx = 0; idx < kNumRows; idx++) {
     // INSERT: Valid statement with column list.
-    string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
-                             "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
-                             idx, idx, idx+100, idx+100, idx+1000, idx+1000);
+    string stmt = Format("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
+                         "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
+                         idx, idx, idx+100, idx+100, idx+1000, idx+1000);
     CHECK_VALID_STMT(stmt);
   }
 
   // Testing DELETE one row.
   for (int idx = 0; idx < kNumRows; idx++) {
     // SELECT an entry to make sure it's there.
-    select_stmt = Substitute("SELECT * FROM test_table"
-                             "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
-                             idx, idx, idx+100, idx+100);
+    select_stmt = Format("SELECT * FROM test_table"
+                         "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
+                         idx, idx, idx+100, idx+100);
     CHECK_VALID_STMT(select_stmt);
     auto one_row_block = processor->row_block();
     CHECK_EQ(one_row_block->row_count(), 1);
 
     // DELETE the entry.
-    CHECK_VALID_STMT(Substitute("DELETE FROM test_table"
-                                "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
-                                idx, idx, idx+100, idx+100));
+    CHECK_VALID_STMT(Format("DELETE FROM test_table"
+                            "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
+                            idx, idx, idx+100, idx+100));
 
     // SELECT the same entry to make sure it's no longer there.
     CHECK_VALID_STMT(select_stmt);
@@ -97,27 +95,27 @@ TEST_F(TestQLDeleteTable, TestQLDeleteTableSimple) {
   // Insert 100 rows into the table that share the same partition key.
   for (int idx = 0; idx < kNumRows; idx++) {
     // INSERT: Valid statement with column list.
-    string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2)"
-                             "  VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
-                             9999, 9999, idx+100, idx+100, idx+1000, idx+1000);
+    string stmt = Format("INSERT INTO test_table(h1, h2, r1, r2, v1, v2)"
+                         "  VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
+                         9999, 9999, idx+100, idx+100, idx+1000, idx+1000);
     CHECK_VALID_STMT(stmt);
   }
   LOG(INFO) << kNumRows << "rows were inserted";
 
   // Delete the first half of the table and check.
   // SELECT entries to make sure they are there.
-  select_stmt = Substitute("SELECT * FROM test_table"
-                           "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 < $2 AND r2 < 'r$3';",
-                           9999, 9999, 150, 150);
+  select_stmt = Format("SELECT * FROM test_table"
+                       "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 < $2 AND r2 < 'r$3';",
+                       9999, 9999, 150, 150);
   CHECK_VALID_STMT(select_stmt);
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 50);
   LOG(INFO) << "50 rows were selected";
 
   // DELETE the entry.
-  CHECK_VALID_STMT(Substitute("DELETE FROM test_table"
-                              "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 < $2 AND r2 < 'r$3';",
-                              9999, 9999, 150, 150));
+  CHECK_VALID_STMT(Format("DELETE FROM test_table"
+                          "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 < $2 AND r2 < 'r$3';",
+                          9999, 9999, 150, 150));
   LOG(INFO) << "Expecting that 50 rows were deleted";
 
   // SELECT the same entries to make sure they are no longer there.
@@ -131,18 +129,18 @@ TEST_F(TestQLDeleteTable, TestQLDeleteTableSimple) {
 
   // Delete the rest of the table and check.
   // SELECT entries to make sure they are there.
-  select_stmt = Substitute("SELECT * FROM test_table"
-                           "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 > $2 AND r2 > 'r$3';",
-                           9999, 9999, 149, 149);
+  select_stmt = Format("SELECT * FROM test_table"
+                       "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 > $2 AND r2 > 'r$3';",
+                       9999, 9999, 149, 149);
   CHECK_VALID_STMT(select_stmt);
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 50);
   LOG(INFO) << "50 rows were selected";
 
   // DELETE the entry.
-  CHECK_VALID_STMT(Substitute("DELETE FROM test_table"
-                              "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 > $2 AND r2 > 'r$3';",
-                              9999, 9999, 149, 149));
+  CHECK_VALID_STMT(Format("DELETE FROM test_table"
+                          "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 > $2 AND r2 > 'r$3';",
+                          9999, 9999, 149, 149));
   LOG(INFO) << "Expecting that 50 rows were deleted";
 
   // SELECT the same entries to make sure they are no longer there.

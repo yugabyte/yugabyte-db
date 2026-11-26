@@ -4,7 +4,11 @@ import logging
 
 '''
 This script handles the x-yba-api-* vendor extensions.
-See yugabyte-db/managed/src/main/resources/openapi_templates/README.txt for more details.
+See yugabyte-db/managed/src/main/resources/openapi_templates/server/README.txt for more details.
+
+Every x-yba-api-* key in the spec is validated against X_YBA_API_EXTENSIONS below. Nothing
+downstream rejects an unknown extension: the templates that consume these simply do not match on
+the name and fall back to their default behaviour, so without this check a typo is silent.
 
 For parts of the API marked with "x-yba-api-visibility: internal" this script filters out those
 parts and generates a public version openapi_public.yaml spec that is used for Stoplight
@@ -20,6 +24,17 @@ For parts of the API marked with "x-yba-api-visibility: deprecated" this script 
    the description
 3. generates "deprecated : true" if this marker is on a path
 
+For operations marked with "x-yba-api-stream-response: true" this script ensures the operation has
+a binary success response, since the extension makes the generated client hand back the raw HTTP
+response instead of a decoded model.
+
+For operations marked with "x-yba-api-idempotent: true" this script adds the Idempotency-Key
+header parameter (components/parameters/IdempotencyKey.yaml, the source of truth for it), the 409
+it can cause and a 422 response, and writes the result back to openapi.yaml, which the server and
+client generators read. The parameter carries "x-yba-api-idempotency-key: true", which keeps it out
+of the generated server signatures. The operation must be a mutating, authenticated one, and no
+operation may declare the parameter itself.
+
 TODO: Also handle validation of date-time type is of RFC3339 format.
 '''
 
@@ -33,6 +48,34 @@ X_YBA_API_VISIBILITY_PREVIEW = "preview"
 X_YBA_API_SINCE = "x-yba-api-since"
 X_YBA_API_AUDIT = "x-yba-api-audit"
 X_YBA_API_AUTHZ = "x-yba-api-authz"
+X_YBA_API_BLOCK_OPERATOR_RESOURCE = "x-yba-api-block-operator-resource"
+X_YBA_API_MULTIPART = "x-yba-api-multipart"
+X_YBA_API_STREAM_RESPONSE = "x-yba-api-stream-response"
+X_YBA_API_CONDITIONAL_GET = "x-yba-api-conditional-get"
+X_YBA_API_IDEMPOTENT = "x-yba-api-idempotent"
+X_YBA_API_IDEMPOTENCY_KEY = "x-yba-api-idempotency-key"
+# The header parameter x-yba-api-idempotent expands to, and what it adds to the responses.
+IDEMPOTENCY_KEY_PARAM_PATH = ("../src/main/resources/openapi/components/parameters/"
+                              "IdempotencyKey.yaml")
+IDEMPOTENCY_KEY_PARAM_NAME = "IdempotencyKey"
+IDEMPOTENCY_CONFLICT_DESC = ("Also returned while a request with the same Idempotency-Key is"
+                             " still in progress.")
+IDEMPOTENCY_MISMATCH_DESC = "The Idempotency-Key was already used for a different request"
+X_YBA_API_PREFIX = "x-yba-api-"
+# Every vendor extension understood by the openapi server and client templates. A new extension
+# must be added here, otherwise validate_vendor_ext_names() rejects the spec that uses it.
+X_YBA_API_EXTENSIONS = frozenset([
+    X_YBA_API_VISIBILITY,
+    X_YBA_API_SINCE,
+    X_YBA_API_AUDIT,
+    X_YBA_API_AUTHZ,
+    X_YBA_API_BLOCK_OPERATOR_RESOURCE,
+    X_YBA_API_MULTIPART,
+    X_YBA_API_STREAM_RESPONSE,
+    X_YBA_API_CONDITIONAL_GET,
+    X_YBA_API_IDEMPOTENT,
+    X_YBA_API_IDEMPOTENCY_KEY,
+])
 DEPRECATED_MSG_FMT = "<b style=\"color:#ff0000\">Deprecated since YBA version {}.</b></p>"
 PREVIEW_MSG_FMT = ("<b style=\"color:#FFA500\">WARNING: This is a preview API in YBA version {}"
                    " that could change.</b></p>")
@@ -268,6 +311,136 @@ def process_audit_authz_in_paths():
         raise Exception(", ".join(errMsgs))
 
 
+# Rejects any x-yba-api-* key that is not a registered extension. Walks the whole document and
+# not just the paths, since these extensions are also valid on schemas, properties, responses and
+# request bodies.
+def validate_vendor_ext_names():
+    unknown_keys = set()
+
+    def collect_unknown(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if (isinstance(key, str) and key.startswith(X_YBA_API_PREFIX)
+                        and key not in X_YBA_API_EXTENSIONS):
+                    unknown_keys.add(key)
+                collect_unknown(value)
+        elif isinstance(node, list):
+            for entry in node:
+                collect_unknown(entry)
+
+    collect_unknown(global_openapi_dict)
+    if unknown_keys:
+        raise Exception("Unrecognised vendor extension(s) " + ", ".join(sorted(unknown_keys)) +
+                        ": correct the spelling, or register the extension in "
+                        "X_YBA_API_EXTENSIONS if it is new")
+
+
+# Validates x-yba-api-stream-response, which makes the generated client return the raw HTTP
+# response and leave the body for the caller to read and close. That removes the response model
+# from the generated signature, so an operation carrying it must actually serve a binary payload.
+# The check is one-directional on purpose: a binary operation may keep the default buffering
+# behaviour, and some do.
+def process_stream_response_in_paths():
+    errMsgs = []
+    for path, path_details in global_path_list.items():
+        for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
+            if X_YBA_API_STREAM_RESPONSE not in method_details:
+                continue
+            stream_response = method_details[X_YBA_API_STREAM_RESPONSE]
+            if not isinstance(stream_response, bool):
+                errMsgs.append(X_YBA_API_STREAM_RESPONSE + " must be a boolean in " + method +
+                               " method of path " + path)
+            elif stream_response and not has_binary_success_response(method_details):
+                errMsgs.append(X_YBA_API_STREAM_RESPONSE + " is set in " + method + " method of"
+                               " path " + path + " which has no binary success response")
+    if errMsgs:
+        raise Exception(", ".join(errMsgs))
+
+
+# Expands x-yba-api-idempotent, see the module docstring. Works on global_openapi_dict, which it
+# then writes back to openapi.yaml for the server and client generators, and refreshes the copies
+# the later steps work on.
+def expand_idempotent_operations():
+    global global_tag_list, global_component_list, global_path_list
+    with open(IDEMPOTENCY_KEY_PARAM_PATH) as file:
+        key_param = yaml.safe_load(file)
+    key_param_ref = {"$ref": "#/components/parameters/" + IDEMPOTENCY_KEY_PARAM_NAME}
+    errMsgs = []
+    expanded = False
+    for path, path_details in global_openapi_dict["paths"].items():
+        path_params = path_details.get("parameters", [])
+        for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
+            idempotent = method_details.get(X_YBA_API_IDEMPOTENT, False)
+            location = method + " method of path " + path
+            if not isinstance(idempotent, bool):
+                errMsgs.append(X_YBA_API_IDEMPOTENT + " must be a boolean in " + location)
+                continue
+            params = method_details.get("parameters", [])
+            declared = [param for param in path_params + params
+                        if param != key_param_ref
+                        and (resolve_ref(param).get(X_YBA_API_IDEMPOTENCY_KEY) is True
+                             or str(resolve_ref(param).get("name", "")).upper()
+                             == key_param["name"].upper())]
+            if declared:
+                errMsgs.append(location + " declares the " + key_param["name"] +
+                               " parameter itself: set " + X_YBA_API_IDEMPOTENT + ": true instead")
+            if not idempotent:
+                continue
+            if method in ["get", "head", "options", "trace"]:
+                errMsgs.append(X_YBA_API_IDEMPOTENT + " is set on " + location +
+                               ", which is not a mutating operation")
+            if not method_details.get("security"):
+                errMsgs.append(X_YBA_API_IDEMPOTENT + " is set on " + location +
+                               ", which is not authenticated: keys are scoped per customer")
+            # Running twice over the same file must not add the parameter twice.
+            if key_param_ref not in params:
+                method_details["parameters"] = params + [key_param_ref]
+            responses = method_details.setdefault("responses", {})
+            conflict = responses.setdefault("409", {"description": "Conflict"})
+            if IDEMPOTENCY_CONFLICT_DESC not in conflict.get("description", ""):
+                conflict["description"] = (conflict.get("description", "").rstrip(". ") +
+                                           ". " + IDEMPOTENCY_CONFLICT_DESC)
+            responses.setdefault("422", {"description": IDEMPOTENCY_MISMATCH_DESC})
+            expanded = True
+    if errMsgs:
+        raise Exception(", ".join(errMsgs))
+    if not expanded:
+        return
+    global_openapi_dict.setdefault("components", {}).setdefault("parameters", {})[
+        IDEMPOTENCY_KEY_PARAM_NAME] = key_param
+    with open(OPENAPI_YML_PATH, 'w') as file:
+        yaml.dump(global_openapi_dict, file, allow_unicode=True, sort_keys=False)
+    global_tag_list = copy.deepcopy(global_openapi_dict["tags"])
+    global_component_list = copy.deepcopy(global_openapi_dict["components"])
+    global_path_list = copy.deepcopy(global_openapi_dict["paths"])
+
+
+# resolves a local "#/components/..." reference of the bundled spec
+def resolve_ref(obj):
+    ref = obj.get("$ref") if isinstance(obj, dict) else None
+    if not ref:
+        return obj
+    node = global_openapi_dict
+    for part in ref.lstrip("#/").split("/"):
+        node = node[part]
+    return resolve_ref(node)
+
+
+# checks if any success response of this operation returns a binary payload
+def has_binary_success_response(method_details):
+    for status_code, response in method_details.get("responses", {}).items():
+        if not str(status_code).startswith("2"):
+            continue
+        for content in response.get("content", {}).values():
+            if content.get("schema", {}).get("format") == "binary":
+                return True
+    return False
+
+
 def generate_openapi_public_file():
     global global_openapi_dict
 
@@ -317,6 +490,13 @@ logging.basicConfig(format='%(asctime)s [%(filename)s:%(lineno)d] %(message)s',
                     level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 load_global_file()
+# Validate before removing internal components, so that internal parts of the API are checked too
+logger.info("Validating " + X_YBA_API_PREFIX + "* vendor extension names")
+validate_vendor_ext_names()
+logger.info("Validating " + X_YBA_API_STREAM_RESPONSE + " in paths")
+process_stream_response_in_paths()
+logger.info("Expanding " + X_YBA_API_IDEMPOTENT + " in paths")
+expand_idempotent_operations()
 remove_internal_components()
 logger.info("Processing paths that are marked 'x-yba-api-visibility: deprecated' or 'preview'")
 process_visibility_in_paths()

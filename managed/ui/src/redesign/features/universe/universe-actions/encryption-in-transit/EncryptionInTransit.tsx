@@ -21,7 +21,6 @@ import {
   UpgradeOptions,
   isSelfSignedCert,
   getInitialFormValues,
-  getV2InitialFormValues,
   useEITStyles,
   K8sEncryptionOption,
   isCertManagerCert
@@ -35,22 +34,16 @@ import { YBLoading } from '../../../../../components/common/indicators';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
-import { createErrorMessage } from '../../universe-form/utils/helpers';
+import { createErrorMessage, transitToUniverse } from '../../universe-form/utils/helpers';
 import { getXClusterConfigUuids } from '../../../../../components/xcluster/ReplicationUtils';
 import { Universe } from '../../../../helpers/dtos';
-import { EncryptionInTransitSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-export interface EITSpec {
-  universeUUID: string;
-  eitSpec: EncryptionInTransitSpec;
-}
 //EIT Component
 interface EncryptionInTransitProps {
   open: boolean;
   onClose: () => void;
-  universe?: Universe;
+  universe: Universe;
   isItKubernetesUniverse: boolean;
-  v2Spec?: EITSpec;
 }
 
 enum EitTabs {
@@ -77,15 +70,13 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
   open,
   onClose,
   universe,
-  isItKubernetesUniverse,
-  v2Spec
+  isItKubernetesUniverse
 }) => {
   const [openRollingUpgradeModal, setRollingUpgradeModal] = useState(false);
   const { t } = useTranslation();
   const classes = useEITStyles();
   const theme = useTheme();
-  //universe current status
-  const universeId = v2Spec ? v2Spec?.universeUUID : universe?.universeUUID;
+  const universeId = universe.universeUUID;
 
   //prefetch data
   const { isLoading, data: certificates } = useQuery(
@@ -94,17 +85,15 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
   );
 
   //initialize form
-  const INITIAL_VALUES = v2Spec?.eitSpec
-    ? getV2InitialFormValues(v2Spec.eitSpec, isItKubernetesUniverse)
-    : universe?.universeDetails
-    ? getInitialFormValues(universe?.universeDetails, isItKubernetesUniverse)
+  const INITIAL_VALUES = universe.universeDetails
+    ? getInitialFormValues(universe.universeDetails, isItKubernetesUniverse)
     : FORM_RESET_VALUES;
   const formMethods = useForm<EncryptionInTransitFormValues>({
     defaultValues: INITIAL_VALUES,
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, watch, setValue, getValues } = formMethods;
+  const { control, watch, setValue, getValues, reset } = formMethods;
 
   //initial values
   const encryptionEnabled = INITIAL_VALUES.enableUniverseEncryption;
@@ -159,6 +148,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
     (payload: Partial<EncryptionInTransitFormValues>) => api.upgradeTLS(universeId, payload),
     {
       onSuccess: () => {
+        if (universeId) transitToUniverse(universeId);
         onClose();
       },
       onError: (e) => {
@@ -171,6 +161,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
     (payload: Partial<EncryptionInTransitFormValues>) => api.upgradeCerts(universeId, payload),
     {
       onSuccess: () => {
+        if (universeId) transitToUniverse(universeId);
         onClose();
       },
       onError: (e) => {
@@ -247,6 +238,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
       setRollingUpgradeModal(false);
     } else {
       try {
+        setRollingUpgradeModal(false);
         let payload = constructPayload(values);
         if (tlsToggled) setTLS.mutateAsync(payload);
         else setCerts.mutateAsync(payload);
@@ -260,6 +252,28 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
     onResource: universeId,
     ...ApiPermissionMap.MODIFY_UNIVERSE_TLS
   });
+  // Modal stays mounted in SecurityTab; defaultValues only apply on first mount.
+  useEffect(() => {
+    if (!open) {
+      setRollingUpgradeModal(false);
+      return;
+    }
+    reset(
+      universe.universeDetails
+        ? getInitialFormValues(universe.universeDetails, isItKubernetesUniverse)
+        : FORM_RESET_VALUES
+    );
+  }, [
+    open,
+    isItKubernetesUniverse,
+    reset,
+    encryptionEnabled,
+    enableNodeToNodeEncryptInitial,
+    enableClientToNodeEncryptInitial,
+    rootCAInitial,
+    clientRootCAInitial
+  ]);
+
   useEffect(() => {
     if (disableServerCertRotation) setTab(EitTabs.CACert);
   }, [setTab, disableServerCertRotation]);

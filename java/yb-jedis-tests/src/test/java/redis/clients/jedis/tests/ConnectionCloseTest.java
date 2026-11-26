@@ -1,5 +1,6 @@
 package redis.clients.jedis.tests;
 
+import org.junit.Ignore;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -15,6 +16,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ConnectionCloseTest extends BaseYBClassForJedis {
   private static HostAndPort hnp;
   private Connection client;

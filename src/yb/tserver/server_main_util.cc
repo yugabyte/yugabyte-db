@@ -13,10 +13,18 @@
 
 #include "yb/tserver/server_main_util.h"
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <iostream>
 #include <string>
+#include <vector>
 #include <boost/algorithm/string/trim.hpp>
+#include "yb/util/format.h"
 #include "yb/util/string_case.h"
 
 #include "absl/debugging/symbolize.h"
@@ -39,6 +47,7 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If true, the recommended defaults for the memory usage settings take into account the amount "
@@ -46,20 +55,77 @@ DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If false, the recommended defaults will be the old defaults, which are more suitable "
     "for YCQL but do not take into account the amount of RAM and cores available.");
 
+DEFINE_NON_RUNTIME_bool(use_global_futex_hash, true,
+    "If true, the process asks the Linux kernel at startup to use the global futex hash table "
+    "instead of a per-process private one. Kernels with the private futex hash (Linux 6.17+, and "
+    "some distribution kernels such as AlmaLinux/RHEL 9.8) cap the private table at 4 slots per "
+    "CPU, which is far too small for the number of threads in this process and makes futex wake "
+    "calls slow. Has no effect on kernels without the private futex hash.");
+TAG_FLAG(use_global_futex_hash, advanced);
+
 DECLARE_double(default_memory_limit_to_ram_ratio);
 DECLARE_int32(db_block_cache_size_percentage);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(disable_global_object_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_yb_enable_cbo);
+
+#ifdef __linux__
+// Defined in linux/prctl.h since Linux 6.17, which the build headers may predate. Values are from
+// https://github.com/torvalds/linux/blob/master/include/uapi/linux/prctl.h
+#ifndef PR_FUTEX_HASH
+#define PR_FUTEX_HASH 78
+#endif
+#ifndef PR_FUTEX_HASH_SET_SLOTS
+#define PR_FUTEX_HASH_SET_SLOTS 1
+#endif
+#endif
 
 namespace yb {
 
 namespace {
+
+// Puts this process on the kernel's global futex hash table, the behavior before the private
+// futex hash was added. With the private hash, the kernel sizes the table by the CPU count
+// (4 slots per CPU) and not by the thread count, so a process with thousands of threads, most of
+// them parked on futexes, gets long hash chains and futex_wake gets much slower.
+//
+// Call this as early as possible, before the server starts its threads. If no thread has been
+// created yet, the kernel never allocates a private table. Otherwise the kernel has to replace the
+// private table while other threads are using futexes. That is supported, but it is a less
+// tested path.
+//
+// Returns a message to log, since logging is not initialized yet when this runs.
+std::string UseGlobalFutexHashIfEnabled() {
+#ifdef __linux__
+  if (!FLAGS_use_global_futex_hash) {
+    return "Not switching to the global futex hash: use_global_futex_hash is false";
+  }
+  if (prctl(PR_FUTEX_HASH, PR_FUTEX_HASH_SET_SLOTS, 0, 0, 0) == 0) {
+    return "Switched to the global futex hash";
+  }
+  const int err = errno;
+  if (err == EINVAL) {
+    // Kernels without the private futex hash do not know PR_FUTEX_HASH, and always use the global
+    // hash.
+    return "Kernel has no private futex hash, using the global futex hash";
+  }
+  return Format(
+      "Could not switch to the global futex hash: prctl(PR_FUTEX_HASH) failed: $0 ($1)",
+      strerror(err), err);
+#else
+  return std::string();
+#endif
+}
 
 struct RecommendedMemoryValues {
   double default_memory_limit_to_ram_ratio;
@@ -109,9 +175,9 @@ void AdjustMemoryLimitsIfNeeded(bool is_master) {
   int64_t signed_total_ram;
   CHECK_OK(Env::Default()->GetTotalRAMBytes(&signed_total_ram));
   size_t total_ram = signed_total_ram;
-  LOG(INFO) << StringPrintf(
-      "Total available RAM is %.6f GiB",
-      (static_cast<float>(total_ram) / (1024.0 * 1024.0 * 1024.0)));
+  LOG(INFO) << Format(
+      "Total available RAM is $0 GiB",
+      FixedPoint(static_cast<float>(total_ram) / (1024.0 * 1024.0 * 1024.0), 6));
 
   auto values = GetLegacyMemoryValues(is_master);
 
@@ -234,6 +300,36 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
             << FLAGS_ysql_enable_auto_analyze;
 }
 
+// pg_partman keeps its existing behavior unless these features are on, so tell a user who set its
+// flag explicitly. The infra auto flags are left out because they are off only before an upgrade
+// is finalized. Advisory locks are left out because with them off, pg_partman fails instead of
+// keeping its existing behavior, and ysql_yb_enable_advisory_locks is a runtime flag, which a
+// warning at startup would not track.
+void WarnIfPgPartmanFlagHasNoEffect() {
+  if (!FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks ||
+      google::GetCommandLineFlagInfoOrDie("ysql_yb_pg_partman_use_native_txn_ddl_and_locks")
+          .is_default) {
+    return;
+  }
+  std::vector<std::string> off;
+  if (!FLAGS_ysql_yb_ddl_transaction_block_enabled) {
+    off.push_back("ysql_yb_ddl_transaction_block_enabled=false");
+  }
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    off.push_back("enable_object_locking_for_table_locks=false");
+  }
+  if (FLAGS_disable_global_object_locks) {
+    off.push_back("disable_global_object_locks=true");
+  }
+  if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
+    off.push_back("ysql_yb_enable_ddl_savepoint_support=false");
+  }
+  if (!off.empty()) {
+    LOG(WARNING) << "ysql_yb_pg_partman_use_native_txn_ddl_and_locks is set, but pg_partman keeps "
+                 << "its existing behavior because of " << AsString(off);
+  }
+}
+
 }  // anonymous namespace
 
 Status MasterTServerParseFlagsAndInit(
@@ -263,12 +359,19 @@ Status MasterTServerParseFlagsAndInit(
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
 
+  // Done right after parsing flags, before anything that may start a thread.
+  const auto futex_hash_message = UseGlobalFutexHashIfEnabled();
+
   // Must be called before installing a failure signal handler (in InitYB).
   absl::InitializeSymbolizer((*argv)[0]);
 
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
+
+  if (!futex_hash_message.empty()) {
+    LOG(INFO) << futex_hash_message;
+  }
 
   std::cerr << "Started process id: " << getpid()
     << " logfile(s): " << GetLogFilePathnamePrefix() << "*"
@@ -282,8 +385,10 @@ Status MasterTServerParseFlagsAndInit(
 
   AdjustMemoryLimitsIfNeeded(is_master);
 
-  if (!is_master)
+  if (!is_master) {
     AdjustAutoAnalyzeFlagIfNeeded();
+    WarnIfPgPartmanFlagHasNoEffect();
+  }
 
   MemTracker::ConfigureTCMalloc();
   MemTracker::PrintTCMallocConfigs();

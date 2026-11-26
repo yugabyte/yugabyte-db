@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "nodes/pg_list.h"
 #include "utils/hsearch.h"
 #include "utils/rel.h"
@@ -54,6 +55,9 @@ struct YbTupleCacheIteratorData
 };
 
 typedef struct YbTupleCacheIteratorData *YbTupleCacheIterator;
+
+HeapTuple	YbSystableGetNextInContext(SysScanDesc scandesc,
+										   MemoryContext row_cxt);
 
 void		YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 							 YbTupleCacheKeyExtractor key_extractor, const char *cache_name);

@@ -73,6 +73,12 @@ import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { GCPCreateFormErrFields } from './constants';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
+import {
+  buildFederationPayload,
+  CloudAccessHeading,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 interface GCPProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -100,6 +106,12 @@ export interface GCPProviderCreateFormFieldValues {
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
   imageBundles: ImageBundle[];
+  federationGcsCredentialFile?: File;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
 }
 
 const ProviderCredentialType = {
@@ -111,6 +123,7 @@ type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof Provide
 const YB_VPC_NAME_BASE = 'yb-gcp-network';
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -172,6 +185,11 @@ export const GCPProviderCreateForm = ({
 
   const defaultValues: Partial<GCPProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
+    federationGcsEnabled: false,
+    federationGcsAudience: '',
+    federationS3Enabled: false,
+    federationS3RoleArn: '',
+    federationS3Audience: '',
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
     providerCredentialType: ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT,
@@ -299,7 +317,8 @@ export const GCPProviderCreateForm = ({
             ...vpcConfig,
             ...gcpCredentials,
             ...(formValues.sharedVPCProject && { sharedVPCProject: formValues.sharedVPCProject }),
-            ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
+            ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags }),
+            ...buildFederationPayload(formValues)
           }
         },
         ntpServers: formValues.ntpServers,
@@ -446,6 +465,12 @@ export const GCPProviderCreateForm = ({
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
+              <CloudAccessHeading
+                infoTitle="Access to Google Cloud"
+                infoContent="Choose how YugabyteDB Anywhere authenticates to this Google Cloud project to create and manage universe nodes."
+              >
+                Access to Google Cloud
+              </CloudAccessHeading>
               <FormField>
                 <FieldLabel>Credential Type</FieldLabel>
                 <YBRadioGroupField
@@ -512,6 +537,11 @@ export const GCPProviderCreateForm = ({
                   />
                 </FormField>
               )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="gcp"
+              />
             </FieldGroup>
             <FieldGroup
               heading="Regions"

@@ -1037,7 +1037,8 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						   CRSSnapshotAction *snapshot_action,
 						   bool *two_phase,
 						   YbCRSLsnType *lsn_type,
-						   YbCRSOrderingMode *ordering_mode)
+						   YbCRSOrderingMode *ordering_mode,
+						   char **yb_publication_name)
 {
 	ListCell   *lc;
 	bool		snapshot_action_given = false;
@@ -1143,6 +1144,17 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						 errmsg("unrecognized value for CREATE_REPLICATION_SLOT option \"%s\": \"%s\"",
 								defel->defname, action)));
 		}
+		/* YB */
+		else if (strcmp(defel->defname, "yb_publication") == 0)
+		{
+			if (*yb_publication_name != NULL ||
+				cmd->kind != REPLICATION_KIND_LOGICAL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+
+			*yb_publication_name = defGetString(defel);
+		}
 		else
 			elog(ERROR, "unrecognized option: %s", defel->defname);
 	}
@@ -1169,18 +1181,22 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	bool		reserve_wal = false;
 	bool		two_phase = false;
 	CRSSnapshotAction snapshot_action = CRS_EXPORT_SNAPSHOT;
-	YbCRSLsnType lsn_type = CRS_SEQUENCE;
-	YbCRSOrderingMode yb_ordering_mode = YB_CRS_TRANSACTION;
 	DestReceiver *dest;
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4];
 
+	/* YB declarations */
+	YbCRSLsnType lsn_type = CRS_SEQUENCE;
+	YbCRSOrderingMode yb_ordering_mode = YB_CRS_TRANSACTION;
+	char	   *yb_publication_name = NULL;
+
 	Assert(!MyReplicationSlot);
 
 	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase,
-							   &lsn_type, &yb_ordering_mode);
+							   &lsn_type, &yb_ordering_mode,
+							   &yb_publication_name);
 
 	if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 	{
@@ -1192,7 +1208,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
 							  false,
-							  cmd->plugin, snapshot_action, NULL, lsn_type, yb_ordering_mode);
+							  cmd->plugin, snapshot_action, NULL, lsn_type, yb_ordering_mode,
+							  NULL /* yb_publication_name */ );
 	}
 	else
 	{
@@ -1215,7 +1232,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
 								  two_phase, cmd->plugin, snapshot_action, NULL,
-								  lsn_type, yb_ordering_mode);
+								  lsn_type, yb_ordering_mode,
+								  NULL /* yb_publication_name */ );
 		}
 	}
 
@@ -1313,7 +1331,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT, two_phase,
 								  cmd->plugin, snapshot_action,
 								  &yb_consistent_snapshot_time, lsn_type,
-								  yb_ordering_mode);
+								  yb_ordering_mode, yb_publication_name);
 
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 				snapshot_name = YbSnapBuildExportSnapshotWithReadTime(yb_consistent_snapshot_time);
@@ -1490,7 +1508,7 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 
 	/*
 	 * YB: WAIT works via the cluster-wide slot advisory lock taken by
-	 * ReplicationSlotAcquire(); without it there is no way to wait for the
+	 * ReplicationSlotDrop(); without it there is no way to wait for the
 	 * slot to become inactive.
 	 */
 	if (IsYugaByteEnabled() && cmd->wait &&
@@ -1572,6 +1590,15 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 							  WalSndPrepareWrite, WalSndWriteData,
 							  WalSndUpdateProgress);
 	xlogreader = logical_decoding_ctx->reader;
+
+	/*
+	 * YB: Validate that a publication-bound slot is used with exactly its
+	 * bound publication. Like the decoding context creation above, this must
+	 * happen before sending the CopyBothResponse message so that the error is
+	 * reported as a failure of the START_REPLICATION command.
+	 */
+	if (IsYugaByteEnabled())
+		YBCValidateBoundPublication(logical_decoding_ctx->options.yb_publication_names);
 
 	WalSndSetState(WALSNDSTATE_CATCHUP);
 
@@ -2731,6 +2758,28 @@ WalSndCheckTimeOut(void)
 	if (wal_sender_timeout > 0 && last_processing >= timeout)
 	{
 		/*
+		 * YB: A single blocking GetConsistentChanges RPC can span the whole
+		 * timeout, so the stall is entirely server side and the client was
+		 * never asked to reply.  Request a reply and restart the timer once
+		 * before giving up.  waiting_for_ping_response stays set until the
+		 * client answers, so a truly unresponsive client still times out at
+		 * the next expiry.
+		 */
+		if (IsYugaByteEnabled() && !waiting_for_ping_response)
+		{
+			/*
+			 * Fresh timestamp, not last_processing: the latter predates the
+			 * stall, so a second slow RPC would expire the timer before the
+			 * client had a chance to answer this ping.
+			 */
+			last_reply_timestamp = GetCurrentTimestamp();
+			WalSndKeepalive(true, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+			return;
+		}
+
+		/*
 		 * Since typically expiration of replication timeout means
 		 * communication problem, we don't send the error message to the
 		 * standby.
@@ -3381,6 +3430,14 @@ XLogSendLogical(void)
 		LogicalDecodingProcessRecord(logical_decoding_ctx, logical_decoding_ctx->reader);
 
 		sentPtr = logical_decoding_ctx->reader->EndRecPtr;
+
+		/* YB: test hook to send a keepalive after every record. */
+		if (IsYugaByteEnabled() && yb_test_walsender_keepalive_after_each_record)
+		{
+			WalSndKeepalive(false, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+		}
 	}
 
 	/*
@@ -3801,6 +3858,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 	YbcSlotEntryDescriptor *yb_slot_entries = NULL;
 	size_t		yb_num_slot_entries = 0;
+	bool		yb_slot_entries_fetched = false;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -3809,9 +3867,6 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	 * date before we're done, but we'll use the data anyway.
 	 */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
-
-	if (IsYugaByteEnabled())
-		YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -3931,6 +3986,13 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 				int64_t		lag_metric = -1;
 				int			slotno;
 
+				/* Only fetch slot entries if there is an active walsender. */
+				if (!yb_slot_entries_fetched)
+				{
+					YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
+					yb_slot_entries_fetched = true;
+				}
+
 				for (slotno = 0; slotno < yb_num_slot_entries; slotno++)
 				{
 					YbcSlotEntryDescriptor *slot = &yb_slot_entries[slotno];
@@ -4003,10 +4065,18 @@ WalSndKeepalive(bool requestReply, XLogRecPtr writePtr)
 {
 	elog(DEBUG2, "sending replication keepalive");
 
+	XLogRecPtr	yb_keepalive_ptr = XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr;
+
+	if (IsYugaByteEnabled() &&
+		MyReplicationSlot != NULL &&
+		MyReplicationSlot->yb_lsn_type == CRS_HYBRID_TIME &&
+		yb_keepalive_ptr > 0)
+		yb_keepalive_ptr -= 1;
+
 	/* construct the message... */
 	resetStringInfo(&output_message);
 	pq_sendbyte(&output_message, 'k');
-	pq_sendint64(&output_message, XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr);
+	pq_sendint64(&output_message, yb_keepalive_ptr);
 	pq_sendint64(&output_message, GetCurrentTimestamp());
 	pq_sendbyte(&output_message, requestReply ? 1 : 0);
 

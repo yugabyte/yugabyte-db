@@ -10,9 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include <concepts>
+#include <tuple>
+#include <type_traits>
+
 #include "yb/tserver/pg_session_guard.h"
 
 namespace yb::tserver {
+namespace {
+
+template<class... Args>
+concept IsTryToLock =
+    std::same_as<std::tuple<std::try_to_lock_t>, std::tuple<std::decay_t<Args>...>>;
+
+} // namespace
 
 PgSessionCrossThreadGuard::~PgSessionCrossThreadGuard() {
   if (!OwnsLock()) {
@@ -40,10 +52,23 @@ PgSessionCrossThreadGuard::PgSessionCrossThreadGuard(
   std::swap(state, state_);
 }
 
-PgSessionGuard::PgSessionGuard(PgSessionGuardStatePtr state) {
+PgSessionGuard::PgSessionGuard(PgSessionGuardStatePtr state)
+    : PgSessionGuard({}, state) {}
 
+PgSessionGuard::PgSessionGuard(PgSessionGuardStatePtr state, std::try_to_lock_t t)
+    : PgSessionGuard({}, state, t) {}
+
+template<class... Args>
+PgSessionGuard::PgSessionGuard(Tag, PgSessionGuardStatePtr& state, Args&&...args) {
   if (PREDICT_TRUE(state)) {
-    std::unique_lock lock(state->mutex_);
+    std::unique_lock lock(state->mutex_, std::forward<Args>(args)...);
+    if constexpr (IsTryToLock<Args...>) {
+      if (!lock.owns_lock() || state->is_cross_thread_locked_) {
+        return;
+      }
+    } else {
+      static_assert(sizeof...(Args) == 0);
+    }
     std::swap(state_, state);
     std::swap(lock_, lock);
     AcquireSession();

@@ -65,13 +65,25 @@ To update your universes to use systemd:
 
 YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you can upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
 
-To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>More>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
+To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions > More > Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
 
 You can configure YugabyteDB Anywhere to automatically update universes to node agent in the background. Refer to [Prepare to upgrade YugabyteDB Anywhere](../../upgrade/prepare-to-upgrade/#node-agent).
 
+Starting in v2026.1.2.0, you can click **Actions > More > Reprovision Universe Nodes**, which reapplies and validates OS settings and reinstalls node agent (as part of provisioning). See [Reprovision universe nodes](../reprovision-nodes/).
+
 ## Transparent hugepages
 
-Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by [reprovisioning nodes](../reprovision-nodes/) (v2026.1.2.0 and later), or by following the [node patching](../upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+
+## Kubernetes universes
+
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default.
+
+If a non-OpenShift Kubernetes universe does not pin a user in `podSecurityContext`, upgrading the universe to v2026.1.2 or later migrates the database pods to a non-root user.
+
+To keep running as root on a non-OpenShift universe, set `podSecurityContext.runAsUser` to `0` in your Helm overrides before you upgrade. See [Run as non-root](../../configure-yugabyte-platform/kubernetes/#run-as-non-root).
+
+This does not apply to OpenShift. OpenShift always runs pods as non-root and enforces that policy itself, not through `podSecurityContext`.
 
 ## Backups and point-in-time-recovery
 

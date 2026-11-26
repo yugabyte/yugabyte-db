@@ -2,23 +2,78 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -86,6 +141,390 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         .addTasks(TaskType.UpdateUniverseCommunicationPorts)
         .addTasks(TaskType.UpdateClusterAPIDetails)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testPortChangeReconcilesManagedLoadBalancerLastWithNewPorts() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+          config.setEnablePrivate(true);
+          u.getUniverseDetails().getPrimaryCluster().userIntent.setManagedLoadBalancer(config);
+        });
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    params.enableYCQLAuth = true;
+    params.ysqlPassword = "foo";
+    params.ycqlPassword = "foo";
+    params.communicationPorts.ysqlServerRpcPort = 5434;
+    // Refused before it starts while a load balancer can't forward the new ports.
+    doThrow(new PlatformServiceException(BAD_REQUEST, "add port 5434"))
+        .doNothing()
+        .when(cloudAPI)
+        .validateManagedLoadBalancerPorts(any(), eq("region-1"), any(), eq(List.of(5434, 9042)));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> submitTask(params, TaskType.ConfigureDBApis, commissioner, -1));
+
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+    // After the passwords: a load balancer error must not leave auth on with the default password.
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .tserverTask(TaskType.UpdateUniverseFields)
+        .applyRound()
+        .addTasks(TaskType.UpdateUniverseCommunicationPorts)
+        .addTasks(TaskType.UpdateClusterAPIDetails)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .addTasks(TaskType.EnsureManagedLoadBalancer)
+        .addTasks(TaskType.ManageLoadBalancerGroup)
+        .verifyTasks(taskInfo.getSubTasks());
+    // The subtask reads the ports that UpdateUniverseCommunicationPorts stored.
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
+  }
+
+  @Test
+  public void testReissuesTheCertsOnlyWhenEnsureGivesTheLoadBalancerANewAddress() throws Exception {
+    Universe universe = givenManagedLoadBalancerWithSelfSignedClientTls();
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
+
+    TaskInfo unchanged = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, unchanged.getTaskState());
+    assertEquals(Set.of(), certCopiesRun());
+    // The rolling restart's stop only.
+    assertEquals(tservers.stream().collect(Collectors.toMap(n -> n, n -> 1L)), tserverStopsRun());
+
+    clearInvocations(mockNodeManager, mockNodeAgentClient);
+    // Deleted outside YBA, so ensure recreates it under a new name.
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-4567.elb.us-west-2.amazonaws.com");
+    TaskInfo moved = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, moved.getTaskState());
+    assertEquals(tservers, certCopiesRun());
+    // One more stop per tserver, to load the new cert.
+    assertEquals(tservers.stream().collect(Collectors.toMap(n -> n, n -> 2L)), tserverStopsRun());
+  }
+
+  private Universe givenManagedLoadBalancerWithSelfSignedClientTls() throws Exception {
+    CertificateInfo ca =
+        ModelFactory.createCertificateInfo(
+            defaultCustomer.getUuid(),
+            createTempFile("configure_db_apis_test", "ca.crt", "test content"),
+            CertConfigType.SelfSigned);
+    // The agent's IP tells tserverStopsRun the node.
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))
+        .thenAnswer(
+            invocation -> {
+              NodeAgent agent = new NodeAgent();
+              agent.setIp(invocation.getArgument(0));
+              return agent;
+            });
+    return Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.rootCA = ca.getUuid();
+          details.rootAndClientRootCASame = true;
+          UserIntent userIntent = details.getPrimaryCluster().userIntent;
+          userIntent.enableNodeToNodeEncrypt = true;
+          userIntent.enableClientToNodeEncrypt = true;
+          ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+          config.setEnablePrivate(true);
+          userIntent.setManagedLoadBalancer(config);
+          UUID clusterUuid = details.getPrimaryCluster().uuid;
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(
+              new ManagedLoadBalancer(
+                  clusterUuid,
+                  region.getUuid(),
+                  ManagedLoadBalancer.Scheme.PRIVATE,
+                  u.getNodes().stream().map(n -> n.azUuid).distinct().collect(Collectors.toList()),
+                  ManagedLoadBalancerUtil.getPrivateName(clusterUuid),
+                  "lbi-0123.elb.us-west-2.amazonaws.com"));
+          details.setManagedLoadBalancerState(state);
+          // As NodeManager records them when it signs the certs.
+          details.nodeDetailsSet.stream()
+              .filter(n -> n.isTserver)
+              .forEach(
+                  n ->
+                      state
+                          .getCertNames()
+                          .put(
+                              n.nodeName,
+                              ManagedLoadBalancerUtil.getCertNames(details, n).keySet().stream()
+                                  .map(name -> name.toLowerCase(Locale.ROOT))
+                                  .collect(Collectors.toSet())));
+        });
+  }
+
+  @Test
+  public void testRunAfterAFailedCertCopyStillReissuesTheCerts() throws Exception {
+    Universe universe = givenManagedLoadBalancerWithSelfSignedClientTls();
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    // Deleted outside YBA, so ensure recreates it under a new name, which the task saves.
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-4567.elb.us-west-2.amazonaws.com");
+    AtomicBoolean copyFails = new AtomicBoolean(true);
+    doAnswer(i -> copyFails.get() ? ShellResponse.create(1, "copy failed") : new ShellResponse())
+        .when(mockNodeManager)
+        .nodeCommand(
+            eq(NodeManager.NodeCommandType.Configure),
+            argThat(
+                p ->
+                    p instanceof AnsibleConfigureServers.Params
+                        && ((AnsibleConfigureServers.Params) p).type
+                            == UpgradeTaskParams.UpgradeTaskType.Certs));
+
+    assertEquals(
+        Failure, submitTask(params, TaskType.ConfigureDBApis, commissioner, -1).getTaskState());
+    copyFails.set(false);
+    clearInvocations(mockNodeManager, mockNodeAgentClient);
+    TaskInfo rerun = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, rerun.getTaskState());
+    assertEquals(tservers, certCopiesRun());
+  }
+
+  // A skipped subtask ends in Success too, so ask the mocks what ran.
+  private Set<String> certCopiesRun() {
+    return Mockito.mockingDetails(mockNodeManager).getInvocations().stream()
+        .filter(i -> i.getMethod().getName().equals("nodeCommand"))
+        .filter(i -> i.getArgument(0) == NodeManager.NodeCommandType.Configure)
+        .map(i -> i.getArgument(1))
+        .filter(p -> p instanceof AnsibleConfigureServers.Params)
+        .map(p -> (AnsibleConfigureServers.Params) p)
+        .filter(p -> p.type == UpgradeTaskParams.UpgradeTaskType.Certs)
+        .map(p -> p.nodeName)
+        .collect(Collectors.toSet());
+  }
+
+  private Map<String, Long> tserverStopsRun() {
+    Map<String, String> nodeNameByIp =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+            .collect(Collectors.toMap(n -> n.cloudInfo.private_ip, n -> n.nodeName));
+    return Mockito.mockingDetails(mockNodeAgentClient).getInvocations().stream()
+        .filter(i -> i.getMethod().getName().equals("runServerControl"))
+        .filter(
+            i -> {
+              ServerControlInput input = i.getArgument(1);
+              return (input.getServerName() + " " + input.getControlType())
+                  .equals("yb-tserver STOP");
+            })
+        .collect(
+            Collectors.groupingBy(
+                i -> nodeNameByIp.get(((NodeAgent) i.getArgument(0)).getIp()),
+                Collectors.counting()));
+  }
+
+  @Test
+  public void testPortChangeReconcilesReadReplicaManagedLoadBalancer() {
+    UserIntent primaryIntent = defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent userIntent = new UserIntent();
+    TestUtils.copyProviderFields(primaryIntent, userIntent, confGetter);
+    userIntent.numNodes = 3;
+    userIntent.ybSoftwareVersion = primaryIntent.ybSoftwareVersion;
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+    config.setEnablePrivate(true);
+    userIntent.setManagedLoadBalancer(config);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    // An add-on cluster runs no tserver, so its setting makes and fills no load balancer.
+    Cluster addOn = new Cluster(ClusterType.ADDON, userIntent.clone());
+    addOn.placementInfo = pi;
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().clusters.add(addOn));
+    String lbName =
+        ManagedLoadBalancerUtil.getPrivateName(
+            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid);
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    params.enableYCQLAuth = true;
+    params.ysqlPassword = "foo";
+    params.ycqlPassword = "foo";
+    params.communicationPorts.ysqlServerRpcPort = 5434;
+
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(cloudAPI)
+        .validateManagedLoadBalancerPorts(
+            any(), eq("region-1"), eq(lbName), eq(List.of(5434, 9042)));
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), eq(lbName), any(), eq(List.of(5434, 9042)), any());
+    verify(cloudAPI, times(1)).validateManagedLoadBalancerPorts(any(), any(), any(), any());
+    verify(cloudAPI, times(1)).ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any());
+    verify(cloudAPI, never())
+        .manageNodeGroup(
+            any(),
+            any(),
+            eq(ManagedLoadBalancerUtil.getPrivateName(addOn.uuid)),
+            any(),
+            any(),
+            any());
+  }
+
+  // The collector's yugabyte scrape targets depend on the node's API flags and ports, so each
+  // tserver must regenerate its collector config after UpdateUniverseFields changes them.
+  @Test
+  public void testReconfiguresOtelCollectorWhenMetricsExportEnabled() {
+    // The collector config resolves the exporter UUID to a saved provider.
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+          UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+          exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+          metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+          u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+              metricsExportConfig;
+          u.getUniverseDetails().otelCollectorEnabled = true;
+          // ManageOtelCollector builds its install payload from the universe architecture.
+          u.getUniverseDetails().arch = Architecture.x86_64;
+        });
+    // With an architecture set, the precheck looks for a local release package the test lacks.
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    params.enableYCQLAuth = true;
+    params.ysqlPassword = "foo";
+    params.ycqlPassword = "foo";
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .tserverTasks(TaskType.UpdateUniverseFields, TaskType.ManageOtelCollector)
+        .applyRound()
+        .addTasks(TaskType.UpdateUniverseCommunicationPorts)
+        .addTasks(TaskType.UpdateClusterAPIDetails)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  // The collector can run for log export alone. Without metrics export it has no scrape targets,
+  // so ConfigureDBApis must not regenerate its config.
+  @Test
+  public void testSkipsOtelCollectorWhenMetricsExportDisabled() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().otelCollectorEnabled = true);
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    params.enableYCQLAuth = true;
+    params.ysqlPassword = "foo";
+    params.ycqlPassword = "foo";
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .tserverTask(TaskType.UpdateUniverseFields)
+        .applyRound()
+        .addTasks(TaskType.UpdateUniverseCommunicationPorts)
+        .addTasks(TaskType.UpdateClusterAPIDetails)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  // The multi-tenancy restart rewrites each server's conf after the API step. It must keep the
+  // API settings from this request, not the ones the universe had before it.
+  @Test
+  public void testMultiTenancyChangeKeepsNewYsqlAuth() {
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.ysqlPassword = "foo";
+    MultiTenancyConfig mtConfig = new MultiTenancyConfig();
+    mtConfig.setQosMaxDbCount(5);
+    params.multiTenancy = mtConfig;
+    // The controller copies the universe clusters into the params; the MT step reads them.
+    params.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    List<TaskInfo> mtConfigureTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
+            .filter(t -> t.getTaskParams().path("gflags").has(GFlagsUtil.QOS_MAX_DB_COUNT))
+            .collect(Collectors.toList());
+    assertFalse(mtConfigureTasks.isEmpty());
+    for (TaskInfo task : mtConfigureTasks) {
+      assertTrue(task.getTaskParams().get("enableYSQLAuth").asBoolean());
+      assertTrue(task.getTaskParams().get("enableYSQL").asBoolean());
+      assertFalse(task.getTaskParams().get("enableYCQL").asBoolean());
+    }
   }
 
   private MockUpgrade initMockUpgrade() {

@@ -41,8 +41,9 @@ TEST_F(PgYbIndexCheckTest, YbIndexCheckRepeatableRead) {
   // Note: yb_index_check() should not be used with FROM clause on the base relation. It is done
   // here to verify that using latest snapshot in yb_index_check() doesn't affect the read time of
   // the root query.
-  auto rows = ASSERT_RESULT((conn.FetchRows<std::string>(
-      "SELECT yb_index_check('abcd_b_c_d_idx'::regclass)::text FROM abcd")));
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int64_t>(
+      "SELECT a, (SELECT count(*) FROM yb_index_check('abcd_b_c_d_idx'::regclass)) "
+      "FROM abcd")));
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_EQ(rows.size(), rowcount);
 }

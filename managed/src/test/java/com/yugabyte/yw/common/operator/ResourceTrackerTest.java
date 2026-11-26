@@ -796,4 +796,14 @@ public class ResourceTrackerTest extends FakeDBApplication {
     assertTrue(orphaned2.isEmpty());
     assertEquals(1, OperatorResource.getDeleted().size());
   }
+
+  @Test
+  public void testTrackDependencyWithNullOwnerIsSkipped() {
+    KubernetesResourceDetails secret = resource("db-password", "ns1");
+
+    tracker.trackDependency(null, secret, null);
+
+    assertFalse(tracker.isTracked(secret));
+    assertTrue(tracker.getTrackedResources().isEmpty());
+  }
 }

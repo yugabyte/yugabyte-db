@@ -33,6 +33,9 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	configureCmd.PersistentFlags().
 		Bool("skip_verify_cert", false, "Skip Yugabyte Anywhere SSL cert verification.")
+	configureCmd.PersistentFlags().Bool("fips_enabled", false,
+		"The YugabyteDB Anywhere this node agent belongs to is FIPS enabled. Node agent runs in "+
+			"FIPS mode only then.")
 	configureCmd.PersistentFlags().
 		Bool("disable_egress", false, "Disable connection from node agent.")
 	configureCmd.PersistentFlags().
@@ -45,6 +48,8 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
 	configureCmd.PersistentFlags().String("customer_id", "", "Customer ID")
 	configureCmd.PersistentFlags().String("cert_dir", "", "Node agent cert directory")
+	configureCmd.PersistentFlags().
+		String("certificate_name", "", "YBA certificate config name for node-agent TLS")
 	/* Required only for silent configuration mode. */
 	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID or name")
 	configureCmd.PersistentFlags().String("instance_type", "", "Instance type")
@@ -202,6 +207,7 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store skip_verify_cert value - %s", err.Error())
 	}
+	storeFipsEnabled(ctx, cmd)
 }
 
 // Provides a fully interactive configuration and silent setup for the user to configure
@@ -240,6 +246,11 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Error storing skip_verify_cert value - %s", err.Error())
+	}
+	storeFipsEnabled(ctx, cmd)
+	certificateName, err := cmd.Flags().GetString("certificate_name")
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to read certificate name - %s", err.Error())
 	}
 	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
@@ -464,12 +475,12 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	}
 	util.ConsoleLogger().Infof(ctx, "Completed Node Agent Configuration")
 	util.ConsoleLogger().Infof(ctx, "Checking for existing Node Agent with IP %s", nodeIp)
-	err = server.ValidateNodeAgentIfExists(ctx, apiToken)
+	err = server.ValidateNodeAgentIfExists(ctx, apiToken, certificateName)
 	if err == nil {
 		util.ConsoleLogger().Infof(ctx, "Node Agent is already registered with IP %s", nodeIp)
 	} else if err == util.ErrNotExist {
 		util.ConsoleLogger().Infof(ctx, "Registering Node Agent with IP %s", nodeIp)
-		err = server.RegisterNodeAgent(ctx, apiToken)
+		err = server.RegisterNodeAgent(ctx, apiToken, certificateName)
 		if err != nil {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 		}
@@ -563,4 +574,14 @@ func displayInterfaces(ctx context.Context, i any) []model.DisplayInterface {
 		interfaces[i] = displayInterface
 	}
 	return interfaces
+}
+
+// storeFipsEnabled saves --fips_enabled, already applied to this process, for the commands and
+// the server that run later.
+func storeFipsEnabled(ctx context.Context, cmd *cobra.Command) {
+	_, err := util.CurrentConfig().
+		StoreCommandFlagBool(ctx, cmd, "fips_enabled", util.PlatformFipsEnabledKey)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store fips_enabled value - %s", err.Error())
+	}
 }

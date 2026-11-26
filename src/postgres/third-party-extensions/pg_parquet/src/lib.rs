@@ -35,10 +35,11 @@ pub(crate) static PG_BACKEND_TOKIO_RUNTIME: LazyLock<Runtime> = LazyLock::new(||
 
 #[pg_guard]
 pub extern "C-unwind" fn _PG_init() {
+    // YB: pgrx 0.18 GUC API takes &'static CStr (was &str), so use c"..." literals.
     GucRegistry::define_bool_guc(
-        "pg_parquet.enable_copy_hooks",
-        "Enable parquet copy hooks",
-        "Enable parquet copy hooks",
+        c"pg_parquet.enable_copy_hooks",
+        c"Enable parquet copy hooks",
+        c"Enable parquet copy hooks",
         &ENABLE_PARQUET_COPY_HOOK,
         GucContext::Userset,
         GucFlags::default(),

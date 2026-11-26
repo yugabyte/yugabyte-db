@@ -70,7 +70,7 @@ Result<PerformFuture::Data> PerformFuture::Get(PgSession& session) {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
   auto future = std::move(future_);
-  auto result = future.Get();
+  auto result = VERIFY_RESULT(future.Get());
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session.TrySetCatalogReadPoint(result.catalog_read_time);
   auto& metrics = session.metrics();

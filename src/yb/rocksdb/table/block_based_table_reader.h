@@ -174,13 +174,16 @@ class BlockBasedTable : public TableReader {
   // the data for that key begins (or would begin if the key were
   // present in the file).  The returned value is in terms of file
   // bytes, and so includes effects like compression of the underlying data.
-  // E.g., the approximate offset of the last key in the table will
-  // be close to the file length.
+  // If the key is greater than the last key in the file, return the approximate
+  // end of the data (see ApproximateOffsetOfDataEnd).
   uint64_t ApproximateOffsetOf(const Slice& key) override;
 
   // Given a key, return the byte offset of the smallest key in the file that is greater than or
   // equal to the given key.
   yb::Result<uint64_t> SeekOffsetOf(const Slice& key) override;
+
+  // Returns approximate offset of the end of all data blocks.
+  uint64_t ApproximateOffsetOfDataEnd() const override;
 
   // Returns true if the block for the specified key is in cache.
   // REQUIRES: key is in this table && block cache enabled
@@ -205,6 +208,9 @@ class BlockBasedTable : public TableReader {
   const ImmutableCFOptions& ioptions();
 
   yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
+
+  yb::Result<std::string> GetMiddleKeyWithinBounds(
+      Slice lower_bound_key, Slice upper_bound_key) override;
 
   yb::Result<uint32_t> TEST_GetBlockNumRestarts(
       const ReadOptions& ro, const Slice index_value, BlockType block_type);
@@ -232,8 +238,11 @@ class BlockBasedTable : public TableReader {
   class BlockEntryIteratorState;
   class IndexIteratorHolder;
 
-  // Returns approximate offset of the end of all data blocks.
-  uint64_t ApproximateOffsetOfDataEnd() const;
+  // Returns the middle key of the single data block that lower_bound_internal_key resolves to in
+  // the index. That key can be below lower_bound_internal_key: the bound only selects the block,
+  // and blocks are indexed by their last key, so the block can begin below the bound.
+  // Returns Incomplete if the block holds one record, leaving no middle to pick.
+  yb::Result<std::string> GetFirstDataBlockMiddleKey(Slice lower_bound_internal_key);
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
   // On success, also returns the inclusive upper bound (filter_block_key_upper_bound) of the key

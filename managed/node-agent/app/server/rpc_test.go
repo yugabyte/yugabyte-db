@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/fips140"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -105,6 +106,9 @@ func TestPing(t *testing.T) {
 	}
 	if res.ServerInfo == nil {
 		t.Fatalf("ServerInfo must be set")
+	}
+	if res.ServerInfo.FipsEnabled != fips140.Enabled() {
+		t.Fatalf("FipsEnabled = %t, want the process FIPS mode", res.ServerInfo.FipsEnabled)
 	}
 }
 

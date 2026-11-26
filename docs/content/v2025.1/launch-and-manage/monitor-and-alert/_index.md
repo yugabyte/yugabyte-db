@@ -39,6 +39,12 @@ type: indexpage
     icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
+    title="Tablet metadata"
+    body="Look up tablets on the node you are connected to."
+    href="tablet-metadata/"
+    icon="fa-thin fa-table-cells">}}
+
+  {{<index/item
     title="Query tuning"
     body="Optimize query performance with tuning techniques and tools."
     href="query-tuning/"

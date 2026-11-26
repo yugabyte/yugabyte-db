@@ -1,6 +1,9 @@
 package com.yugabyte.yw.cloud;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -15,6 +18,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
@@ -63,7 +67,7 @@ public class CloudAPITest extends FakeDBApplication {
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "us-west-2", "US West 2", "yb-image-1");
 
-    awsCloudImpl = spy(new AWSCloudImpl(null));
+    awsCloudImpl = spy(new AWSCloudImpl(null, null));
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), any());
     Mockito.doReturn(mockELBClient).when(awsCloudImpl).getELBClient(any(), any());
     mockJsonString =
@@ -95,5 +99,19 @@ public class CloudAPITest extends FakeDBApplication {
   @After
   public void teardown() throws Exception {
     openedMocks.close();
+  }
+
+  @Test
+  public void mergeDataDisksWithNoDisksIsInstanceOnly() {
+    CloudAPI.NodeDiskSpec spec = CloudAPI.NodeDiskSpec.mergeDataDisks("c5d.large", List.of());
+    assertFalse(spec.hasDataDisks());
+    assertEquals("c5d.large", spec.getInstanceType());
+    assertNull(spec.getVolumeSizeGb());
+
+    CloudAPI.NodeDiskSpec withDisk =
+        CloudAPI.NodeDiskSpec.mergeDataDisks(
+            "m5.large", List.of(new CloudAPI.NodeDiskSpec(null, 3000, 125, 100, null)));
+    assertTrue(withDisk.hasDataDisks());
+    assertEquals(Integer.valueOf(100), withDisk.getVolumeSizeGb());
   }
 }

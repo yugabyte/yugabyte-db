@@ -20,6 +20,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
@@ -30,12 +31,16 @@
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
@@ -230,6 +235,10 @@ Status XClusterYsqlTestBase::InitPostgres(
           yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
           pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  // Postgres cannot derive the certificate directory on its own, and the encryption flags reach it
+  // through the environment regardless, so without this it would start encrypted with nowhere to
+  // read certificates from. The tserver's own startup path does the same.
+  RETURN_NOT_OK(pg_process_conf.SetSslConf(*pg_ts->options(), pg_ts->fs_manager()));
   pg_process_conf.force_disable_log_file = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
       cluster->mini_cluster_->AllocateFreePort();
@@ -441,7 +450,7 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
   }
   return STATUS(
       NotFound,
-      strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
+      Format("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
 Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster& cluster, const YBTableName& table_name) {
@@ -1029,6 +1038,27 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
   return PostSetUp();
 }
 
+Status XClusterYsqlTestBase::SplitTabletsOnce(Cluster& cluster, const TableId& table_id) {
+  auto* mini_cluster = cluster.mini_cluster_.get();
+  RETURN_NOT_OK(mini_cluster->FlushTablets());
+  auto& catalog_manager = VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->catalog_manager();
+  const auto peers = ListTableActiveTabletLeadersPeers(mini_cluster, table_id);
+  SCHECK(!peers.empty(), IllegalState, Format("Table $0 has no active tablets", table_id));
+  for (const auto& peer : peers) {
+    RETURN_NOT_OK(catalog_manager.SplitTablet(
+        peer->tablet_id(), master::ManualSplit::kTrue, mini_cluster->GetSplitFactor(),
+        catalog_manager.GetLeaderEpochInternal()));
+  }
+
+  const auto expected_num_tablets = peers.size() * mini_cluster->GetSplitFactor();
+  return LoggedWaitFor(
+      [mini_cluster, &table_id, expected_num_tablets]() -> Result<bool> {
+        return ListTableActiveTabletLeadersPeers(mini_cluster, table_id).size() ==
+               expected_num_tablets;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), Format("Wait for tablets of $0 to split", table_id));
+}
+
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, bool require_no_bootstrap_needed) {
   auto bootstrap_required = VERIFY_RESULT(XClusterTestUtils::CheckpointReplicationGroup(
@@ -1113,7 +1143,7 @@ Status XClusterYsqlTestBase::DeleteOutboundReplicationGroup(
   const auto target_master_address = consumer_cluster()->GetMasterAddresses();
 
   return source_xcluster_client.DeleteOutboundReplicationGroup(
-      kReplicationGroupId, target_master_address);
+      replication_group_id, target_master_address);
 }
 
 Status XClusterYsqlTestBase::VerifyDDLExtensionTablesCreation(

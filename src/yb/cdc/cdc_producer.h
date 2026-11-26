@@ -90,6 +90,7 @@ Status GetChangesForCDCSDK(
     int64_t safe_hybrid_time_req,
     std::optional<uint64_t> consistent_snapshot_time,
     int wal_segment_index_req,
+    int64_t max_index_in_sort_window_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",
     CoarseTimePoint deadline = CoarseTimePoint::max(),

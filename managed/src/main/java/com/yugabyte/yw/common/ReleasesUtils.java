@@ -13,12 +13,14 @@ import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.controllers.apiModels.ResponseRelease;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.DB;
 import io.ebean.SqlQuery;
+import io.ebean.SqlRow;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -32,6 +34,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -473,9 +476,15 @@ public class ReleasesUtils {
     log.trace("version {} is valid", currVersion);
   }
 
+  // A universe's DB version, as the release endpoints group universes by it: the primary cluster's.
+  private static final String UNIVERSE_VERSION_SQL =
+      "(universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}'";
+
   public Map<String, List<Universe>> versionUniversesMap() {
     String sql =
-        "select (universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}' as"
+        "select "
+            + UNIVERSE_VERSION_SQL
+            + " as"
             + " yb_software_version, string_agg(universe.universe_uuid::text, ',') as universes "
             + " from universe group by yb_software_version;";
     SqlQuery query = DB.sqlQuery(sql);
@@ -491,6 +500,29 @@ public class ReleasesUtils {
                         .map(u -> Universe.getOrBadRequest(UUID.fromString(u)))
                         .collect(Collectors.toList())));
     return mapUniVersion;
+  }
+
+  /**
+   * Universes per DB version, with only the fields release responses show. Reads uuid, name and
+   * creation date in one query instead of loading and parsing every universe.
+   */
+  public Map<String, List<ResponseRelease.Universe>> versionUniverseSummaries() {
+    String sql =
+        "select "
+            + UNIVERSE_VERSION_SQL
+            + " as"
+            + " yb_software_version, universe_uuid, name, creation_date from universe";
+    Map<String, List<ResponseRelease.Universe>> result = new HashMap<>();
+    for (SqlRow row : DB.sqlQuery(sql).findList()) {
+      result
+          .computeIfAbsent(row.getString("yb_software_version"), k -> new ArrayList<>())
+          .add(
+              new ResponseRelease.Universe(
+                  row.getUUID("universe_uuid"),
+                  row.getString("name"),
+                  row.getTimestamp("creation_date")));
+    }
+    return result;
   }
 
   public String getUploadStoragePath() {
@@ -545,6 +577,39 @@ public class ReleasesUtils {
                 }
               }
             });
+  }
+
+  // RestoreContinuousBackup downloads every release to <yb.releases.path>/<version>/, so uploaded
+  // releases land outside the upload/release_artifacts/<fileUUID>/ path their row tracks. Move the
+  // file back rather than re-pointing the row: importLocalReleases ignores upload rows when it
+  // checks for known files, so it would register the file again.
+  public void restoredUploadPathFixup() {
+    String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
+    for (Release release : Release.getAll()) {
+      for (ReleaseArtifact artifact :
+          ReleaseArtifact.getForReleaseLocalFile(release.getReleaseUUID())) {
+        try {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+          if (rlf == null || !rlf.isUpload() || Files.exists(Paths.get(rlf.getLocalFilePath()))) {
+            continue;
+          }
+          String fileName = Paths.get(rlf.getLocalFilePath()).getFileName().toString();
+          Path restoredPath = Paths.get(releasesPath, release.getVersion(), fileName);
+          if (!Files.exists(restoredPath)) {
+            continue;
+          }
+          Path targetPath =
+              Paths.get(getUploadStoragePath(), rlf.getFileUUID().toString(), fileName);
+          Files.createDirectories(targetPath.getParent());
+          FileUtils.moveFile(restoredPath, targetPath);
+          rlf.setLocalFilePath(targetPath.toString());
+          log.info("Moved restored uploaded release {} to {}", restoredPath, targetPath);
+        } catch (Exception e) {
+          log.error(
+              "Failed to fix up restored upload for artifact {}", artifact.getArtifactUUID(), e);
+        }
+      }
+    }
   }
 
   private String getAndValidateYbaMinimumVersion(JsonNode node) {

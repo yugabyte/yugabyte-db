@@ -35,6 +35,8 @@ v_sql                       text;
 v_start_control             bigint;
 v_total_rows                bigint := 0;
 
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
+
 BEGIN
     /*
      * Populate the child table(s) of an id-based partition set with old data from the original parent
@@ -106,11 +108,16 @@ ELSIF v_partition_type = 'native' AND current_setting('server_version_num')::int
         v_source_tablename := v_default_tablename;
 
         v_default_exists := true;
-        -- YB: Moving data from default partition is not supported
-        -- TODO(#3109): Re-enable it after transactional DDL support.
-        RAISE NOTICE 'Moving data from default partition to newly created child tables is not supported';
-        RETURN v_total_rows;
-        EXECUTE format ('CREATE TEMP TABLE IF NOT EXISTS partman_temp_data_storage (LIKE %I.%I INCLUDING INDEXES) ON COMMIT DROP', v_source_schemaname, v_source_tablename);
+        IF NOT yb_v_use_native_txn_ddl_and_locks THEN
+            -- Moving rows out of the default partition needs transactional DDL.
+            RAISE NOTICE 'Moving data from default partition to newly created child tables requires the gflag ysql_yb_pg_partman_use_native_txn_ddl_and_locks, transactional DDL, table level locks, and DDL savepoint support to be enabled';
+            RETURN v_total_rows;
+        END IF; -- NOT yb_v_use_native_txn_ddl_and_locks
+        -- YB: No INCLUDING INDEXES, since LSM indexes cannot be copied to a temp table (#23765).
+        -- The table only stages rows and is drained by an unqualified DELETE, so indexes would not
+        -- speed up any read.  The constraints they would enforce are already enforced by the
+        -- default partition the rows come from and by the child partition they move to.
+        EXECUTE format ('CREATE TEMP TABLE IF NOT EXISTS partman_temp_data_storage (LIKE %I.%I) ON COMMIT DROP', v_source_schemaname, v_source_tablename);
     ELSE
         RAISE DEBUG 'No default table found when partition_data_id() was called';
         RETURN v_total_rows;

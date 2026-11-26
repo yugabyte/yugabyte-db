@@ -211,6 +211,13 @@ message PgsqlWriteRequestPB {
     PGSQL_FETCH_SEQUENCE = 6;
   }
 
+  // ON CONFLICT action.
+  enum PgsqlOnConflictAction {
+    PGSQL_ON_CONFLICT_NONE = 0;
+    PGSQL_ON_CONFLICT_NOTHING = 1;
+    PGSQL_ON_CONFLICT_UPDATE = 2;
+  }
+
   // Client info
   optional QLClient client = 1;       // required
 
@@ -219,7 +226,7 @@ message PgsqlWriteRequestPB {
   optional PgsqlStmtType stmt_type = 3;    // required
 
   // Table id.
-  optional bytes table_id = 4; // required
+  optional bytes table_id = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}]; // required
 
   // Table schema version.
   optional uint32 schema_version = 5; // required
@@ -324,6 +331,35 @@ message PgsqlWriteRequestPB {
 
   // Optimization to skip intents write and directly writes to regular db.
   optional bool skip_intents_write = 30;
+
+  // Read this operation at the statement's in_txn_limit instead of at the transaction read time.
+  // Set for a relation the skip intents optimization can apply to: one created, or with its
+  // storage swapped, in the current transaction, while yb_enable_new_relation_fastpath_write is
+  // on. Rows an earlier skip intents write put in the regular db sit above the transaction read
+  // time, so only a read at the in_txn_limit still sees them. Unlike skip_intents_write this
+  // stays set after the optimization is disabled mid-transaction, which is what keeps those rows
+  // visible from then on.
+  //
+  // Like skip_intents_write this is a client-side signal; docdb does not read it.
+  optional bool read_at_in_txn_limit = 31;
+
+  // Fences the write against a caller-held lease: the leader rejects the op if this hybrid time has
+  // already passed when the op is about to be assigned its own. An RPC deadline cannot express
+  // this -- nothing cancels an operation once it is handed to Raft, so a write the caller saw time
+  // out can still commit. 0 means no fence.
+  //
+  // Each leader evaluates the fence independently, so a batch spanning tablets can be partially
+  // applied when it straddles the boundary; non-transactional single-shard writes have no
+  // all-or-nothing to fall back on. Like any hybrid time comparison it is only as tight as
+  // max_clock_skew_usec.
+  optional fixed64 ignore_after_hybrid_time = 32;
+
+  // ON CONFLICT resolution for a PGSQL_INSERT.
+  optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
+
+  // Set when the transaction runs with global object locking: its DDLs take global object locks.
+  // The transaction itself may hold only local locks, as a DML-only transaction does.
+  optional bool using_table_locks_globally = 34 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -381,6 +417,12 @@ message PgsqlPagingStatePB {
   // To hint PgGate about upcoming tablet switch
   // may be expected in cross tablet scan, or may indicate tablet split
   optional bytes next_tablet_bound = 9;
+
+  // Requests to fetch a batch of keys return the number of keys processed so far to quickly
+  // position in the batch to read the next page.
+  optional uint64 batch_keys_processed = 10;
+
+  repeated uint64 batch_keys_missing = 11;
 }
 
 // Given: master --chunk--> tserver --batch--> postgres --page--> tserver
@@ -405,6 +447,19 @@ message PgsqlBackfillSpecPB {
   //   - postgres <--page-- tserver: next_row_key = QUX; PgsqlPagingStatePB.next_row_key = QUX
   // - tserver <--batch-- postgres: next_row_key = QUX
   optional bytes next_row_key = 3;
+}
+
+// Why a read is prefetching whole catalog tables. Every prefetch sends a wave of these to the
+// master leader, and the master admits them by kind. HIGH_PRIORITY is for a prefetch something is
+// already blocked on: a backend refreshing its catalog cache, the relcache-init backend whose
+// file every new connection on its node waits for, and the small read a backend makes before it
+// can authenticate. The large prefetch of a connection that is still starting up can afford to
+// wait, so that gets CONNECTION_START.
+// Make sure this is in sync with YbcPgSysTablePrefetchKind in ybc_pg_typedefs.h.
+enum YsqlCatalogPrefetchKindPB {
+  YSQL_CATALOG_PREFETCH_NONE = 0;
+  YSQL_CATALOG_PREFETCH_CONNECTION_START = 1;
+  YSQL_CATALOG_PREFETCH_HIGH_PRIORITY = 2;
 }
 
 // Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
@@ -432,8 +487,8 @@ message PgsqlReadRequestPB {
   // Statement info. There's only SELECT, so we don't need different request type.
   optional uint64 stmt_id = 2; // required
 
-  // Table id.
-  optional bytes table_id = 19; // required
+  // Table id. Required.
+  optional bytes table_id = 19 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Table schema version
   optional uint32 schema_version = 3; // required
@@ -494,6 +549,7 @@ message PgsqlReadRequestPB {
 
   //------------------------------------------------------------------------------------------------
   // Query options.
+  // Unset means row order does not matter, which lets pggate read tablets in parallel.
   optional bool is_forward_scan = 10 [default = true];
 
   // Reading distinct columns?
@@ -602,6 +658,27 @@ message PgsqlReadRequestPB {
   optional uint32 tablespace_oid = 45;
 
   optional bool skip_intents_read = 46;
+
+  // See PgsqlWriteRequestPB::read_at_in_txn_limit.
+  optional bool read_at_in_txn_limit = 47;
+
+  // Set by the YSQL system table prefetcher, which reads whole catalog tables at connection start
+  // and on catalog cache refresh. Every tserver in the cluster issues these together after a DDL,
+  // and each one is orders of magnitude more expensive than an ordinary catalog read, so the
+  // master bounds how many it serves at a time. NONE is never bounded, which keeps an older
+  // client working against a newer master.
+  optional YsqlCatalogPrefetchKindPB catalog_prefetch_kind = 48;
+
+  // Whether the prefetcher that issued this has already had a request served in this session. A
+  // connection start is several separately keyed requests -- the large relcache preload, then a
+  // few small tables -- and only the first of them is work the master has not already committed
+  // to. Paging state alone cannot say this: the opening request of each of those carries none,
+  // so without this the master would hold every one of them to the limit meant for prefetches it
+  // has not started, and could shed a connection that had already paid for the large read.
+  optional bool catalog_prefetch_continuation = 49;
+
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  optional bool using_table_locks_globally = 50 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -631,9 +708,13 @@ message PgsqlRequestMetricsPB {
   repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
   // Event stats metrics changes as a result of processing the request.
   repeated PgsqlRequestEventMetricPB event_metrics = 3;
-  // Count of table rows scanned as a result of processing the request.
+  // Rows read from the table while processing this request.  A row that a pushed down filter
+  // rejected was read, so it counts, and so does a row that an aggregate folded into its result.
+  // A row excluded by a bound was not read, so it does not count.  Each row of a scan is counted
+  // by exactly one of its requests, so the last row of a response that reached the size limit,
+  // which is dropped from it, is counted by the request that reads it again.  See GH #33551.
   optional int64 scanned_table_rows = 4;
-  // Count of secondary index rows scanned as a result of processing the request.
+  // The same for the rows read from a secondary index that drives the scan.
   optional int64 scanned_index_rows = 5;
 }
 
@@ -649,6 +730,13 @@ message PgsqlResponsePB {
     PGSQL_STATUS_USAGE_ERROR = 3;
     PGSQL_STATUS_RESTART_REQUIRED_ERROR = 4;
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
+  }
+
+  enum PgsqlOnConflictOutcome {
+    PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN = 0;
+    PGSQL_ON_CONFLICT_OUTCOME_INSERTED = 1;
+    PGSQL_ON_CONFLICT_OUTCOME_UPDATED = 2;
+    PGSQL_ON_CONFLICT_OUTCOME_SKIPPED = 3;
   }
 
   // Internal Status information
@@ -690,8 +778,11 @@ message PgsqlResponsePB {
   // Whether this replica could have more vectors, used for paging.
   optional bool vector_index_could_have_more_data = 21;
 
-  // Number of rows affected by the operation. Currently only used for update and delete.
+  // Number of rows affected by the operation. Used for update, delete and by
+  // INSERT ... ON CONFLICT pushdown.
   optional int32 rows_affected_count = 7;
+
+  optional PgsqlOnConflictOutcome on_conflict_outcome = 22;
 
   //
   // External statuses.

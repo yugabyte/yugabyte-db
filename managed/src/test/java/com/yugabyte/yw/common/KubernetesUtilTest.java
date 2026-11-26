@@ -6,10 +6,25 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -39,6 +54,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 
@@ -70,6 +86,31 @@ public class KubernetesUtilTest extends FakeDBApplication {
     Map<String, String> universeConfig = new HashMap<>();
     universeConfig.put(Universe.LABEL_K8S_RESOURCES, "true");
     return universeConfig;
+  }
+
+  @Test
+  public void testIsMCSEnabled() {
+    // AWS universe: user intent is not kubernetes, so this returns false
+    // without looking up a provider.
+    Universe vmUniverse = ModelFactory.createUniverse("vm-universe", customer.getId());
+    assertFalse(KubernetesUtil.isMCSEnabled(vmUniverse));
+
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    params.setUniverseUUID(UUID.randomUUID());
+    Universe k8sUniverse = Universe.create(params, customer.getId());
+
+    // Zones exist, but none has a pod address template.
+    assertFalse(KubernetesUtil.isMCSEnabled(k8sUniverse));
+
+    pair.getSecond()
+        .get(0)
+        .updateConfig(
+            ImmutableMap.of(
+                "KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}"));
+    pair.getSecond().get(0).save();
+    assertTrue(KubernetesUtil.isMCSEnabled(k8sUniverse));
   }
 
   @Test
@@ -381,6 +422,72 @@ public class KubernetesUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCoreCountParsesMilliCoresAndDefaultsAMissingSpec() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    UserIntent userIntent = universeParams.getPrimaryCluster().userIntent;
+    userIntent.tserverK8SNodeResourceSpec = null;
+    userIntent.masterK8SNodeResourceSpec = null;
+    Map<UUID, Map<String, Object>> milliCoreOverrides =
+        KubernetesUtil.getFinalOverrides(
+            universeParams.getPrimaryCluster(),
+            "resource:\n  tserver:\n    requests:\n      cpu: 500m\n",
+            userIntent.azOverrides);
+    double defaultCores = new UserIntent.K8SNodeResourceSpec().cpuCoreCount;
+    for (NodeDetails node : universeParams.nodeDetailsSet) {
+      assertEquals(
+          defaultCores, KubernetesUtil.getCoreCountForUniverseForServer(userIntent, null, node), 0);
+      assertEquals(
+          node.isTserver ? 0.5 : defaultCores,
+          KubernetesUtil.getCoreCountForUniverseForServer(userIntent, milliCoreOverrides, node),
+          0.001);
+    }
+  }
+
+  @Test
+  public void testCoreCountFailureLogsNoOverrideSecrets() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    UserIntent userIntent = universeParams.getPrimaryCluster().userIntent;
+    userIntent.tserverK8SNodeResourceSpec = null;
+    Map<UUID, Map<String, Object>> overrides =
+        KubernetesUtil.getFinalOverrides(
+            universeParams.getPrimaryCluster(),
+            "resource:\n  tserver:\n    requests:\n      cpu: not-a-quantity\n"
+                + "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n",
+            userIntent.azOverrides);
+    double defaultCores = new UserIntent.K8SNodeResourceSpec().cpuCoreCount;
+    Logger logger = (Logger) LoggerFactory.getLogger(KubernetesUtil.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.WARN);
+    try {
+      for (NodeDetails node : universeParams.nodeDetailsSet) {
+        if (node.isTserver) {
+          assertEquals(
+              defaultCores,
+              KubernetesUtil.getCoreCountForUniverseForServer(userIntent, overrides, node),
+              0);
+        }
+      }
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    assertTrue(
+        appender.list.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Failed to get core count")));
+    for (ILoggingEvent event : appender.list) {
+      assertFalse(
+          event.getFormattedMessage(), event.getFormattedMessage().contains("dummy-bind-pass"));
+    }
+  }
+
+  @Test
   public void testNeedsFullMoveSameDeviceInfo() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
         addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
@@ -596,5 +703,270 @@ public class KubernetesUtilTest extends FakeDBApplication {
     PerProcessDetails az2Master = az2Ov.getPerProcess().get(ServerType.MASTER);
     assertNotNull(az2Master);
     assertEquals("provider-az2-sc", az2Master.getDeviceInfo().storageClass);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Non-root-by-default detection, which gates the pg_data ownership reconcile on a rollback.
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  public void testIsNonRootDbByDefaultStableLine() {
+    // The chart started defaulting the DB to a non-root user in 2026.1.2.
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2026.1.2.0-b0"));
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2026.1.2.1-b5"));
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2026.2.0.0-b1"));
+    // Everything below it runs the DB as root and has no reconcile of its own.
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2026.1.1.0-b10"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2026.1.0.0-b0"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2025.2.5.1-b1"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2024.2.3.0-b1"));
+  }
+
+  @Test
+  public void testIsNonRootDbByDefaultPreviewLine() {
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2.31.0.0-b0"));
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2.31.1.0-b7"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2.29.0.0-b603"));
+  }
+
+  private Map<String, Object> securityContextValues(
+      Boolean podEnabled,
+      Object podRunAsUser,
+      Boolean containerEnabled,
+      Object containerRunAsUser,
+      Boolean ocpEnabled) {
+    Map<String, Object> values = new HashMap<>();
+    if (podEnabled != null) {
+      Map<String, Object> pod = new HashMap<>();
+      pod.put("enabled", podEnabled);
+      pod.put("runAsUser", podRunAsUser);
+      values.put("podSecurityContext", pod);
+    }
+    if (containerEnabled != null) {
+      Map<String, Object> container = new HashMap<>();
+      container.put("enabled", containerEnabled);
+      container.put("runAsUser", containerRunAsUser);
+      values.put("containerSecurityContext", container);
+    }
+    if (ocpEnabled != null) {
+      values.put("ocpCompatibility", ImmutableMap.of("enabled", ocpEnabled));
+    }
+    return values;
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserNonRootChartDefaults() {
+    // 2026.1 defaults: pod level enabled, containers inherit 10001.
+    assertEquals(
+        Integer.valueOf(10001),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, false, 10001, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserRootChartDefaults() {
+    // Pre-2026.1 defaults: nothing enabled, so the containers run as the image USER, which is root.
+    assertEquals(
+        Integer.valueOf(0),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(false, 10001, null, null, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserContainerContextWins() {
+    // containerSecurityContext is applied per container and overrides the pod level one.
+    assertEquals(
+        Integer.valueOf(12345),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, true, 12345, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserOcpIsUnknown() {
+    // OpenShift assigns a UID from the namespace range, so the pod level block is not rendered.
+    assertNull(
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, null, null, true)));
+    // containerSecurityContext is not gated on ocpCompatibility, so it still decides.
+    assertEquals(
+        Integer.valueOf(10001),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, true, 10001, true)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserAcceptsQuotedNumbers() {
+    // A quoted number renders into the pod spec as a plain int, so the chart behaves the same way.
+    assertEquals(
+        Integer.valueOf(10001),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, "10001", null, null, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserIsNullOnlyWhenTrulyUnknowable() {
+    assertNull(KubernetesUtil.getEffectiveDbRunAsUser(new HashMap<>()));
+    assertNull(KubernetesUtil.getEffectiveDbRunAsUser(null));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserRejectsMalformedValues() {
+    // Enabled but no usable runAsUser - the chart declares it required, so this is malformed input
+    // rather than something to silently skip.
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            KubernetesUtil.getEffectiveDbRunAsUser(
+                securityContextValues(true, null, null, null, false)));
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            KubernetesUtil.getEffectiveDbRunAsUser(
+                securityContextValues(true, "not-a-uid", null, null, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserRejectsNonBooleanEnabled() {
+    // A quoted "false" is truthy to Go templates but false to Boolean.parseBoolean - coercing it
+    // would make us disagree with what the chart actually deployed.
+    Map<String, Object> values = new HashMap<>();
+    Map<String, Object> pod = new HashMap<>();
+    pod.put("enabled", "false");
+    pod.put("runAsUser", 10001);
+    values.put("podSecurityContext", pod);
+    assertThrows(IllegalStateException.class, () -> KubernetesUtil.getEffectiveDbRunAsUser(values));
+  }
+
+  private RuntimeConfGetter confGetterWithSidecarKey(boolean enabled) {
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    when(confGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
+        .thenReturn(enabled);
+    return confGetter;
+  }
+
+  @Test
+  public void testIsNodeExporterSidecarEnabled() {
+    Universe universe =
+        ModelFactory.createUniverse("k8s-sidecar", customer.getId(), CloudType.kubernetes);
+    RuntimeConfGetter keyOn = confGetterWithSidecarKey(true);
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b15", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b14", universe, keyOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.1.0-b5", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.1.2.0-b100", universe, keyOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2.33.0.0-b58", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2.33.0.0-b57", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2.31.0.0-b700", universe, keyOn));
+    // A later preview train passes the 2.33 gate from its first build.
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2.35.0.0-b1", universe, keyOn));
+    // A version that does not parse is treated as supported.
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("not-a-version", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled(null, universe, keyOn));
+    assertFalse(
+        KubernetesUtil.isNodeExporterSidecarEnabled(
+            "2026.2.0.0-b15", universe, confGetterWithSidecarKey(false)));
+  }
+
+  @Test
+  public void testIsNodeExporterSidecarEnabledReadsTheKeyForThatUniverse() {
+    Universe universe =
+        ModelFactory.createUniverse("k8s-sidecar-scope", customer.getId(), CloudType.kubernetes);
+    Universe other =
+        ModelFactory.createUniverse("k8s-sidecar-other", customer.getId(), CloudType.kubernetes);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    when(confGetter.getConfForScope(eq(universe), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
+        .thenReturn(true);
+    when(confGetter.getConfForScope(eq(other), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
+        .thenReturn(false);
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b15", universe, confGetter));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b15", other, confGetter));
+  }
+
+  private RuntimeConfGetter confGetterWithTlsKeys(
+      boolean sidecarKey, boolean tlsKey, boolean cloudEnabled) {
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    lenient()
+        .when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
+        .thenReturn(sidecarKey);
+    lenient()
+        .when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.nodeExporterTlsEnabled)))
+        .thenReturn(tlsKey);
+    lenient()
+        .when(confGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
+        .thenReturn(cloudEnabled);
+    return confGetter;
+  }
+
+  private Universe k8sUniverseWithNodeToNode(boolean nodeToNode) {
+    Universe universe =
+        ModelFactory.createUniverse(
+            "k8s-tls-" + UUID.randomUUID(), customer.getId(), CloudType.kubernetes);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = nodeToNode;
+          u.setUniverseDetails(details);
+        });
+  }
+
+  @Test
+  public void testIsNodeExporterSidecarTlsEnabled() {
+    Universe nodeToNode = k8sUniverseWithNodeToNode(true);
+    RuntimeConfGetter allOn = confGetterWithTlsKeys(true, true, false);
+    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b15", nodeToNode, allOn));
+    assertFalse(
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b14", nodeToNode, allOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b58", nodeToNode, allOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b57", nodeToNode, allOn));
+    // Each term turns it off on its own.
+    assertFalse(
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
+            nodeToNode,
+            confGetterWithTlsKeys(false, true, false)));
+    assertFalse(
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
+            nodeToNode,
+            confGetterWithTlsKeys(true, false, false)));
+    assertFalse(
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
+            nodeToNode,
+            confGetterWithTlsKeys(true, true, true)));
+    assertFalse(
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
+            k8sUniverseWithNodeToNode(false),
+            allOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled(null, nodeToNode, allOn));
+  }
+
+  // The universe form reads the recorded version and is false for a universe that isn't K8s.
+  @Test
+  public void testNodeExporterSidecarEnabledForRecordedVersion() {
+    RuntimeConfGetter allOn = confGetterWithTlsKeys(true, true, false);
+    Universe k8s = withVersionAndNodeToNode(k8sUniverseWithNodeToNode(true));
+    Universe vm =
+        withVersionAndNodeToNode(ModelFactory.createUniverse("vm-sidecar", customer.getId()));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled(k8s, allOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled(vm, allOn));
+  }
+
+  private Universe withVersionAndNodeToNode(Universe universe) {
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion =
+              KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+          u.setUniverseDetails(details);
+        });
   }
 }

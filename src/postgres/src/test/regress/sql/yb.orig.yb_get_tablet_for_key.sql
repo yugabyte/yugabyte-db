@@ -347,7 +347,11 @@ CREATE TABLE colocated_t (k INT PRIMARY KEY, v TEXT);
 SELECT yb_get_tablet_for_key(current_database(), 'colocated_t'::regclass::oid, ROW(1, 'a'));
 
 \c :orig_db
-DROP DATABASE IF EXISTS tablet_key_colocated_test;
+-- TODO(#34779): the database is left behind on purpose. Under connection manager the physical
+-- backends of the connection above are still on it when the drop runs, which fails with
+-- "database is being accessed by other users"; WITH (FORCE) does not help either. The regress
+-- cluster is torn down right after, so the leftover database costs nothing.
+-- DROP DATABASE IF EXISTS tablet_key_colocated_test;
 
 -- -----------------------------------------------------------------------------
 -- 10. Cleanup

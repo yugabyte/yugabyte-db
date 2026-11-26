@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account. After federated authentication is enabled, only Admin users can sign in using password authentication.
+Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account. After federated authentication is enabled, only organization Super Admin users can sign in using password authentication.
 
 Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Connect) protocol.
 
@@ -57,18 +57,27 @@ Before configuring federated authentication, be sure to allow pop-up requests fr
 
 Before enabling federated authentication in YugabyteDB Aeon, you must configure your IdP and obtain the necessary credentials.
 
-To use Entra for your IdP, you need to register an application with Microsoft Entra so the Microsoft identity platform can provide authentication and authorization services for your application. Configure the application as follows:
+To use Entra for your IdP, you need to register an application with Microsoft Entra so the Microsoft identity platform can provide authentication and authorization services for your application.
 
-- Provide a name for the application.
-- Set the sign-in audience for the application to **Accounts in any organizational directory** (Multitenant).
+Configure the application as follows:
 
-    ![Azure account types](/images/yb-cloud/managed-authentication-azure-account-types.png)
+1. In Azure Portal, navigate to **Microsoft Entra ID**.
 
-- Set the Redirect URI platform to Web, and the URI to the following:
+1. Click **+ Add > App registration**.
+
+1. Provide a name for the application.
+
+1. Under **Supported account types**, choose **Multiple Entra ID tenants** and select **Allow all tenants**.
+
+    ![Entra account types](/images/yb-cloud/managed-authentication-azure-account-types.png)
+
+1. Set the **Redirect URI** to **Web**, and the URI to the following:
 
     ```sh
     https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback
     ```
+
+1. Click **Register**.
 
 Use your own Entra account to test the connection. For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Microsoft documentation.
 
@@ -83,7 +92,8 @@ Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/id
 
 To configure federated authentication in YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Organization > Security > Access Control > Authentication**.
+1. Click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose the Microsoft Entra ID identity provider.
 1. Enter your Entra application client ID and secret.
 1. Click **Enable**.

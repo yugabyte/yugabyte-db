@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
@@ -27,7 +28,10 @@
 
 #include "yb/util/fast_varint.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::dockv {
 
@@ -143,6 +147,75 @@ TEST(PackedRowTest, RandomV2) {
   TestRandom<RowPackerV2, PackedRowDecoderV2>();
 }
 
+// Packs a single value, e.g. a packed value of the other version the way compaction does when
+// ysql_use_packed_row_v2 changes, and returns the value stored in the resulting row.
+template <class Packer, class Decoder, class Value>
+Result<std::string> Repack(
+    const SchemaPacking& schema_packing, ColumnId column_id, Value value,
+    VectorValueFormat vector_value_format) {
+  constexpr int kVersion = 1;
+  Packer packer(
+      kVersion, schema_packing, std::numeric_limits<int64_t>::max(), Slice(),
+      /* is_update= */ false, vector_value_format);
+  SCHECK(VERIFY_RESULT(packer.AddValue(column_id, value, /* tail_size= */ 0)), IllegalState,
+         "Value was not packed");
+  auto packed = VERIFY_RESULT(packer.Complete());
+  SCHECK_EQ(static_cast<ValueEntryType>(packed.consume_byte()), Decoder::kValueEntryType,
+            IllegalState, "Unexpected packed row version");
+  SCHECK_EQ(VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed)), kVersion, IllegalState,
+            "Unexpected schema version");
+  Decoder decoder(schema_packing, packed.data());
+  return decoder.FetchValue(0)->ToBuffer();
+}
+
+// A V1 vector value starts with the value type byte, a V2 vector value does not. Repacking
+// between the versions has to add or strip it. See DB-23864.
+TEST(PackedRowTest, RepackVector) {
+  constexpr uint8_t kVectorData[] = {
+      0x03, 0x00, 0x00, 0x00, 0x00, 0x40, 0x40, 0x40, 0x00, 0x40, 0x40, 0x40,
+  };
+
+  auto schema = ASSERT_RESULT(BuildSchema({DataType::VECTOR}, /* allow_nullable= */ false));
+  SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
+  const auto column_id = schema.column_id(schema.num_key_columns());
+
+  LWQLValuePB ql_value(nullptr);
+  ql_value.ref_binary_value(Slice(kVectorData, sizeof(kVectorData)));
+  const auto vector_id = vector_index::VectorId::GenerateRandom();
+
+  for (auto format : {VectorValueFormat::kLegacy, VectorValueFormat::kTyped}) {
+    SCOPED_TRACE(Format("format: $0", format));
+    DocVectorValue vector_value(format, ql_value, vector_id);
+    ValueBuffer expected_v1;
+    vector_value.PackToV1(&expected_v1);
+    ValueBuffer expected_v2;
+    vector_value.PackToV2(&expected_v2);
+
+    auto value_v1 = ASSERT_RESULT((Repack<RowPackerV1, PackedRowDecoderV1>(
+        schema_packing, column_id, PackedValueV2(expected_v2.AsSlice()), format)));
+    ASSERT_EQ(Slice(value_v1).ToDebugHexString(), expected_v1.AsSlice().ToDebugHexString());
+
+    auto value_v2 = ASSERT_RESULT((Repack<RowPackerV2, PackedRowDecoderV2>(
+        schema_packing, column_id, PackedValueV1(expected_v1.AsSlice()), format)));
+    ASSERT_EQ(Slice(value_v2).ToDebugHexString(), expected_v2.AsSlice().ToDebugHexString());
+
+    // The schema missing value is DocDB encoded, i.e. starts with the value type byte.
+    QLValuePB raw_value;
+    raw_value.set_binary_value(kVectorData, sizeof(kVectorData));
+    const auto missing_value = ASSERT_RESULT(EncodeVectorSchemaMissingValue(raw_value, format));
+    const Slice encoded_missing_value(missing_value.binary_value());
+
+    auto missing_v1 = ASSERT_RESULT((Repack<RowPackerV1, PackedRowDecoderV1>(
+        schema_packing, column_id, missing_value, format)));
+    ASSERT_EQ(Slice(missing_v1).ToDebugHexString(), encoded_missing_value.ToDebugHexString());
+
+    auto missing_v2 = ASSERT_RESULT((Repack<RowPackerV2, PackedRowDecoderV2>(
+        schema_packing, column_id, missing_value, format)));
+    ASSERT_EQ(Slice(missing_v2).ToDebugHexString(),
+              encoded_missing_value.WithoutPrefix(1).ToDebugHexString());
+  }
+}
+
 TEST(PackedRowTest, PackWithLimitV2) {
   auto schema = ASSERT_RESULT(BuildSchema({DataType::STRING, DataType::INT64}));
   SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
@@ -227,6 +300,70 @@ TEST(PackedRowTest, UpdateFlagV2) {
     ASSERT_EQ(header.IsUpdate(), test_case.is_update)
         << test_case.description << ", header.IsUpdate() mismatch";
   }
+}
+
+// After a concurrent ALTER TABLE ... ADD COLUMN, YSQL can send an insert without the new columns.
+// Each of them, not only the last one, should be packed with its missing value.
+template <class Packer, class Decoder>
+void TestCompleteWithMissingColumns() {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddHashKeyColumn("h1", DataType::INT32));
+  ASSERT_OK(builder.AddNullableColumn("v1", DataType::INT32));
+  QLValuePB missing_bool;
+  missing_bool.set_bool_value(false);
+  ColumnSchema c1("c1", DataType::BOOL, ColumnKind::VALUE, Nullable::kTrue);
+  c1.set_missing_value(missing_bool);
+  ASSERT_OK(builder.AddColumn(c1));
+  ASSERT_OK(builder.AddNullableColumn("c2", DataType::INT16));
+  QLValuePB missing_int;
+  missing_int.set_int64_value(42);
+  ColumnSchema c3("c3", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue);
+  c3.set_missing_value(missing_int);
+  ASSERT_OK(builder.AddColumn(c3));
+  auto schema = builder.Build();
+
+  constexpr int kVersion = 1;
+  SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
+  QLValuePB v1;
+  v1.set_int32_value(7);
+  auto pack = [&](size_t packed_size_limit) {
+    Packer packer(
+        kVersion, schema_packing, packed_size_limit, /* value_control_fields= */ Slice());
+    EXPECT_TRUE(EXPECT_RESULT(packer.AddValue(schema_packing.column_packing_data(0).id, v1)));
+    return EXPECT_RESULT(packer.Complete()).ToBuffer();
+  };
+  const auto full_row = pack(std::numeric_limits<int64_t>::max());
+  Slice packed(full_row);
+  ASSERT_EQ(static_cast<ValueEntryType>(packed.consume_byte()), Decoder::kValueEntryType);
+  auto version = ASSERT_RESULT(FastDecodeUnsignedVarInt(&packed));
+  ASSERT_EQ(version, kVersion);
+
+  Decoder decoder(schema_packing, packed.data());
+  const std::vector<QLValuePB> expected = {v1, missing_bool, QLValuePB(), missing_int};
+  for (size_t i = 0; i != expected.size(); ++i) {
+    const auto& column = schema.column(schema.num_key_columns() + i);
+    SCOPED_TRACE(Format("column: $0", column.name()));
+    auto value_slice = decoder.FetchValue(i);
+    ASSERT_EQ(value_slice.IsNull(), IsNull(expected[i]));
+    if (IsNull(expected[i])) {
+      continue;
+    }
+    auto decoded_value = ASSERT_RESULT(UnpackPrimitiveValue(
+        value_slice, column.type_info()->type));
+    ASSERT_EQ(decoded_value, PrimitiveValue::FromQLValuePB(expected[i]));
+  }
+
+  // With the limit right after v1, every missing value goes over it and still gets packed.
+  const auto v1_end = Decoder(schema_packing, packed.data()).FetchValue(0)->end();
+  ASSERT_EQ(pack(v1_end - Slice(full_row).data()), full_row);
+}
+
+TEST(PackedRowTest, CompleteWithMissingColumns) {
+  TestCompleteWithMissingColumns<RowPackerV1, PackedRowDecoderV1>();
+}
+
+TEST(PackedRowTest, CompleteWithMissingColumnsV2) {
+  TestCompleteWithMissingColumns<RowPackerV2, PackedRowDecoderV2>();
 }
 
 template <class Packer>

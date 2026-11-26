@@ -139,7 +139,8 @@ func (s status) TransitionValid(next status) bool {
 	case CleaningStatus:
 		return next == SoftCleanStatus || next == CleaningStatus
 	case SoftCleanStatus:
-		return next == InstallingStatus
+		// Cleaning: clean --all removes the data a soft clean kept.
+		return next == InstallingStatus || next == CleaningStatus
 	case UninstalledStatus:
 		return next == InstallingStatus || next == MigratingStatus || next == CleaningStatus
 	case MigratingStatus:

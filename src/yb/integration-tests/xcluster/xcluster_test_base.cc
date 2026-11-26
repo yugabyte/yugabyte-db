@@ -495,6 +495,10 @@ Status XClusterTestBase::WaitForSetupUniverseReplication(
 
         RETURN_NOT_OK(master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc));
         if (resp->has_error()) {
+          // Master leadership may move or the lease may lapse on slow builds; retry.
+          if (resp->error().code() == master::MasterErrorPB::NOT_THE_LEADER) {
+            return false;
+          }
           return StatusFromPB(resp->error().status());
         }
 
@@ -536,7 +540,18 @@ Status XClusterTestBase::GetCDCStreamForTable(
       return false;
     }
     Status s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
-    return s.ok() && !resp->has_error() && resp->streams_size() == 1;
+    if (!s.ok() || resp->has_error()) {
+      return false;
+    }
+
+    // Remove the WAL anchor streams.
+    for (int i = resp->streams_size() - 1; i >= 0; --i) {
+      if (resp->streams(i).xcluster_is_wal_anchor()) {
+        resp->mutable_streams()->DeleteSubrange(i, 1);
+      }
+    }
+
+    return resp->streams_size() == 1;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
 }
 
@@ -964,6 +979,28 @@ Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName
     RETURN_NOT_OK(WaitForSafeTime(namespace_id, now));
   }
   return Status::OK();
+}
+
+Status XClusterTestBase::VerifySafeTimeDoesNotAdvanceToNow(
+    std::vector<NamespaceName> namespace_names, MonoDelta timeout) {
+  return VerifyWaitTimesOut(
+      [this, &namespace_names] { return WaitForSafeTimeToAdvanceToNow(namespace_names); },
+      timeout);
+}
+
+Status XClusterTestBase::VerifyWaitTimesOut(
+    const std::function<Status()>& wait_fn, MonoDelta timeout) {
+  auto se = ScopeExit([this, original_propagation_timeout = propagation_timeout_] {
+    propagation_timeout_ = original_propagation_timeout;
+  });
+  propagation_timeout_ = timeout;
+
+  auto status = wait_fn();
+  if (status.IsTimedOut()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(status);
+  return STATUS(IllegalState, "Wait succeeded, but it was expected to time out");
 }
 
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(

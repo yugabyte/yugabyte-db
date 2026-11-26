@@ -18,7 +18,8 @@ pub mod htup;
 pub mod oids;
 pub mod panic;
 pub mod pg_try;
-pub(crate) mod thread_check;
+#[doc(hidden)]
+pub mod thread_check;
 pub mod tupdesc;
 
 pub mod utils;

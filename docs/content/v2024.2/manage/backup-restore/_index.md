@@ -20,6 +20,10 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 - Recover from a disaster scenario, like a full cluster failure or a simultaneous outage of multiple data regions. Even though such scenarios are extremely unlikely, it's still a best practice to maintain a way to recover from them.
 - Maintain a remote copy of data, as required by data protection regulations.
 
+Backups in YugabyteDB are managed using _distributed snapshots_, which provide a consistent cut of data taken across all the nodes in the cluster.
+
+YugabyteDB also features a set of _point-in-time (PIT) recovery_ capabilities for recovering from human or logical errors at the SQL or CQL level. For example, a mistyped UPDATE, an accidental DROP TABLE, or a bad application write. You can recover to a user-specified moment (up to microsecond precision) in a configured retention window.
+
 ## Best practices
 
 - Don't perform cluster operations at the same time as your scheduled backup.
@@ -48,14 +52,8 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
 
   {{<index/item
     title="Point-in-time recovery"
-    body="Restore data to a particular point in time."
+    body="Clone, rewind, or restore to a point in time after a logical error."
     href="point-in-time-recovery/"
     icon="fa-thin fa-timeline-arrow">}}
-
-  {{<index/item
-    title="Instant database cloning"
-    body="Clone a database for data recovery, development, and testing."
-    href="instant-db-cloning/"
-    icon="fa-thin fa-clone">}}
 
 {{</index/block>}}

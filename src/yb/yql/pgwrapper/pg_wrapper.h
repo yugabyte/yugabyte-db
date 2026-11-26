@@ -100,6 +100,8 @@ class PgWrapper : public ProcessWrapper {
 
   static std::string GetPostgresExecutablePath();
 
+  static Status CleanupLockFileAndKillHungPg(const std::string& lock_file);
+
   struct PgUpgradeParams {
     std::string ysql_user_name;
     std::string data_dir;
@@ -155,7 +157,6 @@ class PgWrapper : public ProcessWrapper {
   static std::string GetInitDbExecutablePath();
 
   Status CleanupPreviousPostgres();
-  Status CleanupLockFileAndKillHungPg(const std::string& lock_file);
 
   // Set common environment for a child process (initdb or postgres itself).
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);
@@ -180,6 +181,10 @@ class PgSupervisor : public ProcessSupervisor {
   // what we want is to verify that the process can be started, and then potentially pause it.
   // So the semantics should maybe be different.
   Status StartAndMaybePause();
+
+  // Whether StartAndMaybePause leaves PG paused, to be started by the server's RestartPG.  Decided
+  // once, at construction, so that the connection manager is created to match.
+  bool starts_paused() const { return starts_paused_; }
 
   Status ReloadConfig();
   Status UpdateAndReloadConfig();
@@ -207,6 +212,7 @@ class PgSupervisor : public ProcessSupervisor {
   PgWrapperContext* server_;
   std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
+  const bool starts_paused_;
 
   std::string GetProcessName() override {
     return "PostgreSQL";

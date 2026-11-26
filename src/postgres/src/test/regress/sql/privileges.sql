@@ -172,6 +172,7 @@ BEGIN;
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- fail
 COMMIT;
 COPY atest2 FROM stdin; -- fail
+\.
 GRANT ALL ON atest1 TO PUBLIC; -- fail
 
 -- checks in subquery, both ok
@@ -215,6 +216,7 @@ BEGIN;
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- ok
 COMMIT;
 COPY atest2 FROM stdin; -- fail
+\.
 
 -- checks in subquery, both fail
 SELECT * FROM atest1 WHERE ( b IN ( SELECT col1 FROM atest2 ) );
@@ -250,8 +252,6 @@ CREATE VIEW atest12v AS
   SELECT * FROM atest12 WHERE b <<< 5;
 CREATE VIEW atest12sbv WITH (security_barrier=true) AS
   SELECT * FROM atest12 WHERE b <<< 5;
-GRANT SELECT ON atest12v TO PUBLIC;
-GRANT SELECT ON atest12sbv TO PUBLIC;
 
 -- This plan should use nestloop, knowing that few rows will be selected.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
@@ -273,8 +273,16 @@ CREATE FUNCTION leak2(integer,integer) RETURNS boolean
 CREATE OPERATOR >>> (procedure = leak2, leftarg = integer, rightarg = integer,
                      restrict = scalargtsel);
 
--- This should not show any "leak" notices before failing.
+-- These should not show any "leak" notices before failing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 WHERE a >>> 0;
+EXPLAIN (COSTS OFF) SELECT * FROM atest12v WHERE a >>> 0;
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv WHERE a >>> 0;
+
+-- Now regress_priv_user1 grants access to regress_priv_user2 via the views.
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT SELECT ON atest12v TO PUBLIC;
+GRANT SELECT ON atest12sbv TO PUBLIC;
+SET SESSION AUTHORIZATION regress_priv_user2;
 
 -- These plans should continue to use a nestloop, since they execute with the
 -- privileges of the view owner.
@@ -441,6 +449,7 @@ SELECT one, two FROM atest5 NATURAL JOIN atest6; -- ok now
 -- test column-level privileges for INSERT and UPDATE
 INSERT INTO atest5 (two) VALUES (3); -- ok
 COPY atest5 FROM stdin; -- fail
+\.
 COPY atest5 (two) FROM stdin; -- ok
 1
 \.

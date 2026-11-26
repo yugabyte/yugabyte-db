@@ -29,6 +29,7 @@ generate_ca() {
 
   touch "$dir/index.txt"
   echo "01" > "$dir/serial.txt"
+  echo "01" > "$dir/crlnumber.txt"
 
   cat > "$dir/ca.self.conf" <<-EOT
 [ ca ]
@@ -69,8 +70,10 @@ default_ca = yugabyte_ca
 [ yugabyte_ca ]
 default_startdate = 00000101000000Z
 default_enddate = 99991231235959Z
+default_crl_days = 36500
 
 serial = $dir/serial.txt
+crlnumber = $dir/crlnumber.txt
 database = $dir/index.txt
 default_md = sha256
 policy = yugabyte_policy
@@ -283,6 +286,33 @@ EOT
   generate_cert "$dir" "$prefix" "$use_intermediate_ca"
 }
 
+# A node certificate whose only subject alternative name is the DNS name
+# 127.0.0.<octet>.ip.yugabyte, which test builds resolve to 127.0.0.<octet>. A server loads it
+# when started with --server_broadcast_addresses=127.0.0.<octet>.ip.yugabyte:<port>, so a client
+# that connects to such a server by IP address fails endpoint verification.
+generate_node_dns_cert() {
+  local dir="$1"
+  local ip_end_octet="$2"
+
+  local host="127.0.0.$ip_end_octet.ip.yugabyte"
+  local prefix="node.$host"
+
+  cat > "$dir/$prefix.conf" <<-EOT
+[ req ]
+prompt=no
+distinguished_name = node_distinguished_name
+req_extensions = req_ext
+
+[ node_distinguished_name ]
+commonName = node.$ip_end_octet
+
+[ req_ext ]
+subjectAltName = DNS:$host
+EOT
+
+  generate_cert "$dir" "$prefix"
+}
+
 generate_ysql_cert() {
   local dir="$1"
   local prefix="$2"
@@ -307,6 +337,24 @@ EOT
                        -nocrypt
 }
 
+# Revokes the given certificate and writes the CA's CRL to ca.crl.
+generate_crl() {
+  local dir="$1"
+  local revoked_prefix="$2"
+
+  "$openssl_bin" ca -config "$dir/ca.conf" \
+                    -keyfile "$dir/ca.key" \
+                    -cert "$dir/ca.crt" \
+                    -revoke "$dir/$revoked_prefix.crt" \
+                    -batch
+  "$openssl_bin" ca -config "$dir/ca.conf" \
+                    -keyfile "$dir/ca.key" \
+                    -cert "$dir/ca.crt" \
+                    -gencrl \
+                    -out "$dir/ca.crl" \
+                    -batch
+}
+
 generate_test_certificates() {
   local out_dir="$1"
 
@@ -321,15 +369,32 @@ generate_test_certificates() {
   for i in $(seq 2 2 254); do
     generate_node_cert "$temp_dir/CA1" "$i"
   done
+  for i in 3 5 7 ; do
+    generate_node_dns_cert "$temp_dir/CA1" "$i"
+  done
   generate_ysql_cert "$temp_dir/CA1" ysql
+  # A second client certificate, identical to ysql apart from being listed in ca.crl, so that tests
+  # of ssl_crl_file and ssl_crl_dir can attribute a rejected handshake to revocation alone.
+  generate_ysql_cert "$temp_dir/CA1" ysql_revoked
+  generate_crl "$temp_dir/CA1" ysql_revoked
 
   cp "$temp_dir/CA1/ca.crt" \
+     "$temp_dir/CA1/ca.crl" \
      "$temp_dir/CA1/node."*".crt" \
      "$temp_dir/CA1/node."*".key" \
      "$temp_dir/CA1/ysql.crt" \
      "$temp_dir/CA1/ysql.key" \
      "$temp_dir/CA1/ysql.key.der" \
+     "$temp_dir/CA1/ysql_revoked.crt" \
+     "$temp_dir/CA1/ysql_revoked.key" \
+     "$temp_dir/CA1/ysql_revoked.key.der" \
      "$out_dir/"
+
+  # OpenSSL only finds a CRL in a directory under its hashed name, which is what `openssl rehash`
+  # would produce. This directory is what ssl_crl_dir is pointed at.
+  mkdir -p "$out_dir/crl"
+  cp "$temp_dir/CA1/ca.crl" \
+     "$out_dir/crl/$("$openssl_bin" crl -hash -noout -in "$temp_dir/CA1/ca.crl").r0"
 
   generate_ca "$temp_dir/CA2" 'YugabyteDB CA 2'
   for i in $(seq 2 2 254); do

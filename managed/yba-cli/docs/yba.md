@@ -47,6 +47,7 @@ yba [flags]
 * [yba ldap](yba_ldap.md)	 - Configure LDAP authentication for YBA
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password
 * [yba oidc](yba_oidc.md)	 - Manage YugabyteDB Anywhere OIDC configuration
+* [yba perf-advisor](yba_perf-advisor.md)	 - Manage YugabyteDB Anywhere Perf Advisor collection
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers
 * [yba rbac](yba_rbac.md)	 - Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
 * [yba register](yba_register.md)	 - Register a YugabyteDB Anywhere customer using yba cli

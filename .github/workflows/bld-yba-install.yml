@@ -1,0 +1,26 @@
+name: "bld-yba-install"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'managed/yba-installer/**'
+      - 'managed/devops/bin/yb_platform_backup.sh'
+      - '!**/*.md'
+
+# The jenkins environment requires approval, so the job waits until a yugabyte-dev member
+# approves it. A newer run for the same PR cancels the older one, if it is still waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bld-yba-install:
+    environment: jenkins
+    runs-on: ybdbghr
+    steps:
+      - name: Build Trigger
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" YBA-INSTALL

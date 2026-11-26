@@ -71,15 +71,16 @@ class PgSessionGuard {
    public:
     LostOwnership(PgSessionGuardStatePtr&& state, std::unique_lock<std::mutex>&& lock)
         : state_{std::move(state)}, lock_{std::move(lock)} {}
+    LostOwnership(LostOwnership&& rhs)
+        : state_{std::exchange(rhs.state_, {})}, lock_(std::move(rhs.lock_)) {}
 
    private:
     PgSessionGuardStatePtr state_;
     std::unique_lock<std::mutex> lock_;
-
-    DISALLOW_COPY_AND_ASSIGN(LostOwnership);
   };
 
   explicit PgSessionGuard(PgSessionGuardStatePtr state);
+  PgSessionGuard(PgSessionGuardStatePtr state, std::try_to_lock_t t);
 
   PgSessionGuard(PgSessionGuard&&) = default;
 
@@ -94,8 +95,10 @@ class PgSessionGuard {
     if (PREDICT_FALSE(!OwnsLock())) {
       LOG_WITH_FUNC(DFATAL) << "Not the owner";
     } else {
-      result = cond.wait_until(lock_, deadline, pred);
-      if (!AcquireSession(deadline)) {
+      cond.wait_until(lock_, deadline, pred);
+      const auto acquired = AcquireSession(deadline);
+      result = pred();
+      if (!acquired) {
         return {std::piecewise_construct,
                 std::forward_as_tuple(result),
                 std::forward_as_tuple(std::in_place, std::move(state_), std::move(lock_))};
@@ -107,6 +110,11 @@ class PgSessionGuard {
   [[nodiscard]] bool OwnsLock() const { return state_ != nullptr; }
 
  private:
+  struct Tag {};
+
+  template<class... Args>
+  explicit PgSessionGuard(Tag, PgSessionGuardStatePtr& state, Args&&...args);
+
   bool AcquireSession(std::optional<CoarseTimePoint> deadline = std::nullopt);
 
   PgSessionGuardStatePtr state_;

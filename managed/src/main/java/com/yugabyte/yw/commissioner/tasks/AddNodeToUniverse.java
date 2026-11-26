@@ -18,6 +18,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -48,6 +51,8 @@ import lombok.extern.slf4j.Slf4j;
 // and/or master and ensures the task waits for the right set of load balance primitives.
 @Slf4j
 @Retryable
+@Abortable
+@CanRollback
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   private boolean addMaster;
@@ -62,6 +67,29 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected NodeTaskParams taskParams() {
     return (NodeTaskParams) taskParams;
+  }
+
+  /**
+   * Submit params keep the node at its pre-add state (for example {@code Removed} or {@code
+   * Decommissioned}); project the named node to the intended Live process roles so freeze delta can
+   * restore that prior state on rollback.
+   */
+  @Override
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target = super.getTargetUniverseDetails();
+    if (target.nodeDetailsSet == null || taskParams().nodeName == null) {
+      return target;
+    }
+    for (NodeDetails node : target.nodeDetailsSet) {
+      if (taskParams().nodeName.equals(node.getNodeName())) {
+        node.state = NodeState.Live;
+        node.isMaster = addMaster;
+        node.isTserver = addTserver;
+        node.masterState = null;
+        break;
+      }
+    }
+    return target;
   }
 
   private void runBasicChecks(Universe universe) {
@@ -151,6 +179,19 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     if (addMaster) {
       universeNode.masterState = MasterState.ToStart;
     }
+    // The starting state has to be set here rather than through a SetNodeState subtask, because
+    // createCreateNodeTasks selects its subtasks from the persisted state while the plan is being
+    // built, before any subtask runs. A Removed node still has its instance, so it resumes from
+    // InstanceCreated; a Decommissioned node has none, so it goes through the full create.
+    if (universeNode.state == NodeState.Removed) {
+      universeNode.state = NodeState.InstanceCreated;
+    } else if (universeNode.state == NodeState.Decommissioned) {
+      universeNode.state = NodeState.ToBeAdded;
+      // The new machine may run on another cloud. Releasing the node clears this too, when it marks
+      // the node Decommissioned, but a node released by an earlier YBA version still has its old
+      // machine's cloud.
+      universeNode.cloudInfo.physicalCloud = null;
+    }
     // Confirm the node on hold.
     commitReservedNodes();
   }
@@ -203,20 +244,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
 
-      // Update Node State to being added if it is not in one of the intermediate states.
-      // We must be successful in setting node state to Adding on initial state, even on retry.
-      if (currentNode.state == NodeState.Removed || currentNode.state == NodeState.Decommissioned) {
-        createSetNodeStateTask(currentNode, NodeState.Adding)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNode);
-      }
-
-      // First spawn an instance for Decommissioned node.
-      // ignore node status is true because generic callee checks for node state To Be Added.
+      // The starting state was already set in freezeUniverseInTxn, which runs before this plan is
+      // built. Node status is honoured rather than ignored so that a Removed node's existing
+      // instance is not recreated. A Decommissioned node gets a new one, and so does a ToBeAdded or
+      // Adding node on a public cloud (an Adding node's leftover is destroyed first).
       boolean isNextFallThrough =
           createCreateNodeTasks(
               universe,
               nodeSet,
-              true /* ignoreNodeStatus */,
+              false /* ignoreNodeStatus */,
               setupServerParams -> {
                 setupServerParams.rebootNodeAllowed = true;
               });
@@ -264,6 +300,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Start a shell master process.
         createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
+        // Raft join ends the rollback-safe window (node enters master quorum).
+        createMarkRollbackUnsafeTaskOnce();
+
         // Add it into the master quorum.
         createChangeConfigTasks(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
 
@@ -279,6 +318,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Bring up Tservers, as needed.
       if (addTserver) {
+        // Tserver start ends the rollback-safe window (no-op when already marked before
+        // ChangeMasterConfig). A failed start is then retried or fixed manually.
+        createMarkRollbackUnsafeTaskOnce();
+
         // Add the tserver process start task.
         createTServerTaskForNode(currentNode, "start")
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
@@ -311,7 +354,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
-      // Clear the host from master's blacklist.
+      // Clear leftover blacklist from Remove/Release so tablets can land.
       createModifyBlackListTask(
               null /* addNodes */, nodeSet /*removeNodes */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -330,14 +373,20 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Update master addresses including xcluster with new master information.
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
+      // isMaster covers a retry, where addMaster is already false.
+      if (addMaster || currentNode.isMaster) {
+        queueOtelCollectorConfigRewrite(nodeSet, false /* ignoreErrors */);
+      }
 
-      // Add node to load balancer.
-      createManageLoadBalancerTasks(
-          createLoadBalancerMap(
-              universe.getUniverseDetails(),
-              ImmutableList.of(cluster),
-              null,
-              ImmutableSet.of(currentNode)));
+      if (addTserver) {
+        // Add node to load balancer. Only tservers are load balancer targets.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                ImmutableList.of(cluster),
+                null,
+                ImmutableSet.of(currentNode)));
+      }
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
@@ -346,6 +395,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Update node state to live.
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+
+      // Configure cross-cloud federated IAM on the newly added node only if the universe is already
+      // federated, so we never leave it in a mixed (some-federated) state.
+      if (isUniverseFederationConfigured()) {
+        createConfigureCloudFederationTasks(userIntent, nodeSet, true);
+      }
 
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);

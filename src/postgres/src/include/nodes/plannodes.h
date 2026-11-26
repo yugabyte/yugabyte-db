@@ -27,31 +27,7 @@
 #include "nodes/pathnodes.h"	/* TODO: is needed? */
 #include "nodes/ybbitmatrix.h"
 
-
-/*
- * YB: info used by YbMergeScanInfo.
- */
-typedef struct
-{
-	NodeTag		type;
-	int			numCols;		/* number of sort-key columns */
-	AttrNumber *sortColIdx;		/* their indexes in the target list */
-	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
-	Oid		   *collations;		/* OIDs of collations */
-	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
-} YbSortInfo;
-
-/*
- * YB: info used by IndexScan and IndexOnlyScan nodes.
- *
- * Holds info used for merge scans.
- */
-typedef struct
-{
-	NodeTag		type;
-	List	   *saop_cols;		/* List of YbMergeScanSaopColInfo */
-	YbSortInfo *sort_cols;
-} YbMergeScanInfo;
+#define YB_MERGE_OPTION_NAME "merge"
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -424,6 +400,7 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
+	bool		ybInsertOnConflictPushdownPossible; /* push conflict resolution to DocDB */
 	/*
 	 * YB: A collection of entities that are impacted by the ModifyTable query,
 	 * and their relationship to the columns that are modified by the query.
@@ -546,8 +523,9 @@ typedef struct Scan
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
 
-	/* YB */
+	/* YB declarations */
 	char	   *ybScannedObjectName;
+	List	   *ybOptions;
 } Scan;
 
 /* ----------------
@@ -1048,6 +1026,11 @@ typedef struct NestLoop
 /*
  * Information to use for each hashable clause in a batched nested loop join.
  * This is used by the hash batching strategy of BNL.
+ *
+ * The inner side of the clause is either a column of the inner tuple
+ * (innerHashAttNo) or an expression over the inner tuple (innerHashExpr, with
+ * innerHashAttNo 0), such as the key of an expression index.  The outer side
+ * is always an expression.
  */
 typedef struct YbBNLHashClauseInfo
 {
@@ -1056,16 +1039,26 @@ typedef struct YbBNLHashClauseInfo
 								 * with. The inner side must be the left input of
 								 * this op.
 								 */
-	int			innerHashAttNo; /* Attno of inner side variable. */
+	int			innerHashAttNo; /* Attno of inner side variable, 0 if none. */
+	Expr	   *innerHashExpr;	/* Inner side expression, NULL if a variable. */
 	Expr	   *outerParamExpr; /* Outer expression of this clause. */
 	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;
 
+/* ----------------
+ *		YB batched nested loop join node
+ *
+ * With a LIMIT pushed down, the executor trims the first outer batch to
+ * first_batch_size rows, the count the planner sized and priced.  0 means
+ * the planner could not size it (a parameterized LIMIT); the executor then
+ * trims to the run-time LIMIT count.
+ * ----------------
+ */
 typedef struct YbBatchedNestLoop
 {
 	NestLoop	nl;
 
-	double		first_batch_factor;
+	int			first_batch_size;
 	/* Only relevant if we're using the hash batching strategy. */
 
 	/*

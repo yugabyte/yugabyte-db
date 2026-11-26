@@ -98,6 +98,38 @@ TEST_F(DBTablePropertiesTest, GetPropertiesOfAllTablesTest) {
   VerifyTableProperties(db_, 10 + 11 + 12 + 13);
 }
 
+TEST_F(DBTablePropertiesTest, GetPropertiesOfAllTablesSkipErrors) {
+  Options options = CurrentOptions();
+  options.level0_file_num_compaction_trigger = 8;
+  Reopen(options);
+  for (int table = 0; table < 4; ++table) {
+    ASSERT_OK(db_->Put(WriteOptions(), ToString(table), "val"));
+    ASSERT_OK(db_->Flush(FlushOptions()));
+  }
+
+  // Reopen to evict table readers so properties have to be read from the files.
+  Reopen(options);
+  std::vector<LiveFileMetaData> live_files;
+  db_->GetLiveFilesMetaData(&live_files);
+  ASSERT_EQ(live_files.size(), 4);
+  const auto missing_path = live_files.front().BaseFilePath();
+  const auto hidden_path = missing_path + ".hidden";
+  ASSERT_OK(env_->RenameFile(missing_path, hidden_path));
+
+  TablePropertiesCollection props;
+  const auto fail_status = db_->GetPropertiesOfAllTables(&props);
+  props.clear();
+  const auto skip_status = db_->GetPropertiesOfAllTables(
+      &props, TablePropertiesErrorHandling::kSkip);
+  const auto readable_files = props.size();
+
+  // Restore the file before asserting so test cleanup can reopen and destroy the DB.
+  ASSERT_OK(env_->RenameFile(hidden_path, missing_path));
+  ASSERT_NOK(fail_status);
+  ASSERT_OK(skip_status);
+  ASSERT_EQ(readable_files, 3);
+}
+
 TablePropertiesCollection
 DBTablePropertiesTest::TestGetPropertiesOfTablesInRange(
     std::vector<Range> ranges, std::size_t* num_properties,

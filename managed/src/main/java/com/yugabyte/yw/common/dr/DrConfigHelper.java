@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
 
 import api.v2.utils.NormalizedPaginationSpec;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
@@ -170,11 +172,24 @@ public class DrConfigHelper {
 
     validatePitrParams(createForm.pitrParams);
 
+    // Automatic DDL mode is enabled if the corresponding universe conf is set to true and the
+    // participating universes have the minimum required version.
+    boolean isAutomaticDdlMode =
+        isDbScoped
+            && confGetter.getConfForScope(
+                sourceUniverse, UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled)
+            && XClusterUtil.supportsAutomaticDdl(sourceUniverse)
+            && XClusterUtil.supportsAutomaticDdl(targetUniverse);
+
     List<TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
+    boolean matviewSupported =
+        XClusterUtil.isMatviewReplicationSupported(
+            isAutomaticDdlMode, sourceUniverse, targetUniverse);
+
     List<TableInfo> requestedTableInfoList =
-        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
+        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList, matviewSupported);
 
     List<TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
@@ -182,6 +197,7 @@ public class DrConfigHelper {
     xClusterCreatePrecheck.xClusterCreatePreChecks(
         requestedTableInfoList,
         isDbScoped ? ConfigType.Db : ConfigType.Txn,
+        isAutomaticDdlMode,
         sourceUniverse,
         sourceTableInfoList,
         targetUniverse,
@@ -203,7 +219,8 @@ public class DrConfigHelper {
         sourceTableIdTargetTableIdMap,
         ybService,
         bootstrapParams,
-        null /* currentReplicationGroupName */);
+        null /* currentReplicationGroupName */,
+        matviewSupported);
 
     if (createForm.dryRun) {
       return new DrConfigTaskResult(null, null, "The pre-checks are successful");
@@ -213,14 +230,6 @@ public class DrConfigHelper {
     DrConfigTaskParams taskParams;
 
     if (isDbScoped) {
-      // Automatic DDL mode is enabled if the corresponding universe conf is set to true and the
-      // participating universes have the minimum required version.
-      boolean isAutomaticDdlMode =
-          confGetter.getConfForScope(
-                  sourceUniverse, UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled)
-              && XClusterUtil.supportsAutomaticDdl(sourceUniverse)
-              && XClusterUtil.supportsAutomaticDdl(targetUniverse);
-
       drConfig =
           DrConfig.create(
               createForm.name,
@@ -432,6 +441,8 @@ public class DrConfigHelper {
     XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
+    // Before the task drops the current replication, which a later restore failure can't undo.
+    XClusterUtil.ensureFipsModesMatch(sourceUniverse, newTargetUniverse);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, newTargetUniverse);
@@ -499,7 +510,10 @@ public class DrConfigHelper {
             sourceTableIdNewTargetTableIdMap,
             ybService,
             bootstrapParams,
-            null /* currentReplicationGroupName */);
+            null /* currentReplicationGroupName */,
+            // This branch only runs for configs that are not db scoped, which never replicate
+            // materialized views.
+            false /* matviewSupported */);
 
         newTargetXClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
         newTargetXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
@@ -588,7 +602,12 @@ public class DrConfigHelper {
           CollectionUtils.isEmpty(restartForm.dbs)
               ? xClusterConfig.getTableIds()
               : XClusterConfigTaskBase.getTableIds(
-                  getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
+                  getRequestedTableInfoList(
+                      restartForm.dbs,
+                      sourceTableInfoList,
+                      // This branch only runs for configs that are not db scoped, which never
+                      // replicate materialized views.
+                      false /* matviewSupported */));
 
       taskParams =
           XClusterConfigController.getRestartTaskParams(
@@ -635,6 +654,7 @@ public class DrConfigHelper {
       drConfig.setKubernetesResourceDetails(switchoverForm.getKubernetesResourceDetails());
     }
     verifyTaskAllowed(drConfig, TaskType.SwitchoverDrConfig);
+    verifyNoFailedSwitchover(customer, drConfig);
     Optional<XClusterConfig> xClusterConfigOptional =
         drConfig.getActiveXClusterConfig(
             switchoverForm.drReplicaUniverseUuid, switchoverForm.primaryUniverseUuid);
@@ -665,7 +685,7 @@ public class DrConfigHelper {
 
     if (xClusterConfig.getType() != ConfigType.Db) {
       XClusterConfigTaskBase.validateSourceTablesInReplication(
-          sourceTableInfoList, xClusterConfig.getTableIds());
+          sourceTableInfoList, xClusterConfig.getTableIds(), false /* matviewSupported */);
     }
 
     XClusterConfig xClusterConfigTemp = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
@@ -802,7 +822,11 @@ public class DrConfigHelper {
           outboundReplicationResp,
           inboundReplicationResp,
           sourceTableInfoList,
-          targetTableInfoList);
+          targetTableInfoList,
+          XClusterUtil.isMatviewReplicationSupported(
+              Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode()),
+              sourceUniverse,
+              targetUniverse));
 
       switchoverXClusterConfig.updateNamespaces(
           inboundReplicationResp.getDbScopedInfos().stream()
@@ -1045,6 +1069,72 @@ public class DrConfigHelper {
     return taskUUID;
   }
 
+  /**
+   * A failed switchover can leave the DR config with a partially set up reverse xCluster config,
+   * and a fresh switchover would add another one on top of it instead of resuming. So if the latest
+   * task on this DR config is a failed switchover (or a failed rollback of one), the user must
+   * retry or roll back that task.
+   */
+  private void verifyNoFailedSwitchover(Customer customer, DrConfig drConfig) {
+    Set<UUID> universeUuids = new HashSet<>();
+    drConfig
+        .getXClusterConfigs()
+        .forEach(
+            xClusterConfig -> {
+              universeUuids.add(xClusterConfig.getSourceUniverseUUID());
+              universeUuids.add(xClusterConfig.getTargetUniverseUUID());
+            });
+    if (universeUuids.isEmpty()) {
+      return;
+    }
+    // DR customer tasks are keyed by a universe, so pick out the ones for this DR config from
+    // the task params.
+    Optional<CustomerTask> lastDrTaskOptional =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customer.getUuid())
+            .eq("target_type", CustomerTask.TargetType.DrConfig)
+            .in("target_uuid", universeUuids)
+            .orderBy("create_time desc")
+            .findList()
+            .stream()
+            .filter(
+                customerTask -> {
+                  JsonNode taskParams = customerTask.getTaskInfo().getTaskParams();
+                  return taskParams != null
+                      && drConfig
+                          .getUuid()
+                          .toString()
+                          .equals(taskParams.path("drConfig").path("uuid").asText());
+                })
+            .findFirst();
+    if (lastDrTaskOptional.isEmpty()) {
+      return;
+    }
+    CustomerTask lastDrTask = lastDrTaskOptional.get();
+    if (!TaskInfo.ERROR_STATES.contains(lastDrTask.getTaskInfo().getTaskState())) {
+      return;
+    }
+    if (lastDrTask.getType() == CustomerTask.TaskType.Switchover) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The last switchover task %s on this DR config failed; it must be retried instead of"
+                  + " starting a new switchover. If you wish to keep the same replication"
+                  + " direction, you may roll back the failed switchover task.",
+              lastDrTask.getTaskUUID()));
+    }
+    if (lastDrTask.getType() == CustomerTask.TaskType.SwitchoverRollback) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The last switchover rollback task %s on this DR config failed; it must be retried"
+                  + " before starting a new switchover.",
+              lastDrTask.getTaskUUID()));
+    }
+  }
+
   public void verifyTaskAllowed(DrConfig drConfig, TaskType taskType) {
     if (!XClusterConfigTaskBase.isTaskAllowed(drConfig, taskType)) {
       throw new PlatformServiceException(
@@ -1187,7 +1277,10 @@ public class DrConfigHelper {
       XClusterConfigTaskBase.validateTargetTablesInReplication(
           targetTableInfoList,
           XClusterConfigTaskBase.getTableIds(requestedTableInfoList),
-          taskType);
+          taskType,
+          // This pre-check only runs for configs that are not db scoped, which never replicate
+          // materialized views.
+          false /* matviewSupported */);
     }
   }
 
@@ -1195,7 +1288,8 @@ public class DrConfigHelper {
       GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp,
       GetUniverseReplicationInfoResponse inboundReplicationResp,
       List<TableInfo> sourceTableInfoList,
-      List<TableInfo> targetTableInfoList) {
+      List<TableInfo> targetTableInfoList,
+      boolean matviewSupported) {
 
     Map<String, String> inboundSourceToTargetTableId =
         inboundReplicationResp.getTableInfos().stream()
@@ -1212,11 +1306,12 @@ public class DrConfigHelper {
         outboundSourceTableIds, inboundSourceTableIds);
 
     XClusterConfigTaskBase.validateSourceTablesInReplication(
-        sourceTableInfoList, outboundSourceTableIds);
+        sourceTableInfoList, outboundSourceTableIds, matviewSupported);
     XClusterConfigTaskBase.validateTargetTablesInReplication(
         targetTableInfoList,
         new HashSet<>(inboundSourceToTargetTableId.values()),
-        CustomerTask.TaskType.Switchover);
+        CustomerTask.TaskType.Switchover,
+        matviewSupported);
   }
 
   public PagedList<DrConfig> getPagedDrConfigsForUniverse(

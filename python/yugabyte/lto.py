@@ -566,7 +566,10 @@ class LinkHelper:
                     ', '.join(sorted(self.static_libs_from_ldd[static_lib_path])))
                 self.new_args.append(static_lib_path)
 
-        self.add_pgcommon_srv_library()
+        if self.yb_pgbackend_needed:
+            # Backend code, needed only next to libyb_pgbackend. Reading it needs a built Postgres
+            # tree, which targets that don't link the backend (libyb_thin_client.so) can't require.
+            self.add_pgcommon_srv_library()
         self.new_args.append('-fwhole-program')
         if self.yb_pgbackend_needed:
             # We are most likely building the main server process, so add other Postgres libraries
@@ -676,7 +679,10 @@ def link_whole_program(
                          'have been invoked. Perhaps yb_build.sh should be invoked with '
                          'the --force-run-cmake argument.')
 
-    wait_for_free_memory(required_mem_gib=13, timeout_minutes=20)
+    # Only the actual link consumes the large amount of memory LTO requires; merely emitting the
+    # link command (run_linker=False) does not, so don't gate that on free memory.
+    if run_linker:
+        wait_for_free_memory(required_mem_gib=13, timeout_minutes=20)
 
     initial_node_list = list(initial_nodes)
     if len(initial_node_list) != 1:

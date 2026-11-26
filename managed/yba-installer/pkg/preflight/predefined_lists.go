@@ -6,6 +6,9 @@ import "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/chec
 var InstallChecks = []Check{
 	checks.InstallNotExists,
 	checks.ValidateInstallerConfig,
+	checks.FipsPasswords,
+	checks.FipsServerCert,
+	checks.ServerCertHostname,
 	checks.User,
 	checks.HomeDirSpace,
 	checks.Cpu,
@@ -38,6 +41,7 @@ var InstallPerfAdvisorChecks = []Check{
 var UpgradeChecks = []Check{
 	checks.InstallExists,
 	checks.ValidateInstallerConfig,
+	checks.FipsPasswords,
 	checks.HomeDirSpace,
 	checks.DiskAvail,
 	checks.Cpu,
@@ -49,6 +53,15 @@ var UpgradeChecks = []Check{
 	checks.ServicesRunningCheck,
 	checks.Glibc,
 	checks.Logrotate,
+}
+
+// ReconfigureChecks is the list of checks for reconfigure. Reconfigure applies an edited
+// yba-ctl.yml to an existing install, so only the checks that validate the new config belong here -
+// the host and hardware were already validated at install time.
+var ReconfigureChecks = []Check{
+	checks.FipsPasswords,
+	checks.FipsServerCert,
+	checks.ServerCertHostname,
 }
 
 var ReplicatedMigrateChecks = []Check{

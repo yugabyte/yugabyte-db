@@ -1,50 +1,200 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ClusterSpecClusterType,
   NodeDetailsDedicatedTo,
   Universe
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
-  hasDedicatedNodes,
+  getClusterProviderSpec,
+  getClusterProviderUuids,
+  getDedicatedClusterDisplayNodeTotal,
+  hasDedicatedNodesForCluster,
   placementSpecToAvailabilityZones
 } from './EditUniverseUtils';
+import type { ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   FIXTURE_AZ_1_UUID,
   FIXTURE_AZ_2_UUID,
+  FIXTURE_ASYNC_CLUSTER_UUID,
+  FIXTURE_PRIMARY_CLUSTER_UUID,
   FIXTURE_REGION_CODE,
+  makeGeoUniverseWithDedicatedNodeDetails,
+  makeNonGeoUniverse,
+  makeNonGeoUniverseWithDedicatedNodeDetails,
+  makeNonGeoUniverseWithReadReplicaPlacementSpec,
   makePrimaryPlacementSpec
 } from './__fixtures__/editUniverseFixtures';
 
-describe('hasDedicatedNodes', () => {
-  it('returns false when node_details_set is empty', () => {
+describe('getClusterProviderUuids', () => {
+  it('returns provider_spec.provider for single-provider clusters', () => {
+    const cluster = {
+      provider_spec: { provider: 'prov-a' }
+    } as ClusterSpec;
+    expect(getClusterProviderUuids(cluster)).toEqual(['prov-a']);
+  });
+
+  it('returns provider_specs providers when provider_spec is omitted (multi-provider)', () => {
+    const cluster = {
+      provider_specs: [{ provider: 'prov-a' }, { provider: 'prov-b' }]
+    } as ClusterSpec;
+    expect(getClusterProviderUuids(cluster)).toEqual(['prov-a', 'prov-b']);
+  });
+
+  it('prefers provider_specs when both are present', () => {
+    const cluster = {
+      provider_spec: { provider: 'prov-a' },
+      provider_specs: [{ provider: 'prov-a' }, { provider: 'prov-b' }]
+    } as ClusterSpec;
+    expect(getClusterProviderUuids(cluster)).toEqual(['prov-a', 'prov-b']);
+  });
+});
+
+describe('getClusterProviderSpec', () => {
+  it('returns provider_spec when present', () => {
+    const cluster = {
+      provider_spec: { provider: 'prov-a', image_bundle_uuid: 'img-a' }
+    } as ClusterSpec;
+    expect(getClusterProviderSpec(cluster)?.provider).toBe('prov-a');
+  });
+
+  it('falls back to provider_specs[0] for multi-provider', () => {
+    const cluster = {
+      provider_specs: [
+        { provider: 'prov-a', image_bundle_uuid: 'img-a' },
+        { provider: 'prov-b', image_bundle_uuid: 'img-b' }
+      ]
+    } as ClusterSpec;
+    expect(getClusterProviderSpec(cluster)).toEqual({
+      provider: 'prov-a',
+      image_bundle_uuid: 'img-a'
+    });
+  });
+});
+
+describe('hasDedicatedNodesForCluster', () => {
+  it('returns false when cluster is undefined', () => {
     const u = {
       info: { node_details_set: [] }
     } as Universe;
-    expect(hasDedicatedNodes(u)).toBe(false);
+    expect(hasDedicatedNodesForCluster(u)).toBe(false);
   });
 
-  it('returns false when node_details_set is undefined', () => {
-    const u = { info: {} } as Universe;
-    expect(hasDedicatedNodes(u)).toBe(false);
+  it('returns false when node_details_set is empty', () => {
+    const u = makeNonGeoUniverse();
+    expect(hasDedicatedNodesForCluster(u, u.spec!.clusters[0])).toBe(false);
   });
 
   it('returns false when no node has dedicated_to', () => {
-    const u = {
-      info: {
-        node_details_set: [{ node_uuid: 'a', az_uuid: FIXTURE_AZ_1_UUID }]
-      }
-    } as Universe;
-    expect(hasDedicatedNodes(u)).toBe(false);
+    const u = makeNonGeoUniverse();
+    u.info = {
+      ...u.info,
+      node_details_set: [{ node_uuid: 'a', az_uuid: FIXTURE_AZ_1_UUID }]
+    };
+    expect(hasDedicatedNodesForCluster(u, u.spec!.clusters[0])).toBe(false);
   });
 
   it('returns true when any node has dedicated_to', () => {
+    const u = makeNonGeoUniverse();
+    u.info = {
+      ...u.info,
+      node_details_set: [
+        {
+          node_uuid: 'a',
+          az_uuid: FIXTURE_AZ_1_UUID,
+          dedicated_to: NodeDetailsDedicatedTo.TSERVER,
+          placement_uuid: FIXTURE_PRIMARY_CLUSTER_UUID
+        }
+      ]
+    };
+    expect(hasDedicatedNodesForCluster(u, u.spec!.clusters[0])).toBe(true);
+  });
+
+  it('returns true when cluster node_spec has dedicated_nodes', () => {
+    const u = makeNonGeoUniverse();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    expect(hasDedicatedNodesForCluster(u, primary)).toBe(true);
+  });
+
+  it('returns true for primary when node_details lack placement_uuid (legacy)', () => {
     const u = {
       info: {
         node_details_set: [
-          { node_uuid: 'a', az_uuid: FIXTURE_AZ_1_UUID, dedicated_to: NodeDetailsDedicatedTo.TSERVER }
+          {
+            node_uuid: 'a',
+            az_uuid: FIXTURE_AZ_1_UUID,
+            dedicated_to: NodeDetailsDedicatedTo.TSERVER
+          }
+        ]
+      },
+      spec: {
+        clusters: [
+          {
+            uuid: FIXTURE_PRIMARY_CLUSTER_UUID,
+            cluster_type: ClusterSpecClusterType.PRIMARY
+          }
         ]
       }
     } as Universe;
-    expect(hasDedicatedNodes(u)).toBe(true);
+    expect(hasDedicatedNodesForCluster(u, u.spec!.clusters[0])).toBe(true);
+  });
+
+  it('returns false for primary when only read replica nodes are dedicated', () => {
+    const u = makeNonGeoUniverseWithReadReplicaPlacementSpec();
+    const readReplica = u.spec!.clusters[1];
+    readReplica.node_spec = { ...readReplica.node_spec, dedicated_nodes: true };
+    u.info = {
+      ...u.info,
+      node_details_set: [
+        {
+          node_uuid: 'rr1',
+          az_uuid: FIXTURE_AZ_1_UUID,
+          dedicated_to: NodeDetailsDedicatedTo.TSERVER,
+          placement_uuid: FIXTURE_ASYNC_CLUSTER_UUID
+        }
+      ]
+    };
+    expect(hasDedicatedNodesForCluster(u, u.spec!.clusters[0])).toBe(false);
+    expect(hasDedicatedNodesForCluster(u, readReplica)).toBe(true);
+  });
+});
+
+describe('getDedicatedClusterDisplayNodeTotal', () => {
+  it('returns undefined for non-dedicated cluster', () => {
+    const u = makeNonGeoUniverse();
+    const primary = u.spec!.clusters[0];
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBeUndefined();
+  });
+
+  it('returns tserver + master when dedicated_nodes is set and node details are empty', () => {
+    const u = makeNonGeoUniverse();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    // placement AZ sums: 1 + 1 = 2 tservers; RF fallback: 3 masters
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBe(5);
+  });
+
+  it('returns tserver + master from node details when dedicated_nodes is set', () => {
+    const u = makeNonGeoUniverseWithDedicatedNodeDetails();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    // 2 tservers + 1 master from node_details_set
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBe(3);
+  });
+
+  it('returns tserver + master when dedicated is detected via node_details only (legacy)', () => {
+    const u = makeNonGeoUniverseWithDedicatedNodeDetails();
+    const primary = u.spec!.clusters[0];
+    // no dedicated_nodes spec flag; hasDedicatedNodesForCluster is true via node_details
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBe(3);
+  });
+
+  it('uses per-region node details for geo partitions instead of blind RF inflation', () => {
+    const u = makeGeoUniverseWithDedicatedNodeDetails();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    // 1 tserver (az1) + 1 master (az2) from node_details; not RF=3 masters
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 3)).toBe(2);
   });
 });
 

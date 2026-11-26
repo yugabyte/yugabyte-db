@@ -36,8 +36,8 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
-- Download the Connector. You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases).
-- Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+- Download the connector JAR from the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page.
+- Copy the JAR into a directory on the Kafka Connect `plugin.path`.
 - Configure the Connector: Modify the connector configuration to suit your specific requirements.
 - Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
 
@@ -591,4 +591,4 @@ For more advanced routing configuration, refer to the [Debezium documentation](h
 
 ## CDC with point-in-time recovery
 
-[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with CDC configured, you need to create new streams after the restore is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.
+[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to recover data to a specific point in time. For databases and tables with CDC configured, you need to create new streams after a [Rewind](../../../../manage/backup-restore/point-in-time-recovery/rewind/) is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.

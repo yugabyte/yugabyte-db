@@ -2062,6 +2062,7 @@ regression_main(int argc, char *argv[],
 		{"load-extension", required_argument, NULL, 22},
 		{"config-auth", required_argument, NULL, 24},
 		{"max-concurrent-tests", required_argument, NULL, 25},
+		{"yb-host-port-list", optional_argument, NULL, 26},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2190,6 +2191,9 @@ regression_main(int argc, char *argv[],
 				break;
 			case 25:
 				max_concurrent_tests = atoi(optarg);
+				break;
+			case 26:
+				setenv("YBHOSTPORTLIST", optarg, 1);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */

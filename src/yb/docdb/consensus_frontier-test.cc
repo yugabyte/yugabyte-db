@@ -198,4 +198,40 @@ TEST_F(ConsensusFrontierTest, TestUpdateExpirationTime) {
   EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), maxHT);
 }
 
+TEST_F(ConsensusFrontierTest, SplitGenerationAndMinChunkSerialNo) {
+  ConsensusFrontierPB legacy_pb;
+  google::protobuf::Any legacy_any;
+  legacy_any.PackFrom(legacy_pb);
+  ConsensusFrontier legacy;
+  ASSERT_OK(legacy.FromPB(legacy_any));
+  ASSERT_EQ(legacy.split_generation(), 0);
+  ASSERT_EQ(legacy.split_min_chunk_serial_no(), 0);
+
+  ConsensusFrontier frontier;
+  frontier.SetSplitGeneration(3);
+  frontier.SetSplitMinChunkSerialNo(10);
+  google::protobuf::Any any;
+  frontier.ToPB(&any);
+  ConsensusFrontier restored;
+  ASSERT_OK(restored.FromPB(any));
+  ASSERT_EQ(restored.split_generation(), 3);
+  ASSERT_EQ(restored.split_min_chunk_serial_no(), 10);
+
+  ConsensusFrontier newer;
+  newer.SetSplitGeneration(5);
+  newer.SetSplitMinChunkSerialNo(20);
+  restored.Update(newer, UpdateUserValueType::kLargest);
+  ASSERT_EQ(restored.split_generation(), 5);
+  ASSERT_EQ(restored.split_min_chunk_serial_no(), 20);
+  restored.Update(frontier, UpdateUserValueType::kLargest);
+  ASSERT_EQ(restored.split_generation(), 5);
+  ASSERT_EQ(restored.split_min_chunk_serial_no(), 20);
+
+  // Zero rhs must not clear already stamped values.
+  ConsensusFrontier unset;
+  restored.Update(unset, UpdateUserValueType::kLargest);
+  ASSERT_EQ(restored.split_generation(), 5);
+  ASSERT_EQ(restored.split_min_chunk_serial_no(), 20);
+}
+
 }  // namespace yb::docdb

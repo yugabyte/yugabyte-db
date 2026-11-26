@@ -54,4 +54,5 @@ export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'univers
   incrementalBackupFrequency: number;
   incrementalBackupFrequencyTimeUnit: string;
   tableByTableBackup: boolean;
+  isKubernetesOperatorControlled?: boolean;
 }

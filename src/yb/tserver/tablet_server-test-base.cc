@@ -44,6 +44,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
@@ -61,6 +62,7 @@ DECLARE_bool(enable_data_block_fsync);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(disable_auto_flags_management);
 DECLARE_bool(allow_encryption_at_rest);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 
 METRIC_DEFINE_entity(test);
 
@@ -137,6 +139,9 @@ void TabletServerTestBase::StartTabletServer() {
   // Disallow encryption at rest as there is no master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
 
+  // There is no master to grant the xCluster-guarded information lease.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
+
   auto mini_ts = CreateMiniTabletServer();
   CHECK_OK(mini_ts);
   mini_server_ = std::move(*mini_ts);
@@ -186,7 +191,7 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
   LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
-  string new_string_val(strings::Substitute("mutated$0", row_idx));
+  string new_string_val(Format("mutated$0", row_idx));
 
   AddTestRowUpdate(row_idx, new_val, new_string_val, &req);
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
@@ -251,6 +256,8 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
       controller.Reset();
       controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
       req.clear_ql_write_batch();
+      // resp's fields point into the previous call's response buffer, which Reset just freed.
+      resp.Clear();
 
       auto first_row_in_batch = first_row + (i * count / num_batches);
       auto last_row_in_batch = first_row_in_batch + count / num_batches;
@@ -259,7 +266,7 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
         if (!string_field_defined) {
           AddTestRowInsert(j, j, &req);
         } else {
-          AddTestRowInsert(j, j, strings::Substitute("original$0", j), &req);
+          AddTestRowInsert(j, j, Format("original$0", j), &req);
         }
       }
       CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
@@ -326,7 +333,7 @@ void TabletServerTestBase::BuildTestRow(int index, QLWriteRequestPB* req) {
   column_value = req->add_column_values();
   column_value->set_column_id(kFirstColumnId + 2);
   column_value->mutable_expr()->mutable_value()->set_string_value(
-      StringPrintf("hello %d", index));
+      Format("hello $0", index));
 }
 
 void TabletServerTestBase::ShutdownTablet() {

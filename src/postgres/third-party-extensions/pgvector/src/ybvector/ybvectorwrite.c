@@ -26,7 +26,7 @@
 
 #include "access/genam.h"
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
@@ -187,7 +187,8 @@ doBindsForIdxDelete(YbcPgStatement stmt,
 static int32
 ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 				   Relation index, Datum value, bool isNull,
-				   Datum ybctid, uint64_t *backfilltime, bool isinsert)
+				   Datum ybctid, uint64_t *backfilltime, bool isinsert,
+				   bool persist_missing_row)
 {
 	Datum vector;
 	if (!isNull)
@@ -204,6 +205,7 @@ ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 	{
 		Assert(!backfilltime);
 		YBCExecuteDeleteIndex(index, &vector, &isNull, ybctid,
+							  persist_missing_row,
 							  doBindsForIdxDelete, (void *) vectorstate);
 	}
 
@@ -217,10 +219,11 @@ ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 static int32
 ybvectorTupleDelete(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 				 Relation index, Datum value, bool isNull,
-				 Datum ybctid)
+				 Datum ybctid, bool persist_missing_row)
 {
 	return ybVectorTupleWrite(vectorstate, attnum, index, value, isNull, ybctid,
-						   NULL /* backfilltime */, false /* isinsert */);
+						   NULL /* backfilltime */, false /* isinsert */,
+						   persist_missing_row);
 }
 
 /*
@@ -233,7 +236,8 @@ ybVectorTupleInsert(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 				 Datum ybctid, uint64_t *backfilltime)
 {
 	return ybVectorTupleWrite(vectorstate, attnum, index, value, isNull,
-							  ybctid, backfilltime, true /* isinsert */);
+							  ybctid, backfilltime, true /* isinsert */,
+							  false /* persist_missing_row */);
 }
 
 /*
@@ -341,7 +345,8 @@ ybvectorBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
  */
 static void
 ybvectorWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
-		   Relation heap, struct IndexInfo *indexInfo, bool isinsert)
+		   Relation heap, struct IndexInfo *indexInfo, bool isinsert,
+		   bool persist_missing_row)
 {
 	YbVectorBuildState   *vectorstate =
 		(YbVectorBuildState *) indexInfo->ii_AmCache;
@@ -374,7 +379,7 @@ ybvectorWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 	else
 		ybvectorTupleDelete(vectorstate, (OffsetNumber) (i + 1),
 							index, values[i], isnull[i],
-							ybctid);
+							ybctid, persist_missing_row);
 
 	MemoryContextSwitchTo(oldCtx);
 	MemoryContextDelete(writeCtx);
@@ -407,7 +412,7 @@ ybvectorinsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
 			struct IndexInfo *indexInfo, bool shared_insert)
 {
 	ybvectorWrite(index, values, isnull, ybctid, heap, indexInfo,
-				  true /* isinsert */);
+				  true /* isinsert */, false /* persist_missing_row */);
 
 	/* index cannot be unique */
 	return false;
@@ -415,10 +420,11 @@ ybvectorinsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
 
 void
 ybvectordelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
-			Relation heap, struct IndexInfo *indexInfo)
+			Relation heap, struct IndexInfo *indexInfo,
+			bool persist_missing_row)
 {
 	ybvectorWrite(index, values, isnull, ybctid, heap, indexInfo,
-				  false /* isinsert */);
+				  false /* isinsert */, persist_missing_row);
 }
 
 void
@@ -447,7 +453,8 @@ ybvectorcopartitionedinsert(Relation index, Datum *values, bool *isnull,
 
 void
 ybvectorcopartitioneddelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
-			Relation heap, struct IndexInfo *indexInfo)
+			Relation heap, struct IndexInfo *indexInfo,
+			bool persist_missing_row)
 {
 }
 
@@ -465,7 +472,15 @@ ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *inde
 	HandleYBStatus(YBCPgWaitVectorIndexReady(
 		YBCGetDatabaseOid(index), YbGetRelfileNodeId(index)));
 
-	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
+	IndexBuildResult *result = palloc(sizeof(IndexBuildResult));
 
+	/*
+	 * TODO(#34729): this only waits for the tablets to build the index, so we
+	 * don't know the counts here.  -1 makes index_update_stats leave reltuples
+	 * alone instead of setting it to 0.  We could get the real counts from the
+	 * tablets.
+	 */
+	result->heap_tuples = -1;
+	result->index_tuples = -1;
 	return result;
 }

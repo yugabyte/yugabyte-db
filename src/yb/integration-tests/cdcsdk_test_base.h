@@ -58,11 +58,11 @@ DECLARE_bool(cdc_send_null_before_image_if_not_exists);
 DECLARE_bool(cdc_enable_savepoint_rollback_filtering);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 DECLARE_bool(TEST_simulate_load_txn_for_cdc);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb {
 using client::YBClient;
@@ -77,7 +77,6 @@ namespace cdc {
 
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
-constexpr int kNumberOfCatalogTablesBeingPolledByCDC = 4;
 // Number of cdc_state entries a logical replication stream creates by default when the database has
 // no user tables: one for the sys_catalog tablet-stream entry and one slot entry for the stream.
 constexpr int kNumberOfBaseCdcStateEntriesForLogicalStream = 2;
@@ -90,6 +89,10 @@ constexpr static const char* const kValueColumnName = "value_1";
 constexpr static const char* const kValue2ColumnName = "value_2";
 constexpr static const char* const kValue3ColumnName = "value_3";
 constexpr static const char* const kValue4ColumnName = "value_4";
+
+int NumberOfCatalogTablesBeingPolledByCDC();
+
+void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableId>* table_ids);
 
 struct CDCSDKTestParams {
   CDCSDKTestParams(int batch_size_, bool enable_replicate_intents_) :
@@ -156,8 +159,6 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   }
 
   void TearDown() override;
@@ -266,11 +267,10 @@ class CDCSDKTestBase : public YBTest {
       const std::string& replication_slot_name, CDCRecordType record_type = CDCRecordType::CHANGE);
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
-      const std::string& replication_slot_name,
-      CDCSDKSnapshotOption snapshot_option,
-      bool verify_snapshot_name,
-      std::string namespace_name,
-      const std::string& output_plugin_name = "pgoutput");
+      const std::string& replication_slot_name, CDCSDKSnapshotOption snapshot_option,
+      bool verify_snapshot_name, std::string namespace_name,
+      const std::string& output_plugin_name = "pgoutput",
+      const std::string& bound_publication_name = "");
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
@@ -311,6 +311,13 @@ class CDCSDKTestBase : public YBTest {
 
   Result<GetChangesResponsePB> GetChangesFromMaster(
       const xrepl::StreamId& stream_id, const CDCSDKCheckpointPB* explicit_checkpoint = nullptr);
+
+  // Repeats GetChangesFromMaster until the response has at least expected_records records.
+  // Needed because a committed DDL txn is applied to the sys catalog asynchronously.
+  Result<GetChangesResponsePB> GetChangesFromMasterUntilRecordCount(
+      const xrepl::StreamId& stream_id, int expected_records,
+      const CDCSDKCheckpointPB* explicit_checkpoint = nullptr,
+      MonoDelta timeout = MonoDelta::FromSeconds(30) * kTimeMultiplier);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

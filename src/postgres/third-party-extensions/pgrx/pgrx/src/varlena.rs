@@ -9,7 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Helper functions to work with Postgres `varlena *` structures
 
-use crate::{pg_sys, PgBox};
+use crate::{PgBox, pg_sys};
 use core::{ops::DerefMut, slice, str};
 
 /// # Safety
@@ -18,14 +18,35 @@ use core::{ops::DerefMut, slice, str};
 /// that is aligned to 4 bytes, and that the `len` is a half of [`i32::MAX`]
 #[inline(always)]
 pub unsafe fn set_varsize_4b(ptr: *mut pg_sys::varlena, len: i32) {
+    // #ifdef WORDS_BIGENDIAN
+    // #define SET_VARSIZE_4B(PTR,len) \
+    // 	(((varattrib_4b *) (PTR))->va_4byte.va_header = (len) & 0x3FFFFFFF)
+    // #else
     // #define SET_VARSIZE_4B(PTR,len) \
     // 	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2))
+    // #endif
 
     // SAFETY:  A varlena can be safely cast to a varattrib_4b
     let header = &mut (*ptr.cast::<pg_sys::varattrib_4b>()).va_4byte.deref_mut().va_header;
     // Using core::ptr::write(), which never calls drop(), to prevent
     // automatically dropping a field of a ManuallyDrop<T>
-    core::ptr::write(header, (len as u32) << 2u32)
+    core::ptr::write(header, encode_vlen_4b(len))
+}
+
+pub(crate) fn encode_vlen_4b(len: i32) -> u32 {
+    #[cfg(target_endian = "big")]
+    let value = (len as u32) & 0x3FFFFFFFu32;
+    #[cfg(target_endian = "little")]
+    let value = (len as u32) << 2u32;
+    value
+}
+
+pub(crate) fn encode_vlen_1b(len: i32) -> u8 {
+    #[cfg(target_endian = "big")]
+    let value = (len as u8) | 0x80;
+    #[cfg(target_endian = "little")]
+    let value = ((len as u8) << 1) | 0x01;
+    value
 }
 
 /// # Safety
@@ -44,11 +65,16 @@ pub unsafe fn set_varsize(ptr: *mut pg_sys::varlena, len: i32) {
 /// The caller asserts the specified `ptr` really is a non-null, palloc'd [`pg_sys::varlena`] pointer
 #[inline(always)]
 pub unsafe fn set_varsize_1b(ptr: *mut pg_sys::varlena, len: i32) {
+    // #ifdef WORDS_BIGENDIAN
+    // #define SET_VARSIZE_1B(PTR,len) \
+    // 	(((varattrib_1b *) (PTR))->va_header = (len) | 0x80)
+    // #else
     // #define SET_VARSIZE_1B(PTR,len) \
     // 	(((varattrib_1b *) (PTR))->va_header = (((uint8) (len)) << 1) | 0x01)
+    // #endif
 
     // SAFETY:  A varlena can be safely cast to a varattrib_1b
-    (*ptr.cast::<pg_sys::varattrib_1b>()).va_header = ((len as u8) << 1) | 0x01
+    (*ptr.cast::<pg_sys::varattrib_1b>()).va_header = encode_vlen_1b(len);
 }
 
 /// # Safety
@@ -106,29 +132,58 @@ pub unsafe fn vartag_size(tag: pg_sys::vartag_external::Type) -> usize {
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARSIZE_4B(PTR) \
-/// ((((varattrib_4b *) (PTR))->va_4byte.va_header >> 2) & 0x3FFFFFFF)
+///   (((varattrib_4b *) (PTR))->va_4byte.va_header & 0x3FFFFFFF)
+/// #else
+/// #define VARSIZE_4B(PTR) \
+///   ((((varattrib_4b *) (PTR))->va_4byte.va_header >> 2) & 0x3FFFFFFF)
+/// #endif
 /// ```
 #[allow(clippy::cast_ptr_alignment)]
 #[inline]
 pub unsafe fn varsize_4b(ptr: *const pg_sys::varlena) -> usize {
     let va4b = ptr as *const pg_sys::varattrib_4b__bindgen_ty_1; // 4byte
-    (((*va4b).va_header >> 2) & 0x3FFF_FFFF) as usize
+    #[cfg(target_endian = "big")]
+    {
+        ((*va4b).va_header & 0x3FFF_FFFF) as usize
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (((*va4b).va_header >> 2) & 0x3FFF_FFFF) as usize
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARSIZE_1B(PTR) \
-/// ((((varattrib_1b *) (PTR))->va_header >> 1) & 0x7F)
+///   (((varattrib_1b *) (PTR))->va_header & 0x7F)
+/// #else
+/// #define VARSIZE_1B(PTR) \
+///   ((((varattrib_1b *) (PTR))->va_header >> 1) & 0x7F)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn varsize_1b(ptr: *const pg_sys::varlena) -> usize {
     let va1b = ptr as *const pg_sys::varattrib_1b;
-    (((*va1b).va_header >> 1) & 0x7F) as usize
+    #[cfg(target_endian = "big")]
+    {
+        ((*va1b).va_header & 0x7F) as usize
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (((*va1b).va_header >> 1) & 0x7F) as usize
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARTAG_1B_E(PTR) \
-/// (((varattrib_1b_e *) (PTR))->va_tag)
+///   (((varattrib_1b_e *) (PTR))->va_tag)
+/// #else
+/// #define VARTAG_1B_E(PTR) \
+///   (((varattrib_1b_e *) (PTR))->va_tag)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn vartag_1b_e(ptr: *const pg_sys::varlena) -> u8 {
@@ -142,59 +197,124 @@ pub unsafe fn varsize(ptr: *const pg_sys::varlena) -> usize {
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARATT_IS_4B(PTR) \
-/// ((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x00)
+///   ((((varattrib_1b *) (PTR))->va_header & 0x80) == 0x00)
+/// #else
+/// #define VARATT_IS_4B(PTR) \
+///   ((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x00)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn varatt_is_4b(ptr: *const pg_sys::varlena) -> bool {
     let va1b = ptr as *const pg_sys::varattrib_1b;
-    (*va1b).va_header & 0x01 == 0x00
+    #[cfg(target_endian = "big")]
+    {
+        (*va1b).va_header & 0x80 == 0x00
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (*va1b).va_header & 0x01 == 0x00
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARATT_IS_4B_U(PTR) \
-/// ((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x00)
+///   ((((varattrib_1b *) (PTR))->va_header & 0xC0) == 0x00)
+/// #else
+/// #define VARATT_IS_4B_U(PTR) \
+///   ((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x00)
+/// #endif
 /// ```
 #[allow(clippy::verbose_bit_mask)]
 #[inline]
 pub unsafe fn varatt_is_4b_u(ptr: *const pg_sys::varlena) -> bool {
     let va1b = ptr as *const pg_sys::varattrib_1b;
-    (*va1b).va_header & 0x03 == 0x00
+    #[cfg(target_endian = "big")]
+    {
+        (*va1b).va_header & 0xC0 == 0x00
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (*va1b).va_header & 0x03 == 0x00
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARATT_IS_4B_C(PTR) \
-/// ((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x02)
+///   ((((varattrib_1b *) (PTR))->va_header & 0xC0) == 0x40)
+/// #else
+/// #define VARATT_IS_4B_C(PTR) \
+///   ((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x02)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn varatt_is_4b_c(ptr: *const pg_sys::varlena) -> bool {
     let va1b = ptr as *const pg_sys::varattrib_1b;
-    (*va1b).va_header & 0x03 == 0x02
+    #[cfg(target_endian = "big")]
+    {
+        (*va1b).va_header & 0xC0 == 0x40
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (*va1b).va_header & 0x03 == 0x02
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARATT_IS_1B(PTR) \
-/// ((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x01)
+///   ((((varattrib_1b *) (PTR))->va_header & 0x80) == 0x80)
+/// #else
+/// #define VARATT_IS_1B(PTR) \
+///   ((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x01)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn varatt_is_1b(ptr: *const pg_sys::varlena) -> bool {
     let va1b = ptr as *const pg_sys::varattrib_1b;
-    (*va1b).va_header & 0x01 == 0x01
+    #[cfg(target_endian = "big")]
+    {
+        (*va1b).va_header & 0x80 == 0x80
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (*va1b).va_header & 0x01 == 0x01
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARATT_IS_1B_E(PTR) \
-/// ((((varattrib_1b *) (PTR))->va_header) == 0x01)
+///   ((((varattrib_1b *) (PTR))->va_header) == 0x80)
+/// #else
+/// #define VARATT_IS_1B_E(PTR) \
+///   ((((varattrib_1b *) (PTR))->va_header) == 0x01)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn varatt_is_1b_e(ptr: *const pg_sys::varlena) -> bool {
     let va1b = ptr as *const pg_sys::varattrib_1b;
-    (*va1b).va_header == 0x01
+    #[cfg(target_endian = "big")]
+    {
+        (*va1b).va_header == 0x80
+    }
+    #[cfg(target_endian = "little")]
+    {
+        (*va1b).va_header == 0x01
+    }
 }
 
 /// ```c
+/// #ifdef WORDS_BIGENDIAN
 /// #define VARATT_NOT_PAD_BYTE(PTR) \
-/// (*((uint8 *) (PTR)) != 0)
+///   (*((uint8 *) (PTR)) != 0)
+/// #else
+/// #define VARATT_NOT_PAD_BYTE(PTR) \
+///   (*((uint8 *) (PTR)) != 0)
+/// #endif
 /// ```
 #[inline]
 pub unsafe fn varatt_not_pad_byte(ptr: *const pg_sys::varlena) -> bool {
@@ -292,11 +412,7 @@ pub unsafe fn vardata_1b_e(ptr: *const pg_sys::varlena) -> *const std::os::raw::
 /// ```
 #[inline]
 pub unsafe fn vardata_any(ptr: *const pg_sys::varlena) -> *const std::os::raw::c_char {
-    if varatt_is_1b(ptr) {
-        vardata_1b(ptr)
-    } else {
-        vardata_4b(ptr)
-    }
+    if varatt_is_1b(ptr) { vardata_1b(ptr) } else { vardata_4b(ptr) }
 }
 
 /// Convert a Postgres `varlena *` (or `text *`) into a Rust `&str`.
@@ -358,7 +474,7 @@ pub fn rust_str_to_text_p(s: &str) -> PgBox<pg_sys::varlena> {
     unsafe { PgBox::from_pg(bytea.as_ptr() as *mut pg_sys::varlena) }
 }
 
-/// Convert a Rust `&[u8]]` into a Postgres `bytea *` (which is really a varchar)
+/// Convert a Rust `&[u8]` into a Postgres `bytea *` (which is really a varchar)
 ///
 /// This allocates the returned Postgres `bytea *` in `CurrentMemoryContext`.
 #[inline]

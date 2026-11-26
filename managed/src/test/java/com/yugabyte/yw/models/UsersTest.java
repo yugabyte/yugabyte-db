@@ -129,6 +129,21 @@ public class UsersTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUnconditionalUpsertFromStaleInstance() {
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
+    // Both loaded at the same version, as two concurrent logins would.
+    Users first = Users.getOrBadRequest(u.getUuid());
+    Users second = Users.getOrBadRequest(u.getUuid());
+    first.upsertApiToken();
+
+    String token = second.upsertApiToken();
+
+    // Not refused as a version change, and versioned from the stored row rather than the stale one.
+    assertEquals((Long) 2L, Users.getOrBadRequest(u.getUuid()).getApiTokenVersion());
+    assertEquals(u.getUuid(), Users.authWithApiToken(token).getUuid());
+  }
+
+  @Test
   public void testUpsertApiTokenWithVersion() {
     Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
     assertNotNull(u.getUuid());
@@ -172,6 +187,28 @@ public class UsersTest extends FakeDBApplication {
     JsonNode json = Json.toJson(u);
     assertEquals(false, json.has("passwordHash"));
     assertEquals(false, json.has("apiToken"));
+  }
+
+  @Test
+  public void testNoSensitiveDataInToString() {
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
+    u.upsertApiToken();
+    u.setOidcJwtAuthToken("test-oidc-jwt-auth-token");
+    u.save();
+
+    Users fetchUser = Users.getOrBadRequest(u.getUuid());
+    assertNotNull(fetchUser.getPasswordHash());
+    assertNotNull(fetchUser.getApiToken());
+    assertNotNull(fetchUser.getUnmakedOidcJwtAuthToken());
+
+    String asString = fetchUser.toString();
+    assertFalse(asString.contains("foo@foo.com"));
+    assertFalse(asString.contains(fetchUser.getPasswordHash()));
+    assertFalse(asString.contains(fetchUser.getApiToken()));
+    assertFalse(asString.contains(fetchUser.getUnmakedOidcJwtAuthToken()));
+    assertTrue(asString.contains(fetchUser.getUuid().toString()));
+    assertTrue(asString.contains("email=REDACTED"));
+    assertTrue(asString.contains("oidcJwtAuthToken=REDACTED"));
   }
 
   @Test

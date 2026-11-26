@@ -74,7 +74,7 @@ set the values of the remaining specified columns to those in the VALUES relatio
 In this way, the net effect is either to insert or to update; and for this reason
 the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
 
-To optimize performance, you can set the [yb_insert_on_conflict_read_batch_size](../../../../../reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size) configuration parameter to batch upserts. This reduces the number of network round trips required compared to performing the operations serially.
+Upserts batch arbiter index reads by default. [yb_insert_on_conflict_read_batch_size](../../../../../reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size) (default `1024`) sets that batch size and reduces the number of network round trips compared to performing the operations one row at a time. Set the parameter to `0` to disable batching.
 
 ### *returning_clause*
 

@@ -26,6 +26,11 @@ ADD_YB_LIBRARY(docdb_proto
         DEPS protobuf yb_common_proto dockv_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
+# DocDB-aware SST properties collectors (see properties_collector/README.md). Added before the
+# postgres include_directories below so the subdirectory does not inherit include paths it must
+# not depend on.
+add_subdirectory(properties_collector)
+
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
@@ -89,6 +94,8 @@ set(DOCDB_SRCS
         object_lock_manager.cc
         object_lock_shared_state_manager.cc
         pgsql_operation.cc
+        pgsql_read_request_ybctid_provider.cc
+        pgsql_read_result.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
@@ -115,6 +122,7 @@ set(DOCDB_DEPS
         PUBLIC vector_index
         PUBLIC yb_ash
         PUBLIC yb_common
+        PUBLIC yb_docdb_properties_collector
         PUBLIC yb_docdb_shared
         PUBLIC yb_dockv
         PUBLIC yb_pggate
@@ -154,22 +162,26 @@ set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIB
 
 ADD_YB_TEST(bounded_rocksdb_iterator-test)
 ADD_YB_TEST(doc_operation-test)
+ADD_YB_TEST(doc_vector_index-test)
 ADD_YB_TEST(docdb_filter_policy-test)
 ADD_YB_TEST(docdb-perf-test)
 ADD_YB_TEST(docdb_pgapi-test)
 YB_TEST_TARGET_LINK_LIBRARIES(docdb_pgapi-test yb_pgbackend)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
+ADD_YB_TEST(pgsql_cdr_stamping-test)
 ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
 ADD_YB_TEST(non_transactional_batch_writer-test)
+ADD_YB_TEST(pgsql_operation_grouped_aggregate-test)
+ADD_YB_TEST(pgsql_read_request_ybctid_provider-test)
+ADD_YB_TEST(pgsql_read_result-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
-ADD_YB_TEST(usearch_vector_index-test)
 ADD_YB_TEST(advisory_lock_doc_operation-test)
 
 if(YB_BUILD_FUZZ_TARGETS)

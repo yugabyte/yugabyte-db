@@ -30,6 +30,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/common/transaction.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
 
@@ -38,6 +39,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -49,7 +51,9 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -57,6 +61,7 @@ using namespace std::literals;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
@@ -92,9 +97,17 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
                        "Enables fastpath writes for relations created in the current transaction "
                        "(skip intents DB when safe).");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
-                               "Allows yb_enable_new_relation_fastpath_write to be applicable "
-                               "inside explicit transaction blocks too.");
+// Defaults to kEnableDdlTransactionBlocks because the flag requires
+// ysql_yb_ddl_transaction_block_enabled, which is off by default in debug builds.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks,
+                       kEnableDdlTransactionBlocks,
+                       "Allows yb_enable_new_relation_fastpath_write to be applicable "
+                       "inside explicit transaction blocks too. DDL inside a transaction "
+                       "block can only use the fastpath if the DDL runs in the enclosing "
+                       "transaction, so this flag only takes effect if "
+                       "ysql_yb_ddl_transaction_block_enabled is true.");
+DEFINE_validator(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
 namespace yb::pggate {
 namespace {
@@ -124,31 +137,47 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   if (!dist_trace::HasActiveContext() || ops.empty()) {
     return;
   }
-  dist_trace::ClearPendingRpcAttrs();
+
+  // Publish the details of the Perform RPC.
+  size_t reads = 0;
+  size_t writes = 0;
+  for (const auto& op : ops) {
+    (op->is_read() ? reads : writes)++;
+  }
+  dist_trace::AddPendingRpcStringAttr("rpc.read_ops", std::to_string(reads));
+  dist_trace::AddPendingRpcStringAttr("rpc.write_ops", std::to_string(writes));
+
   std::string joined_names;
   joined_names.reserve(128);
   std::set<std::string_view> processed;
-  for (const auto& op : ops) {
-    const auto table_id_str = FetchTableId(*op);
-    if (table_id_str.empty()) {
-      continue;
-    }
-    const auto ipair = processed.insert(table_id_str);
-    if (!ipair.second) {
-      continue;
+  auto append_name = [&](Slice table_id_str) {
+    if (table_id_str.empty() || !processed.insert(table_id_str).second) {
+      return;
     }
     const PgObjectId table_id{table_id_str};
     if (!table_id.IsValid()) {
-      continue;
+      return;
     }
     const auto it = table_cache.find(table_id);
     if (it == table_cache.end() || !it->second) {
-      continue;
+      return;
     }
     if (!joined_names.empty()) {
       joined_names += ", ";
     }
     joined_names += it->second->table_name().table_name();
+    joined_names += '(';
+    joined_names += table_id_str.ToBuffer();
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    append_name(FetchTableId(*op));
+    if (op->is_read()) {
+      const auto& read_req = down_cast<const PgsqlReadOp&>(*op).read_request();
+      if (read_req.has_index_request()) {
+        append_name(FetchTableId(read_req.index_request()));
+      }
+    }
   }
   if (!joined_names.empty()) {
     dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
@@ -197,7 +226,15 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
     return true;
   }
 
-  if (txn_manager.IsDdlMode() || (non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+  // yb_read_time_skip_catalog means catalog reads must see the catalog as of now.  In legacy
+  // catalog mode, such a read can't join the transaction, because an earlier table read may have
+  // pinned the transaction's read point to yb_read_time.  In transactional catalog mode it still
+  // joins, which is fine: catalog reads there first switch to their own catalog snapshot
+  // read point (see UpdateReadPointForCatalogOps).
+  const auto read_catalog_as_of_now =
+      op.is_read() && yb_read_time != 0 && yb_read_time_skip_catalog;
+  if (txn_manager.IsDdlMode() ||
+      (non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn && !read_catalog_as_of_now)) {
     return true;
   }
   if (op.is_write()) {
@@ -523,7 +560,9 @@ class PgSession::RunHelper {
         read_only, pg_session_.pg_txn_manager_->GetTxnPriorityRequirement(row_mark_type));
   }
 
-  Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
+  Result<PerformFuture> Flush(
+      std::optional<CacheOptions>&& cache_options,
+      PgConnectionPrefetchOptions connection_prefetch) {
     if (ops_info_.ops.Empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
@@ -538,6 +577,7 @@ class PgSession::RunHelper {
         std::move(ops_info_.ops), {.use_legacy_catalog_session = IsLegacyCatalog(),
                                    .has_catalog_ops = has_catalog_ops_,
                                    .cache_options = std::move(cache_options),
+                                   .connection_prefetch = connection_prefetch,
                                    .in_txn_limit = in_txn_limit_});
   }
 
@@ -715,10 +755,12 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
 
 Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   VLOG(3) << "Loading table descriptor for " << table_id;
-  // When loading table description and yb_read_time is set, return the table properties even if the
-  // table is hidden. For instance, this is required for succesful return of yb_table_properties()
-  // when yb_read_time is set and the table was hidden at yb_read_time.
-  master::IncludeHidden include_hidden = master::IncludeHidden(yb_read_time != 0);
+  // When loading table description and yb_read_time/historical_read_context_ is set, return the
+  // table properties even if the table is hidden. For instance, this is required for succesful
+  // return of yb_table_properties() when yb_read_time/historical_read_context_ is set and the table
+  // was hidden at that time.
+  master::IncludeHidden include_hidden =
+      master::IncludeHidden(yb_read_time != 0 || historical_read_context_.has_value());
   return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_hidden);
 }
 
@@ -853,15 +895,17 @@ Result<FlushFuture> PgSession::FlushOperations(
   // ReadTimeAction helps to determine whether it can safely use the optimization of allowing
   // docdb (which serves the operation) to pick the read time.
 
+  const auto relation_oid = ops.single_relation_oid();
   return FlushFuture{
       VERIFY_RESULT(Perform(
           std::move(ops), { .read_time_action = MakeReadTimeActionForFlush(*pg_txn_manager_) })),
-      *this, metrics_};
+      *this, metrics_, relation_oid};
 }
 
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
   return NonTransactionalWrites(
       pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      !pg_txn_manager_->IsDdlMode() &&
       std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
 }
 
@@ -893,19 +937,24 @@ Status PgSession::CheckConflictWithYbReadTime(const PgsqlOps& operations) {
 }
 
 Status PgSession::SetReadTimeIfPresent(
-    const PgsqlOps& operations, tserver::PgPerformOptionsPB& options) {
+    const PgsqlOps& operations, bool has_catalog_ops, tserver::PgPerformOptionsPB& options) {
   const auto ops_read_time = VERIFY_RESULT(GetReadTime(operations));
   if (ops_read_time) {
     RETURN_NOT_OK(UpdateReadTime(*options.mutable_read_time_options(), ops_read_time));
   }
 
-  if (yb_read_time != 0) {
+  if (historical_read_context_) {
+    historical_read_context_->read_time.ToPB(
+        options.mutable_read_time_options()->mutable_read_time());
+  } else if (yb_read_time != 0) {
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
-    auto& read_time_pb = *options.mutable_read_time_options()->mutable_read_time();
-    if (yb_is_read_time_ht) {
-      ReadHybridTime::FromUint64(yb_read_time).ToPB(&read_time_pb);
-    } else {
-      ReadHybridTime::FromMicros(yb_read_time).ToPB(&read_time_pb);
+    // Catalog reads never get batched together with other tables.
+    const auto read_catalog_as_of_now = yb_read_time_skip_catalog && has_catalog_ops;
+    if (!read_catalog_as_of_now) {
+      const auto read_ht = yb_is_read_time_ht
+          ? ReadHybridTime::FromUint64(yb_read_time)
+          : ReadHybridTime::FromMicros(yb_read_time);
+      read_ht.ToPB(options.mutable_read_time_options()->mutable_read_time());
     }
   }
   return Status::OK();
@@ -915,23 +964,49 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   DCHECK(!ops.Empty());
   tserver::PgPerformOptionsPB options;
   // Passed read time takes precedence over other read time options.
-  RETURN_NOT_OK(SetReadTimeIfPresent(ops.operations(), options));
+  RETURN_NOT_OK(SetReadTimeIfPresent(ops.operations(), ops_options.has_catalog_ops, options));
 
   if (ops_options.use_legacy_catalog_session) {
     auto& read_time_options = *options.mutable_read_time_options();
     VLOG(2) << "Perform - catalog_read_time: " << catalog_read_time_
             << " read_time: " << read_time_options.read_time().ShortDebugString();
-    // catalog_read_time_ is empty => pick a fresh read time.
-    if (!read_time_options.has_read_time() && catalog_read_time_) {
-      catalog_read_time_.ToPB(read_time_options.mutable_read_time());
+    if (!read_time_options.has_read_time()) {
+      if (catalog_read_time_) {
+        catalog_read_time_.ToPB(read_time_options.mutable_read_time());
+      } else {
+        // catalog_read_time_ is empty => a fresh catalog snapshot is required. It must be picked
+        // from the local clock instead of by the storage layer, which uses the sys catalog tablet's
+        // safe time: concurrent in-flight sys catalog writes hold that safe time back below the
+        // commit time of a DDL this session has just committed, hiding the session's own catalog
+        // changes. Catalog reads also force global_limit == read, so no read restart would correct
+        // it.
+        read_time_options.set_clamp_uncertainty_window(true);
+      }
     }
     options.set_use_legacy_catalog_session(true);
+    // SetupPerformOptions sets this in the other branch.
+    options.set_connected_database_oid(pg_txn_manager_->connected_database_oid());
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
-        ops_options.read_time_action));
+        ops_options.read_time_action, SkipReadTimeOptions::kFalse,
+        IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
+    }
+  }
+
+  if (historical_read_context_) {
+    options.set_use_historical_read_session(true);
+    if (!historical_read_context_->transaction_id.empty()) {
+      auto txn_id = VERIFY_RESULT(
+          TransactionId::FromString(historical_read_context_->transaction_id));
+      options.set_historical_read_transaction_id(txn_id.data(), txn_id.size());
+      const auto& aborted_subtxn_set = historical_read_context_->aborted_subtxn_set;
+      if (!aborted_subtxn_set.empty()) {
+        options.mutable_historical_read_aborted_subtxns()->mutable_set()->Add(
+            aborted_subtxn_set.begin(), aborted_subtxn_set.end());
+      }
     }
   }
 
@@ -989,12 +1064,19 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
+  options.set_part_of_connection_prefetch(
+      ops_options.connection_prefetch.part_of_connection_prefetch);
+  options.set_completes_connection_prefetch(
+      ops_options.connection_prefetch.completes_connection_prefetch);
 
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
     auto& caching_info = *options.mutable_caching_info();
     caching_info.set_key_group(cache_options.key_group);
     caching_info.set_key_value(std::move(cache_options.key_value));
+    caching_info.set_catalog_version(cache_options.catalog_version);
+    caching_info.set_lookup_only(cache_options.lookup_only);
+    caching_info.set_send_away_if_fill_in_flight(cache_options.send_away_if_fill_in_flight);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -1006,6 +1088,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   if (auto origin_id = pg_callbacks_.GetSessionReplicationOriginId()) {
     options.set_xrepl_origin_id(origin_id);
+
+    // The origin is sent either way, because it is not only used for stamping - CDCSDK reports it
+    // on change records. CDR metadata is not stamped on the rows when xrepl_source_write_ht is
+    // absent.
+    if (auto origin_ts = pg_callbacks_.GetSessionReplicationOriginTimestamp();
+        origin_ts > 0 && static_cast<MicrosTime>(origin_ts) <= kMaxHybridTimePhysicalMicros) {
+      options.set_xrepl_source_write_ht(
+          HybridTime::FromMicros(static_cast<MicrosTime>(origin_ts)).ToUint64());
+    }
   }
 
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));
@@ -1079,6 +1170,19 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   }
 }
 
+void PgSession::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, std::string transaction_id,
+    std::vector<uint32_t> aborted_subtxn_set) {
+  historical_read_context_ = HistoricalReadContext{
+      .read_time = read_time,
+      .transaction_id = std::move(transaction_id),
+      .aborted_subtxn_set = std::move(aborted_subtxn_set)};
+}
+
+void PgSession::ResetHistoricalReadContext() {
+  historical_read_context_.reset();
+}
+
 Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options) {
   RSTATUS_DCHECK(
       pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), IllegalState,
@@ -1088,7 +1192,19 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
+  return SetupPerformOptions(
+      *options, NonTransactionalWrites::kFalse, /* read_time_action= */ std::nullopt,
+      SkipReadTimeOptions::kTrue);
+}
+
+void PgSession::SetupPerformOptionsForSeparateDdlTxn(
+    tserver::PgPerformOptionsPB* options) const {
+  if (pg_txn_manager_->ShouldDeferReadPoint()) {
+    options->mutable_read_time_options()->set_defer_read_point(true);
+  }
+  options->set_connected_database_oid(pg_txn_manager_->connected_database_oid());
+  // The RPC may be what creates the separate DDL transaction.
+  options->set_origination_ht(pg_txn_manager_->GetOriginationHt());
 }
 
 void PgSession::SetTransactionHasWrites() {
@@ -1170,34 +1286,14 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
   RETURN_NOT_OK(FlushBufferedEntities(
       PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no)));
   RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
-  // Clamp the uncertainty window for catalog reads.
-  //
-  // User table reads need an uncertainty window to guarantee read-after-commit-visibility because
-  // clock skew can cause a write's commit timestamp to exceed the reader's chosen read time.
-  //
-  // Catalog reads do not need this. Catalog operations use object locks (shared for reads,
-  // exclusive for writes) instead of relying solely on MVCC. A concurrent DDL writer must hold
-  // an exclusive lock, and the catalog reader can only acquire its shared lock after that
-  // exclusive lock is released. The lock release happens strictly after the DDL transaction
-  // commits, so it propagates the commit hybrid time. By the time the reader picks its catalog
-  // snapshot read time, that time is guaranteed to be >= the commit time of any concurrent DDL.
-  //
-  // The guarantee is also maintained when postgres uses AcceptInvalidationMessages instead of
-  // share locks: the exclusive lock release still propagates the commit time before invalidation
-  // messages are applied and a new catalog read time is chosen. The object lock release
-  // happens before postgres acknowledges the catalog write, maintaining the same guarantee.
-  //
-  // Without clamping, the uncertainty window causes spurious read restart errors on catalog
-  // tables that are unnecessary given the object-lock / invalidation-messages protocol.
-  pg_txn_manager_->SetClampUncertaintyWindow(true);
-  pg_txn_manager_->ResetFollowerReadTime();
   return original_read_point;
 }
 
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, const RunOptions& options,
-    std::optional<CacheOptions>&& cache_options) {
+    std::optional<CacheOptions>&& cache_options,
+    PgConnectionPrefetchOptions connection_prefetch) {
   const auto first_table_op = generator();
   RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
@@ -1270,7 +1366,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         IllegalState, "All operations in a batch must have the same skip_intents state");
     RETURN_NOT_OK(processor(table_op));
   }
-  auto result = runner.Flush(std::move(cache_options));
+  auto result = runner.Flush(std::move(cache_options), connection_prefetch);
   if (read_point_before_catalog_ops) {
     LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
         << "Restoring original read time serial no to "
@@ -1289,27 +1385,28 @@ Result<PerformFuture> PgSession::RunAsync(
       using TO = TableOperation<PgsqlOpPtr>;
       return i != end ? TO{.operation = &*i++, .table = t} : TO();
   };
-  return DoRunAsync(make_lw_function(generator), options);
+  return DoRunAsync(make_lw_function(generator), options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
     const OperationGenerator& generator, const RunOptions& options) {
-  return DoRunAsync(generator, options);
+  return DoRunAsync(generator, options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options) {
+    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options,
+    PgConnectionPrefetchOptions connection_prefetch) {
   if (cache_options) {
     RSTATUS_DCHECK(!cache_options->key_value.empty(), InvalidArgument, "Cache key can't be empty");
     // Ensure no buffered requests will be added to cached request.
     RETURN_NOT_OK(buffer_.Flush(PgFlushDebugContext::CatalogTablePrefetch()));
   }
-  return DoRunAsync(generator, {}, std::move(cache_options));
+  return DoRunAsync(generator, {}, std::move(cache_options), connection_prefetch);
 }
 
-PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
+PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux) {
   DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
-  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC, aux);
 }
 
 std::string PgSession::LogPrefix() const {
@@ -1359,13 +1456,27 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->UsingObjectLocksLocally()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
     // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
+    return Status::OK();
+  }
+  // A CREATE INDEX with global object locks waits for writers only through object locks. A
+  // transaction without global object locks runs alongside it while
+  // yb_enable_global_object_locking_infra is being promoted (it latched the flag as off), and on a
+  // node with disable_global_object_locks on. If such a transaction sent no locks, the CREATE INDEX
+  // would backfill under its uncommitted UPDATE, and the index would miss the update once it
+  // commits (#36572, #37355). So a transaction without global object locks sends the locks its
+  // reads and writes take, up to ROW EXCLUSIVE; a reader's lock is what makes a table rewrite wait
+  // for it. It sends nothing stronger, so its LOCK TABLE and DDLs behave as without global object
+  // locks: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every lock
+  // in its own lock table either way.
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn() &&
+      (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
     return Status::OK();
   }
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
@@ -1381,7 +1492,9 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  // A transaction without global object locks sends no session locks, so PG sends no releases for
+  // them.
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
@@ -1399,7 +1512,7 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
 
 Status PgSession::WaitForLockersMultiple(
     const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgWaitForLockersMultipleRequestPB req;

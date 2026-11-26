@@ -146,7 +146,7 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                       minWidth: '856px',
                       width: '100%',
                       gap: 3,
-                      mr: 1,
+                      pr: '24px',
                       pb: 3
                     }}
                   >

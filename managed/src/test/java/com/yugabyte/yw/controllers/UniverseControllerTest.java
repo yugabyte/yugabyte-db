@@ -23,9 +23,14 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
@@ -35,8 +40,12 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.http.conditional.ConditionalGets;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -54,6 +63,7 @@ import junitparams.Parameters;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
@@ -66,9 +76,9 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     data.put(" Test 2 ", " Two ");
 
     Map<String, String> result = UniverseCRUDHandler.trimFlags(data);
-    assertEquals(result.size(), 2);
-    assertEquals(result.get("Test"), "One");
-    assertEquals(result.get("Test 2"), "Two");
+    assertEquals(2, result.size());
+    assertEquals("One", result.get("Test"));
+    assertEquals("Two", result.get("Test 2"));
   }
 
   @Test
@@ -116,7 +126,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
-    assertEquals(json.size(), 0);
+    assertEquals(0, json.size());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -186,6 +196,80 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
       assertValue(node, "nodeName", "host-n" + nodeIdx);
     }
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testUniverseGetConditionalNotModified() {
+    UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
+
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + uUUID;
+    Result first = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(first);
+    String etag = first.headers().get(ConditionalGets.HEADER_ETAG);
+    assertNotNull(etag);
+
+    Result notModified =
+        doRequestWithAuthTokenAndHeaders(
+            "GET",
+            url,
+            authToken,
+            java.util.Collections.singletonMap(ConditionalGets.HEADER_IF_NONE_MATCH, etag));
+    assertEquals(Http.Status.NOT_MODIFIED, notModified.status());
+    assertEquals(etag, notModified.headers().get(ConditionalGets.HEADER_ETAG));
+
+    // save(false) still advances @WhenModified -> new ETag -> full 200
+    try {
+      Thread.sleep(5);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    Universe.saveDetails(uUUID, univ -> {}, false);
+    Result afterSaveFalse =
+        doRequestWithAuthTokenAndHeaders(
+            "GET",
+            url,
+            authToken,
+            java.util.Collections.singletonMap(ConditionalGets.HEADER_IF_NONE_MATCH, etag));
+    assertOk(afterSaveFalse);
+    String newEtag = afterSaveFalse.headers().get(ConditionalGets.HEADER_ETAG);
+    assertNotNull(newEtag);
+    assertNotEquals(etag, newEtag);
+  }
+
+  @Test
+  public void testUniverseGetConditionalDisabledByRuntimeFlag() {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.conditionalGetEnabled.getKey()))
+        .thenReturn(false);
+
+    UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
+
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + uUUID;
+    Result first = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(first);
+    assertNull(first.headers().get(ConditionalGets.HEADER_ETAG));
+
+    Result second =
+        doRequestWithAuthTokenAndHeaders(
+            "GET",
+            url,
+            authToken,
+            java.util.Collections.singletonMap(
+                ConditionalGets.HEADER_IF_NONE_MATCH, "W/\"universe:ignored:1\""));
+    assertOk(second);
+  }
+
+  @Test
+  public void testOnlyApiRedactionReadsGFlagsApiRedactionConfig() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    clearInvocations(mockRuntimeConfig);
+    RedactingService.filterSecretFields(Json.newObject(), RedactionTarget.LOGS);
+    verify(mockRuntimeConfig, never()).getBoolean(key);
+    RedactingService.filterSecretFields(Json.newObject(), RedactionTarget.APIS);
+    verify(mockRuntimeConfig).getBoolean(key);
   }
 
   @Test

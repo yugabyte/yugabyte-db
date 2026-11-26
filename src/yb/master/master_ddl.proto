@@ -378,12 +378,36 @@ message IndexStatusPB {
   // Backfill status for the specified index table on base of index permissions. Value absence means
   // either error field is specified, or backfill_status is not present in BackfillStatus enum.
   optional BackfillStatus backfill_status = 3;
+
+  // Index inception / birth hybrid time, used to reject reads from older backends with
+  // read time < birth time that might hit the index.
+  optional fixed64 birth_time = 4;
+
+  // The index's IndexInfoPB.birth_time_state on the master. Set when error is not set, except for a
+  // pinned online schema change target (not an index). A tserver treats a missing value as not
+  // final, which is also what it gets from a master that does not report it.
+  optional IndexInfoPB.BirthTimeState birth_time_state = 5;
 }
 
 message GetBackfillStatusResponsePB {
   optional MasterErrorPB error = 1;
   repeated IndexStatusPB index_status = 2;
 }
+
+message StartTableBackfillRequestPB {
+  optional TableIdentifierPB source_table = 1;
+  optional uint32 target_table_oid = 2;
+  optional uint32 transform_fn_oid = 3;
+  // Lower bound for the read time. The master reads at the max of this and the source tablets'
+  // safe times, because the client's clock cannot bound the commit times tablet leaders assign.
+  optional uint64 backfill_timestamp = 4;
+  optional int64 pg_job_id = 5;
+}
+
+message StartTableBackfillResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 
 // Delete table request (including index table).
 message DeleteTableRequestPB {
@@ -658,6 +682,8 @@ message GetNamespaceInfoResponsePB {
   optional bool colocated = 3;
   // This denotes if a colocated database is a legacy colocated database.
   optional bool legacy_colocated_database = 4;
+  optional SysNamespaceEntryPB.State state = 5;
+  optional SysNamespaceEntryPB.YsqlNextMajorVersionState ysql_next_major_version_state = 6;
 }
 
 // ============================================================================
@@ -782,6 +808,11 @@ message ReportYsqlDdlTxnStatusRequestPB {
 
   // Whether the above transaction is committed or aborted.
   optional bool is_committed = 2;
+
+  // The sender's hybrid time, which is >= the transaction's commit time, as the sender's clock was
+  // updated from the commit response. The master updates its clock with it before handling the
+  // DDL, so that hybrid times it picks then (e.g. an index birth_time) are >= the commit time.
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message ReportYsqlDdlTxnStatusResponsePB {
@@ -876,6 +907,7 @@ message WaitForLockersMultipleGlobalRequestPB {
   repeated docdb.ObjectLockPB object_locks = 3;
   optional fixed64 propagated_hybrid_time = 4;
   optional bytes background_transaction_id = 5;
+  optional bytes background_transaction_status_tablet = 6;
 }
 
 message WaitForLockersMultipleGlobalResponsePB {
@@ -889,38 +921,6 @@ message GetObjectLockStatusRequestPB {
 message GetObjectLockStatusResponsePB {
   optional MasterErrorPB error = 1;
   repeated ObjectLockInfoPB object_lock_infos = 2;
-}
-
-message RefreshYsqlLeaseRequestPB {
-  optional NodeInstancePB instance = 1;
-  // The current lease epoch of the tserver making this request.
-  // Unset if the tserver doesn't think it has a live lease.
-  optional uint64 current_lease_epoch = 2;
-  optional uint64 local_request_send_time_ms = 3;
-}
-
-message RefreshYsqlLeaseInfoPB {
-  optional bool new_lease = 1;
-  optional uint64 lease_epoch = 2;
-  // TODO: If this ends up being too big, consider adding a way to break this up
-  // into multiple messages.
-  optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
-  optional uint64 lease_expiry_time_ms = 4;
-}
-
-message RefreshYsqlLeaseResponsePB {
-  oneof refresh_ysql_lease_payload {
-    MasterErrorPB error = 1;
-    RefreshYsqlLeaseInfoPB info = 2;
-  }
-}
-
-message RelinquishYsqlLeaseRequestPB {
-  optional NodeInstancePB instance = 1;
-}
-
-message RelinquishYsqlLeaseResponsePB {
-  optional MasterErrorPB error = 1;
 }
 
 service MasterDdl {
@@ -946,6 +946,9 @@ service MasterDdl {
           returns (LaunchBackfillIndexForTableResponsePB);
   rpc GetBackfillJobs(GetBackfillJobsRequestPB) returns (GetBackfillJobsResponsePB);
   rpc GetBackfillStatus(GetBackfillStatusRequestPB) returns (GetBackfillStatusResponsePB);
+
+  rpc StartTableBackfill(StartTableBackfillRequestPB)
+      returns (StartTableBackfillResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);
@@ -993,10 +996,6 @@ service MasterDdl {
       returns (ReleaseObjectLocksGlobalResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
-  rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
-      returns (RefreshYsqlLeaseResponsePB);
-  rpc RelinquishYsqlLease(RelinquishYsqlLeaseRequestPB)
-      returns (RelinquishYsqlLeaseResponsePB);
   rpc WaitForLockersMultipleGlobal(WaitForLockersMultipleGlobalRequestPB)
       returns (WaitForLockersMultipleGlobalResponsePB) {
     option (yb.rpc.send_metadata) = true;

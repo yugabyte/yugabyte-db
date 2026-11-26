@@ -14,6 +14,8 @@
 
 #include <chrono>
 
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/post.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -53,6 +55,7 @@ DEFINE_NON_RUNTIME_int32(xcluster_safe_time_table_num_tablets, 1,
     "0 to use the same default num tablets as for regular tables.");
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
+DECLARE_bool(xcluster_safe_time_table_include_stream_id);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 DEFINE_RUNTIME_uint32(xcluster_safe_time_log_outliers_interval_secs, 600,
@@ -76,15 +79,12 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     : master_(master),
       catalog_manager_(catalog_manager),
       poller_("XClusterSafeTimeService: ", [this] {
-        WARN_NOT_OK(
-          master_->messenger()->ThreadPool().Submit(
-              poll_strand_->wrap([this] { ProcessTaskPeriodically(); })),
-          "Failed to submit periodic task");
+        boost::asio::post(*poll_strand_, [this] { ProcessTaskPeriodically(); });
       }),
       metric_registry_(metric_registry) {
   poller_.Pause();
   if (master_) {
-    poll_strand_.emplace(master->messenger()->io_service());
+    poll_strand_.emplace(boost::asio::make_strand(master->messenger()->io_service()));
     poller_.Start(
         master->messenger()->scheduler(),
         FLAGS_xcluster_safe_time_update_interval_secs * 1s);
@@ -100,9 +100,7 @@ void XClusterSafeTimeService::Shutdown() {
 }
 
 void XClusterSafeTimeService::ScheduleTaskIfNeeded() {
-  poll_strand_->dispatch([this] {
-    poller_.Resume();
-  });
+  boost::asio::dispatch(*poll_strand_, [this] { poller_.Resume(); });
 }
 
 void XClusterSafeTimeService::ProcessTaskPeriodically() {
@@ -328,6 +326,21 @@ class LogThrottle {
  private:
   MicrosecondsInt64 last_timestamp_;
 };
+
+// Joins tablet ids for the outlier logs below, tagging the ddl_queue ones. A lagging ddl_queue
+// tablet is expected whenever a DDL is pending, so it should not be read the same way as a lagging
+// data tablet.
+std::string TabletIdsForLog(
+    const std::vector<TabletId>& tablet_ids,
+    const std::unordered_set<TabletId>& ddl_queue_tablet_ids) {
+  std::vector<std::string> tagged_tablet_ids;
+  tagged_tablet_ids.reserve(tablet_ids.size());
+  for (const auto& tablet_id : tablet_ids) {
+    tagged_tablet_ids.emplace_back(
+        ddl_queue_tablet_ids.contains(tablet_id) ? Format("$0 (ddl_queue)", tablet_id) : tablet_id);
+  }
+  return JoinStringsLimitCount(tagged_tablet_ids, ",", 20);
+}
 }  // namespace
 
 Result<bool> XClusterSafeTimeService::ComputeSafeTime(
@@ -353,7 +366,20 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   std::unordered_map<NamespaceId, std::vector<TabletId>> tablets_missing_safe_time_map;
   std::unordered_map<NamespaceId, std::vector<TabletId>> slow_tablets_map;
   std::unordered_map<NamespaceId, HybridTime> namespace_max_safe_time;
-  std::unordered_map<NamespaceId, HybridTime> namespace_min_safe_time;
+  // The non-ddl_queue values are tracked separately since the ddl_queue tablet is often the slowest
+  // tablet (it lags whenever a DDL is pending), which hides how far behind the safe time computed
+  // without the ddl_queue table (used by CREATE TABLE/INDEX waits) is.
+  struct NamespaceMinSafeTime {
+    // Min safe time across the slow tablets.
+    HybridTime min_safe_time;
+    // Min safe time across all non-ddl_queue tablets, and the tablet it came from.
+    HybridTime min_non_ddl_queue_safe_time;
+    TabletId min_non_ddl_queue_tablet_id;
+    // Min safe time across the ddl_queue tablet(s). Invalid if the namespace has none, in which
+    // case there is nothing to exclude and the non-ddl_queue values are not worth reporting.
+    HybridTime min_ddl_queue_safe_time;
+  };
+  std::unordered_map<NamespaceId, NamespaceMinSafeTime> namespace_min_safe_time;
 
   for (const auto& [tablet_info, namespace_id] : producer_tablet_namespace_map_) {
     SCHECK_NE(namespace_id, kSystemNamespaceId, IllegalState, "System tables cannot be replicated");
@@ -375,7 +401,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   if (should_log_outlier_tablets) {
     for (const auto& [namespace_id, tablet_ids] : tablets_missing_safe_time_map) {
       LOG(WARNING) << "Missing xcluster safe time for producer tablet(s) "
-                   << JoinStringsLimitCount(tablet_ids, ",", 20) << " in namespace "
+                   << TabletIdsForLog(tablet_ids, ddl_queue_tablet_ids_) << " in namespace "
                    << namespace_id;
     }
   }
@@ -398,10 +424,19 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
     }
 
     if (should_log_outlier_tablets) {
+      auto& min_safe_time_info = namespace_min_safe_time[*namespace_id];
       if (tablet_safe_time.AddDelta(1s * FLAGS_xcluster_safe_time_slow_tablet_delta_secs) <
           namespace_max_safe_time[*namespace_id]) {
-        namespace_min_safe_time[*namespace_id].MakeAtMost(tablet_safe_time);
+        min_safe_time_info.min_safe_time.MakeAtMost(tablet_safe_time);
         slow_tablets_map[*namespace_id].emplace_back(tablet_info.tablet_id());
+      }
+      if (ddl_queue_tablet_ids_.contains(tablet_info.tablet_id())) {
+        min_safe_time_info.min_ddl_queue_safe_time.MakeAtMost(tablet_safe_time);
+      } else if (
+          !min_safe_time_info.min_non_ddl_queue_safe_time.is_valid() ||
+          tablet_safe_time < min_safe_time_info.min_non_ddl_queue_safe_time) {
+        min_safe_time_info.min_non_ddl_queue_safe_time = tablet_safe_time;
+        min_safe_time_info.min_non_ddl_queue_tablet_id = tablet_info.tablet_id();
       }
     }
 
@@ -420,10 +455,21 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
 
   if (should_log_outlier_tablets) {
     for (const auto& [namespace_id, tablet_ids] : slow_tablets_map) {
+      const auto& min_safe_time_info = namespace_min_safe_time[namespace_id];
+      const auto& namespace_max = namespace_max_safe_time[namespace_id];
+      std::string non_ddl_queue_info;
+      if (min_safe_time_info.min_ddl_queue_safe_time.is_valid() &&
+          min_safe_time_info.min_non_ddl_queue_safe_time.is_valid()) {
+        non_ddl_queue_info = Format(
+            "; Excluding ddl_queue tablet, safe time is held up by $0 due to $1",
+            namespace_max.PhysicalDiff(min_safe_time_info.min_non_ddl_queue_safe_time)
+                .ToPrettyString(),
+            min_safe_time_info.min_non_ddl_queue_tablet_id);
+      }
       LOG(WARNING) << "xcluster safe time for namespace " << namespace_id << " is held up by "
-                   << namespace_max_safe_time[namespace_id].PhysicalDiff(
-                          namespace_min_safe_time[namespace_id]).ToPrettyString()
-                   << " due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
+                   << namespace_max.PhysicalDiff(min_safe_time_info.min_safe_time).ToPrettyString()
+                   << " due to producer tablet(s) "
+                   << TabletIdsForLog(tablet_ids, ddl_queue_tablet_ids_) << non_ddl_queue_info;
     }
   }
 
@@ -547,8 +593,10 @@ XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetMaxNamespaceSafeTimeF
 
 Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
   auto latest_config_version = VERIFY_RESULT(catalog_manager_->GetClusterConfigVersion());
+  const bool include_stream_id = FLAGS_xcluster_safe_time_table_include_stream_id;
 
-  if (latest_config_version == cluster_config_version_) {
+  if (latest_config_version == cluster_config_version_ &&
+      include_stream_id == producer_tablet_keys_have_stream_id_) {
     return Status::OK();
   }
 
@@ -567,7 +615,7 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
           continue;
         }
 
-        for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
+        for (const auto& [stream_id_str, stream_entry] : producer_entry.stream_map()) {
           const auto& consumer_table_id = stream_entry.consumer_table_id();
           const auto& producer_table_id = stream_entry.producer_table_id();
           NamespaceId consumer_namespace_id;
@@ -578,10 +626,11 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
             consumer_namespace_id =
                 VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(consumer_table_id));
           }
+          const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream_id_str));
           for (const auto& [_, producer_tablets] : stream_entry.consumer_producer_tablet_map()) {
             for (const auto& tablet_id : producer_tablets.tablets()) {
               const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
-                  replication_group_id, tablet_id, producer_table_id));
+                  replication_group_id, tablet_id, producer_table_id, stream_id));
               producer_tablet_namespace_map_[key] = consumer_namespace_id;
               if (stream_entry.is_ddl_queue_table()) {
                 ddl_queue_tablet_ids_.insert(tablet_id);
@@ -593,9 +642,10 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     }
   }
 
-  // Its important to use the version we got before getting the registry, as it could have
-  // changed again.
+  // It's important to use the version and flag value we got before getting the registry, as they
+  // could have changed again.
   cluster_config_version_ = latest_config_version;
+  producer_tablet_keys_have_stream_id_ = include_stream_id;
 
   return Status::OK();
 }

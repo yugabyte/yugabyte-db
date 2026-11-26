@@ -16,8 +16,12 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/common/common.pb.h"
+
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -26,6 +30,8 @@
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
@@ -41,9 +47,7 @@
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
-
-DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
-    "Number of vector in initial vector index chunk");
+#include "yb/vector_index/vector_lsm_metadata.h"
 
 METRIC_DEFINE_event_stats(table, vector_index_convert_us,
     "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
@@ -78,12 +82,48 @@ METRIC_DEFINE_counter(table, vector_index_backfill_inserted_entries,
     "Number of entries inserted into the vector index during backfill. Tracks the progress of "
     "vector index backfill.");
 
+DEFINE_RUNTIME_uint64(vector_index_max_extra_tied_results, 1024,
+    "Max number of vectors tied in distance with the last vector of a vector index search page "
+    "that the page returns past its size. A tie cut by a page may be left out of the search "
+    "results. 0 disables returning such vectors.");
+
+DEFINE_test_flag(bool, vector_index_skip_insert, false,
+    "Skip inserting vectors into vector indexes, leaving the rows without index entries.");
+
+DEFINE_test_flag(bool, vector_index_corrupt_inserted_vectors, false,
+    "Alter the first coordinate of every vector inserted into vector indexes, so the index "
+    "stores vectors which differ from the ones in the rows.");
+
+DEFINE_test_flag(bool, vector_index_corrupt_inserted_payloads, false,
+    "Append a byte to the ybctid in the payload of every vector inserted into vector indexes, so "
+    "the payload references a row which does not exist.");
+
+DEFINE_test_flag(bool, vector_index_skip_reverse_mapping_write, false,
+    "Skip writing vector reverse mapping entries and tombstones.");
+
+DEFINE_test_flag(bool, vector_index_duplicate_inserted_vectors, false,
+    "Insert every vector into vector indexes twice, into different chunks.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
 
 namespace yb::docdb {
 
 namespace {
+
+// Shared by the forced OpId stamps of an open index, DocVectorIndex::ModifyFlushedFrontier, and
+// of one that is not open, ForceVectorIndexStorageOpId, so both write the same frontiers.
+void SetChunkOpId(storage::UserFrontiers& frontiers, const OpId& op_id) {
+  down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(op_id);
+  down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(op_id);
+}
+
+// The frontiers of the chunk without a file that a stamp adds.
+ConsensusFrontiers StampChunkFrontiers(const OpId& op_id) {
+  ConsensusFrontiers frontiers;
+  frontiers.Largest().set_op_id(op_id);
+  return frontiers;
+}
 
 vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   switch (dist_type) {
@@ -109,46 +149,47 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
   };
 }
 
-template <class LSM, template<class, class> class Factory>
-typename LSM::Options::VectorIndexFactory VectorLSMFactoryImpl(
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
   auto hnsw_options = ConvertToHnswOptions(options);
-  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [block_cache, hnsw_options,
-          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
-  };
-}
-
-template <class LSM>
-typename LSM::Options::VectorIndexFactory VectorLSMFactory(
-    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
-    const MemTrackerPtr& mem_tracker) {
-  switch (options.hnsw().backend()) {
-    case HnswBackend::USEARCH: [[fallthrough]];
+  auto backend = options.hnsw().backend();
+  switch (backend) {
     case HnswBackend::YB_HNSW_USEARCH:
-      return VectorLSMFactoryImpl<LSM, ann_methods::UsearchIndexFactory>(
-          block_cache, options, mem_tracker);
-    case HnswBackend::HNSWLIB: [[fallthrough]];
+      return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
+          block_cache, hnsw_options, mem_tracker);
     case HnswBackend::YB_HNSW_HNSWLIB: {
-      return VectorLSMFactoryImpl<LSM, ann_methods::HnswlibIndexFactory>(
-          block_cache, options, mem_tracker);
+      vector_index::VectorTenantExtractor tenant_extractor;
+      if (options.tenant_hash_group_and_range_components()) {
+        tenant_extractor = [](Slice payload) -> Result<Slice> {
+          return VERIFY_RESULT(dockv::DecodeDocVectorIndexPayload(payload)).tenant;
+        };
+      }
+      return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
+          block_cache, hnsw_options, mem_tracker, std::move(tenant_extractor));
     }
+    case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
+    case HnswBackend::DEPRECATED_HNSWLIB:
+      break;
   }
-  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
+  return STATUS_FORMAT(
+      NotSupported,
+      "Vector index backend $0 is no longer supported. Roll back to the previous release and drop "
+      "the index before upgrading",
+      HnswBackend_Name(backend));
 }
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-auto GetVectorLSMFactory(
+auto GetVectorLSMTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker)
-    -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
-  using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
+    -> Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> {
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
+      return HnswTraits<Vector, DistanceResult>(block_cache, options, mem_tracker);
     case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -177,18 +218,97 @@ Result<Vector> VectorFromYSQL(Slice slice) {
   return result;
 }
 
+// Inverse of VectorFromYSQL: dimensions, the unused int16 of the pgvector header, coordinates.
+template<vector_index::IndexableVectorType Vector>
+void VectorToYSQL(const Vector& vector, ValueBuffer* out) {
+  using Coordinate = typename Vector::value_type;
+  out->clear();
+  out->reserve(2 * sizeof(uint16_t) + vector.size() * sizeof(Coordinate));
+  char buffer[2 * sizeof(uint16_t)] = {};
+  Store<uint16_t, LittleEndian>(buffer, narrow_cast<uint16_t>(vector.size()));
+  out->Append(Slice(buffer, sizeof(buffer)));
+  // Store takes integers only, so the coordinate goes through the unsigned type of its size,
+  // the same one Load returns for it.
+  using RawCoordinate = decltype(LoadRaw<Coordinate, LittleEndian>(nullptr));
+  for (const auto& coordinate : vector) {
+    char coordinate_buffer[sizeof(Coordinate)];
+    Store<RawCoordinate, LittleEndian>(coordinate_buffer, bit_cast<RawCoordinate>(coordinate));
+    out->Append(Slice(coordinate_buffer, sizeof(coordinate_buffer)));
+  }
+}
+
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
-    const DocVectorIndexInsertEntry& entry) {
+    const DocVectorIndexInsertEntry& entry, bool store_payload, size_t tenant_components) {
 
   RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
+  RSTATUS_DCHECK(
+      !store_payload || !entry.ybctid.empty(), InvalidArgument, "Vector ybctid is not specified");
 
   auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
+  auto vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data));
+  if (FLAGS_TEST_vector_index_corrupt_inserted_vectors && !vector.empty()) {
+    vector.front() += 1;
+  }
+  ValueBuffer payload;
+  if (store_payload) {
+    // Master keeps the tenant components below the components of the table.
+    auto tenant_prefix_size = VERIFY_RESULT(
+        dockv::DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(
+            entry.ybctid.AsSlice(), tenant_components));
+    if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
+      // Sorts after every key of the row.
+      dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
+      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), tenant_prefix_size);
+    } else {
+      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), tenant_prefix_size);
+    }
+  }
   return vector_index::VectorLSMInsertEntry<Vector> {
     .vector_id = VERIFY_RESULT(encoded.DecodeId()),
-    .vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data)),
+    .vector = std::move(vector),
+    .payload = std::move(payload),
   };
 }
+
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+class DocVectorIndexViewImpl : public DocVectorIndexView {
+ public:
+  using VectorIndexPtr = vector_index::VectorIndexIfPtr<Vector, DistanceResult>;
+
+  explicit DocVectorIndexViewImpl(std::vector<VectorIndexPtr> indexes)
+      : indexes_(std::move(indexes)) {}
+
+  Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
+    ValueBuffer buffer;
+    for (const auto& index : indexes_) {
+      auto it = index->CreateIterator();
+      for (; it->Valid(); it->Next()) {
+        const auto& entry = it->Entry();
+        VectorToYSQL(entry.vector, &buffer);
+        RETURN_NOT_OK(callback(DocVectorIndexEntry {
+          .vector_id = entry.vector_id,
+          .vector = buffer.AsSlice(),
+          .payload = entry.payload,
+        }));
+      }
+      RETURN_NOT_OK(it->status());
+    }
+    return Status::OK();
+  }
+
+  size_t NumVectors() const override {
+    size_t result = 0;
+    for (const auto& index : indexes_) {
+      result += index->Size();
+    }
+    return result;
+  }
+
+ private:
+  const std::vector<VectorIndexPtr> indexes_;
+};
 
 EncodedDistance EncodeDistance(float distance) {
   uint32_t v = bit_cast<uint32_t>(distance);
@@ -199,43 +319,77 @@ EncodedDistance EncodeDistance(float distance) {
   }
 }
 
+// Whether the row the payload points to is within the tablet key bounds.
+Result<bool> IsPayloadWithinKeyBounds(const KeyBounds& key_bounds, Slice payload) {
+  if (!key_bounds.IsInitialized()) {
+    return true;
+  }
+  return key_bounds.IsWithinBounds(VERIFY_RESULT(dockv::DocVectorIndexPayloadYbctid(payload)));
+}
+
 class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
  public:
+  // reverse_mapping_reader is null when the index has no reverse mapping, see
+  // DocVectorIndex::HasReverseMapping.
   VectorMergeFilter(
-      const std::string& log_prefix, DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
-      : log_prefix_(log_prefix), reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
+      const std::string& log_prefix, const KeyBounds& key_bounds,
+      DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
+      : log_prefix_(log_prefix), key_bounds_(key_bounds),
+        reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
   }
 
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
 
-  rocksdb::FilterDecision Filter(vector_index::VectorId vector_id) override {
+  rocksdb::FilterDecision Filter(vector_index::VectorId vector_id, Slice payload) override {
     if (FLAGS_vector_index_skip_filter_check) {
       return rocksdb::FilterDecision::kKeep;
     }
 
-    // Let's not filter the vector in case of error.
-    auto decision = rocksdb::FilterDecision::kKeep;
-
-    // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
-    // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
-    // while this filter relies on regular compaction to clean those up.
-    auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
-    if (!ybctid.ok()) {
-      LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
-    } else if ((*ybctid).empty()) {
-      // Simple filtering by VectorId <=> ybctid presence in the regular db. No need to check if
-      // a vector is tombstoned as regular compactions take care of obsolete entries cleanup.
-      decision = rocksdb::FilterDecision::kDiscard;
-    }
-
+    auto decision = DoFilter(vector_id, payload);
     VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
     return decision;
   }
 
  private:
+  // Keeps the vector in case of error.
+  rocksdb::FilterDecision DoFilter(vector_index::VectorId vector_id, Slice payload) {
+    if (!payload.empty()) {
+      // Vectors of the sibling tablet left by a split are dropped by the key bounds.
+      auto within_bounds = IsPayloadWithinKeyBounds(key_bounds_, payload);
+      if (!within_bounds.ok()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Failed to decode payload of " << vector_id << ": " << within_bounds.status();
+        return rocksdb::FilterDecision::kKeep;
+      }
+      if (!*within_bounds) {
+        return rocksdb::FilterDecision::kDiscard;
+      }
+    }
+
+    // Without the reverse mapping compaction cannot tell whether the row of the vector still
+    // exists.
+    if (!reverse_mapping_reader_) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
+    // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
+    // while this filter relies on regular compaction to clean those up. Fetch also drops
+    // live mappings whose ybctid is outside tablet key bounds.
+    auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
+    if (!ybctid.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
+      return rocksdb::FilterDecision::kKeep;
+    }
+    // Simple filtering by VectorId <=> ybctid presence in the regular db. No need to check if
+    // a vector is tombstoned as regular compactions take care of obsolete entries cleanup.
+    return ybctid->empty() ? rocksdb::FilterDecision::kDiscard : rocksdb::FilterDecision::kKeep;
+  }
+
   const std::string& log_prefix_;
+  const KeyBounds& key_bounds_;
   DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
 };
 
@@ -245,12 +399,15 @@ class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
       const TableId& table_id, const PgVectorIdxOptionsPB& options, HybridTime hybrid_time,
-      Slice indexed_table_key_prefix, DocVectorIndexContextPtr vector_index_context,
+      Slice indexed_table_key_prefix, TableWritesReverseMapping table_writes_reverse_mapping,
+      DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
       : table_id_(table_id),
         indexed_table_key_prefix_(indexed_table_key_prefix),
         options_(options),
+        stores_payload_(options.store_payload() || !table_writes_reverse_mapping),
+        table_writes_reverse_mapping_(table_writes_reverse_mapping),
         hybrid_time_(hybrid_time),
         context_(std::move(vector_index_context)),
         block_cache_(block_cache),
@@ -262,6 +419,19 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const TableId& table_id() const override {
     return table_id_;
+  }
+
+  bool StoresPayload() const override {
+    return stores_payload_;
+  }
+
+  bool HasReverseMapping() const override {
+    return table_writes_reverse_mapping_;
+  }
+
+  Result<DocVectorIndexViewPtr> CreateImmutableView() override {
+    return std::make_unique<DocVectorIndexViewImpl<Vector, DistanceResult>>(
+        VERIFY_RESULT(lsm_.ManifestIndexes()));
   }
 
   Slice indexed_table_key_prefix() const override {
@@ -284,6 +454,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return hybrid_time_;
   }
 
+  uint64_t split_generation() const override {
+    return split_generation_;
+  }
+
   const DocVectorIndexContext& context() const override {
     return *context_;
   }
@@ -294,11 +468,16 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Open(const std::string& log_prefix,
               const std::string& storage_dir,
+              uint64_t split_generation,
               const DocVectorIndexThreadPoolProvider& thread_pool_provider) {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
-      auto reader =
-          VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
-      return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(reader));
+      DocVectorIndexReverseMappingReaderPtr reader;
+      if (HasReverseMapping()) {
+        reader =
+            VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
+      }
+      return std::make_unique<VectorMergeFilter>(
+          lsm_.LogPrefix(), context_->key_bounds(), std::move(reader));
     };
 
     name_ = RemoveLogPrefixColon(log_prefix);
@@ -306,19 +485,30 @@ class DocVectorIndexImpl : public DocVectorIndex {
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = storage_dir,
-      .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
+      .vector_index_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
           block_cache_, options_, mem_tracker_))),
-      .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
+      .wait_frontier_durable = [this](const storage::UserFrontier& frontier) {
+        context_->WaitWalDurable(down_cast<const ConsensusFrontier&>(frontier).op_id());
+      },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
       .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
+      // Fixed by master at index creation: the chunk payload mode and the reverse mapping
+      // writes must stay consistent for the whole lifetime of the index.
+      .store_vector_payload = vector_index::StoreVectorPayload(StoresPayload()),
     };
-    return lsm_.Open(std::move(lsm_options));
+    RETURN_NOT_OK(lsm_.Open(std::move(lsm_options)));
+
+    return InitFrontiers(split_generation);
+  }
+
+  void StartDestroy() override {
+    lsm_.StartDestroy();
   }
 
   Status Destroy() override {
@@ -329,27 +519,72 @@ class DocVectorIndexImpl : public DocVectorIndex {
       const DocVectorIndexInsertEntries& entries,
       const InsertOptions& insert_options) override {
     typename LSM::InsertEntries lsm_entries;
-    lsm_entries.reserve(entries.size());
-    for (const auto& entry : entries) {
-      lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry)));
+    if (!FLAGS_TEST_vector_index_skip_insert) {
+      lsm_entries.reserve(entries.size());
+      for (const auto& entry : entries) {
+        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(
+            entry, StoresPayload(), options_.tenant_hash_group_and_range_components())));
+      }
     }
     vector_index::VectorLSMInsertContext context {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
       .reservation_mode = insert_options.reservation_mode,
+      .chunk_holds = insert_options.chunk_holds,
     };
-    return lsm_.Insert(lsm_entries, context);
+    RETURN_NOT_OK(lsm_.Insert(lsm_entries, context));
+    if (FLAGS_TEST_vector_index_duplicate_inserted_vectors && !lsm_entries.empty()) {
+      // The mutable chunk could keep only one copy.
+      RETURN_NOT_OK(lsm_.Flush(/* wait= */ false));
+      return lsm_.Insert(std::move(lsm_entries), context);
+    }
+    return Status::OK();
   }
 
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
     return lsm_.EstimateNumVectorsForBytes(bytes_limit);
   }
 
+  size_t DefaultChunkCapacity() const override {
+    return lsm_.DefaultChunkCapacity();
+  }
+
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
-    auto entries = VERIFY_RESULT(lsm_.Search(
-        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+    auto query_vector = VERIFY_RESULT(VectorFromYSQL<Vector>(vector));
+
+    // The next page skips the vectors of this one by count, which would cut a tie at the end of
+    // this page arbitrarily. So look one vector past the limit, and while it ties with the last
+    // one, widen the search to return the whole tie.
+    // TODO(vector_index) The tied vectors may take the page past the response size limit, which
+    // fails the search since a vector search page can't be paginated, see #25788.
+    const auto limit = options.max_num_results;
+    const size_t max_search_limit = limit == 0 ? 0 : limit + std::min<size_t>(
+        FLAGS_vector_index_max_extra_tied_results, std::numeric_limits<size_t>::max() - limit);
+    auto search_options = VERIFY_RESULT(LsmSearchOptions(options));
+    search_options.max_num_results = limit < max_search_limit ? limit + 1 : limit;
+    typename LSM::SearchResults entries;
+    for (;;) {
+      entries = VERIFY_RESULT(SearchWithinKeyBounds(query_vector, search_options));
+      const auto search_limit = search_options.max_num_results;
+      if (entries.size() < search_limit || search_limit == max_search_limit ||
+          entries.back().distance != entries[limit - 1].distance) {
+        break;
+      }
+      search_options.max_num_results += std::min(search_limit, max_search_limit - search_limit);
+    }
+    auto could_have_more_entries = could_have_missing_entries && entries.size() >= limit;
+    if (entries.size() > limit) {
+      auto tie_end = std::find_if(
+          entries.begin() + limit, entries.end(),
+          [distance = entries[limit - 1].distance](const auto& entry) {
+            return entry.distance != distance;
+          });
+      // The erased vectors are left to the next page.
+      could_have_more_entries = could_have_more_entries || tie_end != entries.end();
+      entries.erase(tie_end, entries.end());
+    }
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
@@ -359,7 +594,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     TEST_SYNC_POINT("DocVectorIndexImpl::Search:AfterFilter");
     TEST_SYNC_POINT("DocVectorIndexImpl::Search:BeforeResolve");
 
-    // Resolve ybctids with the caller's reader -- the same one the filter used -- so both see one
+    // Entries which carry a payload resolve directly from it. Other entries are
+    // resolved with the caller's reader -- the same one the filter used -- so both see one
     // snapshot. Otherwise a DELETE whose reverse-mapping tombstone lands between the two reads lets
     // the filter accept an entry that resolves empty here; such a row is still dropped when its
     // ybctid is fetched (the row delete is intent-tracked, unlike the physical-only reverse map).
@@ -367,19 +603,27 @@ class DocVectorIndexImpl : public DocVectorIndex {
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
                       << ", entries.size(): " << entries.size()
                       << ", options.max_num_results: " << options.max_num_results;
-    result.could_have_more_data =
-        could_have_missing_entries && entries.size() >= options.max_num_results;
+    result.could_have_more_data = could_have_more_entries;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
-      VLOG_WITH_FUNC(4)
-          << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
-      if (ybctid.empty()) {
-        if (could_have_missing_entries) {
-          continue;
-        }
-        return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
+      Slice ybctid;
+      if (!entry.payload.empty()) {
+        ybctid = VERIFY_RESULT(dockv::DocVectorIndexPayloadYbctid(entry.payload.AsSlice()));
       }
+      const auto ybctid_from_payload = !ybctid.empty();
+      if (ybctid.empty()) {
+        // The index does not store payloads, resolve the ybctid via the reverse mapping.
+        ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
+        if (ybctid.empty()) {
+          if (could_have_missing_entries) {
+            continue;
+          }
+          return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
+        }
+      }
+      VLOG_WITH_FUNC(4)
+          << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString()
+          << ", source: " << (ybctid_from_payload ? "payload" : "reverse mapping");
 
       result.entries.push_back(DocVectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
@@ -436,8 +680,36 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.GetFrontiers(kinds);
   }
 
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) override {
+    if (mode == rocksdb::FrontierModificationMode::kForce) {
+      RETURN_NOT_OK(lsm_.ModifyChunkFrontiers([&frontier](storage::UserFrontiers& frontiers) {
+        SetChunkOpId(frontiers, frontier.op_id());
+      }));
+    }
+    // An empty insert only carries the frontier into the mutable chunk, the following flush
+    // persists it. Same shape as the split generation update above.
+    auto frontiers = StampChunkFrontiers(frontier.op_id());
+    RETURN_NOT_OK(Insert(
+        DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
+    // Wait for the flush: callers stamp an OpId to make it durable, and an ungraceful restart
+    // could otherwise happen before the chunk reaches the manifest.
+    RETURN_NOT_OK(Flush());
+    return WaitForFlush();
+  }
+
+  Result<bool> AdvanceFlushedOpId(const OpId& op_id) override {
+    ConsensusFrontiers frontiers;
+    frontiers.Largest().set_op_id(op_id);
+    return lsm_.AdvanceFlushedFrontier(frontiers);
+  }
+
   rocksdb::FlushAbility GetFlushAbility() override {
       return lsm_.GetFlushAbility();
+  }
+
+  Status GetFlushStatus() const override {
+    return lsm_.GetFlushStatus();
   }
 
   Status CreateCheckpoint(const std::string& out) override {
@@ -446,10 +718,6 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& ToString() const override {
     return name_;
-  }
-
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const override {
-    return lsm_.HasVectorId(vector_id);
   }
 
   Result<size_t> TotalEntries() const override {
@@ -479,15 +747,147 @@ class DocVectorIndexImpl : public DocVectorIndex {
  private:
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 
+  const std::string& LogPrefix() const {
+    return lsm_.LogPrefix();
+  }
+
+  // Checks that the query has a tenant of the index, see PgVectorReadOptionsPB::tenant.
+  Result<vector_index::SearchOptions> LsmSearchOptions(vector_index::SearchOptions options) const {
+    const auto num_components = options_.tenant_hash_group_and_range_components();
+    if (!num_components) {
+      options.tenant = Slice();
+      return options;
+    }
+    SCHECK(
+        !options.tenant.empty(), InvalidArgument,
+        Format("Search of a vector index with tenants got no tenant. Postgres passes it from "
+               "pushed down conditions that compare each of the first $0 primary key components, "
+               "all hash columns counting as one, with a single value", num_components));
+    auto tenant_size = VERIFY_RESULT(dockv::DocKey::EncodedHashGroupAndRangeComponentsSize(
+        options.tenant, num_components));
+    SCHECK(
+        tenant_size == options.tenant.size(), InvalidArgument,
+        Format("Tenant $0 does not have $1 hash group and range components",
+               options.tenant.ToDebugHexString(), num_components));
+    return options;
+  }
+
+  Result<typename LSM::SearchResults> SearchWithinKeyBounds(
+      const Vector& query_vector, const vector_index::SearchOptions& options) const {
+    const auto& key_bounds = context_->key_bounds();
+    if (!StoresPayload() || !key_bounds.IsInitialized()) {
+      return lsm_.Search(query_vector, options);
+    }
+    // Chunks inherited from the split parent keep the sibling tablet vectors until compaction.
+    // Skip them, so they do not displace the vectors of this tablet from the result.
+    auto search_options = options;
+    search_options.filter = [&key_bounds, &filter = options.filter](
+        const vector_index::VectorId& vector_id, Slice payload) {
+      // A payload which fails to decode is passed through: the caller's filter
+      // or the ybctid resolution in Search reports it if it reaches either.
+      auto within_bounds = IsPayloadWithinKeyBounds(key_bounds, payload);
+      return (!within_bounds.ok() || *within_bounds) && filter(vector_id, payload);
+    };
+    return lsm_.Search(query_vector, search_options);
+  }
+
+  // Detects whether a new split occurred. If so, records the new split generation and
+  // split_min_chunk_serial_no so ParentDataCompacted() can check whether all inherited chunks gone.
+  Status InitFrontiers(uint64_t split_generation) {
+    auto frontier = GetFlushedFrontier();
+
+    // Sanity check. Absent frontier is possible only if there are no data chunks yet.
+    // It is safe to read MinSerialNo() as no flush could be happening at this point.
+    DCHECK(frontier || !lsm_.MinSerialNo());
+
+    const auto persisted_split_generation = frontier ? frontier->split_generation() : 0;
+    if (persisted_split_generation > split_generation) {
+      // Having split_generation == 0 (taken from the superblock) with a non-zero split_generation
+      // from the vector index manifest means the superblock lost the field: either an older build
+      // rewrote KvStoreInfo without it, or the metadata came from a snapshot predating the field.
+      // Tablet restores the superblock from the vector indexes manifests after open.
+      if (split_generation == 0) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Superblock split_generation is 0 while vector index manifest has "
+            << persisted_split_generation
+            << "; will be restored after tablet opened";
+      } else {
+        // Any other mismatch is unexpected.
+        LOG_WITH_PREFIX(DFATAL)
+            << "Persisted split generation " << persisted_split_generation << " is greater than "
+            << "the current split generation " << split_generation;
+      }
+    }
+
+    // No split happened, just pick the current split_min_chunk_serial_no for the cases when
+    // previous post-split compaction was not yet completed.
+    if (split_generation <= persisted_split_generation) {
+      split_generation_ = persisted_split_generation;
+      split_min_chunk_serial_no_ = frontier ? frontier->split_min_chunk_serial_no() : 0;
+      return Status::OK();
+    }
+
+    // No frontier means the index has no data chunks yet. Which means we can treat it as
+    // all parent data compacted and avoid persisting frontiers without chunks.
+    // However, we still need to persist the split generation to not treat it as a new split
+    // when opening the index, when it is created on a split child.
+    if (frontier) {
+      // A new split happened since the last recording, update split_min_chunk_serial_no.
+      split_min_chunk_serial_no_ = lsm_.LastSerialNo() + 1;
+    }
+
+    // Update the split generation.
+    DCHECK_GT(split_generation, 0);
+    split_generation_ = split_generation;
+
+    // Persist the new split generation together with split_min_chunk_serial_no, so
+    // ParentDataCompacted() can later tell whether all pre-split chunks have been compacted away.
+    ConsensusFrontiers frontiers;
+    frontiers.Largest().SetSplitGeneration(split_generation_);
+    if (split_min_chunk_serial_no_) {
+      frontiers.Largest().SetSplitMinChunkSerialNo(split_min_chunk_serial_no_);
+    }
+
+    // No need to wait for flush here, as Insert happens on vector index open, before any data
+    // is inserted, and VectorLSM keeps flushes ordered, so the boundary can not miss a chunk.
+    RETURN_NOT_OK(Insert(
+        DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
+    return Flush();
+  }
+
+  // Checks whether all data chunks have serial_no >= split_min_chunk_serial_no.
+  // split_min_chunk_serial_no == 0 or no data chunks means no pending post-split compaction.
+  bool ComputeParentDataCompacted() const override {
+    // All legacy vector indexes (created before introducing this parameter) are treated as
+    // already compacted, because there's no simple way to tell whether they were really compacted.
+    if (split_min_chunk_serial_no_ == 0) {
+      return true;
+    }
+
+    // Treat no chunks as all parent data has been compacted.
+    auto min_serial_no = lsm_.MinSerialNo();
+    if (!min_serial_no) {
+      return true;
+    }
+
+    return *min_serial_no >= split_min_chunk_serial_no_;
+  }
+
   const TableId table_id_;
   const KeyBuffer indexed_table_key_prefix_;
   const PgVectorIdxOptionsPB options_;
+  const bool stores_payload_;
+  const bool table_writes_reverse_mapping_;
   const HybridTime hybrid_time_;
   const DocVectorIndexContextPtr context_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
   const MetricEntityPtr metric_entity_;
   const DocVectorIndexMetrics metrics_;
+
+  // Both are set by InitFrontiers() during Open() and stay immutable afterwards.
+  uint64_t split_generation_ = 0;
+  uint64_t split_min_chunk_serial_no_ = 0;
 
   std::string name_;
   LSM lsm_;
@@ -532,7 +932,11 @@ storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUser
       storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
-bool DocVectorIndex::BackfillDone() {
+bool DocVectorIndex::IsIndexedTableKey(Slice key) const {
+  return key.starts_with(indexed_table_key_prefix());
+}
+
+Result<bool> DocVectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
     return true;
   }
@@ -541,12 +945,37 @@ bool DocVectorIndex::BackfillDone() {
     backfill_done_cache_.store(true);
     return true;
   }
+  std::lock_guard lock(backfill_status_mutex_);
+  if (!backfill_status_.ok()) {
+    return backfill_status_;
+  }
+  return false;
+}
+
+void DocVectorIndex::SetBackfillStatus(const Status& status) {
+  std::lock_guard lock(backfill_status_mutex_);
+  backfill_status_ = status;
+}
+
+bool DocVectorIndex::ParentDataCompacted() {
+  if (parent_data_compacted_cache_.load(std::memory_order_relaxed)) {
+    return true;
+  }
+
+  if (ComputeParentDataCompacted()) {
+    parent_data_compacted_cache_.store(true, std::memory_order_relaxed);
+    return true;
+  }
+
   return false;
 }
 
 void DocVectorIndex::ApplyReverseEntry(
     rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
     ColumnId column_id, Slice table_key_prefix) {
+  if (FLAGS_TEST_vector_index_skip_reverse_mapping_write) {
+    return;
+  }
   DocHybridTimeBuffer ht_buf;
   auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
   auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;
@@ -562,12 +991,23 @@ void DocVectorIndex::ApplyReverseEntry(
   handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &value_slice, 1 });
 }
 
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
+  // The added chunk gives an index restored without chunks the OpId too.
+  // The same env VectorLSM loads its manifest with.
+  return vector_index::VectorLSMMetadataModifyChunkFrontiers(
+      Env::Default(), storage_dir, [] { return std::make_unique<ConsensusFrontiers>(); },
+      [&op_id](storage::UserFrontiers& frontiers) { SetChunkOpId(frontiers, op_id); },
+      StampChunkFrontiers(op_id));
+}
+
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& storage_dir,
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
+    TableWritesReverseMapping table_writes_reverse_mapping,
     HybridTime hybrid_time,
+    uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
@@ -575,16 +1015,17 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const MetricEntityPtr& metric_entity) {
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), index_info.vector_idx_options(), hybrid_time, indexed_table_key_prefix,
-      std::move(vector_index_context), block_cache, mem_tracker, metric_entity);
-  RETURN_NOT_OK(result->Open(log_prefix, storage_dir, thread_pool_provider));
+      table_writes_reverse_mapping, std::move(vector_index_context), block_cache, mem_tracker,
+      metric_entity);
+  RETURN_NOT_OK(result->Open(log_prefix, storage_dir, split_generation, thread_pool_provider));
   return result;
 }
 
 DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entity)
     : convert_us(METRIC_vector_index_convert_us.Instantiate(metric_entity)),
       filter_checked(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_accepted(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_removed(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_accepted(METRIC_vector_index_filter_accepted.Instantiate(metric_entity)),
+      filter_removed(METRIC_vector_index_filter_removed.Instantiate(metric_entity)),
       read_data_us(METRIC_vector_index_read_data_us.Instantiate(metric_entity)),
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),

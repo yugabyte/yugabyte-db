@@ -38,6 +38,14 @@ There are multiple components and stages involved in the execution of a distribu
 To understand how a transaction is executed, see [Transactional I/O path](transactional-io-path/).
 {{</lead>}}
 
+## Transactional DDL
+
+YugabyteDB can roll back DDL statements that run inside a transaction block. Isolation between concurrent DDL is weaker than in PostgreSQL while object locks are still under development.
+
+{{<lead link="transactional-ddl/">}}
+To learn how to enable transactional DDL and what it can roll back, see [Transactional DDL](transactional-ddl/).
+{{</lead>}}
+
 ## Single-row transactions
 
 In cases where keys involved in the transaction are located in the same tablet, YugabyteDB has optimizations to execute the transaction much faster. The transaction manager of YugabyteDB automatically detects transactions that update a single row (as opposed to transactions that update rows across tablets or nodes). In order to achieve high performance, the updates to a single row directly update the row without having to interact with the transaction status tablet using a single row transaction path (also known as fast path).
@@ -66,8 +74,8 @@ To learn how YugabyteDB handles conflicts between concurrent transactions, see [
 
 As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior.
 
-{{<lead link="../../explore/transactions/explicit-locking">}}
-To learn about the different locking mechanism, see [Explicit locking](../../explore/transactions/explicit-locking).
+{{<lead link="concurrency-control/">}}
+To learn about the different locking mechanisms, see [Concurrency control](concurrency-control/).
 {{</lead>}}
 
 ## Transaction priorities

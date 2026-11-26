@@ -59,12 +59,15 @@ macro(YRPC_PROCESS_FILE FIL MESSAGES)
   set(PROXY_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.proxy.cc")
   set(PROXY_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.proxy.h")
   set(FORWARD_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.fwd.h")
+  set(TRACE_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.trace.cc")
+  set(TRACE_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.trace.h")
   set(MESSAGES_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.messages.cc")
   set(MESSAGES_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.messages.h")
-  list(APPEND ${SRCS} "${PROTO_CC_OUT}")
-  list(APPEND ${HDRS} "${PROTO_H_OUT}" "${FORWARD_H}")
+  list(APPEND ${SRCS} "${PROTO_CC_OUT}" "${TRACE_CC}")
+  list(APPEND ${HDRS} "${PROTO_H_OUT}" "${FORWARD_H}" "${TRACE_H}")
   set(OUTPUT_FILES "")
-  list(APPEND OUTPUT_FILES "${PROTO_CC_OUT}" "${PROTO_H_OUT}" "${FORWARD_H}")
+  list(APPEND OUTPUT_FILES
+    "${PROTO_CC_OUT}" "${PROTO_H_OUT}" "${FORWARD_H}" "${TRACE_CC}" "${TRACE_H}")
 
   if(${ARG_SERVICE})
     list(APPEND ${SRCS} "${SERVICE_CC}" "${PROXY_CC}")
@@ -105,7 +108,7 @@ macro(YRPC_PROCESS_FILE FIL MESSAGES)
     VERBATIM)
 
   GET_PROTOBUF_GENERATION_TARGET_NAME("${PROTO_REL_TO_YB_SRC_ROOT}" TGT_NAME)
-  set(TGT_DEPS "${PROTO_CC_OUT}" "${PROTO_H_OUT}" "${FORWARD_H}")
+  set(TGT_DEPS "${PROTO_CC_OUT}" "${PROTO_H_OUT}" "${FORWARD_H}" "${TRACE_CC}" "${TRACE_H}")
   if(${ARG_SERVICE})
     list(APPEND TGT_DEPS
       "${SERVICE_CC}" "${SERVICE_H}" protoc-gen-insertions

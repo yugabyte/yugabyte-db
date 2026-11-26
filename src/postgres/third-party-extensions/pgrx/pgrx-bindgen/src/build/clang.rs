@@ -40,10 +40,10 @@ pub(crate) fn detect_include_paths_for(
     // so we can only use clangs that match bindgen's libclang major version.
     if let Some(ClangSys { path, version: Some(v), c_search_paths, .. }) =
         ClangSys::find(preferred_clang, &[])
+        && Some(&*path) == preferred_clang
+        && v.Major as u32 == clang_major
     {
-        if Some(&*path) == preferred_clang && v.Major as u32 == clang_major {
-            return (false, c_search_paths.unwrap_or_default());
-        }
+        return (false, c_search_paths.unwrap_or_default());
     }
 
     // Oh no, still here?

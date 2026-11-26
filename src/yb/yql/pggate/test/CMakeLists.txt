@@ -24,6 +24,7 @@ add_library(pggate_test
 
 target_link_libraries(pggate_test
                       yb_pggate
+                      yb_common_test_util
                       yb_test_util
                       integration-tests
                       test_admin_client)
@@ -36,6 +37,7 @@ add_dependencies(pggate_test postgres)
 ADD_YB_TEST(pggate_test_catalog)
 ADD_YB_TEST(pggate_test_delete)
 ADD_YB_TEST(pggate_test_select)
+ADD_YB_TEST(pggate_test_aggregate_pushdown)
 ADD_YB_TEST(pggate_test_select_inequality)
 ADD_YB_TEST(pggate_test_select_multi_tablets)
 ADD_YB_TEST(pggate_test_sequence)

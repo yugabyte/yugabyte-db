@@ -266,7 +266,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           ServerType.MASTER);
     } else {
       targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
-          XClusterConfigTaskBase.getProducerCertsDir(targetPrimaryUserIntent.provider);
+          XClusterConfigTaskBase.getProducerCertsDir(targetPrimaryUserIntent);
     }
     log.debug(
         "sourceRootCertDirPath={} will be used", targetUniverseDetails.getSourceRootCertDirPath());

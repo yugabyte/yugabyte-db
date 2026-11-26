@@ -16,8 +16,11 @@ Env overrides:
                     (created as a git worktree off this script's repo,
                     sharing .git so fetches don't duplicate the object DB)
     YB_GH_REPO      upstream owner/name; default yugabyte/yugabyte-db
-    YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>
-    YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol
+    YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>.
+                    Must be a fork of YB_GH_REPO, with any owner, including
+                    the upstream org (e.g. yugabyte/yugabyte-db-dev).
+    YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol.
+                    Its path must name the YB_GH_FORK repo.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import NoReturn, Optional
 
@@ -72,10 +76,15 @@ def git_ok(*args, cwd=None) -> bool:
 
 def gh_json(args, *, check=True):
     """Run `gh api <args>` and parse stdout as JSON. Returns None on failure."""
-    proc = run(["gh", "api", *args], check=False)
+    return gh_cmd_json(["gh", "api", *args], check=check)
+
+
+def gh_cmd_json(cmd, *, check=True):
+    """Run a `gh` command whose stdout is JSON and parse it. Returns None on failure."""
+    proc = run(cmd, check=False)
     if proc.returncode != 0:
         if check:
-            raise CmdError(["gh", "api", *args], proc.returncode, proc.stdout, proc.stderr)
+            raise CmdError(cmd, proc.returncode, proc.stdout, proc.stderr)
         return None
     if not proc.stdout.strip():
         return None
@@ -230,11 +239,14 @@ def ensure_commit_local(commit: str, upstream_remote: str) -> str:
 def lookup_originating_pr(gh_repo: str, commit: str) -> tuple[Optional[int], Optional[str]]:
     """Return (pr_number, pr_url) for the merge PR of $commit, or (None, None)."""
     info(f"Looking up originating PR for {commit[:9]}")
-    data = gh_json([f"repos/{gh_repo}/commits/{commit}/pulls"], check=False)
-    if not data:
+    data = gh_json([f"repos/{gh_repo}/commits/{commit}/pulls"], check=False) or []
+    # The repo is squash-only, so the originating PR is the one whose merge
+    # commit is this commit. A Phorge-landed commit has none, but later PRs
+    # that contain it (e.g. merging master into pg19) are listed too.
+    pr = next((p for p in data if p.get("merge_commit_sha") == commit), None)
+    if pr is None:
         print("No originating PR found; backport body will reference the commit hash only.")
         return None, None
-    pr = data[0]
     print(f"Found originating PR: #{pr['number']} -> {pr['html_url']}")
     return pr["number"], pr["html_url"]
 
@@ -268,8 +280,82 @@ def detect_auto_reviewers(gh_repo: str, prnum: int, self_login: str) -> str:
     return ",".join(out)
 
 
+# Internal roster mapping GitHub logins to Phorge usernames (and more).
+# Readable only by YugabyteDB org members.
+ROSTER_REPO = "yugabyte/eng-team"
+ROSTER_PATH = "scripts/lib/yb-eng.json"
+
+
+def detect_phorge_reviewers(commit: str, self_login: str) -> str:
+    """GitHub logins of the Phorge reviewers of a Phorge-landed $commit.
+
+    Phorge usernames differ from GitHub logins, so map them through the
+    roster. Names with no roster entry (Phorge projects such as `xCluster`)
+    and people who have left are dropped.
+    """
+    body = git("log", "-n1", "--format=%b", commit)
+    names: list[str] = []
+    for m in re.finditer(r"^(?:Reviewers|Reviewed By):(.*)$", body, re.M):
+        names += [n.strip() for n in m.group(1).split(",") if n.strip()]
+    if not names:
+        return ""
+    roster = gh_json(["-H", "Accept: application/vnd.github.raw",
+                      f"repos/{ROSTER_REPO}/contents/{ROSTER_PATH}"],
+                     check=False)
+    users = (roster or {}).get("users") if isinstance(roster, dict) else None
+    if not users:
+        warn(f"Could not read {ROSTER_REPO}/{ROSTER_PATH} to map Phorge "
+             f"reviewers ({', '.join(dict.fromkeys(names))}) to GitHub logins; "
+             "pass -r to request reviewers.")
+        return ""
+    by_phorge = {u.get("phorge"): login for login, u in users.items()
+                 if u.get("phorge") and not u.get("left")}
+    out: list[str] = []
+    skipped: list[str] = []
+    for n in dict.fromkeys(names):
+        login = by_phorge.get(n)
+        if not login:
+            skipped.append(n)
+        elif login != self_login and login not in out:
+            out.append(login)
+    if skipped:
+        warn(f"Phorge reviewers with no GitHub login in {ROSTER_PATH} (projects, "
+             f"or people missing from it), not requested: {', '.join(skipped)}")
+    return ",".join(out)
+
+
+def is_same_owner_fork(gh_repo: str, gh_fork: str) -> bool:
+    """True iff gh_fork is owned by gh_repo's owner (e.g. yugabyte/yugabyte-db-dev).
+
+    "<owner>:<branch>" can't name such a fork -- GitHub reads it as the
+    upstream repo itself -- so its PRs need the REST head_repo field.
+    """
+    return gh_fork.split("/", 1)[0].lower() == gh_repo.split("/", 1)[0].lower()
+
+
+def repo_from_url(url: str) -> Optional[str]:
+    """Return "<owner>/<repo>" from a git remote URL, or None if it has no such path.
+
+    Handles scheme URLs (https://, ssh://, with or without userinfo/port)
+    and scp-like ones (git@host:owner/repo); a trailing ".git" is dropped.
+    """
+    if "://" in url:
+        path = urllib.parse.urlsplit(url).path
+    elif ":" in url:
+        path = url.split(":", 1)[1]
+    else:
+        return None
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-len(".git")]
+    parts = path.split("/")
+    if len(parts) != 2 or not all(parts):
+        return None
+    return path
+
+
 def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str, str, str]:
-    """Return (gh_fork, fork_owner, push_url). Aborts if fork == upstream owner."""
+    """Return (gh_fork, fork_owner, push_url). Aborts unless gh_fork is a fork of gh_repo."""
     upstream_owner = gh_repo.split("/", 1)[0]
     repo_name = gh_repo.split("/", 1)[1]
 
@@ -280,16 +366,35 @@ def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str,
                  "Set YB_GH_FORK=<your-user>/<repo> or run 'gh repo fork' and re-run.")
         gh_fork = f"{gh_user}/{repo_name}"
 
+    # Ask GitHub rather than compare names: the fork may share the upstream's
+    # owner, and other spellings of the upstream (".git" suffix, a renamed
+    # repo's old name) must not slip through as a push target.
+    repo = gh_json([f"repos/{gh_fork}"], check=False) or {}
+    if not repo.get("fork") or gh_repo.lower() not in {
+            ((repo.get(k) or {}).get("full_name") or "").lower()
+            for k in ("parent", "source")}:
+        fail(f"'{gh_fork}' is not a fork of {gh_repo} (or could not be looked up). "
+             f"Set YB_GH_FORK=<owner>/<repo> to a fork of {gh_repo}, or run "
+             f"'gh repo fork {gh_repo}', and re-run. "
+             f"Refusing to push to anything else.")
+    gh_fork = repo["full_name"]
     fork_owner = gh_fork.split("/", 1)[0]
-    if fork_owner == upstream_owner:
-        fail(f"YB_GH_FORK '{gh_fork}' resolves to the upstream owner ({upstream_owner}). "
-             f"Refusing to push to the upstream repo.")
 
     info(f"Pushing to fork: {gh_fork} (PRs target {gh_repo})")
 
     # Build push URL: env override wins; otherwise mirror upstream's protocol.
+    # The override must name the fork checked above, or it would bypass that
+    # check, and the head_repo / existing-PR lookups would name a repo the
+    # branch was never pushed to.
     push_url = os.environ.get("YB_FORK_URL")
-    if not push_url:
+    if push_url:
+        url_repo = repo_from_url(push_url)
+        if (url_repo or "").lower() != gh_fork.lower():
+            # Don't echo the URL: it may carry a token in its userinfo.
+            fail(f"YB_FORK_URL names '{url_repo or '<no owner/repo path>'}', "
+                 f"not the fork {gh_fork}. Point it at {gh_fork}, or unset it "
+                 f"to derive the URL.")
+    else:
         upstream_url = git("remote", "get-url", upstream_remote, check=False)
         if upstream_url.startswith("https://"):
             push_url = f"https://github.com/{gh_fork}.git"
@@ -309,17 +414,30 @@ def task_branch_name(commit: str, branch: str) -> str:
     return f"backport-{commit[:9]}-{branch}"
 
 
-def existing_pr_url(gh_repo: str, head: str) -> Optional[str]:
-    """If a PR with this head already exists, return its URL; otherwise None."""
-    data = gh_json([
-        f"repos/{gh_repo}/pulls",
-        "-X", "GET",
-        "-F", f"head={head}",
-        "-F", "state=all",
-        "-F", "per_page=1",
-    ], check=False)
-    if data and isinstance(data, list) and data:
-        return data[0].get("html_url")
+def existing_pr_url(gh_repo: str, gh_fork: str, task: str) -> Optional[str]:
+    """If a PR from gh_fork's branch $task already exists, return its URL.
+
+    Looks PRs up by branch name and matches the head repo, rather than
+    using the REST "head=<owner>:<branch>" filter: for a fork owned by the
+    upstream's owner, that label is ambiguous with the upstream repo itself.
+    Aborts if the lookup fails: reading that as "no PR" would push and try
+    to open a PR that may already exist.
+    """
+    # gh before 2.89 returns headRepository as {id, name} only, without
+    # nameWithOwner, so the owner comes from headRepositoryOwner.
+    prs = gh_cmd_json(["gh", "pr", "list", "-R", gh_repo, "--head", task,
+                       "--state", "all",
+                       "--json", "url,headRepository,headRepositoryOwner"],
+                      check=False)
+    if not isinstance(prs, list):
+        fail(f"could not look up existing PRs for {task} on {gh_repo}. "
+             f"Check 'gh auth status' and the network, then re-run.")
+    for pr in prs:
+        pr = pr or {}
+        owner = (pr.get("headRepositoryOwner") or {}).get("login") or ""
+        name = (pr.get("headRepository") or {}).get("name") or ""
+        if f"{owner}/{name}".lower() == gh_fork.lower():
+            return pr.get("url")
     return None
 
 
@@ -374,7 +492,8 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
     # footers, with `Original commit: <SHA> / #<PR>` (GitHub-merged) or
     # `Original commit: <SHA> / D<diff>` (Phorge-merged) inserted above the
     # test-plan heading -- either Markdown `## Test plan` or Phorge
-    # `Test Plan:` -- or appended at the end if no heading exists.
+    # `Test Plan:` -- or appended at the end, above any trailers, if no
+    # heading exists.
     raw_body = git("log", "-n1", "--format=%b", commit)
     body_lines = [
         line for line in raw_body.splitlines()
@@ -411,13 +530,27 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
     if not inserted:
         while new_body_lines and not new_body_lines[-1].strip():
             new_body_lines.pop()
-        if new_body_lines:
-            new_body_lines.append("")
-        new_body_lines.append(original_line)
+        # Git reads trailers only from the last paragraph, so a line after
+        # `Co-authored-by:` would drop that co-author from the backport.
+        if ends_with_trailers(new_body_lines):
+            blanks = [i for i, line in enumerate(new_body_lines)
+                      if not line.strip()]
+            last_paragraph = blanks[-1] + 1 if blanks else 0
+            new_body_lines[last_paragraph:last_paragraph] = [original_line, ""]
+        else:
+            if new_body_lines:
+                new_body_lines.append("")
+            new_body_lines.append(original_line)
     new_body = "\n".join(new_body_lines)
 
     run(["git", "commit", "--amend", "--cleanup=verbatim",
          "-m", new_subject, "-m", new_body])
+
+
+def ends_with_trailers(body_lines: list[str]) -> bool:
+    message = "Subject\n\n" + "\n".join(body_lines) + "\n"
+    return bool(run(["git", "interpret-trailers", "--parse", "--no-divider"],
+                    input_=message).stdout.strip())
 
 
 def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> None:
@@ -473,17 +606,32 @@ def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> N
         raise ResumableConflict()
 
 
-def push_and_create_pr(*, gh_repo: str, push_url: str, pr_head: str, base: str,
-                        task: str, title: str, body: str) -> str:
+def push_and_create_pr(*, gh_repo: str, gh_fork: str, push_url: str, pr_head: str,
+                       base: str, task: str, title: str, body: str) -> str:
     """Push the task branch and open the PR. Returns PR URL."""
     info(f"Publishing backport PR for branch {task}")
     run(["git", "push", "-u", push_url, task])
-    proc = run(
-        ["gh", "pr", "create",
-         "-R", gh_repo, "-B", base, "-H", pr_head,
-         "-t", title, "-F", "-"],
-        input_=body,
-    )
+    if is_same_owner_fork(gh_repo, gh_fork):
+        # head_repo must be the full "<owner>/<repo>": GitHub's docs call it
+        # the repository's name, but the bare name gets 422 "field head is
+        # invalid". maintainer_can_modify defaults to true, which only an
+        # actor with push access to the fork may grant (else 422
+        # "fork_collab"), e.g. not a bot token that can only read the fork;
+        # the org owns the fork, so the grant adds nothing.
+        proc = run(
+            ["gh", "api", "-X", "POST", f"repos/{gh_repo}/pulls",
+             "--jq", ".html_url", "--input", "-"],
+            input_=json.dumps({"title": title, "body": body, "base": base,
+                               "head": task, "head_repo": gh_fork,
+                               "maintainer_can_modify": False}),
+        )
+    else:
+        proc = run(
+            ["gh", "pr", "create",
+             "-R", gh_repo, "-B", base, "-H", pr_head,
+             "-t", title, "-F", "-"],
+            input_=body,
+        )
     pr_url = proc.stdout.strip()
     print(pr_url)
     return pr_url
@@ -662,6 +810,10 @@ def main(argv: list[str]) -> int:
         auto_reviewers = detect_auto_reviewers(gh_repo, prnum, gh_user)
         if auto_reviewers:
             print(f"Auto-detected reviewers from PR #{prnum}: {auto_reviewers}")
+    elif re.search(r"^Differential Revision:", git("log", "-n1", "--format=%b", full_commit), re.M):
+        auto_reviewers = detect_phorge_reviewers(full_commit, gh_user)
+        if auto_reviewers:
+            print(f"Auto-detected reviewers from the Phorge revision: {auto_reviewers}")
 
     # Resolve final reviewer list. -r overrides; -r '' explicitly disables.
     explicit_rev = normalize_reviewers(args.reviewers)
@@ -740,10 +892,7 @@ def main(argv: list[str]) -> int:
         pr_head = f"{fork_owner}:{task}" if fork_owner else task
 
         # Skip if a backport PR for this head already exists.
-        try:
-            existing = existing_pr_url(gh_repo, pr_head)
-        except Exception:
-            existing = None
+        existing = existing_pr_url(gh_repo, gh_fork, task)
         if existing:
             info(f"Existing backport PR found: {existing} -- skipping")
             published_tasks.append(task)
@@ -822,8 +971,13 @@ def main(argv: list[str]) -> int:
             info(f"Task branch: {task}")
             print("Would have run:")
             print(f"  git push -u {push_url} {task}")
-            print(f"  gh pr create -R {gh_repo} -B {branch} -H {pr_head} "
-                  f"-t {shlex.quote(new_subject)} -F -  (body from stdin):")
+            if is_same_owner_fork(gh_repo, gh_fork):
+                print(f"  gh api -X POST repos/{gh_repo}/pulls  (head={task}, "
+                      f"head_repo={gh_fork}, maintainer_can_modify=false, base={branch}, "
+                      f"title={shlex.quote(new_subject)}, body:)")
+            else:
+                print(f"  gh pr create -R {gh_repo} -B {branch} -H {pr_head} "
+                      f"-t {shlex.quote(new_subject)} -F -  (body from stdin):")
             print("----")
             print(new_body)
             print("----")
@@ -831,7 +985,7 @@ def main(argv: list[str]) -> int:
                 print(f"  And then request reviewers: {final_reviewers}")
         else:
             new_url = push_and_create_pr(
-                gh_repo=gh_repo, push_url=push_url, pr_head=pr_head,
+                gh_repo=gh_repo, gh_fork=gh_fork, push_url=push_url, pr_head=pr_head,
                 base=branch, task=task, title=new_subject, body=new_body,
             )
             new_pr_num_match = re.search(r"/pull/(\d+)$", new_url)

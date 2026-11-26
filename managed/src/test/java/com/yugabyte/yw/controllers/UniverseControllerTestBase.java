@@ -50,6 +50,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -236,6 +237,9 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     lenient()
         .when(mockRuntimeConfig.getBoolean("yb.ui.feature_flags.enable_earlyoom"))
         .thenReturn(true);
+    lenient()
+        .when(mockRuntimeConfig.getBoolean(GlobalConfKeys.conditionalGetEnabled.getKey()))
+        .thenReturn(true);
     lenient().when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
     lenient().when(kubernetesManagerFactory.getManager()).thenReturn(mock(KubernetesManager.class));
   }
@@ -293,6 +297,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             new ReleaseContainer(
                 mockReleaseMetadata, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
     when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseContainer);
+    doReturn(false).when(mockReleaseContainer).isDisabledOrDeleted();
     doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
         .when(mockReleaseContainer)
         .getFilePath(Architecture.x86_64);

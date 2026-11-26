@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
@@ -111,6 +112,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   public static void generateYBADefaultImageBundle(
       Provider provider,
       CloudQueryHelper cloudQueryHelper,
+      ImageBundleUtil bundleUtil,
       Architecture arch,
       boolean isDefault,
       boolean forceFetchFromMetadata,
@@ -208,6 +210,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
       bundleName = getDefaultImageBundleName(provider.getCode());
     }
+    bundleUtil.setImageMarketplaceBasedFlags(provider, details, null);
     ImageBundle.create(provider, bundleName, details, metadata, isDefault);
   }
 
@@ -242,7 +245,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         }
       }
       generateYBADefaultImageBundle(
-          provider, cloudQueryHelper, arch, true, false, enableVMOSPatching);
+          provider, cloudQueryHelper, imageBundleUtil, arch, true, false, enableVMOSPatching);
     } else if (imageBundles != null) {
       Map<UUID, ImageBundle> existingImageBundles =
           provider.getImageBundles().stream()
@@ -331,12 +334,14 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       String defaultRegionImage =
           cloudQueryHelper.getDefaultImage(region, bundle.getDetails().getArch().toString());
       info.setYbImage(defaultRegionImage);
+      info.setIsImageMarketplaceBased(null);
       details.setSshUser(cloudType.getSshUser());
 
       regionBundleInfo.put(region.getCode(), info);
       details.setRegions(regionBundleInfo);
     }
     bundle.setDetails(details);
+    imageBundleUtil.setImageMarketplaceBasedFlags(provider, bundle);
     bundle.update();
   }
 
@@ -432,6 +437,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
                 provider.getUuid(), defaultImageBundle.get().getUuid(), arch.toString()));
       }
     }
+    imageBundleUtil.setImageMarketplaceBasedFlags(provider, details, null);
     ImageBundle.create(provider, bundle.getName(), details, metadata, bundle.getUseAsDefault());
   }
 

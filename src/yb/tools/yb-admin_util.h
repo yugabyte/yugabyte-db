@@ -13,13 +13,28 @@
 #pragma once
 
 #include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tools {
+
+// Returns true when the server does not implement the requested RPC method, i.e. predates it.
+bool IsUnsupportedRpcError(const Status& s);
+
+// Returns the names whose '_'-separated tokens cover every token of op (case-insensitive), where a
+// typed token covers a name token it abbreviates (with 3+ characters) or pluralizes. Ranked by
+// fewest uncovered name tokens, then alphabetically, and capped at max_results.
+std::vector<std::string> SuggestByNameTokens(
+    const std::string& op, const std::vector<std::string>& names, size_t max_results);
 
 std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
@@ -27,6 +42,20 @@ SnapshotId StringToSnapshotId(const std::string& str);
 
 void SortListTabletServerEntries(
     google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>& servers);
+
+HostPortPB SelectTabletServerAddress(
+    const google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>& servers);
+
+// Picks the address of a server to send an RPC to: the broadcast address when one is registered,
+// the private RPC address otherwise. Setting --yb_admin_force_use_private_ip reverses the
+// preference. Returns an empty HostPortPB when the server registered no address at all.
+HostPortPB SelectServerAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_rpc_addresses);
+
+HostPortPB SelectServerAddress(const ServerRegistrationPB& registration);
+
+HostPortPB SelectServerAddress(const master::TSInfoPB& ts_info);
 
 }  // namespace tools
 }  // namespace yb

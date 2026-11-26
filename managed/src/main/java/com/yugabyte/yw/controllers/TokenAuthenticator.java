@@ -11,16 +11,17 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.rbac.handlers.RequestPaths;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -99,6 +100,8 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final JWTVerifier jwtVerifier;
 
+  private final RoleBindingUtil roleBindingUtil;
+
   private final LoadingCache<String, Optional<UUID>> authTokenCache =
       CacheBuilder.newBuilder()
           .maximumSize(10000)
@@ -130,13 +133,15 @@ public class TokenAuthenticator extends Action.Simple {
       UserService userService,
       RuntimeConfGetter confGetter,
       RuntimeConfigCache runtimeConfigCache,
-      JWTVerifier jwtVerifier) {
+      JWTVerifier jwtVerifier,
+      RoleBindingUtil roleBindingUtil) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.userService = userService;
     this.confGetter = confGetter;
     this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
+    this.roleBindingUtil = roleBindingUtil;
   }
 
   public Users getCurrentAuthenticatedUser(Http.Request request) {
@@ -166,10 +171,15 @@ public class TokenAuthenticator extends Action.Simple {
         // Defaulting to regular flow to support dual login.
         token = fetchToken(request, false /* isApiToken */);
         user = authWithToken(token, false);
+        // Mirrors LoginHandler: only a local-account SuperAdmin may hold a session while local
+        // login is restricted. Ordered cheapest-first so the role-binding lookup, which costs
+        // several uncached queries, runs only when the flag and the account type both require it.
         if (user != null
-            && !user.getRole().equals(Users.Role.SuperAdmin)
-            && !allowLocalLoginWithSso) {
-          user = null; // We want to only allow SuperAdmins access.
+            && !allowLocalLoginWithSso
+            && !(RoleBindingUtil.isLocalAccount(user) && roleBindingUtil.isSuperAdmin(user))) {
+          // Nulling rather than throwing lets the request reach the API-token branch below -- but
+          // only when no PLAY_SESSION cookie is present, which line 179 enforces.
+          user = null;
         }
       }
     } else {
@@ -200,22 +210,24 @@ public class TokenAuthenticator extends Action.Simple {
       String endPoint = "";
       String path = request.path();
       String requestType = request.method();
-      Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
+      // find() returns the first match, which is the route's own ":cUUID".
+      Pattern pattern = Pattern.compile("/customers/([^/]+)(/.*)?");
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
 
       // Allow for disabling authentication on proxy endpoint so that
       // Prometheus can scrape database nodes.
-      if (Pattern.matches(
-              String.format(
-                  "^.*/universes/%s/proxy/%s/(.*)$", Util.PATTERN_FOR_UUID, Util.PATTERN_FOR_HOST),
-              path)
+      if (RequestPaths.isMetricsProxy(path)
           && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
         return delegate.call(request);
       }
 
       if (matcher.find()) {
-        custUUID = UUID.fromString(matcher.group(1));
+        custUUID = RequestPaths.parseUuid(matcher.group(1));
+        if (custUUID == null) {
+          return CompletableFuture.completedFuture(
+              Results.unauthorized("Unable To Authenticate User"));
+        }
         endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";
       }
       Customer cust;

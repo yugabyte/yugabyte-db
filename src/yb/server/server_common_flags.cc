@@ -49,9 +49,9 @@ DEFINE_RUNTIME_AUTO_bool(ysql_yb_enable_advisory_locks, kLocalPersisted, false, 
     "Whether to enable advisory locks.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
-    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
-    "11.");
-DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0, 11 "
+    "and 15.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11, 15));
 
 // DevNote: If this flag is changed to runtime then it needs to be converted to RUNTIME_PG_FLAG,
 // and pggate/webserver/ybc_pg_webserver_wrapper.cc needs to be updated to use the guc instead of
@@ -64,6 +64,10 @@ DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_upgrade_to_pg15_completed, kLocalPersisted, false, true,
     "Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this "
     "manually.");
+
+DEFINE_RUNTIME_AUTO_bool(skip_fields_moved_to_xcluster_guarded_info, kLocalVolatile, false, true,
+    "Skip sending in master heartbeat responses the fields that were moved into "
+    "xcluster_guarded_info, and skip applying them on TServers.");
 
 namespace yb {
 

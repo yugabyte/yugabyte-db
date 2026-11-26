@@ -50,6 +50,7 @@ Run Java tests satisfying a particular regex:
 """
 
 import argparse
+import contextlib
 import errno
 import functools
 import getpass
@@ -57,6 +58,7 @@ import glob
 import gzip
 import json
 import logging
+import math
 import operator
 import os
 import platform
@@ -76,7 +78,7 @@ from datetime import datetime
 
 from collections import defaultdict
 
-from typing import List, Dict, Set, Tuple, Optional, Any, cast
+from typing import List, Dict, Iterator, Set, Tuple, Optional, Any, cast
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -124,16 +126,57 @@ def wait_for_path_to_exist(target_path: str) -> None:
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'python'))
 from yugabyte import yb_dist_tests  # noqa
 from yugabyte import command_util  # noqa
-from yugabyte.common_util import set_to_comma_sep_str, is_macos  # noqa
+from yugabyte.common_util import (  # noqa
+    set_to_comma_sep_str,
+    is_macos,
+)
 from yugabyte import artifact_upload  # noqa
 
 REPEAT_FAILURE_LIMIT = 50
+
+# Most new tests per build the --new_test_repetitions pass will repeat, mirroring
+# REPEAT_FAILURE_LIMIT above: one source change can create hundreds of new test names (a
+# parameterized instantiation, a renamed test binary), and repeating all of them would cost more
+# than the lane they ride on. Past the limit a sample of this size is repeated.
+NEW_TEST_LIMIT = 50
+
+# Least share of this build's tests the known-test list (--known_test_list) has to cover for it to
+# be used as the baseline for "new". This is not a cap on how many tests are repeated
+# (NEW_TEST_LIMIT is): a list short of it is not used at all. The pipeline writes the list from
+# the previous launch of the lane; one that ended early reported a fraction of its tests, and every
+# test it never reached would otherwise read as new.
+NEW_TEST_MIN_KNOWN_RATIO = 0.9
+
+# Least share of a job's tests that must have an expected run time for the job to be packed
+# (--pack_target_sec, see plan_spark_tasks). A durations file that covers less than this was most
+# likely written from another lane's launch or from one that ended early, and the times it does
+# have are then not to be trusted either.
+PACK_MIN_KNOWN_RATIO = 0.9
+
+# The largest job, in test attempts, that is packed (see plan_spark_tasks). A job this small is
+# what packing is for: with one test per task it asks for an executor per test, and each sets up a
+# build tree to run a handful of them. A larger job keeps every executor it gets busy for long, so
+# one test per task wastes little there, and it is where a lost executor would cost a packed job
+# the most.
+PACK_MAX_TESTS = 1000
+
+# How many tasks, running and waiting, the cluster scaling daemon counts per node when it sizes a
+# Linux Spark cluster, where a node has one core (see plan_spark_tasks).
+SCALING_DAEMON_TASKS_PER_NODE = 25
+
+# How long to wait for the Spark master's status page when asking who holds the cluster's cores.
+SPARK_MASTER_UI_TIMEOUT_SEC = 10
 
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
 # scaling in (symptom: "Master removed our application: FAILED"). Submit the job for the
 # not-yet-completed test attempts up to SPARK_JOB_MAX_SUBMITS times, re-creating the Spark context
 # if needed.
 SPARK_JOB_MAX_SUBMITS = 3
+# When the failed tests also run on the baseline, concurrently with the diff re-runs (see
+# rerun_failed_tests_on_diff_and_baseline), the diff job is submitted this many seconds before the
+# baseline job so Spark's FIFO scheduler registers it first and gives its tasks priority. A short
+# head start is enough; the baseline job is best-effort and only backfills idle cores.
+BASELINE_SUBMIT_ORDER_DELAY_SEC = 10
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
@@ -189,14 +232,35 @@ HASH_COMMENT_RE = re.compile('#.*$')
 
 THREAD_JOIN_TIMEOUT_SEC = 10
 
+ARCHIVE_SHA_FILE_NAME = 'extracted_from_archive.sha256'
+
+# An archive already in GCS is reused only while younger than this. The bucket has to keep an
+# object for longer than this plus the longest run: a worker downloads the archive at its first
+# task on that tree, for the baseline tree hours into the run, and fails its tasks if a lifecycle
+# rule has deleted the object by then.
+ARCHIVE_GCS_MAX_REUSE_AGE_SEC = 24 * 3600
+GCP_METADATA_TOKEN_URL = (
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token')
+GCS_DOWNLOAD_ATTEMPTS = 3
+GCS_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+# The untar script's first command: it waits for the lock on fd 200, which the script opens on the
+# lock file. A caller that already holds that lock (hold_archive_lock) puts the no-op in its place.
+UNTAR_SCRIPT_TAKE_LOCK_CMD = 'flock -w 180 200 || exit 5'
+UNTAR_SCRIPT_LOCK_HELD_CMD = ': # the caller holds the lock'
+# How long a task waits in hold_archive_lock: for another task's download and extraction, where the
+# untar script's own wait only has an extraction to sit out.
+ARCHIVE_LOCK_WAIT_SEC = 20 * 60
+ARCHIVE_LOCK_POLL_SEC = 0.2
+
 UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
     PATH=/usr/local/bin:$PATH
-    flock -w 180 200 || exit 5
+    {take_lock}
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
-        previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
+        previous_sha256_file_path='{remote_yb_src_root}/{archive_sha_file_name}'
         if [[ ! -f $previous_sha256_file_path ]]; then
             echo "File $previous_sha256_file_path does not exist!" >&2
             previous_sha256sum="None-Found"
@@ -238,7 +302,7 @@ set -euo pipefail
             tar xzf '{archive_path}' -C "$yb_src_root_extract_tmp_dir"
         fi
         echo '{expected_archive_sha256sum}' \
-                >"$yb_src_root_extract_tmp_dir/extracted_from_archive.sha256"
+                >"$yb_src_root_extract_tmp_dir/{archive_sha_file_name}"
         mv "$yb_src_root_extract_tmp_dir" '{remote_yb_src_root}'
     fi
 )  200>'{lock_path}'
@@ -252,11 +316,33 @@ spark_context = None
 # Copy of the details list init_spark_context() was called with, so an equivalent context can be
 # re-created if the Spark application is lost mid-run (e.g. to Spark worker autoscaling).
 g_spark_context_details: List[str] = []
+# Every worker archive distributed to the current context, for the same reason: addFile is per
+# SparkContext, so a re-created one has to be given the whole set again. There is more than one when
+# the failed tests also run on the baseline (see prepare_baseline_conf_and_archive).
+g_spark_archives: List[str] = []
 archive_sha256sum = None
 g_max_num_test_failures = sys.maxsize
-# Whether the last Spark job submitted via run_spark_action was explicitly canceled (because the
-# number of test failures reached limit).
-g_spark_job_cancelled = False
+# Job groups whose Spark job was explicitly cancelled (because the number of test failures reached
+# the limit)
+g_cancelled_job_groups: Set[str] = set()
+# Packing several tests into one Spark task (see plan_spark_tasks). The target is the expected run
+# time a task should hold, in seconds; 0 turns packing off.
+g_pack_target_sec: float = 0
+# Expected run time of a test in seconds, by its descriptor without the attempt index. Loaded from
+# --test_durations_file, then set for every test of the main pass to the time it took there.
+g_expected_test_time_sec: Dict[str, float] = {}
+# The Spark master's web UI, e.g. http://host:8080, which says how many cores the cluster has.
+g_spark_master_ui_url: Optional[str] = None
+
+
+# Name of the job group each Spark job runs in, so when some jobs share Spark context we can:
+# 1. Cancel job individually.
+# 2. Distinguish their output in logs.
+ALL_TESTS_ON_DIFF_JOB_GROUP = 'all-tests-on-diff'
+FAILED_TESTS_ON_DIFF_JOB_GROUP = 'failed-tests-on-diff'
+FAILED_TESTS_ON_BASELINE_JOB_GROUP = 'failed-tests-on-baseline'
+# The extra runs of the tests new to this lane (--new_test_repetitions), after the main pass.
+NEW_TESTS_ON_DIFF_JOB_GROUP = 'new-tests-on-diff'
 
 
 def configure_logging() -> None:
@@ -333,16 +419,195 @@ def init_spark_context(conf: yb_dist_tests.TestConfig,
             '-x', '*.sw?', '-x', '*.pyc']
         subprocess.check_call(zip_cmd_args, cwd=os.path.join(conf.yb_src_root, 'python'))
         spark_context.addPyFile(yb_python_zip_path)
-    if conf.archive_for_workers is not None:
-        logging.info("Will send the archive %s to all Spark workers",
-                     conf.archive_for_workers)
-        spark_context.addFile(conf.archive_for_workers)
+    if archive_sent_through_spark(conf):
+        assert conf.archive_for_workers is not None
+        remember_archive_for_workers(conf.archive_for_workers)
+    # Send every remembered archive, not just this conf's. A re-created context starts with nothing
+    # distributed, and the baseline tree's archive went to the context this one replaces -
+    # without replaying it, its tasks fail with "Archive not found" on the new context, which is
+    # exactly the lost-application recovery the failed-tests-on-baseline job lives inside.
+    send_archives_to_workers()
 
     log_heading("Initialized Spark context")
 
 
+def remember_archive_for_workers(archive_path: str) -> None:
+    if archive_path not in g_spark_archives:
+        g_spark_archives.append(archive_path)
+
+
+# Whether conf's archive reaches the workers through Spark's addFile. An archive the driver
+# published to GCS is not: Spark copies every added file to every executor before its first task,
+# needed or not, so adding it as well would bring back the transfer the GCS path avoids.
+def archive_sent_through_spark(conf: yb_dist_tests.TestConfig) -> bool:
+    return conf.archive_for_workers is not None and conf.archive_gcs_url is None
+
+
+def gcs_object_age_sec(gcs_url: str) -> Optional[float]:
+    """Age of the GCS object in seconds, or None if it does not exist or cannot be described."""
+    result = subprocess.run(
+        ['gcloud', 'storage', 'objects', 'describe', gcs_url,
+         '--format=value(creation_time)'],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    created = result.stdout.strip()
+    if result.returncode != 0 or not created:
+        return None
+    try:
+        created_at = datetime.fromisoformat(created.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return time.time() - created_at.timestamp()
+
+
+# TODO(DEVOPS-4059): the archive reaches the workers in two ways, from GCS on a GCP cluster and
+# through Spark's file server everywhere else. Make object storage the one way on AWS clusters too:
+# an S3 prefix, with the upload, the reuse check and the download handling s3:// as they do gs://.
+def publish_archive_to_gcs(conf: yb_dist_tests.TestConfig, prefix: Optional[str]) -> None:
+    """
+    Uploads conf's worker archive under the gs:// prefix (--archive_gcs_prefix), named by its
+    checksum, and records its URL in conf.archive_gcs_url, so that the workers download it from GCS
+    instead of all fetching it from the driver through Spark's file server, where the driver's
+    network link is the limit. Best-effort: without the prefix, on macOS, or if the upload fails,
+    the URL stays unset and the archive goes through Spark as before. The caller passes a prefix
+    only for a Spark cluster on GCP: the workers get their GCS credentials from the GCP metadata
+    server, and nothing on a worker falls back to Spark.
+    """
+    prefix = (prefix or '').strip()
+    if not prefix or is_macos() or not conf.archive_for_workers or not conf.archive_sha256sum:
+        return
+    if not prefix.startswith('gs://'):
+        logging.warning("--archive_gcs_prefix %s is not a gs:// URL, sending the archive through "
+                        "Spark", prefix)
+        return
+    gcs_url = '%s/%s.tar.gz' % (prefix.rstrip('/'), conf.archive_sha256sum)
+    start_time_sec = time.time()
+    try:
+        age_sec = gcs_object_age_sec(gcs_url)
+        reused = age_sec is not None and age_sec < ARCHIVE_GCS_MAX_REUSE_AGE_SEC
+        if not reused:
+            subprocess.check_call(['gcloud', 'storage', 'cp', conf.archive_for_workers, gcs_url])
+    except (OSError, subprocess.CalledProcessError) as error:
+        logging.warning("Could not upload %s to %s, sending it through Spark instead: %s",
+                        conf.archive_for_workers, gcs_url, error)
+        return
+    conf.archive_gcs_url = gcs_url
+    logging.info("Workers will download the archive from %s (%s, %.1f sec)", gcs_url,
+                 'already there' if reused else 'uploaded', time.time() - start_time_sec)
+
+
+def parse_gcs_url(gcs_url: str) -> Tuple[str, str]:
+    if not gcs_url.startswith('gs://'):
+        raise ValueError("Not a gs:// URL: %s" % gcs_url)
+    bucket, _, object_name = gcs_url[len('gs://'):].partition('/')
+    if not bucket or not object_name:
+        raise ValueError("No bucket or object name in %s" % gcs_url)
+    return bucket, object_name
+
+
+# Runs on a Spark worker. Streams the object to dest_path with the worker VM's own service account
+# (from the GCP metadata server, so the worker needs no key file), hashing it on the way, and moves
+# it into place only if the checksum matches. Retries a few times before giving up.
+def download_archive_from_gcs(gcs_url: str, dest_path: str, expected_sha256sum: str) -> None:
+    import hashlib
+    import urllib.parse
+    import urllib.request
+
+    bucket, object_name = parse_gcs_url(gcs_url)
+    media_url = 'https://storage.googleapis.com/storage/v1/b/%s/o/%s?alt=media' % (
+        urllib.parse.quote(bucket, safe=''), urllib.parse.quote(object_name, safe=''))
+    last_error: Optional[Exception] = None
+    for attempt in range(1, GCS_DOWNLOAD_ATTEMPTS + 1):
+        tmp_path = '%s.download.%d' % (dest_path, random.randint(0, 2**32))
+        start_time_sec = time.time()
+        try:
+            token_request = urllib.request.Request(
+                GCP_METADATA_TOKEN_URL, headers={'Metadata-Flavor': 'Google'})
+            with urllib.request.urlopen(token_request, timeout=30) as token_response:
+                access_token = json.load(token_response)['access_token']
+            media_request = urllib.request.Request(
+                media_url, headers={'Authorization': 'Bearer ' + access_token})
+            sha256 = hashlib.sha256()
+            with urllib.request.urlopen(media_request, timeout=300) as response, \
+                    open(tmp_path, 'wb') as output_file:
+                while True:
+                    chunk = response.read(GCS_DOWNLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    sha256.update(chunk)
+                    output_file.write(chunk)
+            actual_sha256sum = sha256.hexdigest()
+            if actual_sha256sum != expected_sha256sum:
+                raise IOError("SHA256 sum of %s is %s, expected %s" % (
+                    gcs_url, actual_sha256sum, expected_sha256sum))
+            os.replace(tmp_path, dest_path)
+            logging.info("Downloaded %s in %.1f sec", gcs_url, time.time() - start_time_sec)
+            return
+        except Exception as error:
+            last_error = error
+            logging.warning("Attempt %d of %d to download %s failed: %s",
+                            attempt, GCS_DOWNLOAD_ATTEMPTS, gcs_url, error)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            if attempt < GCS_DOWNLOAD_ATTEMPTS:
+                time.sleep(5 * attempt)
+    raise IOError("Could not download %s: %s" % (gcs_url, last_error))
+
+
+# Runs on a Spark worker. Holds the untar script's lock (flock on the same file), waiting up to
+# ARCHIVE_LOCK_WAIT_SEC for it, and yields the locked file descriptor: a child process given it
+# (pass_fds) keeps the lock for as long as it runs, even if this process is killed first.
+@contextlib.contextmanager
+def hold_archive_lock(lock_path: str) -> Iterator[int]:
+    import fcntl
+
+    deadline_sec = time.time() + ARCHIVE_LOCK_WAIT_SEC
+    with open(lock_path, 'a') as lock_file:
+        while True:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.time() >= deadline_sec:
+                    raise IOError("Could not lock %s in %d sec" % (
+                        lock_path, ARCHIVE_LOCK_WAIT_SEC))
+                time.sleep(ARCHIVE_LOCK_POLL_SEC)
+        try:
+            yield lock_file.fileno()
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+# Runs on a Spark worker, before the untar script and under the same hold of its lock (the caller's
+# hold_archive_lock), so no other task can change the tree or download in between. Downloads conf's
+# archive from GCS to archive_path, unless the tree extracted from it is already in place (the
+# untar script then skips extraction and never reads the archive) or the archive is already there.
+def fetch_archive_from_gcs_if_needed(conf: yb_dist_tests.TestConfig, archive_path: str) -> None:
+    assert conf.archive_gcs_url is not None and conf.archive_sha256sum is not None
+    sha_file_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
+    if os.path.isfile(sha_file_path):
+        with open(sha_file_path) as sha_file:
+            if sha_file.read().strip() == conf.archive_sha256sum:
+                return
+    if os.path.exists(archive_path):
+        return
+    download_archive_from_gcs(conf.archive_gcs_url, archive_path, conf.archive_sha256sum)
+
+
+# Distributes every remembered archive to the current context. Called on each context creation, so a
+# context re-created after a lost application carries the same archives as the one it replaces.
+def send_archives_to_workers() -> None:
+    assert spark_context is not None
+    for archive_path in g_spark_archives:
+        logging.info("Will send the archive %s to all Spark workers", archive_path)
+        spark_context.addFile(archive_path)  # type: ignore
+
+
 def spark_context_is_stopped() -> bool:
     if spark_context is None:
+        return True
+    # SparkContext.stop() clears _jsc, so a context that was stopped through this process is already
+    # known to be stopped.
+    if spark_context._jsc is None:
         return True
     try:
         return cast(bool, spark_context._jsc.sc().isStopped())
@@ -471,15 +736,23 @@ def join_build_root_with(conf: yb_dist_tests.TestConfig, rel_path: str) -> str:
     return os.path.join(conf.build_root, rel_path)
 
 
+# This is executed on a Spark executor.
 def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: Any,
-                      rerun: bool, conf: yb_dist_tests.TestConfig) -> None:
+                      rerun: bool,
+                      conf: yb_dist_tests.TestConfig,
+                      env_vars: Dict[str, str],
+                      job_log_prefix: str) -> None:
     """
-    This is invoked in parallel to actually run tests. conf is the submitting job's build tree
-    config, unpickled from the task closure, so it is this task's own copy rather than module state
-    a previous task on this worker happened to leave behind.
+    Runs one test attempt inside a Spark task: run_tests_job calls this for each test attempt of a
+    task (one, unless the job is packed - see plan_spark_tasks), Spark runs as many tasks
+    concurrently as the cluster has cores, and this is where a test is actually executed.
+
+    conf is the submitting job's tree config, unpickled from the task closure, so it is this
+    task's own copy rather than module state a previous task on this worker happened to leave
+    behind. env_vars carries the same job's CSI launch (see run_tests_job).
     """
     try:
-        initialize_remote_task(conf)
+        initialize_remote_task(conf, env_vars)
     except Exception as e:
         build_host = os.environ.get('YB_BUILD_HOST', None)
         if build_host:
@@ -492,6 +765,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     old_umask = os.umask(2)
 
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+
+    # This task's launch, as initialize_remote_task just put it in the environment: the diff's for a
+    # diff task, the baseline's for a baseline task.
+    csi_launch = csi_report.env_launch()
 
     # This is saved in the test result file by process_test_result.py.
     os.environ['YB_TEST_DESCRIPTOR_STR'] = test_descriptor_str
@@ -531,7 +808,12 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     try:
         start_time_sec = time.time()
 
-        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt, rerun)
+        csi_id, failed_in_earlier_task_attempt = csi_report.create_test(
+            test_descriptor, start_time_sec, attempt, rerun)
+        if failed_in_earlier_task_attempt:
+            logging.info(
+                f"{job_log_prefix}Test {test_descriptor} failed in an earlier attempt of this "
+                f"Spark task (this is attempt {attempt}); it counts as failed whatever it does now")
 
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
@@ -557,7 +839,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 logging.warning("Test %s is being terminated due to timeout after %.1f seconds",
                                 test_descriptor, elapsed_time_sec)
                 if csi_id:
-                    csi_report.close_item(csi_id, final_time_sec, 'interrupted', [])
+                    csi_report.close_item(csi_id, final_time_sec, 'interrupted', [],
+                                          launch=csi_launch)
                     csi_report.upload_log(csi_id, final_time_sec, [error_output_path])
                     upload_spark_stderr(conf, test_descriptor_str, csi_id)
                 else:
@@ -579,12 +862,14 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
 
         elapsed_time_sec = time.time() - start_time_sec
         logging.info(
-            f"Test {test_descriptor} ran on {socket.gethostname()} in {elapsed_time_sec:.2f} "
-            f"seconds, exit code: {exit_code}{additional_log_message}")
+            f"{job_log_prefix}Test {test_descriptor} ran on {socket.gethostname()} in "
+            f"{elapsed_time_sec:.2f} seconds, exit code: {exit_code}{additional_log_message}")
         csi_result = 'passed'
         if exit_code != 0:
-            fail_count.add(1)
             csi_result = 'failed'
+        if exit_code != 0 or failed_in_earlier_task_attempt:
+            # The count of the earlier attempt was dropped with the rest of its results.
+            fail_count.add(1)
 
         artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
         spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
@@ -647,7 +932,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 os.path.relpath(os.path.abspath(artifact_path), conf.yb_src_root)
                 for artifact_path in artifact_paths]
 
-        csi_report.close_item(csi_id, end_time_sec, csi_result, csi_tags)
+        csi_report.close_item(csi_id, end_time_sec, csi_result, csi_tags, launch=csi_launch)
 
         test_results.add(yb_dist_tests.TestResult(
             exit_code=exit_code,
@@ -656,7 +941,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             failed_without_output=failed_without_output,
             artifact_paths=rel_artifact_paths,
             artifact_copy_result=artifact_copy_result,
-            spark_error_copy_result=spark_error_copy_result))
+            spark_error_copy_result=spark_error_copy_result,
+            skipped=csi_result == 'skipped',
+            failed_in_earlier_task_attempt=failed_in_earlier_task_attempt))
         return None
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
@@ -668,6 +955,26 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             timer_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
 
 
+def run_spark_task(test_descriptor_strs: List[str], fail_count: Any, test_results: Any,
+                   rerun: bool,
+                   conf: yb_dist_tests.TestConfig,
+                   env_vars: Dict[str, str],
+                   job_log_prefix: str) -> None:
+    """
+    Runs the test attempts of one Spark task in sequence on this executor: one attempt, or the
+    several that plan_spark_tasks packed together.
+
+    The results of a task reach the driver only when the whole task finishes. When an attempt
+    raises or the executor is lost, Spark runs the whole task again, and the results of the
+    attempts that had already finished are dropped with it: those tests run and report once more.
+    What a test did before the loss is still in CSI, and a test that had failed stays a failed one
+    (TestResult.failed_in_earlier_task_attempt).
+    """
+    for test_descriptor_str in test_descriptor_strs:
+        parallel_run_test(test_descriptor_str, fail_count, test_results, rerun, conf, env_vars,
+                          job_log_prefix)
+
+
 def get_bash_shebang() -> str:
     # Prefer /usr/local/bin/bash as we install Bash 4+ there on macOS.
     if os.path.exists('/usr/local/bin/bash'):
@@ -676,10 +983,14 @@ def get_bash_shebang() -> str:
 
 
 # This is executed on a Spark executor as part of running a task.
-def initialize_remote_task(conf: yb_dist_tests.TestConfig) -> None:
+def initialize_remote_task(conf: yb_dist_tests.TestConfig,
+                           env_vars: Dict[str, str]) -> None:
     configure_logging()
 
-    conf.set_env_on_spark_worker(propagated_env_vars)
+    # Re-applied on every task, not once per process: Spark reuses python workers
+    # (spark.python.worker.reuse), so this process may have just run a task of the other job and
+    # still carry its conf and env. Setting both here is what makes that reuse safe.
+    conf.set_env_on_spark_worker(env_vars)
     if not conf.archive_for_workers:
         return
 
@@ -690,7 +1001,9 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig) -> None:
 
     worker_tmp_dir = os.path.abspath(SparkFiles.getRootDirectory())
     archive_path = os.path.join(worker_tmp_dir, archive_name)
-    if not os.path.exists(archive_path):
+    lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
+            conf.yb_src_root.replace('/', '__'))
+    if not conf.archive_gcs_url and not os.path.exists(archive_path):
         raise IOError("Archive not found: %s" % archive_path)
     # We install the code into the same path where it was installed on the main build node (Jenkins
     # worker or dev server), but put it in as separate variable to have flexibility to change it
@@ -709,8 +1022,6 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig) -> None:
         # We also copy the temporary script here for later reference.
         untar_script_path_for_reference = os.path.join(
                 worker_tmp_dir, 'untar_archive_once.sh')
-        lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
-                conf.yb_src_root.replace('/', '__'))
         bash_shebang = get_bash_shebang()
         with open(untar_script_path, 'w') as untar_script_file:
             # Do the locking using the flock command in Bash -- file locking in Python is painful.
@@ -718,15 +1029,27 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig) -> None:
 
             untar_script_file.write(UNTAR_SCRIPT_TEMPLATE.format(
                 archive_path=archive_path,
+                archive_sha_file_name=ARCHIVE_SHA_FILE_NAME,
                 bash_shebang=bash_shebang,
                 expected_archive_sha256sum=expected_archive_sha256sum,
                 lock_path=lock_path,
                 remote_yb_src_job_dir=remote_yb_src_job_dir,
                 remote_yb_src_root=remote_yb_src_root,
+                take_lock=(UNTAR_SCRIPT_LOCK_HELD_CMD if conf.archive_gcs_url
+                           else UNTAR_SCRIPT_TAKE_LOCK_CMD),
                 untar_script_path=untar_script_path,
                 untar_script_path_for_reference=untar_script_path_for_reference))
         os.chmod(untar_script_path, 0o755)
-        subprocess.check_call(untar_script_path)
+        if conf.archive_gcs_url:
+            # Not sent through Spark. One hold of the lock covers the download and the untar
+            # script: released in between, another task could replace the tree after it was found
+            # in place (the script would then look for an archive that was never downloaded), or
+            # start a second download of an archive that is about to be extracted.
+            with hold_archive_lock(lock_path) as lock_fd:
+                fetch_archive_from_gcs_if_needed(conf, archive_path)
+                subprocess.check_call(untar_script_path, pass_fds=(lock_fd,))
+        else:
+            subprocess.check_call(untar_script_path)
 
     except subprocess.CalledProcessError as e:
         logging.exception(f"Error initializing the remote task:\n"
@@ -841,7 +1164,10 @@ def get_jenkins_job_name() -> Optional[str]:
 def get_jenkins_job_name_path_component() -> str:
     jenkins_job_name = get_jenkins_job_name()
     if jenkins_job_name:
-        return "job_" + jenkins_job_name
+        # JOB_NAME has '/' for folder-nested jobs (e.g. 'users/<job>'); replace it so this stays a
+        # single path component: it's used as a directory and inside a filename, where a stray
+        # '/' would create an unintended, never-mkdir'd subdirectory.
+        return "job_" + jenkins_job_name.replace('/', '_')
 
     return "unknown_jenkins_job"
 
@@ -1236,19 +1562,42 @@ def propagate_env_vars() -> None:
     logging.info("Number of propagated environment variables: %s", num_propagated)
 
 
-# This action is a spark job, not individual task.
-def run_spark_action(action: Any) -> Any:
+# Substrings Spark puts in the Py4J error when a job was cancelled on purpose rather than lost.
+# Only a fallback: our own monitor_fail_count sets cancel_requested below, so this wording (which
+# shifts between Spark versions) is checked just to recognize a cancellation we did not ask for,
+# e.g. an operator killing the job from the Spark UI.
+# Don't match on the word "cancelled" alone: Spark also words context shutdown as
+# "Job N cancelled because SparkContext was shut down", which must classify as lost (re-submit on
+# a fresh context).
+SPARK_JOB_CANCELLED_MESSAGES = (
+    "cancelled as part of cancellation of all jobs",
+    "part of cancelled job group",
+)
+
+
+# This action is a spark job, not individual task. cancel_requested is set by this job's
+# monitor_fail_count strictly before it cancels the job, so on failure it says for sure whether we
+# killed the job ourselves - no parsing of Spark's error wording, which differs between
+# cancelAllJobs and cancelJobGroup and between Spark versions.
+def run_spark_action(action: Any, job_group: str, cancel_requested: threading.Event) -> Any:
     import py4j  # type: ignore
-    global g_spark_job_cancelled
-    g_spark_job_cancelled = False
+    g_cancelled_job_groups.discard(job_group)
     results = None
     try:
         results = action()
     except py4j.protocol.Py4JJavaError as e:
-        if "cancelled as part of cancellation of all jobs" in str(e):
-            g_spark_job_cancelled = True
+        if cancel_requested.is_set():
+            # Ours. The threshold was reached even if a concurrent infrastructure failure got to
+            # the exception before our cancellation, so not re-submitting is right either way.
+            g_cancelled_job_groups.add(job_group)
             log_heading("Spark job was killed after hitting test failure threshold of {}".format(
                         g_max_num_test_failures))
+        elif any(msg in str(e) for msg in SPARK_JOB_CANCELLED_MESSAGES):
+            # Cancelled, but not by us - someone or something outside this driver. Honor it
+            # (re-submitting would restart what was cancelled), but do not claim the threshold.
+            g_cancelled_job_groups.add(job_group)
+            logging.warning("Spark job %s was cancelled outside this driver; "
+                            "not re-submitting: %s", job_group, e)
         else:
             # Partial results are still collected from the accumulator by the caller, and any
             # test attempts left without a result can be re-submitted
@@ -1257,9 +1606,206 @@ def run_spark_action(action: Any) -> Any:
     return results
 
 
+# A time as CSI reports it for a test: ISO 8601 in UTC, e.g. 2026-01-31T10:20:30.123Z.
+def parse_csi_time(value: str) -> float:
+    time_format = '%Y-%m-%dT%H:%M:%S.%f%z' if '.' in value else '%Y-%m-%dT%H:%M:%S%z'
+    return datetime.strptime(value, time_format).timestamp()
+
+
+# The expected run time of this lane's tests, in seconds, from the file the pipeline wrote from a
+# previous CSI launch of the lane. One test per line: its uniqueId (the descriptor without the
+# attempt index), and the start and end time CSI recorded for it, separated by tabs. Lines that do
+# not parse are skipped: an estimate is then missing for that test, which only leaves it alone in
+# its task. Bytes that are not UTF-8 are replaced and cannot fail the read: such a line then names
+# no test, or does not parse.
+def load_test_durations(path: str) -> Dict[str, float]:
+    durations: Dict[str, float] = {}
+    num_bad_lines = 0
+    with open(path, 'r', encoding='utf-8', errors='replace') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if not line:
+                continue
+            fields = line.split('\t')
+            try:
+                if len(fields) != 3:
+                    raise ValueError(line)
+                seconds = parse_csi_time(fields[2].strip()) - parse_csi_time(fields[1].strip())
+                if seconds < 0:
+                    raise ValueError(line)
+            except ValueError:
+                num_bad_lines += 1
+                continue
+            durations[fields[0].strip()] = seconds
+    logging.info("Loaded the expected run time of %d tests from %s (%d lines skipped)",
+                 len(durations), path, num_bad_lines)
+    return durations
+
+
+# The cores of the cluster that applications other than this one hold, as the Spark master reports
+# them, or None when the master's web UI is not known or does not answer. A worker has one core
+# here, so this is the number of executors other applications have on the cluster now.
+def get_cores_of_other_apps() -> Optional[int]:
+    import urllib.request
+    if not g_spark_master_ui_url:
+        return None
+    status_url = g_spark_master_ui_url.rstrip('/') + '/json/'
+    try:
+        own_app_id = getattr(spark_context, 'applicationId', None)
+        with urllib.request.urlopen(status_url, timeout=SPARK_MASTER_UI_TIMEOUT_SEC) as response:
+            status = json.loads(response.read().decode('utf-8'))
+        return sum(
+            int(app['cores']) for app in status['activeapps'] if app['id'] != own_app_id)
+    except Exception as ex:
+        logging.warning(
+            "Could not read the cores other applications hold from %s: %s", status_url, ex)
+        return None
+
+
+# Groups test attempts into Spark tasks of at most target_sec of expected run time each, first-fit
+# over the attempts from the longest down. Alone in its task: an attempt whose test has no expected
+# run time, or one of target_sec or more. Two attempts of one test never share a task.
+def pack_tests(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        expected_sec_by_test: Dict[str, float],
+        target_sec: float) -> List[List[yb_dist_tests.TestDescriptor]]:
+    def expected_sec(test_descriptor: yb_dist_tests.TestDescriptor) -> float:
+        return expected_sec_by_test.get(
+            test_descriptor.descriptor_str_without_attempt_index, math.inf)
+
+    alone: List[List[yb_dist_tests.TestDescriptor]] = []
+    packs: List[List[yb_dist_tests.TestDescriptor]] = []
+    pack_sec: List[float] = []
+    pack_test_names: List[Set[str]] = []
+    for test_descriptor in sorted(test_descriptors, key=expected_sec, reverse=True):
+        test_sec = expected_sec(test_descriptor)
+        if test_sec >= target_sec:
+            alone.append([test_descriptor])
+            continue
+        test_name = test_descriptor.descriptor_str_without_attempt_index
+        for i in range(len(packs)):
+            if pack_sec[i] + test_sec <= target_sec and test_name not in pack_test_names[i]:
+                packs[i].append(test_descriptor)
+                pack_sec[i] += test_sec
+                pack_test_names[i].add(test_name)
+                break
+        else:
+            packs.append([test_descriptor])
+            pack_sec.append(test_sec)
+            pack_test_names.append({test_name})
+    return alone + packs
+
+
+# Decides the Spark tasks of a job: for each task, the test attempts it runs in sequence on one
+# executor.
+#
+# A task normally runs one test, and with dynamic allocation every task waiting asks for an executor
+# of its own. An executor sets up the build tree before its first test, which takes minutes, so a
+# job of short tests on a cluster with free workers pays one setup per test. With packing
+# (--pack_target_sec) a task holds about that much expected run time, and the job asks for as many
+# executors as it has such tasks. Executors still pull tasks from one queue, so a slow task only
+# means its executor takes fewer of them.
+#
+# Every rule falls back to one test per task, which is exactly a job without packing:
+#   - A job of more than PACK_MAX_TESTS test attempts is not packed.
+#   - A test with no expected run time, or one at least as long as the target, is alone in its task
+#     (pack_tests). Tests in one task run in a fixed sequence, so an estimate that is too low makes
+#     the tests behind a slow one wait, where a test alone costs at most one setup.
+#   - A job is packed only if at least PACK_MIN_KNOWN_RATIO of its tests have an expected run time.
+#   - Two attempts of one test never share a task (pack_tests), so repetitions of a test keep being
+#     spread over executors the way separate tasks are.
+#   - A job is packed only if other applications hold enough of the cluster's cores now: one for
+#     each of the job's tasks, and as many as the nodes the cluster scaling daemon would give the
+#     job by itself with one test per task (SCALING_DAEMON_TASKS_PER_NODE tests a node, at least
+#     one). The daemon sizes a cluster by the number of tasks running and waiting, which assumes
+#     one test per task, so a packed job that needed the cluster to grow would get far too few
+#     nodes. Cores that other applications hold belong to a cluster that is in use: the job waits
+#     for them to come free and takes one per task. Cores nobody holds do not count, nor do the
+#     ones this application holds from an earlier job: the daemon removes idle workers within a
+#     pass or two, and every worker once no task is running or waiting on the cluster. A job that
+#     shares the Spark context with another one (shares_context) counts half of those cores as
+#     its own.
+#
+# What a packed task changes when its executor is lost (a worker can go away under a running task):
+# Spark runs the task again, as it does for a task of one, but the results of the tests that had
+# finished in it never reached the driver, so those run and report a second time. A test that
+# failed before the loss still counts as failed, from what CSI recorded (csi_report.create_test);
+# without CSI, a test that fails and then passes in the second run is taken as passed. A pack's
+# failures also reach the failure limit only when the pack ends.
+#
+# Expected run times come from --test_durations_file for the main pass. For the jobs after it (the
+# re-runs of failed tests, on the diff and on the baseline, and the new-test repetitions) they are
+# the times the main pass just measured in this build.
+#
+# TODO(DEVOPS-4058): this leaves two task models, one test per task and packed tasks, with the
+# rules above choosing between them. Once packing has run in production for a while, make packed
+# tasks the only model: an expected run time for every test, with a default where there is no
+# history, and a cluster scaling daemon that sizes a cluster by packed tasks, so that the
+# cluster-size rule can go.
+def plan_spark_tasks(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        job_group: str,
+        shares_context: bool) -> List[List[yb_dist_tests.TestDescriptor]]:
+    one_test_per_task = [[test_descriptor] for test_descriptor in test_descriptors]
+    num_tests = len(test_descriptors)
+    if g_pack_target_sec <= 0 or num_tests < 2:
+        return one_test_per_task
+
+    def not_packed(reason: str) -> List[List[yb_dist_tests.TestDescriptor]]:
+        logging.info("Job %s: one test per task for its %d tests: %s",
+                     job_group, num_tests, reason)
+        return one_test_per_task
+
+    if num_tests > PACK_MAX_TESTS:
+        return not_packed("more than %d" % PACK_MAX_TESTS)
+
+    known_sec = [
+        g_expected_test_time_sec[test_descriptor.descriptor_str_without_attempt_index]
+        for test_descriptor in test_descriptors
+        if test_descriptor.descriptor_str_without_attempt_index in g_expected_test_time_sec]
+    if len(known_sec) < PACK_MIN_KNOWN_RATIO * num_tests:
+        return not_packed("only %d of them have an expected run time" % len(known_sec))
+
+    other_cores = get_cores_of_other_apps()
+    if other_cores is None:
+        return not_packed("the cores other applications hold on the cluster are not known")
+    if shares_context:
+        other_cores //= 2
+
+    # The nodes the scaling daemon would give this job by itself with one test per task.
+    unpacked_nodes = max(1, num_tests // SCALING_DAEMON_TASKS_PER_NODE)
+    packs = pack_tests(test_descriptors, g_expected_test_time_sec, g_pack_target_sec)
+    if max(len(packs), unpacked_nodes) > other_cores:
+        return not_packed(
+            "%d tasks of %d sec, or the %d nodes it would get with one test per task, are more "
+            "than the %d cores of other applications it can count on" %
+            (len(packs), g_pack_target_sec, unpacked_nodes, other_cores))
+    logging.info(
+        "Job %s: %d tests packed into %d task(s) of at most %d sec of expected run time each "
+        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d cores of "
+        "other applications to count on)", job_group, num_tests, len(packs), g_pack_target_sec,
+        sum(known_sec), len(known_sec), num_tests - len(known_sec), other_cores)
+    return packs
+
+
 # Run the tests in parallel on Spark. This is executed on the main Spark driver.
 def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool,
-                  conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+                  conf: yb_dist_tests.TestConfig,
+                  env_vars: Dict[str, str],
+                  job_group: str,
+                  shares_context: bool,
+                  stop_on_failure_limit: bool = True) -> List[yb_dist_tests.TestResult]:
+    # Every job states its own tree conf, CSI env, and job group. shares_context says whether
+    # another job runs next to this one in the same SparkContext, which the concurrent phase does
+    # (the diff's failed tests + the same failed tests on the baseline).
+    #
+    # The cancellation use needs pyspark's pinned-thread mode, where each python thread keeps one
+    # JVM thread. That is the default behaviour since Spark 3.2. Without it, py4j takes a
+    # connection from a pool for each call, so this setJobGroup and the collect() below can run on
+    # different JVM threads. The group is a JVM thread-local, so the job then gets no group, or a
+    # stale group from an earlier job. Its monitor_fail_count then cancels nothing, or cancels
+    # another job. A job that does not share the context is unaffected: it cancels everything.
+    spark_context.setJobGroup(job_group, job_group)  # type: ignore
     # Rather than collect results from RDD dataset, accumulate them in the spark_context.
     # That way we are not dependent on the entire test set to run successfully and can
     # capture partial results.
@@ -1280,43 +1826,465 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
             time.sleep(5)
 
         if fail_count.value >= g_max_num_test_failures:
+            cancel_requested.set()
+            if shares_context:
+                # Check whether the job group was assigned successfully. An unknown group is an
+                # empty list, not an error, so the result has to be looked at - see the note on
+                # pinned-thread mode above for what makes it empty.
+                try:
+                    group_job_ids = list(
+                        spark_context.statusTracker().getJobIdsForGroup(job_group))  # type: ignore
+                except Exception:
+                    logging.exception("Could not list the jobs of group %s", job_group)
+                    group_job_ids = []
+                if group_job_ids:
+                    # Cancel only this job's group so one job hitting the limit does not cancel the
+                    # other one sharing this context.
+                    logging.info("Stopping job group %s for application %s",
+                                 job_group, spark_context.applicationId)  # type: ignore
+                    spark_context.cancelJobGroup(job_group)  # type: ignore
+                    return
+                logging.warning(
+                    "Spark reports no jobs in group %s, so job groups are not being applied - "
+                    "pinned-thread mode is most likely off. Cancelling all jobs instead, which "
+                    "also stops the failed tests on the baseline.", job_group)
+
             logging.info("Stopping all jobs for application %s",
                          spark_context.applicationId)  # type: ignore
             spark_context.cancelAllJobs()  # type: ignore
 
     fail_count = spark_context.accumulator(0)  # type: ignore
     counter_stop = threading.Event()
-    counter_thread = threading.Thread(target=monitor_fail_count, args=(counter_stop,))
-    counter_thread.daemon = True
+    cancel_requested = threading.Event()
+    # The failure limit exists to stop a job whose failures mean something has gone wrong.
+    # The failed tests on the baseline are the opposite: they are tests already known to fail on the
+    # diff, and how many of them also fail on the base commit is the measurement. Their job runs
+    # without that limit - stop_on_failure_limit=False - so a broken base commit cannot truncate
+    # the very sample that shows it. Its size needs no limit either: it is bounded by
+    # REPEAT_FAILURE_LIMIT x baseline_repetitions.
+    counter_thread = None
+    if stop_on_failure_limit:
+        counter_thread = threading.Thread(target=monitor_fail_count, args=(counter_stop,))
+        counter_thread.daemon = True
 
-    log_heading("Test Job Beginning")
+    # Always named, even when this job has the context to itself: it is what separates the main
+    # run's log title from the failed-test re-run's, which were identical before the groups existed.
+    log_heading("Test Job Beginning: {}".format(job_group))
     test_phase_start_time = time.time()
 
     # Randomize test order to avoid any kind of skew.
     random.shuffle(test_descriptors)
+    # One element, and so one Spark task, per list of test attempts to run in sequence on one
+    # executor: a single attempt unless the job is packed.
+    spark_tasks = plan_spark_tasks(test_descriptors, job_group, shares_context)
+    random.shuffle(spark_tasks)
     test_names_rdd = spark_context.parallelize(  # type: ignore
-            [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
-            numSlices=len(test_descriptors))
+            [[test_descriptor.descriptor_str for test_descriptor in spark_task]
+             for spark_task in spark_tasks],
+            numSlices=len(spark_tasks))
 
     try:
-        counter_thread.start()
+        if counter_thread is not None:
+            counter_thread.start()
         # We are not passing in fail_count or test_results values, just references to
         # the accumulator objects. conf rides along in the closure: it is pickled with this
         # lambda and unpickled in each task, so every task gets its own copy of this job's
-        # build tree config.
+        # tree config.
+        job_log_prefix = f"[{job_group}] " if shares_context else ''
         run_spark_action(lambda: test_names_rdd.map(
-            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun, conf)
-        ).collect())
+            lambda test_names: run_spark_task(test_names, fail_count, test_results, rerun,
+                                              conf, env_vars, job_log_prefix)
+        ).collect(), job_group, cancel_requested)
 
     finally:
         counter_stop.set()
-        counter_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+        if counter_thread is not None:
+            counter_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
 
     # Each task (or executor?) adds a list of results, so we need to flatten to single list.
     results = []
     for rlist in test_results.value:
         results.extend(rlist)
     return results
+
+
+# Packs conf's tree for the workers, checksums the archive, and leaves that checksum beside the
+# tree: this host may run an executor too, and the sentinel is what tells a worker the tree
+# already in place is the one it needs, so it can skip re-extracting.
+def create_archive_and_record_checksum(
+        conf: yb_dist_tests.TestConfig, mvn_local_repo: str) -> None:
+    yb_dist_tests.create_archive_for_workers(conf=conf, mvn_local_repo=mvn_local_repo)
+    yb_dist_tests.compute_archive_sha256sum(conf=conf)
+    assert conf.archive_sha256sum is not None
+    with open(os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME), 'w') as archive_sha_file:
+        archive_sha_file.write(conf.archive_sha256sum)
+
+
+# The Maven local repo that the build in build_root actually used, as that build recorded it.
+# Preferred over guessing, since we did not configure that build.
+#
+# Fall back to where yb-jenkins-build.sh points it so the caller reaches the archive step and its
+# validate_mvn_local_repo warnings, rather than failing here on a missing file.
+def get_mvn_local_repo(build_root: str) -> str:
+    mvn_repo_file_path = os.path.join(build_root, 'mvn_repo')
+    default_mvn_local_repo = os.path.join(build_root, 'm2_repository')
+    if not os.path.exists(mvn_repo_file_path):
+        logging.warning(
+            "No Maven repo record at %s (the build likely skipped its Java build); assuming %s",
+            mvn_repo_file_path, default_mvn_local_repo)
+        return default_mvn_local_repo
+
+    try:
+        with open(mvn_repo_file_path) as mvn_repo_file:
+            recorded_mvn_local_repo = mvn_repo_file.read().strip()
+    except (OSError, UnicodeDecodeError):
+        # UnicodeDecodeError too: a truncated or binary record is as unusable as one we cannot read,
+        # and it is a ValueError, so it would otherwise escape this handler.
+        logging.exception("Could not read the Maven repo record %s; assuming %s",
+                          mvn_repo_file_path, default_mvn_local_repo)
+        return default_mvn_local_repo
+    if not recorded_mvn_local_repo:
+        logging.warning("Maven repo record %s is empty; assuming %s",
+                        mvn_repo_file_path, default_mvn_local_repo)
+        return default_mvn_local_repo
+
+    logging.info("Maven local repo recorded by the build in %s: %s",
+                 mvn_repo_file_path, recorded_mvn_local_repo)
+    return recorded_mvn_local_repo
+
+
+# The env vars naming the thirdparty a build used - where it sits and where it came from - and the
+# file each build records the value in.
+#
+# The URLs belong here with the directory, though not because they drive the download: the build
+# root carries its own thirdparty_url.txt to the worker, and that is what asks for one. They are
+# here because find_or_download_thirdparty compares any URL it is given against that record and
+# calls fatal on a mismatch, so the diff's URLs must not be left in place beside the baseline's.
+#
+# The LLVM and GCC toolchains are not here, though their builds record the same pair of files.
+# Nothing on a worker fetches a toolchain - detect_llvm_toolchain never downloads, and
+# download_toolchain skips the toolchain whose directory is already set, which the diff's always is
+# - so naming the baseline's would leave a path nothing brings there. It is also not needed: what
+# the tests read from a toolchain is llvm-symbolizer, and that is looked up under YB_THIRDPARTY_DIR
+# first, which this does point at the baseline's.
+THIRDPARTY_ENV_VARS = {
+    'YB_THIRDPARTY_DIR': 'thirdparty_path.txt',
+    'YB_THIRDPARTY_URL': 'thirdparty_url.txt',
+    'YB_THIRDPARTY_CHECKSUM_URL': 'thirdparty_checksum_url.txt',
+}
+
+
+# The thirdparty the build in build_root used, as that build recorded it. Only what it recorded: a
+# build that had its thirdparty locally writes no URL to download it by.
+#
+# Reads the records directly rather than through build_paths.BuildPaths, which requires the recorded
+# directory to exist here - it need not, for a tree built on another host. These values are for the
+# Spark worker, and it downloads what it does not already have: thirdparty lives under a fixed
+# /opt/yb-build parent, so a path recorded on the build host names the same place on the worker,
+# and download_and_extract_archive leaves an existing one alone.
+def get_thirdparty_env_vars(build_root: str) -> Dict[str, str]:
+    thirdparty_env_vars: Dict[str, str] = {}
+    for env_var_name, record_file_name in THIRDPARTY_ENV_VARS.items():
+        record_file_path = os.path.join(build_root, record_file_name)
+        if not os.path.exists(record_file_path):
+            continue
+        try:
+            with open(record_file_path) as record_file:
+                recorded_value = record_file.read().strip()
+        except (OSError, UnicodeDecodeError):
+            # UnicodeDecodeError too: it is a ValueError, so it would otherwise escape this handler.
+            logging.exception("Could not read the thirdparty record %s", record_file_path)
+            continue
+        if recorded_value:
+            thirdparty_env_vars[env_var_name] = recorded_value
+    return thirdparty_env_vars
+
+
+# Records the outcome of running the failed tests on the baseline, for the Jenkins pipeline to
+# pick up. The pipeline cannot see most of these cases itself: whether anything failed, how much,
+# and whether the baseline work was skipped are all decided here, after the main run.
+def write_baseline_status(status_file: Optional[str], status: str) -> None:
+    logging.info("Baseline test run: status %s", status)
+    if not status_file:
+        return
+    try:
+        with open(status_file, 'w') as status_file_obj:
+            status_file_obj.write(status + '\n')
+    except OSError:
+        # Reporting only - never fail a run over.
+        logging.exception("Could not write the baseline status file %s", status_file)
+
+
+# Drops tests already run on this baseline commit and lane: a test is run on the baseline once per
+# (base commit, lane), not once per diff, and the samples pool across those diffs.
+#
+# Queried at re-run time, not passed in by the pipeline: peers on this base commit may still be
+# running their failed tests on it during our main test suite run, so a set collected before that
+# could already be stale.
+#
+# "Already run" means this test's latest execution on this base commit produced a result, not that
+# the sample is complete: peer diff's test job that crashed in the middle leaves a short one no
+# later diff adds to, since they all read the same answer here. Phase 3 has to count what it finds
+# rather than assume N.
+#
+# Best-effort - on a CSI failure we run every test that failed this run, including any a peer
+# already covered: lost cluster time but still correct.
+def filter_already_run_on_baseline(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        baseline_commit_id: Optional[str]) -> List[yb_dist_tests.TestDescriptor]:
+    if not baseline_commit_id:
+        return test_descriptors
+    try:
+        # The lane, matching the attributes the pipeline puts on the baseline launch.
+        already_run = csi_report.test_ids_in_launches(
+            'launch_type:baseline_test_run,commit_id:{},platform:{},compiler:{},bldtype:{}'.format(
+                baseline_commit_id,
+                os.environ.get('YB_BUILD_PLATFORM', ''),
+                os.environ.get('YB_COMPILER_TYPE', ''),
+                os.environ.get('BUILD_TYPE', '')))
+    except Exception:
+        logging.exception(
+            "Could not look up tests already run on the baseline; running all of them")
+        return test_descriptors
+    if not already_run:
+        return test_descriptors
+    # uniqueId in CSI is descriptor_str_without_attempt_index (see csi_report.create_test), so
+    # compare on that rather than on descriptor_str.
+    remaining = [d for d in test_descriptors
+                 if d.descriptor_str_without_attempt_index not in already_run]
+    logging.info("Baseline test run: %d of %d already run by peer diffs, %d left",
+                 len(test_descriptors) - len(remaining), len(test_descriptors), len(remaining))
+    return remaining
+
+
+# Builds the baseline tree's conf, and packs its spark worker archive if needed. Returns the conf,
+# so a caller that catches a failure here simply has no baseline conf and skips the baseline work,
+# rather than seeing a half-prepared one.
+#
+# The baseline tree travels the same way the diff's does. Without archives the workers are
+# expected to already see it at its own path - the same assumption the diff tree relies on, and
+# one that path-identical extraction satisfies for a shared filesystem or a local worker.
+#
+# Runs once during setup, before the Spark context exists, so the driver does not hold an idle
+# context while tar runs.
+def prepare_baseline_conf_and_archive(
+        baseline_build_root: str, send_archive_to_workers: bool,
+        archive_gcs_prefix: Optional[str] = None) -> yb_dist_tests.TestConfig:
+    conf = yb_dist_tests.make_conf_for_build_root(
+        baseline_build_root, send_archive_to_workers,
+        yb_dist_tests.BASELINE_ARCHIVE_FOR_WORKERS_NAME)
+
+    if send_archive_to_workers:
+        # Include the baseline tree's own Maven repo, as its build recorded it.
+        create_archive_and_record_checksum(conf, get_mvn_local_repo(conf.build_root))
+        publish_archive_to_gcs(conf, archive_gcs_prefix)
+
+    return conf
+
+
+# Re-run the failed tests on diff and baseline build as two jobs in this same SparkContext:
+# two Spark jobs on separate threads, each with its own tree conf, CSI env, and job group.
+# Returns the diff re-run results, baseline results go to CSI (the baseline launch) and are
+# otherwise only logged. Baseline failure never fails the run.
+#
+# Keyword-only on purpose to avoid mixing configs.
+def rerun_failed_tests_on_diff_and_baseline(
+        *,
+        diff_rerun_descriptors: List[yb_dist_tests.TestDescriptor],
+        baseline_test_descriptors: List[yb_dist_tests.TestDescriptor],
+        conf: yb_dist_tests.TestConfig,
+        baseline_conf: yb_dist_tests.TestConfig,
+        env_vars: Dict[str, str],
+        args: Any) -> List[yb_dist_tests.TestResult]:
+    from concurrent.futures import ThreadPoolExecutor
+
+    # main() refuses --baseline_build_root without it, and we only get here with a baseline conf.
+    assert args.baseline_csi_launch, (
+        "the failed tests on the baseline have no CSI launch to report to")
+
+    # Baseline env: report to the commit-scoped baseline launch, whose UUID the pipeline created and
+    # passed; launch_qid resolves its numeric id below. Both jobs start from the caller's env, so
+    # this path forwards it the same way the single-job path does.
+    baseline_env_vars = dict(env_vars)
+    # The baseline-commit-scoped launch the failed tests on the baseline report to.
+    baseline_env_vars['YB_CSI_LID'] = args.baseline_csi_launch
+    baseline_env_vars['YB_CSI_REPS'] = str(args.baseline_repetitions)
+    # Point at the baseline tree's own repo, the one packed into its worker archive.
+    baseline_env_vars['YB_MVN_LOCAL_REPO'] = get_mvn_local_repo(baseline_conf.build_root)
+    # Same for the thirdparty: propagate_env_vars() picked up the diff's from our environment, and
+    # on the worker find_or_download_thirdparty stops at the variable once it is set, without ever
+    # looking at the build root's own record. The two trees usually share it, but a diff that bumps
+    # thirdparty is exactly the one whose baseline sample must not be taken under the diff's - its
+    # baseline binaries were linked against the baseline's thirdparty, not ours.
+    #
+    # Overwritten, never deleted: a Spark worker is reused across tasks and set_env_on_spark_worker
+    # only assigns, so dropping a key leaves the previous task's value in place on the worker.
+    baseline_thirdparty = get_thirdparty_env_vars(baseline_conf.build_root)
+    for thirdparty_env_var_name in THIRDPARTY_ENV_VARS:
+        if thirdparty_env_var_name in baseline_thirdparty:
+            baseline_env_vars[thirdparty_env_var_name] = baseline_thirdparty[
+                thirdparty_env_var_name]
+        elif thirdparty_env_var_name in baseline_env_vars:
+            # A build that did not download its thirdparty records no URL to download it by,
+            # while a diff's build that did puts one in our environment for both jobs. A worker
+            # missing the baseline directory would then fetch the diff's archive and stop at
+            # download_thirdparty's own check, which refuses to move an already-set
+            # YB_THIRDPARTY_DIR.
+            logging.warning(
+                "The baseline build in %s recorded no %s, so its tests take the diff tree's "
+                "value %s and fail in find_or_download_thirdparty on every worker that does not "
+                "already have the baseline thirdparty", baseline_conf.build_root,
+                thirdparty_env_var_name, baseline_env_vars[thirdparty_env_var_name])
+    # Say which thirdparty the sample was taken under. The build log is the only place anyone can
+    # see it: the per-test logs live in the baseline tree, and the pipeline drops that tree once the
+    # run ends. Logged even when the two trees agree, which is the usual case - the run that matters
+    # is a diff that bumped thirdparty, and there this line records that each job used its own.
+    diff_thirdparty_dir = env_vars.get('YB_THIRDPARTY_DIR', '')
+    baseline_thirdparty_dir = baseline_env_vars.get('YB_THIRDPARTY_DIR', '')
+    if baseline_thirdparty_dir == diff_thirdparty_dir:
+        logging.info("Baseline test run: thirdparty %s, the same as the diff's",
+                     baseline_thirdparty_dir)
+    else:
+        logging.info("Baseline test run: thirdparty %s, where the diff's is %s",
+                     baseline_thirdparty_dir, diff_thirdparty_dir)
+    failed_test_count_by_language: Dict[str, int] = defaultdict(int)
+    for d in baseline_test_descriptors:
+        failed_test_count_by_language[d.language] += 1
+    # The failed-tests-on-baseline job reports to CSI and is pointless without it, but it must not
+    # take the diff's re-runs down with it: those decide the build result. So a failure here - CSI
+    # unreachable, a launch that cannot be resolved, or a suite CSI refuses - drops that job and
+    # leaves the re-run to run alone.
+    baseline_suites: Dict[str, str] = {}
+
+    def close_baseline_suites() -> None:
+        """Reporting only, and never worth failing the run over."""
+        try:
+            for suite_var in baseline_suites.values():
+                csi_report.close_item(suite_var, time.time(), '', [],
+                                      launch=args.baseline_csi_launch)
+        except Exception:
+            logging.exception("Could not close the CSI suites of the failed tests on the baseline")
+
+    def rerun_on_diff_only(status: str) -> List[yb_dist_tests.TestResult]:
+        """Record why the baseline job was dropped, and run the diff's re-runs by themselves."""
+        # A suite created before the one that failed would otherwise stay IN_PROGRESS in the launch,
+        # which is shared with every peer diff on this base commit and lane.
+        close_baseline_suites()
+        write_baseline_status(args.baseline_status_file, status)
+        return run_tests_job(diff_rerun_descriptors, rerun=True, conf=conf,
+                             env_vars=env_vars,
+                             job_group=FAILED_TESTS_ON_DIFF_JOB_GROUP, shares_context=False)
+
+    try:
+        # The launch's numeric id. create_suite needs it to find a per-language suite a peer diff
+        # may already have created in this launch.
+        baseline_qid = csi_report.launch_qid(launch=args.baseline_csi_launch)
+        # An unresolvable launch is not a CSI outage: launch_qid logs and returns '' rather than
+        # throwing an error, and create_suite then succeeds against that same uuid - so without
+        # this the run reports `done` over a sample no query will ever find.
+        if csi_report.configured() and not baseline_qid:
+            logging.error(
+                "CSI could not resolve the baseline launch %s, so the failed tests on the baseline "
+                "would report nowhere; re-running the failed tests on the diff only",
+                args.baseline_csi_launch)
+            return rerun_on_diff_only('skip-csi-setup-failed')
+        baseline_env_vars['YB_CSI_QID'] = baseline_qid
+        # A CSI suite is per language, and named after it - same as the main run's YB_CSI_<language>
+        # suites. Each holds num_tests * baseline_repetitions items once the job reports.
+        # parent='' keeps them at the launch's top level.
+        for language, num_tests in failed_test_count_by_language.items():
+            (csi_var_name, csi_var_value) = csi_report.create_suite(
+                qid=baseline_qid, suite_name=language, parent='', method='Requested',
+                planned=num_tests, reps=args.baseline_repetitions, time_sec=time.time(),
+                launch=args.baseline_csi_launch)
+            baseline_suites[language] = csi_var_value
+            baseline_env_vars[csi_var_name] = csi_var_value
+    except Exception:
+        logging.exception("Could not set up the CSI suites for the failed tests on the baseline; "
+                          "re-running the failed tests on the diff only")
+        return rerun_on_diff_only('skip-csi-setup-failed')
+
+    # Failed create_suite returns an empty id instead of raising, and the workers then report
+    # nothing - the sample would record nothing yet still read 'done'. All-or-nothing: a
+    # half-recorded launch would make the next attempt's dedup skip what it did record.
+    if csi_report.configured() and not all(baseline_suites.values()):
+        logging.error(
+            "CSI accepted no suite for %s, so the failed tests on the baseline would report "
+            "nothing; re-running the failed tests on the diff only",
+            ', '.join(sorted(language for language, suite_id in baseline_suites.items()
+                             if not suite_id)))
+        return rerun_on_diff_only('skip-csi-setup-failed')
+
+    baseline_descriptors = [
+        d.with_attempt_index(i)
+        for d in baseline_test_descriptors
+        for i in range(1, args.baseline_repetitions + 1)
+    ]
+
+    if args.baseline_test_list_file:
+        logging.info("Writing the list of tests to run on the baseline to '%s'",
+                     args.baseline_test_list_file)
+        try:
+            with open(args.baseline_test_list_file, 'w') as test_list_file:
+                for d in baseline_test_descriptors:
+                    test_list_file.write(d.descriptor_str_without_attempt_index + '\n')
+        except OSError:
+            # Reporting only - never worth failing a run over.
+            logging.exception("Could not write %s", args.baseline_test_list_file)
+
+    logging.info("Concurrent phase: diff re-runs=%d tasks, failed tests on baseline=%d tasks",
+                 len(diff_rerun_descriptors), len(baseline_descriptors))
+
+    baseline_results: List[yb_dist_tests.TestResult] = []
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Diff first (FIFO priority); short head start is the simple submit-ordering barrier -
+            # run_tests_job blocks on collect(), so we can't signal "submitted" precisely without a
+            # callback through it. Each job runs in its own group so the cancelJobGroup from its
+            # monitor_fail_count cancels only itself.
+            diff_future = executor.submit(
+                run_tests_job, diff_rerun_descriptors, True, conf,
+                env_vars, FAILED_TESTS_ON_DIFF_JOB_GROUP, True)
+            time.sleep(BASELINE_SUBMIT_ORDER_DELAY_SEC)
+            baseline_future = executor.submit(
+                run_tests_job, baseline_descriptors, False, baseline_conf, baseline_env_vars,
+                FAILED_TESTS_ON_BASELINE_JOB_GROUP, True, False)
+
+            try:
+                diff_results = diff_future.result()
+            finally:
+                # Collect the baseline job even when the diff raises. Leaving the executor waits for
+                # it either way, and its suites still have to be closed in a launch shared with peer
+                # diffs, so skipping this would leave them IN_PROGRESS there.
+                try:
+                    baseline_results = baseline_future.result()
+                except Exception:
+                    logging.exception(
+                        "Baseline test run: job failed (best-effort; ignored)")
+    finally:
+        # In a finally for the same reason: a diff job that raises still leaves a baseline sample
+        # to account for, and an absent status file reads as no-status-from-test-runner, which the
+        # pipeline treats as a bug in this script rather than as a recorded outcome.
+        baseline_failed = sum(1 for r in baseline_results if r.exit_code != 0)
+        logging.info(
+            "Baseline test run: %d/%d task results collected, %d failed on the baseline",
+            len(baseline_results), len(baseline_descriptors), baseline_failed)
+        close_baseline_suites()
+
+        # Failures here are what we came for, so they are not an error status. What the pipeline
+        # needs to know is how complete the sample is: a short count means tasks were lost
+        # (cancelled on reaching the failure limit, executor loss), so how often the test fails on
+        # the baseline rests on fewer repetitions than were asked for.
+        if not baseline_results:
+            write_baseline_status(args.baseline_status_file, 'failed-no-results')
+        elif len(baseline_results) < len(baseline_descriptors):
+            write_baseline_status(
+                args.baseline_status_file,
+                'done-partial-{}-of-{}'.format(len(baseline_results), len(baseline_descriptors)))
+        else:
+            write_baseline_status(args.baseline_status_file, 'done')
+
+    return diff_results
 
 
 # Test-only fault injection, to exercise the re-submission / context-recovery path without waiting
@@ -1354,10 +2322,28 @@ def maybe_inject_submit_fault(
 # Run tests on Spark, re-submitting the job for test attempts that did not produce a result,
 # e.g. because the Spark application was lost while autoscaled workers were shutting down.
 # This is executed on the main Spark driver.
-def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescriptor],
-                                 rerun: bool,
-                                 conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+# baseline_conf turns each submission into the two-job concurrent phase (diff re-runs plus the
+# failed tests on the baseline) instead of a single job. That job therefore sits inside the
+# re-submission loop: losing the Spark application re-submits both jobs, and the baseline tests are
+# run again from scratch on the new context, since a job dies with the context it ran on.
+def run_tests_job_with_resubmits(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        rerun: bool,
+        conf: yb_dist_tests.TestConfig,
+        env_vars: Dict[str, str],
+        # Keyword-only, to avoid mixing configs.
+        *,
+        baseline_conf: Optional[yb_dist_tests.TestConfig] = None,
+        baseline_test_descriptors: Optional[List[yb_dist_tests.TestDescriptor]] = None,
+        args: Any = None,
+        job_group: Optional[str] = None) -> List[yb_dist_tests.TestResult]:
     all_results: List[yb_dist_tests.TestResult] = []
+    # The initial run has its own group; the re-run phase and the concurrent phase both run the
+    # diff's tests under the failed-tests group. This is also the group whose threshold
+    # cancellation ends re-submission below - a cancelled baseline job never does. A caller with
+    # a job of its own (the new-test repetitions) names its group.
+    if job_group is None:
+        job_group = FAILED_TESTS_ON_DIFF_JOB_GROUP if rerun else ALL_TESTS_ON_DIFF_JOB_GROUP
     # descriptor_str includes the attempt index, so it uniquely identifies a test attempt.
     pending = list(test_descriptors)
     for submit_index in range(1, SPARK_JOB_MAX_SUBMITS + 1):
@@ -1369,7 +2355,23 @@ def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescri
         try:
             if spark_context_is_stopped():
                 restart_spark_context(conf)
-            results = run_tests_job(pending, rerun=rerun, conf=conf)
+            if baseline_conf is not None:
+                assert baseline_test_descriptors is not None
+                # Returns the diff re-run results; the baseline results go to CSI. The full
+                # baseline set is run on every submission - the previous attempt's results went
+                # down with the lost application.
+                results = rerun_failed_tests_on_diff_and_baseline(
+                    diff_rerun_descriptors=pending,
+                    baseline_test_descriptors=baseline_test_descriptors,
+                    conf=conf,
+                    baseline_conf=baseline_conf,
+                    env_vars=env_vars,
+                    args=args)
+            else:
+                results = run_tests_job(pending, rerun=rerun, conf=conf,
+                                        env_vars=env_vars,
+                                        job_group=job_group,
+                                        shares_context=False)
         except Exception as e:
             # Retry this submission only if it failed because the Spark application was lost or
             # due to another transient Spark error. In case of a genuine bug don't retry and
@@ -1382,7 +2384,7 @@ def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescri
             results = []
         results = maybe_inject_submit_fault(submit_index, results)
         all_results.extend(results)
-        if g_spark_job_cancelled:
+        if job_group in g_cancelled_job_groups:
             logging.info("Not re-submitting remaining test attempts: the Spark job was cancelled "
                          "after reaching the test failure threshold")
             break
@@ -1399,8 +2401,152 @@ def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
     suite_var_name = 'YB_CSI_' + test_descriptor.language
     skip_time = time.time()
     os.environ[suite_var_name] = propagated_env_vars[suite_var_name]
-    csi_id = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
-    csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'])
+    csi_id, _ = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
+    csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'],
+                          launch=csi_report.env_launch())
+
+
+# Run the tests this lane has never run before some more times, to find the ones that are flaky
+# from birth. A test that is flaky from the day it lands has no healthy history to be compared
+# against later, so its first failure cannot be told from a regression, and the lanes where that is
+# most likely (tsan, aarch64, mac) never see a change before it lands. One pass of the lane gives
+# each new test a single sample; this gives it --new_test_repetitions of them, cheaply, because the
+# build is already on the workers. The extra runs go out as one more Spark job after the main pass
+# (its tasks in parallel, as the fail repetitions' are).
+#
+# Only tests that PASSED the main pass are repeated: a new test that failed already gets
+# --fail_repetitions re-runs, one that skipped itself ran nothing, and repeating only the passing
+# ones is what lets a consumer read retry_kind=new_test_repetition on an item as "the first
+# attempt passed" (csi_report.py).
+#
+# Deliberately nothing here can fail the build. The repetitions are evidence, not a gate: their
+# failures do not touch the exit code, and any error in this function is logged and dropped, so a
+# lane that would have passed still passes.
+#
+# "Has not run before" is answered by the pipeline, not by this process: csi/lib.groovy in
+# jenkins-helpers reads the previous launch of the lane from CSI (the same name and version
+# attribute, completed, every planned test reported) and writes its tests' uniqueIds, one per
+# line, to a file the build passes here as --known_test_list, the way rerun_list.txt reaches
+# --test_list. No file means no comparable previous launch (or an older pipeline), and nothing is
+# repeated. Every CSI read for this feature lives in the pipeline, beside the other reads of launch
+# history; the harness only writes to CSI, as it always has.
+#
+# main_pass_cancelled is whether the main pass's Spark job group was cancelled, read right after
+# that pass: the re-run jobs that follow keep their own groups in the same set.
+def run_new_test_repetitions(args: argparse.Namespace,
+                             conf: yb_dist_tests.TestConfig,
+                             results: List[yb_dist_tests.TestResult],
+                             env_vars: Dict[str, str],
+                             main_pass_cancelled: bool) -> None:
+    reps = args.new_test_repetitions
+    if reps <= 1:
+        return
+    if (args.num_repetitions > 1 or args.test_list or args.ignore_list or args.max_tests or
+            args.test_filter_re or args.test_conf):
+        # Every one of these means this run is not the lane's own full pass over its own test
+        # list, so "the tests it did not run before" is not a question this run can answer.
+        logging.info("New-test repetitions: skipped, this is not a full run of the lane")
+        return
+    if main_pass_cancelled:
+        logging.info("New-test repetitions: skipped, the main pass was cancelled")
+        return
+
+    if not args.known_test_list:
+        logging.info("New-test repetitions: skipped, no known-test list was passed (the pipeline "
+                     "writes one only when the lane has a comparable previous launch)")
+        return
+    known = load_known_test_list(args.known_test_list)
+    if not known:
+        logging.info("New-test repetitions: skipped, the known-test list %s is empty",
+                     args.known_test_list)
+        return
+    if len(known) < NEW_TEST_MIN_KNOWN_RATIO * len(results):
+        logging.info("New-test repetitions: skipped, the previous launch reported %d tests "
+                     "against %d run here, too few to tell new tests from unreached ones",
+                     len(known), len(results))
+        return
+
+    # One entry per test: a Spark task that reported a result and was then resubmitted leaves
+    # two results for one descriptor, and the test must not be repeated twice over.
+    seen: Set[str] = set()
+    new_passed = []
+    num_new_failed = 0
+    num_new_skipped = 0
+    for result in results:
+        uid = result.test_descriptor.descriptor_str_without_attempt_index
+        if uid in known or uid in seen:
+            continue
+        seen.add(uid)
+        if result.skipped:
+            # Exit code 0, but the test skipped itself and CSI has it as skipped: not a pass, and
+            # repeating it would hang reps - 1 executions of nothing on a skipped item while the
+            # tag told readers its first attempt passed.
+            num_new_skipped += 1
+        elif not result.failed:
+            new_passed.append(result.test_descriptor)
+        else:
+            num_new_failed += 1
+    logging.info("New tests on this lane: %d passed, %d failed (the failed ones are re-run by "
+                 "--fail_repetitions), %d skipped", len(new_passed), num_new_failed,
+                 num_new_skipped)
+    if not new_passed:
+        return
+
+    repeated = sorted(new_passed)
+    if len(repeated) > NEW_TEST_LIMIT:
+        # Seeded so the sample is reproducible from the build log alone.
+        repeated = sorted(random.Random(0).sample(repeated, NEW_TEST_LIMIT))
+        logging.info("New-test repetitions: %d new tests is over the limit of %d; repeating a "
+                     "sample of %d", len(new_passed), NEW_TEST_LIMIT, len(repeated))
+
+    test_descriptors = [
+        test_descriptor.with_attempt_index(i)
+        for test_descriptor in repeated
+        for i in range(2, reps + 1)
+    ]
+    log_heading("Running {} new tests {} more times each ({} test attempts)".format(
+        len(repeated), reps - 1, len(test_descriptors)))
+    # The same environment the main pass ran with, so the workers report into the same CSI suites,
+    # plus a marker csi_report.create_test reads for this job only: these executions are
+    # repetitions of a new test, not first attempts and not fail repetitions. This has to stay the
+    # last job of the run: set_env_on_spark_worker never unsets, executor processes are reused, so
+    # a job dispatched after this one would inherit the marker and tag its executions.
+    new_test_env_vars = dict(env_vars)
+    new_test_env_vars['YB_CSI_NEW_TEST'] = '1'
+    # Its own job group: the failure monitor cancels only this job, and its cancellation is not
+    # the main pass's.
+    new_test_results = run_tests_job_with_resubmits(
+        test_descriptors, rerun=False, conf=conf, env_vars=new_test_env_vars,
+        job_group=NEW_TESTS_ON_DIFF_JOB_GROUP)
+
+    num_failures_by_test: Dict[str, int] = defaultdict(int)
+    for result in new_test_results:
+        if result.exit_code != 0:
+            num_failures_by_test[result.test_descriptor.descriptor_str_without_attempt_index] += 1
+    logging.info("New-test repetitions: %d of %d test attempts produced a result, %d failed",
+                 len(new_test_results), len(test_descriptors), sum(num_failures_by_test.values()))
+    for test_descriptor in repeated:
+        num_failures = num_failures_by_test[test_descriptor.descriptor_str_without_attempt_index]
+        if num_failures > 0:
+            # The first attempt passed, so the failures are out of the reps runs of the test in
+            # this build.
+            logging.info("New test failed %d of its %d runs in this build: %s",
+                         num_failures, reps, test_descriptor.descriptor_str_without_attempt_index)
+
+
+# The tests the previous launch of this lane reported, as the pipeline wrote them: one uniqueId
+# per line, which is the descriptor string without an attempt index (csi_report.create_test sets
+# the item's uniqueId to exactly that), so the comparison is on the raw string and no descriptor
+# is parsed or reconstructed.
+def load_known_test_list(path: str) -> Set[str]:
+    known: Set[str] = set()
+    with open(path, 'r') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if line:
+                known.add(line)
+    logging.info("Loaded %d known tests from %s", len(known), path)
+    return known
 
 
 def skip_disabled_tests(test_descriptors: List[yb_dist_tests.TestDescriptor],
@@ -1491,6 +2637,35 @@ def main() -> None:
                         help='Number of times to run each test.')
     parser.add_argument('--fail_repetitions', type=int, default=0,
                         help='Number of times to re-run each failure.')
+    parser.add_argument('--new_test_repetitions', type=int, default=0,
+                        help='Total number of times to run a test that is new on this lane: after '
+                             'the main pass, every test that this lane has not run before and '
+                             'that passed here is run this many times minus one more. 0 or 1 '
+                             'disables it. Needs --known_test_list to say which tests the lane '
+                             'has run before.')
+    parser.add_argument('--known_test_list',
+                        help='A file path with the tests the previous launch of this lane '
+                             'reported, one uniqueId (descriptor without attempt index) per '
+                             'line, written by the pipeline from CSI. The baseline '
+                             '--new_test_repetitions calls a test new against; without it '
+                             'nothing is repeated.')
+    parser.add_argument('--pack_target_sec', type=float, default=0,
+                        help='Pack several tests into one Spark task, so that a task holds about '
+                             'this many seconds of expected run time and a job of short tests '
+                             'asks for fewer executors. Tests without an expected run time and '
+                             'tests at least this long keep a task of their own. 0, the default, '
+                             'runs one test per task. Needs --spark_master_ui_url, and '
+                             '--test_durations_file for the main pass.')
+    parser.add_argument('--test_durations_file',
+                        help='A file path with the run time of tests in a previous launch of this '
+                             'lane, written by the pipeline from CSI. One test per line: its '
+                             'uniqueId (descriptor without attempt index) and the start and end '
+                             'time CSI recorded, separated by tabs. Used by --pack_target_sec for '
+                             'the main pass.')
+    parser.add_argument('--spark_master_ui_url',
+                        help='URL of the Spark master\'s web UI, e.g. http://host:8080. '
+                             '--pack_target_sec asks it for the cores other applications hold '
+                             'on the cluster, and packs a job only if they are enough for it.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')
@@ -1510,10 +2685,38 @@ def main() -> None:
                         help='When --send_archive_to_workers is specified, use this option to '
                              're-create the archive that we would send to workers even if it '
                              'already exists.')
+    parser.add_argument('--archive_gcs_prefix',
+                        help='A gs:// prefix. With --send_archive_to_workers, upload the archive '
+                             'there and have the workers download it from GCS instead of '
+                             'receiving it through Spark from this host. Only for a Spark cluster '
+                             'on GCP. Ignored on macOS; if the upload fails, the archive goes '
+                             'through Spark.')
     parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
                         default=None,
                         help='Maximum number of test failures before aborting the Spark test job.'
                              'Default is {}.'.format(DEFAULT_MAX_NUM_TEST_FAILURES))
+
+    # Failed tests on the baseline: after the diff's failed tests are known, additionally run those
+    # same tests on the diff's baseline build as a second Spark job in the same SparkContext,
+    # along with the diff re-runs.
+    parser.add_argument('--baseline_build_root',
+                        help='Build root of the extracted baseline build. If specified, the '
+                             'failed tests also run on it.')
+    parser.add_argument('--baseline_repetitions', type=int, default=10,
+                        help='Times to run each failed test on the baseline build.')
+    parser.add_argument('--baseline_csi_launch',
+                        help='UUID of the commit-scoped CSI launch (created by the pipeline) that '
+                             'the failed tests on the baseline report to, instead of this '
+                             'run\'s own.')
+    parser.add_argument('--baseline_commit_id',
+                        help='Commit the baseline build was made from. Used to find tests already '
+                             'run on it, which are not run again.')
+    parser.add_argument('--baseline_status_file',
+                        help='File to write the outcome of the failed tests on the baseline to, '
+                             'for the pipeline to report as coverage.')
+    parser.add_argument('--baseline_test_list_file',
+                        help='File to write the tests selected to run on the baseline to, one '
+                             'descriptor per line. Written before they run.')
 
     args = parser.parse_args()
     global g_spark_master_url_override
@@ -1530,6 +2733,23 @@ def main() -> None:
     verbose = args.verbose
 
     configure_logging()
+
+    # Nothing may log before configure_logging(): a log call on the unconfigured root logger
+    # installs the default handler, which drops INFO, and configure_logging() then changes nothing.
+    global g_pack_target_sec
+    global g_spark_master_ui_url
+    global g_expected_test_time_sec
+    if args.pack_target_sec < 0:
+        fatal_error("--pack_target_sec must not be negative, got: {}".format(args.pack_target_sec))
+    g_pack_target_sec = args.pack_target_sec
+    g_spark_master_ui_url = args.spark_master_ui_url
+    if g_pack_target_sec > 0 and args.test_durations_file:
+        try:
+            g_expected_test_time_sec = load_test_durations(args.test_durations_file)
+        except OSError:
+            # The file is an optimization input. Without it the main pass runs one test per task.
+            logging.exception("Could not read %s; the main pass will not be packed",
+                              args.test_durations_file)
 
     if not args.run_cpp_tests and not args.run_java_tests:
         fatal_error("At least one of --java or --cpp has to be specified")
@@ -1574,6 +2794,13 @@ def main() -> None:
     if disable_list_path and not os.path.isfile(disable_list_path):
         fatal_error("File specified by --disable_list does not exist or is not a file: '{}'".format(
             disable_list_path))
+
+    if args.baseline_build_root and not args.baseline_csi_launch:
+        # Without a launch to report to there is nothing to show for the failed tests on the
+        # baseline, and each of their tasks would fail on the worker setting $YB_CSI_LID. Refuse
+        # here instead.
+        fatal_error("--baseline_build_root requires --baseline_csi_launch: the failed tests on "
+                    "the baseline report to their own CSI launch, not to this run's.")
 
     if ('YB_MVN_LOCAL_REPO' not in os.environ and
             args.run_java_tests and
@@ -1644,6 +2871,11 @@ def main() -> None:
         logging.info("Ignoring %d tests from ignore list %s", initial_num - len(test_descriptors),
                      ignore_list_path)
 
+    # Conf of the baseline tree, set below when running the failed tests on the baseline is
+    # enabled and its tree could be prepared. None means the failed tests do not run on the
+    # baseline this run.
+    baseline_conf: Optional[yb_dist_tests.TestConfig] = None
+
     # This needs to be done before Spark context initialization.
     # And before the no-tests-to-run check, so that archive can be pre-built.
     if args.send_archive_to_workers:
@@ -1651,33 +2883,49 @@ def main() -> None:
             conf.archive_for_workers is not None and
             os.path.exists(conf.archive_for_workers))
         if args.recreate_archive_for_workers or not archive_exists:
-            archive_sha_path = os.path.join(
-                conf.yb_src_root, 'extracted_from_archive.sha256')
+            archive_sha_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
             if os.path.exists(archive_sha_path):
                 os.remove(archive_sha_path)
 
-            yb_dist_tests.create_archive_for_workers(conf)
+            # Java tests run `mvn --offline` on the workers, so the repo has to be in the archive.
+            mvn_local_repo = os.environ.get('YB_MVN_LOCAL_REPO')
+            if not mvn_local_repo:
+                fatal_error(
+                    "YB_MVN_LOCAL_REPO is not set, cannot build the archive for workers. Expected "
+                    "it to point at the Maven repo inside %s." % conf.build_root)
+                return
 
-            yb_dist_tests.compute_archive_sha256sum(conf)
-
-            # Local host may also be worker, so leave expected checksum here after archive created.
-            assert conf.archive_sha256sum is not None
-            with open(archive_sha_path, 'w') as archive_sha:
-                archive_sha.write(conf.archive_sha256sum)
+            create_archive_and_record_checksum(conf, mvn_local_repo)
         else:
             yb_dist_tests.compute_archive_sha256sum(conf)
+        publish_archive_to_gcs(conf, args.archive_gcs_prefix)
+
+    # Same for the baseline tree, if the failed tests are going to run on it. Best-effort like the
+    # rest of the baseline work: anything wrong with that tree (an out-of-tree Maven repo, a partial
+    # extract) leaves baseline_conf unset, so the failed tests skip the baseline and the diff's own
+    # run is untouched.
+    if args.baseline_build_root:
+        try:
+            baseline_conf = prepare_baseline_conf_and_archive(
+                args.baseline_build_root, args.send_archive_to_workers, args.archive_gcs_prefix)
+        except Exception:
+            logging.exception("Could not prepare the baseline build at %s for the workers; "
+                              "not running the failed tests on it", args.baseline_build_root)
+            write_baseline_status(args.baseline_status_file, 'skip-prepare-failed')
 
     if not test_descriptors and not args.allow_no_tests:
         logging.info("No tests to run")
         return
 
     # If CSI is enabled, we need suites created before reporting any disabled tests.
+    # Diff's test run's own launch.
+    csi_launch = csi_report.env_launch()
     if test_descriptors:
         csi_suites: Dict[str, str] = {}
         propagated_env_vars['YB_CSI_REPS'] = str(num_repetitions)
         logging.info("Propagating env var %s (value: %s) to Spark workers",
                      'YB_CSI_REPS', num_repetitions)
-        csi_lqid = csi_report.launch_qid()
+        csi_lqid = csi_report.launch_qid(launch=csi_launch)
         propagated_env_vars['YB_CSI_QID'] = csi_lqid
         logging.info("Propagating env var %s (value: %s) to Spark workers",
                      'YB_CSI_QID', csi_lqid)
@@ -1690,7 +2938,7 @@ def main() -> None:
                 method = "All"
             (csi_var_name, csi_var_value) = csi_report.create_suite(
                 csi_lqid, suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests,
-                num_repetitions, time.time())
+                num_repetitions, time.time(), launch=csi_launch)
             csi_suites[suite_name] = csi_var_value
             propagated_env_vars[csi_var_name] = csi_var_value
             logging.info("Propagating env var %s (value: %s) to Spark workers",
@@ -1728,6 +2976,23 @@ def main() -> None:
         app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, spark_test_cnt)]
     init_spark_context(conf, app_name_details)
 
+    if baseline_conf is not None and baseline_conf.archive_gcs_url is not None:
+        # Only the workers that run a task on the baseline tree download it, when they get one.
+        logging.info("Baseline test run: enabled; workers download the baseline archive from %s",
+                     baseline_conf.archive_gcs_url)
+    elif baseline_conf is not None and baseline_conf.archive_for_workers is not None:
+        # Send the baseline build's worker archive along with the diff's. Workers rebuild the
+        # baseline tree at its own yb_src_root - a distinct path from the diff tree
+        # (path-identity) - so both can be there at once. Without archives there is nothing to
+        # send: the workers are expected to see both trees at their own paths already.
+        logging.info("Baseline test run: enabled; sending baseline archive %s to workers",
+                     baseline_conf.archive_for_workers)
+        # Remember before sending: the re-run phase can lose the application and re-create the
+        # context, and the failed-tests-on-baseline job runs inside that recovery, so this archive
+        # has to be distributed again to whatever context replaces this one.
+        remember_archive_for_workers(baseline_conf.archive_for_workers)
+        spark_context.addFile(baseline_conf.archive_for_workers)  # type: ignore
+
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
     logging.info("Running {} tasks on Spark".format(total_num_tests))
@@ -1736,12 +3001,26 @@ def main() -> None:
                 total_num_tests, len(test_descriptors))
 
     if test_descriptors:
-        results = run_tests_job_with_resubmits(test_descriptors, rerun=False, conf=conf)
+        results = run_tests_job_with_resubmits(test_descriptors, rerun=False, conf=conf,
+                                               env_vars=propagated_env_vars)
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
+    # Read here, right after the main pass: the new-test repetitions must know whether the MAIN
+    # pass stopped at the failure threshold, whatever the re-run jobs do to the set in between.
+    main_pass_cancelled = ALL_TESTS_ON_DIFF_JOB_GROUP in g_cancelled_job_groups
 
     test_phase_end_time = time.time()
+
+    # The jobs after the main pass repeat tests that have just run in this build, so the time each
+    # took here is the best estimate there is for packing them (plan_spark_tasks). The longest one
+    # when a test has several results.
+    main_pass_time_sec: Dict[str, float] = {}
+    for main_pass_result in results:
+        test_name = main_pass_result.test_descriptor.descriptor_str_without_attempt_index
+        main_pass_time_sec[test_name] = max(
+            main_pass_result.elapsed_time_sec, main_pass_time_sec.get(test_name, 0))
+    g_expected_test_time_sec.update(main_pass_time_sec)
 
     test_exit_codes = set([result.exit_code for result in results])
 
@@ -1762,9 +3041,11 @@ def main() -> None:
     total_test_run_time_sec: float = 0.0
     for result in results:
         test_language = result.test_descriptor.language
-        if result.exit_code != 0:
+        if result.failed:
             how_test_failed = ""
-            if result.failed_without_output:
+            if result.exit_code == 0:
+                how_test_failed = " in an earlier attempt of its Spark task"
+            elif result.failed_without_output:
                 how_test_failed = " without any output"
             logging.info("Test failed%s: %s", how_test_failed, result.test_descriptor)
             failures_by_language[test_language] += 1
@@ -1817,6 +3098,16 @@ def main() -> None:
             save_to_build_dir=args.save_report_to_build_dir)
 
     tot_failures = len(failed_test_descriptors)
+    if args.baseline_build_root:
+        # Record the reason when we decided not to run failed tests on baseline.
+        if tot_failures == 0:
+            write_baseline_status(args.baseline_status_file, 'no-failed-tests')
+        elif args.fail_repetitions <= 0:
+            # Not worth running failed tests on the baseline if we don't re-run them on the diff.
+            write_baseline_status(args.baseline_status_file, 'skip-no-rerun-phase')
+        elif tot_failures > REPEAT_FAILURE_LIMIT:
+            write_baseline_status(args.baseline_status_file,
+                                  'skip-over-cap-{}'.format(tot_failures))
     if tot_failures > 0 and args.fail_repetitions > 0:
         if tot_failures > REPEAT_FAILURE_LIMIT:
             logging.info("Too many failures ({} > {}), not re-running failures".format(
@@ -1828,8 +3119,19 @@ def main() -> None:
                 for test_descriptor in failed_test_descriptors
                 for i in range(1, args.fail_repetitions + 1)
             ]
-            rerun_results = run_tests_job_with_resubmits(test_descriptors_rerun, rerun=True,
-                                                         conf=conf)
+            baseline_test_descriptors = failed_test_descriptors
+            if baseline_conf is not None:
+                baseline_test_descriptors = filter_already_run_on_baseline(
+                    failed_test_descriptors, args.baseline_commit_id)
+                if not baseline_test_descriptors:
+                    # Every failed test was already run on this baseline by a peer diff.
+                    write_baseline_status(args.baseline_status_file,
+                                          'skip-already-run-on-baseline')
+                    baseline_conf = None
+            rerun_results = run_tests_job_with_resubmits(
+                test_descriptors_rerun, rerun=True, conf=conf, env_vars=propagated_env_vars,
+                baseline_conf=baseline_conf,
+                baseline_test_descriptors=baseline_test_descriptors, args=args)
             logging.info("Re-run results: %s  Expected: %s", len(rerun_results),
                          len(test_descriptors_rerun))
             rerun_failed = 0
@@ -1841,7 +3143,8 @@ def main() -> None:
                 result.test_descriptor.descriptor_str for result in rerun_results)
             rerun_missing_cnt = len([
                 td for td in test_descriptors_rerun if td.descriptor_str not in rerun_completed])
-            if rerun_missing_cnt > 0 and not g_spark_job_cancelled:
+            if (rerun_missing_cnt > 0 and
+                    FAILED_TESTS_ON_DIFF_JOB_GROUP not in g_cancelled_job_groups):
                 logging.error(
                     "Re-run is incomplete even after re-submissions: no results for %d of %d "
                     "test attempts. Returning a non-zero exit code so the lost re-runs are "
@@ -1849,8 +3152,16 @@ def main() -> None:
                     rerun_missing_cnt, len(test_descriptors_rerun))
                 global_exit_code = 1
 
+    try:
+        run_new_test_repetitions(args, conf, results, propagated_env_vars, main_pass_cancelled)
+    except Exception:
+        # Extra runs of new tests are evidence collected on the side. Losing them is not a reason
+        # to change the outcome of a build whose tests have already run.
+        logging.exception("New-test repetitions failed; continuing")
+
     for suite_name in csi_suites.keys():
-        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])
+        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [],
+                              launch=csi_launch)
 
     if args.sleep_after_tests:
         # This can be used as a way to keep the Spark app running during debugging while examining

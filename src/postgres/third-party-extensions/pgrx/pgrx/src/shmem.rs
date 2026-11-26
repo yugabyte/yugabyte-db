@@ -7,14 +7,6 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-#![deny(unsafe_op_in_unsafe_fn)]
-use crate::lwlock::*;
-use crate::{pg_sys, PgAtomic};
-use std::cell::UnsafeCell;
-use std::hash::Hash;
-
-/// Custom types that want to participate in shared memory must implement this marker trait
-pub unsafe trait PGRXSharedMemory {}
 
 /// In order to store a type in Postgres Shared Memory, it must be passed to
 /// `pg_shmem_init!()` during `_PG_init()`.
@@ -29,19 +21,20 @@ pub unsafe trait PGRXSharedMemory {}
 /// Custom types need to also implement the `PGRXSharedMemory` trait.
 ///
 /// > Extensions that use shared memory **must** be loaded via `postgresql.conf`'s
-/// `shared_preload_libraries` configuration setting.  
+/// > `shared_preload_libraries` configuration setting.
 ///
 /// # Example
 ///
 /// ```rust,no_run
 /// use pgrx::prelude::*;
 /// use pgrx::{PgAtomic, PgLwLock, pg_shmem_init, PgSharedMemoryInitialization};
+/// use std::sync::atomic::AtomicBool;
 ///
-/// // primitive types must be protected behind a `PgLwLock`
-/// static PRIMITIVE: PgLwLock<i32> = PgLwLock::new(c"primitive");
+/// // Primitive types must be protected behind a `PgLwLock`.
+/// static PRIMITIVE: PgLwLock<i32> = unsafe { PgLwLock::new(c"primitive") };
 ///
-/// // Rust atomics can be used without locks, wrapped in a `PgAtomic`
-/// static ATOMIC: PgAtomic<std::sync::atomic::AtomicBool> = PgAtomic::new(c"atomic");
+/// // Rust atomics can be used without locks, wrapped in a `PgAtomic`.
+/// static ATOMIC: PgAtomic<AtomicBool> = unsafe { PgAtomic::new(c"atomic") };
 ///
 /// #[pg_guard]
 /// pub extern "C-unwind" fn _PG_init() {
@@ -49,46 +42,34 @@ pub unsafe trait PGRXSharedMemory {}
 ///     pg_shmem_init!(ATOMIC);
 /// }
 /// ```
-#[cfg(not(any(feature = "pg15", feature = "pg16", feature = "pg17")))]
 #[macro_export]
 macro_rules! pg_shmem_init {
-    ($thing:expr) => {
-        $thing.pg_init();
-
-        unsafe {
-            static mut PREV_SHMEM_STARTUP_HOOK: Option<unsafe extern "C-unwind" fn()> = None;
-            PREV_SHMEM_STARTUP_HOOK = pg_sys::shmem_startup_hook;
-            pg_sys::shmem_startup_hook = Some(__pgrx_private_shmem_hook);
-
-            #[pg_guard]
-            extern "C-unwind" fn __pgrx_private_shmem_hook() {
-                unsafe {
-                    if let Some(i) = PREV_SHMEM_STARTUP_HOOK {
-                        i();
-                    }
-                    $thing.shmem_init();
-                }
-            }
-        }
+    ($var:ident) => {
+        $crate::pg_shmem_init!($var = Default::default())
     };
-}
+    ($var:ident = $e:expr) => {
+        $crate::pg_sys::submodules::thread_check::check_active_thread();
 
-#[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17"))]
-#[macro_export]
-macro_rules! pg_shmem_init {
-    ($thing:expr) => {
+        #[cfg(any(feature = "pg13", feature = "pg14"))]
+        unsafe {
+            $crate::shmem::PgSharedMemoryInitialization::on_shmem_request(&$var);
+        }
+
+        #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))]
         unsafe {
             static mut PREV_SHMEM_REQUEST_HOOK: Option<unsafe extern "C-unwind" fn()> = None;
             PREV_SHMEM_REQUEST_HOOK = pg_sys::shmem_request_hook;
-            pg_sys::shmem_request_hook = Some(__pgrx_private_shmem_request_hook);
+            pg_sys::shmem_request_hook = Some(on_shmem_request);
 
             #[pg_guard]
-            extern "C-unwind" fn __pgrx_private_shmem_request_hook() {
+            unsafe extern "C-unwind" fn on_shmem_request() {
                 unsafe {
                     if let Some(i) = PREV_SHMEM_REQUEST_HOOK {
-                        i();
+                        $crate::pg_sys::submodules::ffi::pg_guard_ffi_boundary(|| i());
                     }
-                    $thing.pg_init();
+                }
+                unsafe {
+                    $crate::shmem::PgSharedMemoryInitialization::on_shmem_request(&$var);
                 }
             }
         }
@@ -96,185 +77,153 @@ macro_rules! pg_shmem_init {
         unsafe {
             static mut PREV_SHMEM_STARTUP_HOOK: Option<unsafe extern "C-unwind" fn()> = None;
             PREV_SHMEM_STARTUP_HOOK = pg_sys::shmem_startup_hook;
-            pg_sys::shmem_startup_hook = Some(__pgrx_private_shmem_hook);
+            pg_sys::shmem_startup_hook = Some(on_shmem_startup);
 
             #[pg_guard]
-            extern "C-unwind" fn __pgrx_private_shmem_hook() {
+            #[forbid(unsafe_op_in_unsafe_fn)]
+            unsafe extern "C-unwind" fn on_shmem_startup() {
                 unsafe {
                     if let Some(i) = PREV_SHMEM_STARTUP_HOOK {
-                        i();
+                        $crate::pg_sys::submodules::ffi::pg_guard_ffi_boundary(|| i());
                     }
-                    $thing.shmem_init();
+                }
+                let value = $e;
+                unsafe {
+                    $crate::shmem::PgSharedMemoryInitialization::on_shmem_startup(&$var, value);
                 }
             }
         }
     };
 }
 
-/// A trait that types can implement to provide their own Postgres Shared Memory initialization process
-pub trait PgSharedMemoryInitialization {
-    /// Automatically called when the an extension is loaded.  If using the `pg_shmem_init!()` macro
-    /// in `_PG_init()`, this is called automatically
-    fn pg_init(&'static self);
-
-    /// Automatically called by the `pg_shmem_init!()` macro, when Postgres is initializing its
-    /// shared memory system
-    /// SAFETY: Must only be called from inside the Postgres shared memory init hook
-    unsafe fn shmem_init(&'static self);
-}
-
-impl<T> PgSharedMemoryInitialization for PgLwLock<T>
-where
-    T: Default + PGRXSharedMemory + 'static,
-{
-    fn pg_init(&'static self) {
-        PgSharedMem::pg_init_locked(self);
-    }
-
-    /// SAFETY: Must only be called from inside the Postgres shared memory init hook
-    unsafe fn shmem_init(&'static self) {
-        unsafe {
-            PgSharedMem::shmem_init_locked(self);
-        }
-    }
-}
-
-impl<T> PgSharedMemoryInitialization for PgAtomic<T>
-where
-    T: atomic_traits::Atomic + Default,
-{
-    fn pg_init(&'static self) {
-        PgSharedMem::pg_init_atomic(self);
-    }
-
-    /// SAFETY: Must only be called from inside the Postgres shared memory init hook
-    unsafe fn shmem_init(&'static self) {
-        unsafe {
-            PgSharedMem::shmem_init_atomic(self);
-        }
-    }
-}
-
-/// This struct contains methods to drive creation of types in shared memory
-pub struct PgSharedMem {}
-
-impl PgSharedMem {
-    /// Must be run from PG_init, use for types which are guarded by a LWLock
-    pub fn pg_init_locked<T: Default + PGRXSharedMemory>(lock: &PgLwLock<T>) {
-        unsafe {
-            pg_sys::RequestAddinShmemSpace(std::mem::size_of::<PgLwLockShared<T>>());
-            pg_sys::RequestNamedLWLockTranche(lock.name().as_ptr(), 1);
-        }
-    }
-
-    /// Must be run from _PG_init for atomics
-    pub fn pg_init_atomic<T: atomic_traits::Atomic + Default>(_atomic: &PgAtomic<T>) {
-        unsafe {
-            pg_sys::RequestAddinShmemSpace(std::mem::size_of::<T>());
-        }
-    }
-
-    /// Must be run from the shared memory init hook, use for types which are guarded by a `LWLock`
-    /// SAFETY: Must only be called from inside the Postgres shared memory init hook
-    pub unsafe fn shmem_init_locked<T: Default + PGRXSharedMemory>(lock: &PgLwLock<T>) {
-        unsafe {
-            let shm_name = lock.name();
-            let addin_shmem_init_lock = &raw mut (*pg_sys::MainLWLockArray.add(21)).lock;
-            pg_sys::LWLockAcquire(addin_shmem_init_lock, pg_sys::LWLockMode::LW_EXCLUSIVE);
-
-            let mut found = false;
-            let fv_shmem = pg_sys::ShmemInitStruct(
-                shm_name.as_ptr(),
-                std::mem::size_of::<PgLwLockShared<T>>(),
-                &mut found,
-            )
-            .cast::<PgLwLockShared<T>>();
-            if !found {
-                fv_shmem.write(PgLwLockShared {
-                    data: UnsafeCell::new(T::default()),
-                    lock_ptr: &raw mut (*pg_sys::GetNamedLWLockTranche(shm_name.as_ptr())).lock,
-                });
-            }
-
-            lock.attach(fv_shmem);
-            pg_sys::LWLockRelease(addin_shmem_init_lock);
-        }
-    }
-
-    /// Must be run from the shared memory init hook, use for rust atomics behind `PgAtomic`
-    /// SAFETY: Must only be called from inside the Postgres shared memory init hook
-    pub unsafe fn shmem_init_atomic<T: atomic_traits::Atomic + Default>(atomic: &PgAtomic<T>) {
-        unsafe {
-            let shm_name = atomic.name();
-            let addin_shmem_init_lock = &raw mut (*pg_sys::MainLWLockArray.add(21)).lock;
-            pg_sys::LWLockAcquire(addin_shmem_init_lock, pg_sys::LWLockMode::LW_EXCLUSIVE);
-
-            let mut found = false;
-            let fv_shmem =
-                pg_sys::ShmemInitStruct(shm_name.as_ptr(), std::mem::size_of::<T>(), &mut found)
-                    .cast::<T>();
-            if !found {
-                fv_shmem.write(T::default());
-            }
-
-            atomic.attach(fv_shmem);
-            pg_sys::LWLockRelease(addin_shmem_init_lock);
-        }
-    }
-}
+/// Types for which it is safe to transfer and share references between PostgreSQL processes.
+pub unsafe trait PGRXSharedMemory {}
 
 unsafe impl PGRXSharedMemory for bool {}
-unsafe impl PGRXSharedMemory for char {}
-unsafe impl PGRXSharedMemory for str {}
-unsafe impl PGRXSharedMemory for () {}
+
 unsafe impl PGRXSharedMemory for i8 {}
-unsafe impl PGRXSharedMemory for i16 {}
-unsafe impl PGRXSharedMemory for i32 {}
-unsafe impl PGRXSharedMemory for i64 {}
-unsafe impl PGRXSharedMemory for i128 {}
+
 unsafe impl PGRXSharedMemory for u8 {}
+
+unsafe impl PGRXSharedMemory for i16 {}
+
 unsafe impl PGRXSharedMemory for u16 {}
+
+unsafe impl PGRXSharedMemory for i32 {}
+
 unsafe impl PGRXSharedMemory for u32 {}
+
+unsafe impl PGRXSharedMemory for i64 {}
+
 unsafe impl PGRXSharedMemory for u64 {}
+
+unsafe impl PGRXSharedMemory for i128 {}
+
 unsafe impl PGRXSharedMemory for u128 {}
-unsafe impl PGRXSharedMemory for usize {}
+
 unsafe impl PGRXSharedMemory for isize {}
+
+unsafe impl PGRXSharedMemory for usize {}
+
+#[cfg(target_has_atomic = "8")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicBool {}
+
+#[cfg(target_has_atomic = "8")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicI8 {}
+
+#[cfg(target_has_atomic = "8")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicU8 {}
+
+#[cfg(target_has_atomic = "16")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicI16 {}
+
+#[cfg(target_has_atomic = "16")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicU16 {}
+
+#[cfg(target_has_atomic = "32")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicI32 {}
+
+#[cfg(target_has_atomic = "32")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicU32 {}
+
+#[cfg(target_has_atomic = "64")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicI64 {}
+
+#[cfg(target_has_atomic = "64")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicU64 {}
+
+#[cfg(target_has_atomic = "ptr")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicIsize {}
+
+#[cfg(target_has_atomic = "ptr")]
+unsafe impl PGRXSharedMemory for std::sync::atomic::AtomicUsize {}
+
+unsafe impl PGRXSharedMemory for char {}
+
 unsafe impl PGRXSharedMemory for f32 {}
+
 unsafe impl PGRXSharedMemory for f64 {}
-unsafe impl<T> PGRXSharedMemory for [T] where T: PGRXSharedMemory + Default {}
-unsafe impl<A, B> PGRXSharedMemory for (A, B)
-where
-    A: PGRXSharedMemory + Default,
-    B: PGRXSharedMemory + Default,
-{
+
+unsafe impl PGRXSharedMemory for str {}
+
+unsafe impl<T: PGRXSharedMemory> PGRXSharedMemory for [T] {}
+
+unsafe impl<const N: usize, T: PGRXSharedMemory> PGRXSharedMemory for [T; N] {}
+
+macro_rules! impl_pg_sync_for_tuple {
+    ($($t:ident),*) => {
+        unsafe impl<$($t,)*> PGRXSharedMemory for ($($t,)*) where $($t: PGRXSharedMemory,)* {}
+    };
 }
-unsafe impl<A, B, C> PGRXSharedMemory for (A, B, C)
-where
-    A: PGRXSharedMemory + Default,
-    B: PGRXSharedMemory + Default,
-    C: PGRXSharedMemory + Default,
-{
+
+impl_pg_sync_for_tuple!();
+impl_pg_sync_for_tuple!(A);
+impl_pg_sync_for_tuple!(A, B);
+impl_pg_sync_for_tuple!(A, B, C);
+impl_pg_sync_for_tuple!(A, B, C, D);
+impl_pg_sync_for_tuple!(A, B, C, D, E);
+impl_pg_sync_for_tuple!(A, B, C, D, E, F);
+
+/// A trait that types can implement to provide their own Postgres Shared Memory initialization process.
+pub trait PgSharedMemoryInitialization {
+    type Value: PGRXSharedMemory;
+
+    /// # Safety
+    ///
+    /// * Be called from inside PostgreSQL `shmem_request_hook`.
+    /// * For PostgreSQL 13, 14, it could be called at any time.
+    unsafe fn on_shmem_request(&'static self);
+
+    /// # Safety
+    ///
+    /// * Be called from inside PostgreSQL `shmem_startup_hook`.
+    unsafe fn on_shmem_startup(&'static self, value: Self::Value);
 }
-unsafe impl<A, B, C, D> PGRXSharedMemory for (A, B, C, D)
-where
-    A: PGRXSharedMemory + Default,
-    B: PGRXSharedMemory + Default,
-    C: PGRXSharedMemory + Default,
-    D: PGRXSharedMemory + Default,
-{
+
+#[repr(transparent)]
+pub struct AssertPGRXSharedMemory<T>(T);
+
+impl<T> AssertPGRXSharedMemory<T> {
+    pub const unsafe fn new(value: T) -> Self {
+        Self(value)
+    }
+    pub fn into_inner(self) -> T {
+        self.0
+    }
 }
-unsafe impl<A, B, C, D, E> PGRXSharedMemory for (A, B, C, D, E)
-where
-    A: PGRXSharedMemory + Default,
-    B: PGRXSharedMemory + Default,
-    C: PGRXSharedMemory + Default,
-    D: PGRXSharedMemory + Default,
-    E: PGRXSharedMemory + Default,
-{
+
+impl<T> std::ops::Deref for AssertPGRXSharedMemory<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
-unsafe impl<T, const N: usize> PGRXSharedMemory for heapless::Vec<T, N> {}
-unsafe impl<T, const N: usize> PGRXSharedMemory for heapless::Deque<T, N> {}
-unsafe impl<K: Eq + Hash, V: Default, S, const N: usize> PGRXSharedMemory
-    for heapless::IndexMap<K, V, S, N>
-{
+
+impl<T> std::ops::DerefMut for AssertPGRXSharedMemory<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
+
+unsafe impl<T> PGRXSharedMemory for AssertPGRXSharedMemory<T> {}

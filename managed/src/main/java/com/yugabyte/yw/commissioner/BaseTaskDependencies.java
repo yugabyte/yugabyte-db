@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -68,4 +69,5 @@ public class BaseTaskDependencies {
   private final GFlagsValidation gFlagsValidation;
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentClient nodeAgentClient;
+  private final AuditService auditService;
 }

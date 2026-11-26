@@ -40,14 +40,22 @@ template<>
 struct ANNMethodTraits<ANNMethodKind::kUsearch> {
   template<vector_index::IndexableVectorType Vector,
            vector_index::ValidDistanceResultType DistanceResult>
-  using FactoryType = SimplifiedUsearchIndexFactory<Vector, DistanceResult>;
+  static Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateIndexTraits(
+      const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
+    return CreateUsearchIndexTraits<Vector, DistanceResult>(
+        block_cache, options, /* mem_tracker= */ nullptr);
+  }
 };
 
 template<>
 struct ANNMethodTraits<ANNMethodKind::kHnswlib> {
   template<vector_index::IndexableVectorType Vector,
            vector_index::ValidDistanceResultType DistanceResult>
-  using FactoryType = SimplifiedHnswlibIndexFactory<Vector, DistanceResult>;
+  static Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateIndexTraits(
+      const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
+    return CreateHnswlibIndexTraits<Vector, DistanceResult>(
+        block_cache, options, /* mem_tracker= */ nullptr, /* tenant_extractor= */ nullptr);
+  }
 };
 
 }  // namespace yb::ann_methods

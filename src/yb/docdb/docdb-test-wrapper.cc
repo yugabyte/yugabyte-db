@@ -18,7 +18,10 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb-test.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/yb_partition.h"
+
+DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
 namespace docdb {
@@ -1858,7 +1861,7 @@ TEST_P(DocDBTestWrapper, DISABLED_DumpDB) {
   rocksdb::Options options;
   docdb::InitRocksDBOptions(
       &options, "" /* log_prefix */, tablet_id(), rocksdb::CreateDBStatisticsForTests(),
-      tablet_options);
+      tablet_options, StorageDbType::kRegular);
 
   rocksdb::DB* rocksdb = nullptr;
   std::string db_path = "";
@@ -2426,6 +2429,204 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithNonColocatedTables) {
   ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
   LOG(INFO) << "Frontier obtained after restart "
             << consensus_frontier.ToString();
+}
+
+// The CDR stamp lives on the DocWriteBatch, so every PostgreSQL write path that applies it reads
+// it from here. These cover the batch itself and DeleteSubDoc; the PostgreSQL paths need a running
+// pggate and are covered separately.
+constexpr uint32_t kCdrOrigin = 42;
+const HybridTime kCdrSourceWriteHt = 2500_usec_ht;
+
+// The pair describes a row version, so it belongs on the row-level entry and nowhere else. A
+// partial update that stamped each changed column would claim the untouched columns were written
+// by that origin too.
+TEST_P(DocDBTestWrapper, CdrMetadataStampsRowLevelEntriesOnly) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  const auto doc_key = MakeDocKey("row1");
+  KeyBytes encoded_doc_key(doc_key.Encode());
+
+  auto dwb = MakeDocWriteBatch();
+  dwb.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+  ASSERT_TRUE(dwb.RowControlFields().has_cdr_metadata());
+
+  // What a partial UPDATE applied from a remote origin writes: a liveness entry holding the stamp,
+  // then the changed column on its own.
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+      ValueRef(ValueEntryType::kNullLow)));
+  auto c1 = MakeLWValue(QLValue::Primitive("v1"));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue("c1")), ValueRef(*c1)));
+  ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null; \
+          cdr source origin: 42; cdr source write ht: { physical: 2500 }
+      SubDocKey(DocKey([], ["row1"]), ["c1"; HT{ physical: 3000 w: 1 }]) -> "v1"
+      )#");
+}
+
+// A tombstone covers the whole row and leaves no column to hang a value on, so the control fields
+// are the only place a delete's origin can be recorded. delete_origin_differs needs it.
+TEST_P(DocDBTestWrapper, CdrMetadataStampsTombstone) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  const auto doc_key = MakeDocKey("row1");
+  KeyBytes encoded_doc_key(doc_key.Encode());
+
+  auto dwb = MakeDocWriteBatch();
+  dwb.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key)));
+  ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1"]), [HT{ physical: 3000 }]) -> DEL; cdr source origin: 42; \
+          cdr source write ht: { physical: 2500 }
+      )#");
+}
+
+// Absence is what identifies a locally-originated write, so a local write must produce exactly the
+// bytes it produced before this feature existed - no stamp, and no extra liveness entry.
+TEST_P(DocDBTestWrapper, LocalWriteCarriesNoCdrMetadata) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  const auto doc_key = MakeDocKey("row1");
+  KeyBytes encoded_doc_key(doc_key.Encode());
+
+  auto dwb = MakeDocWriteBatch();
+  ASSERT_FALSE(dwb.RowControlFields().has_cdr_metadata());
+
+  auto c1 = MakeLWValue(QLValue::Primitive("v1"));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue("c1")), ValueRef(*c1)));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key, KeyEntryValue("c2"))));
+  ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1"]), ["c1"; HT{ physical: 3000 }]) -> "v1"
+      SubDocKey(DocKey([], ["row1"]), ["c2"; HT{ physical: 3000 w: 1 }]) -> DEL
+      )#");
+}
+
+// The invariant the read path rests on: every write emits a row-level entry, so the newest one
+// identifies the last writer. A local update after a remote apply must leave an unstamped entry
+// on top, or the row would go on claiming an origin that no longer wrote it.
+TEST_P(DocDBTestWrapper, NewerLocalWriteSupersedesAnOlderStamp) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  const auto doc_key = MakeDocKey("row1");
+  KeyBytes encoded_doc_key(doc_key.Encode());
+
+  // A replication apply.
+  {
+    auto dwb = MakeDocWriteBatch();
+    dwb.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+        ValueRef(ValueEntryType::kNullLow)));
+    ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+  }
+
+  // A later local update, which now also writes the row-level entry.
+  {
+    auto dwb = MakeDocWriteBatch();
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+        ValueRef(ValueEntryType::kNullLow)));
+    ASSERT_OK(WriteToRocksDB(dwb, 4000_usec_ht));
+  }
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1"]), [SystemColumnId(0); HT{ physical: 4000 }]) -> null
+      SubDocKey(DocKey([], ["row1"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null; \
+          cdr source origin: 42; cdr source write ht: { physical: 2500 }
+      )#");
+}
+
+// The batch-level gate, not just the encoder's: with the feature off a batch that was handed a
+// stamp must still report itself as carrying none, so nothing downstream treats the write as
+// remote.
+TEST_P(DocDBTestWrapper, CdrMetadataIsGatedByTheFlag) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = false;
+
+  const auto doc_key = MakeDocKey("row1");
+  KeyBytes encoded_doc_key(doc_key.Encode());
+
+  auto dwb = MakeDocWriteBatch();
+  dwb.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+  ASSERT_FALSE(dwb.RowControlFields().has_cdr_metadata());
+
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key)));
+  ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1"]), [HT{ physical: 3000 }]) -> DEL
+      )#");
+}
+
+// The flag is read once, when the batch is constructed. A runtime flip lands between write
+// requests rather than inside one, so a single request cannot come out half stamped.
+TEST_P(DocDBTestWrapper, CdrEnablementIsFrozenWhenTheBatchIsConstructed) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  const auto doc_key = MakeDocKey("row1");
+  KeyBytes encoded_doc_key(doc_key.Encode());
+
+  auto dwb = MakeDocWriteBatch();
+  ASSERT_TRUE(dwb.IsCdrEnabled());
+  dwb.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+  ASSERT_TRUE(dwb.RowControlFields().has_cdr_metadata());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = false;
+  ASSERT_TRUE(dwb.IsCdrEnabled());
+  ASSERT_TRUE(dwb.RowControlFields().has_cdr_metadata());
+
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key)));
+  ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1"]), [HT{ physical: 3000 }]) -> DEL; cdr source origin: 42; \
+          cdr source write ht: { physical: 2500 }
+      )#");
+
+  // The reverse direction: a batch constructed while the flag was off stays off.
+  auto after = MakeDocWriteBatch();
+  after.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+  ASSERT_FALSE(after.IsCdrEnabled());
+  ASSERT_FALSE(after.RowControlFields().has_cdr_metadata());
+}
+
+// A local write never calls SetCdrMetadata, and still owes the read path a row-level entry. So the
+// flag has to be readable on a batch that was never handed a stamp - keying it off SetCdrMetadata
+// would switch the entry off for exactly the writes whose lack of a stamp is the signal.
+TEST_P(DocDBTestWrapper, CdrEnablementDoesNotDependOnSetCdrMetadata) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  auto dwb = MakeDocWriteBatch();
+  ASSERT_TRUE(dwb.IsCdrEnabled());
+  ASSERT_FALSE(dwb.RowControlFields().has_cdr_metadata());
+}
+
+// The stamp belongs to the write request that set it. A cleared batch has no request, so it must
+// not hand the next one the previous one's origin. The flag is not the request's, though - it was
+// frozen for this batch's lifetime - so it survives.
+TEST_P(DocDBTestWrapper, ClearForgetsTheCdrStampButNotTheFlag) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  auto dwb = MakeDocWriteBatch();
+  dwb.SetCdrMetadata({.source_origin = kCdrOrigin, .source_write_ht = kCdrSourceWriteHt});
+  ASSERT_TRUE(dwb.RowControlFields().has_cdr_metadata());
+
+  dwb.Clear();
+  ASSERT_FALSE(dwb.RowControlFields().has_cdr_metadata());
+  ASSERT_TRUE(dwb.IsCdrEnabled());
 }
 
 } // namespace docdb

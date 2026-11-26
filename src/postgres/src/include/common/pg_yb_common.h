@@ -90,24 +90,6 @@ extern bool YBSuppressUnsafeAlterNotice();
 extern bool YBIsNonTxnCopyEnabled();
 
 /**
- * Returns a null-terminated string representing the name of the
- * cloud this process is running on.
- */
-extern const char *YBGetCurrentCloud();
-
-/**
- * Returns a null-terminated string representing the region this
- * process is running on.
- */
-extern const char *YBGetCurrentRegion();
-
-/**
- * Returns a null-terminated string representing the zone this
- * process is running on.
- */
-extern const char *YBGetCurrentZone();
-
-/**
  * Returns a null-terminated string representing the uuid of the
  * placement this process is running on.
  */
@@ -156,5 +138,13 @@ Oid			YBGetDatabaseOidFromEnv(const char *database_name);
  * Returns whether FLAGS_TEST_ysql_yb_query_diagnostics_race_condition is set.
  */
 extern bool YBQueryDiagnosticsTestRaceCondition();
+
+/**
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
+ * the current process in case the parent process dies. This is Linux-specific
+ * and can only be done from the child process (the postmaster, initdb or
+ * pg_upgrade). The parent process here is yb-master or yb-tserver.
+ */
+extern void YBSetParentDeathSignal();
 
 #endif							/* PG_YB_COMMON_H */

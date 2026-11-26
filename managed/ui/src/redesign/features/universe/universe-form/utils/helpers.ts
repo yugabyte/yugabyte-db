@@ -177,6 +177,42 @@ export const transformTagsArrayToObject = (instanceTags: InstanceTags) =>
     return tagsObj;
   }, {});
 
+// Values of yb.universe.user_tags.is_enforced and yb.universe.user_tags.dev_tags.
+// dev_tags accepts "key:value" strings (the only form the runtime config API can set, since the
+// key is a string list) and [{name, value}] objects (only settable via HOCON, e.g. application.conf).
+// Malformed entries are dropped rather than breaking the form.
+export const getDevUserTags = (isEnforced?: string, devTags?: string): InstanceTag[] => {
+  if (isEnforced !== 'true') return [];
+  const raw = devTags ?? '[]';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    try {
+      // Values set through the API come back with their quotes escaped: [\"k:v\"].
+      parsed = JSON.parse(JSON.parse(`"${raw}"`));
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((tag) => {
+      if (typeof tag === 'string') {
+        const sep = tag.indexOf(':');
+        return sep < 0 ? null : { name: tag.slice(0, sep), value: tag.slice(sep + 1) };
+      }
+      return { name: tag?.name, value: tag?.value };
+    })
+    .filter(
+      (tag): tag is InstanceTag =>
+        typeof tag?.name === 'string' &&
+        typeof tag?.value === 'string' &&
+        tag.name !== '' &&
+        tag.value !== ''
+    );
+};
+
 export const isPGEnabledFromIntent = (intent: UserIntent) => {
   const gFlagGroups = _.get(intent, 'specificGFlags.gflagGroups', []);
   return gFlagGroups.includes(GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY);

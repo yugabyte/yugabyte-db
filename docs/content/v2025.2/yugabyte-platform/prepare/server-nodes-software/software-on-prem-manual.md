@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Fully manual provisioning is deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -101,6 +101,8 @@ A local Network Time Protocol (NTP) server or equivalent must be available.
 
 Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard AlmaLinux 8 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
 
+For the settings that matter for clock skew, and how to verify synchronization, refer to [Set up time synchronization](../../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
 ## Open incoming TCP/IP ports
 
 Database servers need incoming TCP/IP access enabled for communications between themselves and YugabyteDB Anywhere.
@@ -118,7 +120,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 1. Add the following line to the `/etc/chrony.conf` file:
 
     ```text
-    server <your-time-server-IP-address> prefer iburst
+    server <your-time-server-IP-address> prefer iburst minpoll 4 maxpoll 4
     ```
 
     Then run the following command:
@@ -213,6 +215,28 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
         ```sh
         sysctl vm.max_map_count
         ```
+
+    1. Configure the parameter `vm.overcommit_memory` as follows:
+
+        ```sh
+        sudo sysctl -w vm.overcommit_memory=1
+        sudo bash -c 'sysctl vm.overcommit_memory=1 >> /etc/sysctl.conf'
+        ```
+
+        With `1`, the kernel doesn't refuse memory requests based on its estimate of free memory. If a node runs out of memory, the Linux OOM killer handles it.
+
+        {{< warning title="ARM nodes that use 64 KiB memory pages" >}}
+Setting `vm.overcommit_memory=1` is especially important on ARM (aarch64) nodes whose Linux kernel uses 64 KiB memory pages and is older than version 5.2. With the default setting (`0`), these kernels can refuse a memory request while about 8% of the node's memory is still free or in the page cache, and the YugabyteDB process that made the request stops. This happens because, with transparent hugepages enabled, a kernel that uses 64 KiB pages keeps a much larger memory reserve.
+
+This applies to:
+
+- Red Hat Enterprise Linux 8 for ARM and distributions based on it, including AlmaLinux 8, Rocky Linux 8, CentOS Stream 8, and Oracle Linux 8 with the Red Hat Compatible Kernel. Their ARM kernel always uses 64 KiB pages.
+- Any other kernel older than 5.2 that was built with 64 KiB pages.
+
+Kernels 5.2 and later don't refuse requests this way, even with 64 KiB pages. This includes the optional `kernel-64k` kernel for Red Hat Enterprise Linux 9 and distributions based on it, the Unbreakable Enterprise Kernel Release 6 for ARM, and Ubuntu's `-64k` kernels.
+
+To check a node, run `getconf PAGESIZE`, which prints `65536` on a kernel that uses 64 KiB pages, and `uname -r`, which prints the kernel version.
+        {{< /warning >}}
 
 1. Perform the following to prepare and mount the data volume (separate partition for database data):
 
@@ -447,7 +471,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte logs
-    Wants=yb-zip_purge_yb_logs.timer
 
     [Service]
     Type=oneshot
@@ -463,7 +486,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte logs
-    Requires=yb-zip_purge_yb_logs.service
 
     [Timer]
     Unit=yb-zip_purge_yb_logs.service
@@ -479,7 +501,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte clean cores
-    Wants=yb-clean_cores.timer
 
     [Service]
     Type=oneshot
@@ -533,7 +554,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte clean cores
-    Requires=yb-clean_cores.service
 
     [Timer]
     Unit=yb-clean_cores.service
@@ -549,7 +569,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte collect metrics
-    Wants=yb-collect_metrics.timer
 
     [Service]
     Type=oneshot
@@ -557,7 +576,6 @@ You can install systemd-specific database service unit files, as follows:
     ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
 
     [Install]
-    WantedBy=multi-user.target
     ```
 
     `yb-collect_metrics.timer`
@@ -565,7 +583,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte collect metrics
-    Requires=yb-collect_metrics.service
 
     [Timer]
     Unit=yb-collect_metrics.service

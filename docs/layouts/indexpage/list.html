@@ -40,19 +40,22 @@
     {{- end -}}
     <div class="heading-content">
       <div>
-        <h1>
-          {{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}
-          {{ if .Draft }} (Draft){{ end }}
-          {{- if .Params.tags -}}
-            {{- if .Params.tags.feature -}}
-              {{- partial "tags/feature.html" . -}}
-            {{- end -}}
+        <div class="heading-title-row">
+          <h1>
+            {{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}
+            {{ if .Draft }} (Draft){{ end }}
+            {{- if .Params.tags -}}
+              {{- if .Params.tags.feature -}}
+                {{- partial "tags/feature.html" . -}}
+              {{- end -}}
 
-            {{- if .Params.tags.other -}}
-              {{- partial "tags/other.html" . -}}
+              {{- if .Params.tags.other -}}
+                {{- partial "tags/other.html" . -}}
+              {{- end -}}
             {{- end -}}
-          {{- end -}}
-        </h1>
+          </h1>
+          {{- with .OutputFormats.Get "markdown" }}{{ partial "markdown-actions.html" . }}{{ end -}}
+        </div>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
     </div>

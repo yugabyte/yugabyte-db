@@ -208,7 +208,7 @@ class GenPch:
                 if basename == 'CMakeFiles':
                     break
 
-        for check_path in ('src/yb/yql/cql/ql', 'src/yb/yql/pggate'):
+        for check_path in ('src/yb/yql/cql/ql', 'src/yb/yql/pggate', 'src/yb/docdb'):
             if path.startswith(check_path):
                 return check_path
         if path in self.libs or ('has_cmake' in kwargs and kwargs['has_cmake']):

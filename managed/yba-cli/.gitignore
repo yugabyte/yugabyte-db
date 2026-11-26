@@ -2,3 +2,9 @@ yba_cli*
 yugabyte*
 bin/*
 yugabyte*
+/yba
+
+# Local-only workspace pointing at Go clients generated from this working copy.
+# CI resolves go.mod against the published platform-go-client instead.
+go.work
+go.work.sum

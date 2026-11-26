@@ -32,6 +32,9 @@
 
 #include "yb/master/catalog_loaders.h"
 
+#include <string_view>
+#include <unordered_set>
+
 #include "yb/cdc/cdc_util.h"
 
 #include "yb/common/colocated_util.h"
@@ -50,6 +53,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
 
 DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -216,6 +221,25 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     return Status::OK();
   }
 
+  // A deleted split parent is only needed to redirect a lookup to its children and to be listed in
+  // the master UI, so load it straight into that form rather than as a TabletInfo that
+  // RemoveDeletedTabletsFromTables would drop.
+  // Tablets of a table that is going away are loaded as usual, as RemoveDeletedTabletsFromTables
+  // leaves them alone too.
+  if (FLAGS_master_enable_deleted_tablet_cleanup &&
+      metadata.state() == SysTabletsEntryPB::DELETED && metadata.split_tablet_ids_size() > 0 &&
+      !primary_table->LockForRead()->started_hiding_or_deleting()) {
+    catalog_manager_->deleted_tablets_.insert(tablet_id);
+    catalog_manager_->deleted_split_parents_.insert_or_assign(
+        tablet_id,
+        DeletedSplitParent{
+            .table_id = metadata.table_id(),
+            .child_ids = std::vector<TabletId>(
+                metadata.split_tablet_ids().begin(), metadata.split_tablet_ids().end()),
+            .state_msg = metadata.state_msg()});
+    return Status::OK();
+  }
+
   // Setup the tablet info.
   std::vector<TableId> table_ids;
   std::vector<TableId> existing_table_ids;
@@ -240,8 +264,26 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       table_ids = state_->parent_to_child_tables[primary_table->id()];
       table_ids.push_back(primary_table->id());
     } else {
-      for (int k = 0; k < metadata.table_ids_size(); ++k) {
-        table_ids.push_back(metadata.table_ids(k));
+      std::unordered_set<std::string_view> seen_table_ids;
+      std::vector<std::string_view> repeated_table_ids;
+      for (const auto& table_id : metadata.table_ids()) {
+        if (seen_table_ids.insert(table_id).second) {
+          table_ids.emplace_back(table_id);
+        } else {
+          repeated_table_ids.push_back(table_id);
+        }
+      }
+      // A retried creation of a ysql system table could list its id twice under the sys catalog
+      // tablet, see github issue 34672. Drop the repeated ids from the persisted entry as well.
+      if (!repeated_table_ids.empty()) {
+        LOG(WARNING) << Format("Removing repeated table ids $0 from the table_ids field of tablet "
+            "$1. Sys catalog will be updated asynchronously.", repeated_table_ids, tablet->id());
+        auto& pb = l.mutable_data()->pb;
+        pb.clear_table_ids();
+        for (const auto& table_id : table_ids) {
+          pb.add_table_ids(table_id);
+        }
+        needs_async_write_to_sys_catalog = true;
       }
       // This is for backwards compatibility: we want to ensure that the table_ids
       // list contains the first table that created the tablet. If the table_ids field
@@ -507,6 +549,20 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       break;
     case SysNamespaceEntryPB::PREPARING:
+      // NEXT_VER_PREPARING marks a live database whose new-version catalog copy was interrupted.
+      if (pb_data.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_PREPARING) {
+        LOG(INFO) << "Loading namespace in state PREPARING because its ysql major catalog upgrade "
+                  << "was interrupted: " << ns->ToString();
+        l.mutable_data()->pb.set_ysql_next_major_version_state(
+            SysNamespaceEntryPB::NEXT_VER_FAILED);
+        catalog_manager_->namespace_ids_map_[ns_id] = ns;
+        if (!pb_data.name().empty()) {
+          catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+        }
+        l.Commit();
+        break;
+      }
+
       // PREPARING means the server restarted before completing NS creation. For YSQL consider it
       // FAILED & remove any partially-created data. We must do this to avoid leaking the namespace
       // because such databases are not visible to clients through pg sessions as the pg process
@@ -644,7 +700,7 @@ Status ClusterConfigLoader::Visit(
     RepairOldSchemaVersionsInClusterConfig(&l.mutable_data()->pb);
 
     // Update in memory state.
-    catalog_manager_->cluster_config_ = config;
+    std::atomic_store(&catalog_manager_->cluster_config_, config);
     l.Commit();
   }
 

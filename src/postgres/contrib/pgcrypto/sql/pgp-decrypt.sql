@@ -228,7 +228,7 @@ SaV9L04ky1qECNDx3XjnoKLC+H7IOQ==
 -----END PGP MESSAGE-----
 '), '0123456789abcdefghij'), 'sha1');
 
-select digest(pgp_sym_decrypt(dearmor('
+select digest(pgp_sym_decrypt_bytea(dearmor('
 -----BEGIN PGP MESSAGE-----
 Comment: dat3.aes.sha1.mdc.s2k3.z0
 
@@ -282,6 +282,27 @@ VsxxqLSPzNLAeIspJk5G
 -- Routine text/binary mismatch.
 select pgp_sym_decrypt(pgp_sym_encrypt_bytea('P', 'key'), 'key', 'debug=1');
 
+-- NUL byte in text decrypt.  Ciphertext source:
+-- printf 'a\x00\xc' | gpg --homedir /nonexistent \
+--      --personal-compress-preferences uncompressed --textmode \
+--      --personal-cipher-preferences aes --no-emit-version --batch \
+--      --symmetric --passphrase key --armor
+do $$
+begin
+  perform pgp_sym_decrypt(dearmor('
+-----BEGIN PGP MESSAGE-----
+
+jA0EBwMCXLc8pozB10Fg0jQBVUID59TLvWutJp0j6eh9ZgjqIRzdYaIymFB8y4XH
+vu0YlJP5D5BX7yqZ+Pry7TlDmiFO
+=rV7z
+-----END PGP MESSAGE-----
+'), 'key', 'debug=1');
+exception when others then
+  raise '%',
+    regexp_replace(sqlerrm, 'encoding "[^"]*"', 'encoding [REDACTED]');
+end
+$$;
+
 -- Decryption with a certain incorrect key yields an apparent BZip2-compressed
 -- plaintext.  Ciphertext source: iterative pgp_sym_encrypt('secret', 'key')
 -- until the random prefix gave rise to that property.
@@ -307,3 +328,29 @@ UCAAw2JRIISttRHMfDpDuZJpvYo=
 =AZ9M
 -----END PGP MESSAGE-----
 '), 'key', 'debug=1');
+
+-- Check ignore-cipher-failure. This message isn't actually encrypted; it was
+-- created with cipher-algo=bf using an OpenSSL that didn't actually support
+-- Blowfish. After the fix for CVE-2026-14663, we no longer create these broken
+-- ciphertexts, but we allow users to return to the previous behavior during
+-- decryption so that the bad wrapper can be stripped.
+--
+-- Note that if Blowfish is supported by the linked OpenSSL, both decryptions
+-- will fail.
+select pgp_sym_decrypt(dearmor('
+-----BEGIN PGP MESSAGE-----
+
+ww0EBAMC8wIKbtvzJtxi0jABUleCwFJWGCkYKcsNdABqdtXaU2VjcmV0LtMUlnPH3A2QBmZrcucm
+1GPb/s2Bkdg=
+=6aqD
+-----END PGP MESSAGE-----
+'), 'wrong key');
+
+select pgp_sym_decrypt(dearmor('
+-----BEGIN PGP MESSAGE-----
+
+ww0EBAMC8wIKbtvzJtxi0jABUleCwFJWGCkYKcsNdABqdtXaU2VjcmV0LtMUlnPH3A2QBmZrcucm
+1GPb/s2Bkdg=
+=6aqD
+-----END PGP MESSAGE-----
+'), 'wrong key', 'ignore-cipher-failure=1');

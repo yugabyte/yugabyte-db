@@ -62,13 +62,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-
-	if universeutil.IsClusterEmpty(primaryCluster) {
-		err := fmt.Errorf(
-			"No primary cluster found in universe " + universeName + " (" + universeUUID + ")")
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
+	primaryCluster, _ := universeutil.MustFindPrimaryCluster(clusters, universeName, universeUUID)
 
 	userIntent := primaryCluster.GetUserIntent()
 	if userIntent.GetProviderType() == util.K8sProviderType {

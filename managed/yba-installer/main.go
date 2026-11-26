@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-
+	// FIPS mode is applied once the config is loaded, see initAfterFlagsParsed.
 	cmd.Execute()
 
 }

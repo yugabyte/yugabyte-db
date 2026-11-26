@@ -50,6 +50,8 @@ public class TestPgRegressThirdPartyExtensionsPgDuckDb extends BasePgRegressTest
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_pg_duckdb");
     flagMap.put("ysql_yb_enable_pg_duckdb", "true");
+    // Release builds default this on; debug builds don't. yb.orig.lake_io_read_committed needs it.
+    flagMap.put("yb_enable_read_committed_isolation", "true");
     return flagMap;
   }
 

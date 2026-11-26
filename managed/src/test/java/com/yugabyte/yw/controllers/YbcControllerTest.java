@@ -152,6 +152,25 @@ public class YbcControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpgradeYbcOnInbuiltYbcUniverse() {
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+          universe.setUniverseDetails(details);
+        };
+    defaultYbcUniverse = Universe.saveDetails(defaultYbcUniverse.getUniverseUUID(), updater);
+    Result result =
+        assertPlatformException(() -> upgradeYbc(defaultYbcUniverse.getUniverseUUID(), null));
+    assertBadRequest(
+        result,
+        "Cannot upgrade YB-Controller on universe "
+            + defaultYbcUniverse.getUniverseUUID()
+            + " as it uses YBDB inbuilt YB-Controller.");
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   @Parameters({"", "1.0.0-b2"})
   public void testInstallYbcSuccess(String ybcVersion) {
     UUID fakeTaskUUID = buildTaskInfo(null, TaskType.InstallYbcSoftware);

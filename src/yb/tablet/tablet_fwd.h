@@ -47,46 +47,54 @@ class ChangeMetadataOperation;
 class CloneOperation;
 class Operation;
 class OperationFilter;
+class PersistenceGate;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
+class TabletContext;
 class TabletMetrics;
 class TabletMetricsHolder;
 class TabletSnapshots;
 class TabletSplitter;
-class TabletVectorIndexes;
 class TabletStatusListener;
-class TransactionIntentApplier;
+class TabletVectorIndexes;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
+class TransactionIntentApplier;
 class TransactionParticipant;
 class TransactionParticipantContext;
 class TransactionStatePB;
 class TruncateOperation;
 class TruncatePB;
 class UpdateTxnOperation;
+class VectorIndexCheckResultPB;
 class VectorIndexList;
 class WriteOperation;
 class WriteQuery;
 class WriteQueryContext;
 
 struct CreateSnapshotData;
-struct DocDbOpIds;
+struct DocDbPersistentState;
+struct VectorIndexPersistentState;
 struct PgsqlReadRequestResult;
+struct TierMigrationStatus;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
+struct TierMigrationHooks;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(AbortOps);
+YB_STRONGLY_TYPED_BOOL(AllowLogLookup);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(IncludeVectorIndexes);
 YB_STRONGLY_TYPED_BOOL(VectorIndexOnly);
 
 enum class FlushFlags {
@@ -98,6 +106,14 @@ enum class FlushFlags {
   kVectorIndexes = 8,
 
   kAllDbs = kRegular | kIntents | kVectorIndexes
+};
+
+// Selects which of the three CDC retention barriers a revision request should move.
+// The default moves all of them, as was always done before per-barrier selection was added.
+struct CDCRetentionBarrierMoveSelector {
+  bool move_cdc_min_replicated_index = true;
+  bool move_cdc_sdk_min_checkpoint_op_id = true;
+  bool move_cdc_sdk_safe_time = true;
 };
 
 } // namespace yb::tablet

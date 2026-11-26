@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#include <map>
+#include <set>
+
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 #include "yb/common/common_types.pb.h"
@@ -19,6 +22,9 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/master/load_balancer_mocked-test_base.h"
 #include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 namespace master {
@@ -33,6 +39,17 @@ class LoadBalancerMockedTest : public LoadBalancerMockedBase {
       replica.drive_info.total_size = tablet_size;
     }
     tablet->SetReplicaLocations(replica_map);
+  }
+
+  // Report disk usage for a tserver as if it came from a heartbeat.
+  void SetTsDiskUsage(
+      const std::shared_ptr<TSDescriptor>& ts_desc, uint64_t used_space, uint64_t total_space) {
+    TServerMetricsPB metrics;
+    auto* path_metrics = metrics.add_path_metrics();
+    path_metrics->set_path_id("/data");
+    path_metrics->set_used_space(used_space);
+    path_metrics->set_total_space(total_space);
+    ts_desc->UpdateMetrics(metrics);
   }
 };
 
@@ -742,6 +759,43 @@ TEST_F(LoadBalancerMockedTest, LimitRbsPerTserver) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+TEST_F(LoadBalancerMockedTest, OverReplicationLimitDoesNotBlockUnderReplicationRepair) {
+  GetOptions()->kAllowLimitOverReplicatedTablets = true;
+  GetOptions()->kMaxOverReplicatedTabletsPerTable = 1;
+  PrepareTestStateMultiAz();
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_);
+  auto extra_a_ts = SetupTS("3333", "a");
+  auto extra_c_ts = SetupTS("4444", "c");
+  ts_descs_.push_back(extra_a_ts);
+  ts_descs_.push_back(extra_c_ts);
+  // Over-replicate one tablet, which puts the table at its over-replication limit.
+  AddRunningReplica(tablets_[0].get(), extra_c_ts);
+  // Under-replicate another tablet.
+  RemoveReplica(tablets_[1].get(), ts_descs_[2]);
+  // Keep a third tablet at RF, but with its zone c replica moved to zone a, so zone c is below its
+  // minimum.
+  RemoveReplica(tablets_[2].get(), ts_descs_[2]);
+  AddRunningReplica(tablets_[2].get(), extra_a_ts);
+  MoveTabletLeader(tablets_[2].get(), ts_descs_[0]);
+
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+
+  // The add for the under-replicated tablet restores RF, so the limit does not block it.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddIfMissingPlacement(tablets_[1]->tablet_id(), &to_ts)));
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+
+  // The add for the tablet at RF with a placement below its minimum would over-replicate it, so
+  // the limit blocks it, as it blocks a move.
+  auto result = HandleAddIfMissingPlacement(tablets_[2]->tablet_id(), &to_ts);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsTryAgain()) << result.status();
+  result = HandleAddReplicas(&tablet_id, &from_ts, &to_ts);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsTryAgain()) << result.status();
+}
+
 TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
   PrepareTestStateMultiAz();
   // Add another tserver in zone c.
@@ -755,6 +809,141 @@ TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
   std::string tablet_id, from_ts, to_ts;
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
+}
+
+// Like ExcludeOverreplicationInSourceLoad, but the source has more over-replicated tablets than
+// its load variance to the destination, so the difference is negative.
+TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationLargerThanLoadVariance) {
+  PrepareTestStateSingleAz();
+  // Over-replicate tablets 0 and 1 onto ts3, and tablet 2 onto ts4. ts0-ts2 each have 4 tablets,
+  // 3 of them over-replicated. ts3 has 2 and ts4 has 1, and neither has tablet 3.
+  ts_descs_.push_back(SetupTS("3333", "a"));
+  ts_descs_.push_back(SetupTS("4444", "a"));
+  AddRunningReplica(tablets_[0].get(), ts_descs_[3]);
+  AddRunningReplica(tablets_[1].get(), ts_descs_[3]);
+  AddRunningReplica(tablets_[2].get(), ts_descs_[4]);
+
+  // Should not find a replica to move. The check assumes a source could lose all its
+  // over-replicated replicas, which would leave ts0, ts1 or ts2 with only tablet 3: fewer tablets
+  // than ts3 and as many as ts4. For ts3 the load variance (2) minus the over-replicated tablets
+  // (3) is negative.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)))
+      << Format("Moved tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
+}
+
+// A split parent whose children are running is deleted as soon as the tservers finish the split,
+// so its replicas are not counted in the load of their tservers.
+TEST_F(LoadBalancerMockedTest, ExcludeSplitParentFromLoad) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  ASSERT_RESULT(SplitTablet(parent));
+
+  // A new tserver takes one replica each of tablets 0, 2 and 3 from ts0, ts1 and ts2. Every
+  // original tserver now has 5 replicas, one of them the parent, and the new one has 3.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  MoveReplica(tablets_[0].get(), ts_descs_[0], new_ts);
+  MoveReplica(tablets_[2].get(), ts_descs_[1], new_ts);
+  MoveReplica(tablets_[3].get(), ts_descs_[2], new_ts);
+
+  // Without the parent an original tserver has a load of 4, so the variance of 1 with the new
+  // tserver is below the minimum and nothing should move.
+  const auto& ts0_uuid = ts_descs_[0]->permanent_uuid();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts0_uuid), 4);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 4);
+  // The parent is left out of the load itself, not discounted again as transient load.
+  ASSERT_EQ(GetPossiblyTransientLoad(ts0_uuid), 0);
+  // The load difference estimate follows the same view, so it reports nothing to do.
+  ASSERT_EQ(ASSERT_RESULT(EstimateTableLoadDifference()), 0);
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // A hidden parent is retained for PITR or CDC, so it is regular load again.
+  HideTablet(parent);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 5);
+  ASSERT_EQ(ASSERT_RESULT(EstimateTableLoadDifference()), 1);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+// Until one of a split parent's children is running nothing is counted in the parent's place, so
+// the parent stays regular load rather than being excluded.
+TEST_F(LoadBalancerMockedTest, SplitParentCountsUntilAChildRuns) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  const auto children = ASSERT_RESULT(SplitTablet(parent));
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+
+  // Neither child is running, so the parent is the only one of the three that is counted.
+  for (const auto& child : children) {
+    SetTabletState(child, SysTabletsEntryPB::CREATING);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts_uuid), 4);
+
+  // One child is running and is counted in the parent's place, so the load is unchanged.
+  SetTabletState(children[1], SysTabletsEntryPB::RUNNING);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts_uuid), 4);
+}
+
+// A split parent that is about to be deleted is never the tablet chosen for a move.
+TEST_F(LoadBalancerMockedTest, DoNotMoveSplitParent) {
+  PrepareTestStateSingleAz();
+  // Candidates are tried in tablet id order and tablets_[0] sorts first, so it would be picked.
+  const auto& parent = tablets_[0];
+  ASSERT_RESULT(SplitTablet(parent));
+
+  // A new empty tserver has to get replicas, but not one of the parent.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_NE(tablet_id, parent->id());
+
+  // Once hidden the parent is regular load again, so as the first candidate in tablet id order it
+  // is the one chosen.
+  HideTablet(parent);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablet_id, parent->id());
+}
+
+// The exclusion follows the parent's replicas as the balancer adds and removes them within a run.
+TEST_F(LoadBalancerMockedTest, SplitParentStaysExcludedAcrossReplicaChanges) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  ASSERT_RESULT(SplitTablet(parent));
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  const auto& ts0_uuid = ts_descs_[0]->permanent_uuid();
+  const auto& new_ts_uuid = new_ts->permanent_uuid();
+  // ts0 hosts the 4 original tablets and the 2 children, which is a load of 5 without the parent.
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetLoad(new_ts_uuid), 0);
+
+  // A starting replica of the parent is not counted on its new tserver.
+  ASSERT_OK(AddReplicaInState(parent->id(), new_ts_uuid));
+  ASSERT_EQ(GetLoad(new_ts_uuid), 0);
+  ASSERT_EQ(GetGlobalLoad(new_ts_uuid), 0);
+  // The parent is now over-replicated, but it is already left out of the load, so it is not
+  // discounted again as transient load.
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+  ASSERT_EQ(GetPossiblyTransientLoad(ts0_uuid), 0);
+
+  // Removing the parent's replica from a tserver does not change that tserver's load.
+  ASSERT_OK(RemoveReplicaInState(parent->id(), ts0_uuid));
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 5);
 }
 
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
@@ -810,6 +999,87 @@ TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
     }
   }
   LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
+}
+
+// Global leader balancing moves a leader when the per-table leader variance is below the minimum
+// but the global one is not. Tablets of tables the run skipped are missing from the global counts,
+// but unlike for tablet moves they do not widen the global minimum, as a leader move is cheap to
+// reverse.
+TEST_F(LoadBalancerMockedTest, GlobalLeaderBalancingNotWidenedBySkippedTablets) {
+  PrepareTestStateMultiAz();
+  // The main table's leaders are on ts0, ts1, ts2, ts0: per-table leader loads 2 1 1.
+  // The extra table's 4 leaders are all on ts0: global leader loads 6 1 1.
+  const auto extra = ASSERT_RESULT(CreateExtraTable("extra_table", 4, ts_descs_[0]));
+  const auto analyze = [&]() -> Status {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    return AnalyzeAdditionalTable(extra.table);
+  };
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  std::string tablet_id, from_ts, to_ts;
+
+  // The per-table variance of 1 is below the minimum, and global balancing is not allowed yet.
+  ASSERT_OK(analyze());
+  ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
+
+  // Once allowed, the global variance of 5 moves a leader off ts0.
+  SetCanPerformGlobalOperations(true);
+  TestMoveLeader(&tablet_id, ts0, "" /* expected_to_ts */);
+
+  // Skipped tablets do not widen the minimum: a widened bar of 2 + 4 = 6 would exceed the
+  // variance, but the leader still moves.
+  ASSERT_OK(analyze());
+  SetNumTabletsInSkippedTables(4);
+  TestMoveLeader(&tablet_id, ts0, "" /* expected_to_ts */);
+}
+
+class LoadBalancerMockedTestFiveTablets : public LoadBalancerMockedTest {
+ protected:
+  int NumTablets() const override { return 5; }
+};
+
+// The same for tablet moves. With 5 tablets at RF3 on 4 tservers the per-table load is 3 4 4 4,
+// so no per-table move is possible. An extra table that avoids ts0 makes the global load 3 6 6 6.
+TEST_F(LoadBalancerMockedTestFiveTablets, GlobalLoadBalancingWidenedBySkippedTablets) {
+  std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+  for (int i = 0; i < 4; ++i) {
+    ts_descs.push_back(SetupTS(std::string(4, '0' + i), "a"));
+  }
+  PrepareTestState(ts_descs);
+  replication_info_.mutable_live_replicas()->set_num_replicas(kDefaultNumReplicas);
+  // PrepareTestState put a replica of every tablet on every tserver and the leader of tablet i on
+  // ts i % 4. Drop that replica, so tablets 0 and 4 avoid ts0 and tablets 1, 2, 3 avoid ts1, ts2,
+  // ts3, and lead each tablet from a tserver it is still on.
+  for (size_t i = 0; i < tablets_.size(); ++i) {
+    RemoveReplica(tablets_[i].get(), ts_descs_[i % 4]);
+    MoveTabletLeader(tablets_[i].get(), ts_descs_[(i + 1) % 4]);
+  }
+  const auto extra = ASSERT_RESULT(CreateExtraTable("extra_table", 2, ts_descs_[1]));
+  for (const auto& tablet : extra.tablets) {
+    RemoveReplica(tablet.get(), ts_descs_[0]);
+  }
+  const auto analyze = [&]() -> Status {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    return AnalyzeAdditionalTable(extra.table);
+  };
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  std::string tablet_id, from_ts, to_ts;
+
+  // The per-table variance of 1 is below the minimum, and global balancing is not allowed yet.
+  ASSERT_OK(analyze());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // Once allowed, the global variance of 3 moves a tablet to ts0.
+  SetCanPerformGlobalOperations(true);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ts0);
+
+  // Skipped tablets widen the minimum: 2 + 2 = 4 exceeds the variance, 2 + 1 = 3 does not.
+  ASSERT_OK(analyze());
+  SetNumTabletsInSkippedTables(2);
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  SetNumTabletsInSkippedTables(1);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ts0);
 }
 
 class LoadBalancerMockedTestManyTablets : public LoadBalancerMockedTest {
@@ -883,6 +1153,27 @@ TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingNoSizeData) {
   ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
 }
 
+TEST_F(LoadBalancerMockedTestManyTablets, DiskFullAccountsForStartingReplicas) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // Isolate the disk check from the inbound bytes limit.
+  GetOptions()->kMaxInboundBytesPerTs = 10_GB;
+  // Empty tserver, 95 MB usable (5% min free of 100 MB). Starting replicas are not in reported
+  // usage yet, but still count toward capacity, so only nine 10 MB adds fit.
+  SetTsDiskUsage(new_ts, 0, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  for (int i = 0; i < 9; ++i) {
+    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  }
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
 TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingManyTablets) {
   PrepareTestStateSingleAz();
   auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
@@ -905,9 +1196,367 @@ TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingManyTablets) {
   ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
 }
 
+TEST_F(LoadBalancerMockedTest, DiskFullTserverRejectedAsDestination) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // 4% free, below the 5% min.
+  SetTsDiskUsage(new_ts, 96_MB, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // The new tserver is the only tserver with fewer tablets than the others, so if it is rejected
+  // there is nowhere left to move a replica to.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
+TEST_F(LoadBalancerMockedTest, DiskFullTserverAcceptedWhenCheckDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_min_free_disk_space_pct) = 0;
+
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  SetTsDiskUsage(new_ts, 96_MB, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+TEST_F(LoadBalancerMockedTest, UnknownDiskCapacityTserverAcceptedAsDestination) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // Unknown capacity (no path metrics) must not block adds.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+TEST_F(LoadBalancerMockedTest, DiskFullTserverDoesNotStopBalancing) {
+  PrepareTestStateSingleAz();
+  // Two under-loaded tservers: one full, one with space. Give the one with space a single replica
+  // so that the full one sorts first on load alone and is the first destination tried, rather
+  // than leaving the order to the uuid tie-break. The replica is shifted off 2222 instead of
+  // added as a fourth copy so tablet 0 stays at RF and out of the over-replicated set.
+  auto full_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  auto spacious_ts = ts_descs_.emplace_back(SetupTS("4444", "a"));
+  RemoveReplica(tablets_[0].get(), ts_descs_[2]);
+  AddRunningReplica(tablets_[0].get(), spacious_ts);
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // 4% free, below the 5% min.
+  SetTsDiskUsage(full_ts, 96_MB, 100_MB);
+  SetTsDiskUsage(spacious_ts, 0, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // Premise: by the balancer's own check the full tserver can take no tablet and the other can.
+  // The check is given a source, as on the move path: without one it counts a fourth replica
+  // against the single placement block's maximum of RF and rejects before looking at disk.
+  for (const auto& tablet : tablets_) {
+    ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(
+        tablet->tablet_id(), full_ts->permanent_uuid(), "1111" /* from_ts */)));
+  }
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(
+      tablets_[1]->tablet_id(), spacious_ts->permanent_uuid(), "1111" /* from_ts */)));
+
+  // Sorted load is 3333 (0), 4444 (1), 2222 (3), 0000 (4), 1111 (4). Every source is tried
+  // against 3333 and rejected. The balancer must then go on to 4444 instead of giving up.
+  std::string tablet_id, from_ts, to_ts;
+  size_t moves = 0;
+  while (ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts))) {
+    ASSERT_LT(moves++, tablets_.size());
+    ASSERT_EQ(to_ts, spacious_ts->permanent_uuid());
+    // From one of the busiest tservers.
+    ASSERT_TRUE(from_ts == "0000" || from_ts == "1111") << from_ts;
+  }
+  ASSERT_GE(moves, 1);
+}
+
+TEST_F(LoadBalancerMockedTest, DiskCheckSkipsOversizedTabletOnSameSource) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  const auto& big_tablet = tablets_[0];
+  SetTabletReplicaSizes(big_tablet, 50_MB);
+  for (size_t i = 1; i < tablets_.size(); ++i) {
+    SetTabletReplicaSizes(tablets_[i], 10_MB);
+  }
+  // 95 MB usable with 60 MB in use: the 50 MB tablet is rejected, a 10 MB one fits.
+  SetTsDiskUsage(new_ts, 60_MB, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  // The source keeps the per-block maximum out of the way, see DiskFullTserverDoesNotStopBalancing.
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(
+      big_tablet->tablet_id(), new_ts->permanent_uuid(), "2222" /* from_ts */)));
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(
+      tablets_[1]->tablet_id(), new_ts->permanent_uuid(), "2222" /* from_ts */)));
+
+  // Every source holds the big tablet. Rejecting it must not end the scan of that source's other
+  // tablets.
+  std::string tablet_id, from_ts, to_ts;
+  size_t moves = 0;
+  while (ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts))) {
+    ASSERT_LT(moves++, tablets_.size());
+    ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+    ASSERT_NE(tablet_id, big_tablet->tablet_id());
+  }
+  ASSERT_GE(moves, 1);
+}
+
+TEST_F(LoadBalancerMockedTestFiveTablets, DiskCheckTriesNextSourceForSameDestination) {
+  // Tablet layout, with tserver 0000 holding every big tablet and nothing else:
+  //   t0 (50 MB): 0000, 1111, 2222
+  //   t1 (50 MB): 0000, 1111, 3333
+  //   t2 (50 MB): 0000, 2222, 4444
+  //   t3 (50 MB): 0000, 3333, 4444
+  //   t4 (10 MB): 1111, 2222, 4444
+  // Loads: 0000=4, 1111=3, 2222=3, 3333=2, 4444=3. Each tablet keeps its leader (tserver i for
+  // tablet i).
+  TSDescriptorVector tservers = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a"),
+      SetupTS("4444", "a")};
+  PrepareTestState(tservers);
+  const std::vector<std::set<TabletServerId>> layouts = {
+      {"0000", "1111", "2222"},
+      {"0000", "1111", "3333"},
+      {"0000", "2222", "4444"},
+      {"0000", "3333", "4444"},
+      {"1111", "2222", "4444"}};
+  ASSERT_EQ(layouts.size(), tablets_.size());
+  for (size_t i = 0; i < layouts.size(); ++i) {
+    KeepOnlyReplicasOn(tablets_[i].get(), layouts[i]);
+  }
+  const auto& small_tablet = tablets_[4];
+  for (size_t i = 0; i < 4; ++i) {
+    SetTabletReplicaSizes(tablets_[i], 50_MB);
+  }
+  SetTabletReplicaSizes(small_tablet, 10_MB);
+
+  // Destination with room for a small tablet only: 95 MB usable, 60 MB in use.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("5555", "a"));
+  SetTsDiskUsage(new_ts, 60_MB, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  // The source keeps the per-block maximum out of the way, see DiskFullTserverDoesNotStopBalancing.
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(
+      tablets_[0]->tablet_id(), new_ts->permanent_uuid(), "0000" /* from_ts */)));
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(
+      small_tablet->tablet_id(), new_ts->permanent_uuid(), "4444" /* from_ts */)));
+
+  // The busiest source, 0000, is tried first and has nothing that fits. The balancer must go on
+  // to the next source for the same destination rather than give up on it.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablet_id, small_tablet->tablet_id());
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_NE(from_ts, "0000");
+}
+
 class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {
   int NumReplicas() const override { return 5; }
 };
+
+class LoadBalancerRF5MaxReplicasMockedTest : public LoadBalancerRF5MockedTest {
+  int NumTablets() const override { return 1; }
+};
+
+TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RepairPlacementAboveMaximum) {
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"), SetupTS("a002", "a"), SetupTS("a003", "a"),
+      SetupTS("b000", "b"), SetupTS("b001", "b"),
+      SetupTS("c000", "c"), SetupTS("c001", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+
+  // Shape the tablet to a(3), b(1), c(1): at its replication factor, but above the maximum in a.
+  KeepOnlyReplicasOn(tablets_[0].get(), {"a000", "a001", "a002", "b000", "c000"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  // The tablet is at its target replication factor, so nothing is over-replicated. The maximum
+  // violation must be repaired add-before-remove: a bare remove would under-replicate the tablet.
+  ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003")));
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+  ASSERT_TRUE(to_ts == "b001" || to_ts == "c001");
+
+  auto find_tserver = [&tservers](const TabletServerId& uuid) {
+    return *std::find_if(tservers.begin(), tservers.end(), [&uuid](const auto& ts) {
+      return ts->permanent_uuid() == uuid;
+    });
+  };
+  AddRunningReplica(tablets_[0].get(), find_tserver(to_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  ASSERT_TRUE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+  RemoveReplica(tablets_[0].get(), find_tserver(from_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  const auto remaining_source = from_ts == "a000" ? "a001" : "a000";
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003")));
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003", remaining_source)));
+}
+
+TEST_F(LoadBalancerRF5MaxReplicasMockedTest, UnderReplicationPrioritizedOverMaxPlacement) {
+  // A tablet that is both under-replicated (a placement is missing replicas) and above a
+  // placement maximum must have its under-replication fixed first.
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"), SetupTS("a002", "a"),
+      SetupTS("b000", "b"),
+      SetupTS("c000", "c"), SetupTS("c001", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+
+  // Shape the tablet to a(3), b(1), c(0): 4 replicas, under-replicated in c and above the
+  // maximum in a.
+  KeepOnlyReplicasOn(tablets_[0].get(), {"a000", "a001", "a002", "b000"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // The over-max repair path (part of HandleAddReplicas) must not act on a tablet that is
+  // missing replicas: the first action is the add into the under-replicated placement c.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_TRUE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(tablet_id, to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_TRUE(to_ts == "c000" || to_ts == "c001");
+
+  auto find_tserver = [&tservers](const TabletServerId& uuid) {
+    return *std::find_if(tservers.begin(), tservers.end(), [&uuid](const auto& ts) {
+      return ts->permanent_uuid() == uuid;
+    });
+  };
+
+  // Once the under-replication is repaired, the balancer moves a replica out of the over-max
+  // placement a (add first, to the remaining tserver in c).
+  AddRunningReplica(tablets_[0].get(), find_tserver(to_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  const auto remaining_c_ts = to_ts == "c000" ? "c001" : "c000";
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+  ASSERT_EQ(to_ts, remaining_c_ts);
+
+  // And once that add completes, the now over-replicated tablet drops a replica from a.
+  AddRunningReplica(tablets_[0].get(), find_tserver(to_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+}
+
+class LoadBalancerMaxReplicasBlacklistMockedTest : public LoadBalancerMockedTest {
+  int NumTablets() const override { return 1; }
+};
+
+TEST_F(LoadBalancerMaxReplicasBlacklistMockedTest, BlacklistedMoveAllowedAtMaxPlacement) {
+  // Draining a blacklisted tserver must not be blocked by max_num_replicas: a same-block move
+  // temporarily exceeds the maximum (add-before-remove) and completes.
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"),
+      SetupTS("b000", "b"),
+      SetupTS("c000", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 3);
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(1);
+  }
+  // Shape the tablet to a000, b000, c000 and blacklist a000.
+  KeepOnlyReplicasOn(tablets_[0].get(), {"a000", "b000", "c000"});
+  blacklist_.add_hosts()->set_host("a000");
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // A regular add to a001 is rejected: placement a is at its maximum.
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a001")));
+  // But the blacklist-driven move from a000 is allowed through, because the remove that follows
+  // restores the placement to its maximum.
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a001", "a000")));
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_EQ(from_ts, "a000");
+  ASSERT_EQ(to_ts, "a001");
+
+  // Once the add completes, the blacklisted replica is removed.
+  AddRunningReplica(tablets_[0].get(), tservers[1]);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_EQ(from_ts, "a000");
+}
+
+class LoadBalancerRF5MaxReplicasManyTabletsMockedTest : public LoadBalancerRF5MockedTest {
+  int NumTablets() const override { return 4; }
+};
+
+TEST_F(LoadBalancerRF5MaxReplicasManyTabletsMockedTest, BalancedLoadStillRepairsOverMaxPlacement) {
+  // Construct a layout where every tserver hosts exactly two replicas of this table (so plain
+  // load balancing sees nothing to do), yet every tablet individually has three replicas in
+  // zone a, above the maximum of two. Only max_num_replicas enforcement can repair this.
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"), SetupTS("a002", "a"),
+      SetupTS("a003", "a"), SetupTS("a004", "a"), SetupTS("a005", "a"),
+      SetupTS("b000", "b"), SetupTS("b001", "b"),
+      SetupTS("c000", "c"), SetupTS("c001", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+
+  // Tablet layouts (each keeps 3 replicas in a, 1 in b, 1 in c; every tserver ends up with
+  // exactly 2 replicas of this table):
+  //   t0: a000, a001, a002, b000, c000
+  //   t1: a003, a004, a005, b000, c000
+  //   t2: a000, a001, a002, b001, c001
+  //   t3: a003, a004, a005, b001, c001
+  const std::vector<std::set<TabletServerId>> layouts = {
+      {"a000", "a001", "a002", "b000", "c000"},
+      {"a003", "a004", "a005", "b000", "c000"},
+      {"a000", "a001", "a002", "b001", "c001"},
+      {"a003", "a004", "a005", "b001", "c001"}};
+  ASSERT_EQ(layouts.size(), tablets_.size());
+  for (size_t i = 0; i < layouts.size(); ++i) {
+    KeepOnlyReplicasOn(tablets_[i].get(), layouts[i]);
+  }
+
+  // Without explicit maximums the load balancer considers this layout final: per-tserver load is
+  // perfectly balanced and every placement has its minimum.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+
+  // With maximums of two per block, the balancer starts moving replicas out of zone a for every
+  // tablet, even though the load looks balanced.
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  for (size_t i = 0; i < tablets_.size(); ++i) {
+    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    ASSERT_EQ(from_ts[0], 'a');
+    ASSERT_TRUE(to_ts[0] == 'b' || to_ts[0] == 'c');
+  }
+  // Each tablet can only be handled once per run.
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
 
 TEST_F(LoadBalancerRF5MockedTest, TestUnderReplicatedPriority) {
   // Test that we prioritize more under-replicated tablets when adding replicas.
@@ -1145,6 +1794,454 @@ TEST_F(OptimalLoadDistributionTest, CalculateTableLoadDifference) {
   current_load = {{"ts0", 1}, {"ts1", 1}};
   goal_load =    {{"ts1", 1}, {"ts2", 1}};
   ASSERT_EQ(CalculateTableLoadDifference(current_load, goal_load), 1);
+}
+
+
+// ---------------------------------------------------------------------------
+// Tiered storage: the balancer tells replicas off their placement's tier to migrate.
+// ---------------------------------------------------------------------------
+class LoadBalancerTierMigrationTest : public LoadBalancerMockedTest {
+ protected:
+  // PrepareTieredState turns tiered storage on; restore it for the tests that follow.
+  google::FlagSaver flag_saver_;
+
+  // Re-registers a tserver with the given storage tiers, as its registration heartbeat would.
+  void SetTsStorageTiers(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const std::vector<std::string>& tiers) {
+    auto registration = ts_desc->GetTSRegistrationPB();
+    registration.mutable_common()->clear_storage_tiers();
+    for (const auto& tier : tiers) {
+      registration.mutable_common()->add_storage_tiers(tier);
+    }
+    auto lock = ASSERT_RESULT(ts_desc->UpdateRegistration(
+        ts_desc->GetNodeInstancePB(), registration, RegisteredThroughHeartbeat::kTrue));
+    lock.Commit();
+  }
+
+  // What the tserver last reported for one replica.
+  void SetReplicaTier(
+      TabletInfo* tablet, const TabletServerId& ts_uuid, const std::string& current_tier,
+      const std::string& target_tier,
+      tserver::TierMigrationStatusPB::State state = tserver::TierMigrationStatusPB::NONE) {
+    auto replicas = std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    auto& replica = replicas->at(ts_uuid);
+    replica.current_storage_tier = current_tier;
+    replica.target_storage_tier = target_tier;
+    replica.tier_migration_state = state;
+    tablet->SetReplicaLocations(replicas);
+  }
+
+  // Three tservers with ssd and hdd disks, four tablets with a replica on each, every replica
+  // born on ssd with no target, and a placement that asks for hdd.
+  void PrepareTieredState() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    PrepareTestStateSingleAz();
+    for (const auto& ts_desc : ts_descs_) {
+      SetTsStorageTiers(ts_desc, {"ssd", "hdd"});
+      for (const auto& tablet : tablets_) {
+        SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "ssd", "");
+      }
+    }
+    replication_info_.mutable_live_replicas()->set_storage_tier("hdd");
+    cb_.options_.kMaxConcurrentTierMigrations = 100;
+    cb_.options_.kMaxConcurrentTierMigrationsPerTs = 100;
+  }
+
+  // One run's worth of the step: until it sends nothing more, then the end-of-run prune.
+  // Returns how many AlterTabletTier it sent.
+  Result<int> RunTierMigrations() {
+    BeginTierMigrationRun();
+    int sent = 0;
+    TabletId tablet_id;
+    TabletServerId ts_uuid;
+    while (VERIFY_RESULT(HandleTierMigrations(&tablet_id, &ts_uuid))) {
+      ++sent;
+    }
+    PruneTierMigrationsAwaitingReport();
+    return sent;
+  }
+
+  // Drops the replica on 'ts_uuid' from the tablet, as a remove or a move away would.
+  void RemoveReplica(TabletInfo* tablet, const TabletServerId& ts_uuid) {
+    auto replicas = std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    replicas->erase(ts_uuid);
+    tablet->SetReplicaLocations(replicas);
+  }
+
+  std::map<TabletServerId, int> SentPerTs() const {
+    std::map<TabletServerId, int> counts;
+    for (const auto& sent : cb_.tier_migrations_sent_) {
+      ++counts[sent.ts_uuid];
+    }
+    return counts;
+  }
+};
+
+// Every replica that does not target its placement's tier is told to, once.
+TEST_F(LoadBalancerTierMigrationTest, SendsToEveryReplicaOffItsTier) {
+  PrepareTieredState();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_EQ(sent.target_tier, "hdd");
+  }
+  // The ones just sent are pending, so another pass in the same run sends nothing.
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// A placement without a tier never migrates anything.
+TEST_F(LoadBalancerTierMigrationTest, UntieredPlacementSendsNothing) {
+  PrepareTieredState();
+  replication_info_.mutable_live_replicas()->clear_storage_tier();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// Replicas already targeting the tier are left alone, and the ones still moving count against the
+// in-flight caps.
+TEST_F(LoadBalancerTierMigrationTest, ReplicasTargetingTheTierAreLeftAlone) {
+  PrepareTieredState();
+  // Tablet 0: one replica converged, one still moving, one that straddles both tiers.
+  const auto& tablet = tablets_[0];
+  SetReplicaTier(tablet.get(), ts_descs_[0]->permanent_uuid(), "hdd", "hdd",
+                 tserver::TierMigrationStatusPB::DONE);
+  SetReplicaTier(tablet.get(), ts_descs_[1]->permanent_uuid(), "ssd", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  SetReplicaTier(tablet.get(), ts_descs_[2]->permanent_uuid(), "", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 2);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 3);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_NE(sent.tablet_id, tablet->tablet_id());
+  }
+
+  // With the cluster cap at what is already in flight, nothing more is sent.
+  cb_.tier_migrations_sent_.clear();
+  cb_.options_.kMaxConcurrentTierMigrations = 2;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// The cluster and per-tserver caps bound what one run adds to what is in flight.
+TEST_F(LoadBalancerTierMigrationTest, CapsBoundWhatIsSent) {
+  PrepareTieredState();
+  cb_.options_.kMaxConcurrentTierMigrations = 5;
+  cb_.options_.kMaxConcurrentTierMigrationsPerTs = 2;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 5);
+  for (const auto& [ts_uuid, count] : SentPerTs()) {
+    ASSERT_LE(count, 2) << ts_uuid;
+  }
+}
+
+// An AlterTabletTier task still pending from an earlier run is a migration in flight: its replica
+// is not told again and it counts against the caps.
+TEST_F(LoadBalancerTierMigrationTest, PendingTaskCountsAsInFlight) {
+  PrepareTieredState();
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  cb_.pending_tier_migration_tasks_[tablet_id].insert(ts_uuid);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 1);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 1);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_FALSE(sent.tablet_id == tablet_id && sent.ts_uuid == ts_uuid);
+  }
+}
+
+// An AlterTabletTier task completes on the tserver's reply, and the replica reports the new
+// intent a heartbeat later. In between the send is remembered: the replica is not told again, it
+// counts against the caps, and it counts once however many of the pending task, the record and
+// the report cover it. A record older than the task's deadline has no report coming.
+TEST_F(LoadBalancerTierMigrationTest, SentReplicaWaitsForItsReport) {
+  PrepareTieredState();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+
+  // Every task completed and no replica has reported: nothing is told again, all still count.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), total_num_tablets_);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+
+  // One replica reports the intent while its task is still pending: it counts once, and its
+  // record is dropped.
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  SetReplicaTier(tablets_[0].get(), ts_uuid, "ssd", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  cb_.pending_tier_migration_tasks_[tablet_id].insert(ts_uuid);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), total_num_tablets_);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
+
+  // The other records outlive the task deadline: their replicas are told again.
+  cb_.pending_tier_migration_tasks_.clear();
+  cb_.TEST_ExpireTierMigrationsAwaitingReport();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 1);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
+}
+
+// A replica whose tserver gave up (FAILED) is left where it is: not told again, not counted as in
+// flight, and not holding the balancer busy. Retrying or surfacing it is later work. A FAILED
+// report that carries the sent target settles the awaiting-report record too, since the passes
+// can fail before the next heartbeat, so such a replica does not keep a cap slot until the
+// record expires.
+TEST_F(LoadBalancerTierMigrationTest, FailedReplicaIsLeftAlone) {
+  PrepareTieredState();
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+  }
+  const auto& tablet = tablets_[0];
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
+  ASSERT_TRUE(ActivityInfoIsIdle());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+
+  // Off its tier again and told, then the passes fail before the replica reports IN_PROGRESS.
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "ssd", tserver::TierMigrationStatusPB::DONE);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), 1);
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), 0);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
+}
+
+// A record whose replica the step no longer visits is dropped at the end of the run. Visiting
+// still happens with the cap full, so records behind it stay alive, and a replica that is briefly
+// not RUNNING (every follower is UNKNOWN right after a term or config change) is still visited,
+// so its record is not lost to an election.
+TEST_F(LoadBalancerTierMigrationTest, AwaitingReportEntryFollowsTheReplica) {
+  PrepareTieredState();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
+  const auto& tablet = tablets_[0];
+  const std::string ts_uuid = ts_descs_[0]->permanent_uuid();
+
+  // The cap is full: nothing is sent, but the records are visited and kept.
+  cb_.options_.kMaxConcurrentTierMigrations = 0;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+  cb_.options_.kMaxConcurrentTierMigrations = 100;
+
+  {
+    auto replicas = std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    replicas->at(ts_uuid).state = tablet::RaftGroupStatePB::UNKNOWN;
+    tablet->SetReplicaLocations(replicas);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+
+  RemoveReplica(tablet.get(), ts_uuid);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
+}
+
+// A split parent is about to be deleted, so its SSTs are not rewritten and it holds no cap slot:
+// the tier step skips it as the move path does. Its children, which inherit the target at
+// creation, and every other tablet are still told.
+TEST_F(LoadBalancerTierMigrationTest, SplitParentIsNotMigrated) {
+  PrepareTieredState();
+  const auto& parent = tablets_[0];
+  const int parent_replicas = narrow_cast<int>(parent->GetReplicaLocations()->size());
+  ASSERT_RESULT(SplitTablet(parent));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+
+  // The two children carry the parent's replicas, so the sends are the parent's replaced twice.
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ + parent_replicas);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_NE(sent.tablet_id, parent->id());
+  }
+}
+
+// A tserver with no disk on the tier cannot migrate there: its replicas are skipped rather than
+// told every run, and the others are still told.
+TEST_F(LoadBalancerTierMigrationTest, TserverWithoutTheTierIsSkipped) {
+  PrepareTieredState();
+  SetTsStorageTiers(ts_descs_[0], {"ssd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - NumTablets());
+  ASSERT_EQ(SentPerTs().count(ts_descs_[0]->permanent_uuid()), 0u);
+}
+
+// A replica that remote bootstrap put on a tserver without the tier reports the tier as its
+// target and converges on its home disk (DONE). It is neither told to migrate nor counted as in
+// flight, so it cannot hold the caps.
+TEST_F(LoadBalancerTierMigrationTest, ReplicaStuckOffItsTierHoldsNoSlot) {
+  PrepareTieredState();
+  SetTsStorageTiers(ts_descs_[0], {"ssd"});
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+    SetReplicaTier(tablet.get(), ts_descs_[0]->permanent_uuid(), "ssd", "hdd",
+                   tserver::TierMigrationStatusPB::DONE);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// A replica with a target that is not open yet (still bootstrapping, or a FAILED peer) reports
+// the target alone, with no current tier and state NONE. Nothing is moving it, so it is neither
+// counted as in flight nor told again, and cannot hold a slot for good.
+TEST_F(LoadBalancerTierMigrationTest, UnopenedReplicaHoldsNoSlot) {
+  PrepareTieredState();
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+  }
+  SetReplicaTier(tablets_[0].get(), ts_descs_[0]->permanent_uuid(), "", "hdd",
+                 tserver::TierMigrationStatusPB::NONE);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
+  ASSERT_TRUE(ActivityInfoIsIdle());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// A replica still moving keeps the balancer non-idle, like an ongoing remote bootstrap: with the
+// cap full it sends nothing, and an idle verdict would say the table is done when most of its
+// replicas were never told. A replica that can never get there does not.
+TEST_F(LoadBalancerTierMigrationTest, InFlightMigrationKeepsBalancerBusy) {
+  PrepareTieredState();
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ActivityInfoIsIdle());
+
+  SetReplicaTier(tablets_[0].get(), ts_descs_[0]->permanent_uuid(), "ssd", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ActivityInfoIsIdle());
+
+  // Stuck on a tserver without the tier: not in flight, so not holding the balancer busy either.
+  SetTsStorageTiers(ts_descs_[0], {"ssd"});
+  SetReplicaTier(tablets_[0].get(), ts_descs_[0]->permanent_uuid(), "ssd", "hdd",
+                 tserver::TierMigrationStatusPB::DONE);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ActivityInfoIsIdle());
+}
+
+// A replica with a pending removal is deleted soon, so it is not told to rewrite its SSTs first,
+// whether the removal was decided this run or is a task from an earlier one.
+TEST_F(LoadBalancerTierMigrationTest, ReplicaPendingRemovalIsNotMigrated) {
+  PrepareTieredState();
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  cb_.pending_remove_replica_tasks_[tablet_id] = ts_uuid;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 1);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_FALSE(sent.tablet_id == tablet_id && sent.ts_uuid == ts_uuid);
+  }
+}
+
+// The tier is enforced per placement block and blacklisted tservers do not count: a candidate
+// without the tier is refused only while another eligible tserver in its block has it, so a block
+// that lost its tier tservers, or is draining them, is still repairable whatever the other blocks
+// have.
+TEST_F(LoadBalancerTierMigrationTest, TierIsEnforcedPerPlacementBlock) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+  PrepareTestStateMultiAz();  // 0000 in a, 1111 in b, 2222 in c
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_);
+  replication_info_.mutable_live_replicas()->set_storage_tier("hdd");
+  for (const auto& ts_desc : ts_descs_) {
+    SetTsStorageTiers(ts_desc, {"ssd", "hdd"});
+  }
+  ts_descs_.push_back(SetupTS("3333", "b"));
+  const auto& candidate = ts_descs_[3];
+  SetTsStorageTiers(candidate, {"ssd"});
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  // A move within zone b, so the block maximum does not refuse it.
+  const auto from_ts = ts_descs_[1]->permanent_uuid();
+  const auto can_add = [&]() -> Result<bool> {
+    return CanAddTabletToTabletServer(tablet_id, candidate->permanent_uuid(), from_ts);
+  };
+
+  // Zone b has a tserver with the tier: the candidate is refused.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(can_add()));
+
+  // That tserver is being drained: it no longer counts, so the drain can land on the candidate.
+  blacklist_.add_hosts()->set_host(from_ts);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(can_add()));
+  blacklist_.Clear();
+
+  // Zone b has no tier tserver at all while zones a and c still do: not enforced in b.
+  SetTsStorageTiers(ts_descs_[1], {"ssd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(can_add()));
+
+  // Zone a still has one, so a candidate there is refused.
+  ts_descs_.push_back(SetupTS("4444", "a"));
+  SetTsStorageTiers(ts_descs_[4], {"ssd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(
+      tablet_id, ts_descs_[4]->permanent_uuid(), ts_descs_[0]->permanent_uuid())));
+}
+
+// The balancer does not add a replica of a tiered table to a tserver without a disk on the tier,
+// unless no live tserver has the tier or the candidate's tiers are unknown.
+TEST_F(LoadBalancerTierMigrationTest, NoNewReplicaOnTserverWithoutTheTier) {
+  PrepareTieredState();
+  ts_descs_.push_back(SetupTS("3333", "a"));
+  const auto& new_ts = ts_descs_[3];
+  const auto& new_ts_uuid = new_ts->permanent_uuid();
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  // A move from a tserver in the same zone, so the zone's replica maximum does not refuse it.
+  const auto from_ts = ts_descs_[1]->permanent_uuid();
+
+  SetTsStorageTiers(new_ts, {"ssd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablet_id, new_ts_uuid, from_ts)));
+
+  SetTsStorageTiers(new_ts, {"ssd", "hdd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(tablet_id, new_ts_uuid, from_ts)));
+
+  // Unknown tiers (none registered) are accepted.
+  SetTsStorageTiers(new_ts, {});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(tablet_id, new_ts_uuid, from_ts)));
+
+  // A tier no live tserver has is not enforced, so repair is never blocked.
+  for (const auto& ts_desc : ts_descs_) {
+    SetTsStorageTiers(ts_desc, {"ssd"});
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(tablet_id, new_ts_uuid, from_ts)));
+
+  // With tiered storage off, the tier is not enforced either.
+  SetTsStorageTiers(new_ts, {"ssd"});
+  SetTsStorageTiers(ts_descs_[0], {"ssd", "hdd"});
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(CanAddTabletToTabletServer(tablet_id, new_ts_uuid, from_ts)));
 }
 
 } // namespace master

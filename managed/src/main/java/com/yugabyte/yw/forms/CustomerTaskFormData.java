@@ -60,6 +60,11 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Whether the Customer task can be rolled back")
   public boolean canRollback;
 
+  @ApiModelProperty(
+      value = "UUID of the first task in the retry/rollback chain (clean universe state), if any",
+      accessMode = READ_ONLY)
+  public UUID originalTaskUUID;
+
   @ApiModelProperty(value = "Correlation id")
   public String correlationId;
 

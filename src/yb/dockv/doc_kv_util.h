@@ -20,6 +20,9 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/dockv/decode_policy.h"
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/gutil/endian.h"
 
 #include "yb/util/status_fwd.h"
@@ -192,6 +195,10 @@ inline std::string ComplementZeroEncodeStr(Slice s) {
 // Output (undefined in case of an error):
 //   result - the resulting decoded string
 // Returns OK status if and only if string is properly encoded.
+// The template version reports failure according to DecodePolicy<kDescribeErrors>.
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType DecodeZeroEncodedStr(
+    Slice* slice, std::string* result);
 Status DecodeZeroEncodedStr(Slice* slice, std::string* result);
 Result<const char*> DecodeZeroEncodedStr(const char* begin, const char* end, ValueBuffer* out);
 Result<const char*> SkipZeroEncodedStr(const char* begin, const char* end);
@@ -208,6 +215,10 @@ Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str);
 // Output (undefined in case of an error):
 //   result - the resulting decoded string
 // Returns OK status if and only if string is properly encoded.
+// The template version reports failure according to DecodePolicy<kDescribeErrors>.
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType DecodeComplementZeroEncodedStr(
+    Slice* slice, std::string* result);
 Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result);
 Result<const char*> DecodeComplementZeroEncodedStr(
     const char* begin, const char* end, ValueBuffer* out);

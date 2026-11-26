@@ -18,6 +18,7 @@ extern void yb_read_conf_from_env_var(od_rules_t *, od_config_t *,
 
 #define OD_READER_ERROR_MAX_LEN 1 << 8
 
+__attribute__((format(printf, 3, 4)))
 static inline void od_config_reader_error(od_config_reader_t *reader,
 					  od_token_t *token, char *fmt, ...)
 {

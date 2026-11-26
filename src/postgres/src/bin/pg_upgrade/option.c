@@ -66,6 +66,7 @@ parseCommandLine(int argc, char *argv[])
 		{"old-socketdir", required_argument, NULL, 's'},
 		{"new-socketdir", required_argument, NULL, 'S'},
 		{"yb-working-dir", required_argument, NULL, 'w'},	/* YB */
+		{"yb-collect-schema-dump", no_argument, NULL, 1001},	/* YB */
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -236,6 +237,10 @@ parseCommandLine(int argc, char *argv[])
 				user_opts.do_statistics = false;
 				break;
 
+			case 1001:			/* YB */
+				user_opts.yb_collect_schema_dump = true;
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 						os_info.progname);
@@ -245,6 +250,9 @@ parseCommandLine(int argc, char *argv[])
 
 	if (optind < argc)
 		pg_fatal("too many command-line arguments (first is \"%s\")\n", argv[optind]);
+
+	if (user_opts.yb_collect_schema_dump && !user_opts.check)
+		pg_fatal("--yb-collect-schema-dump can only be used with --check\n");
 
 	if (is_yugabyte_enabled())
 	{
@@ -351,6 +359,8 @@ usage(void)
 	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));	/* YB */
 	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));	/* YB */
 	printf(_("  -w, --yb-working-dir=DIR         working directory for pg_upgrade\n"));	/* YB */
+	printf(_("  --yb-collect-schema-dump      collect a schema dump of the old cluster into\n"
+			 "                                pg_upgrade_output.d/schema_dump, requires --check\n"));	/* YB */
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"

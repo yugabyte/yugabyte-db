@@ -36,13 +36,13 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(TEST_hide_details_for_pg_regress);
 
 namespace yb::tserver {
 
@@ -85,7 +85,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
   const std::string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
   if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
-    std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
+    std::string msg = Format("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
     YB_LOG_EVERY_N(DFATAL, 100) << msg;
     return true;
@@ -335,27 +335,26 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
 class CatalogVersionChecker {
  public:
-  explicit CatalogVersionChecker(std::reference_wrapper<TabletServerIf> tablet_server)
-      : tablet_server_(tablet_server.get()) {}
+  explicit CatalogVersionChecker(
+      std::reference_wrapper<TabletServerIf> tablet_server, bool use_cache = true)
+      : tablet_server_(tablet_server.get()), use_cache_(use_cache) {}
 
   template<class PB>
-  Status operator()(const PB& request) {
+  Status operator()(const PB& request, bool fail_for_non_breaking_version_change = false) {
     /*
      * Skip catalog version checks when:
      *  - the request does not carry a catalog version, or
      *  - a major version upgrade is in progress as we don't expect the catalog version
      *    to be incremented during the upgrade, or
-     *  - object locking (enable_object_locking_for_table_locks) is enabled because we
-     *    object locks and invalidation messages will ensure that any DML/ DDL reads the
-     *    latest catalog data that is required similar to PG. DocDB Schema-level
-     *    safety is still enforced separately via per-table schema version checks.
-     *    TODO(#32224): Checking for enable_object_locking_infra is not full-proof. We
-     *      should only disable the check if we are sure that no transactions operating
-     *      in the old mode are still active.
+     *  - the request comes from a transaction that uses object locks because object locks
+     *    and invalidation messages will ensure that any DML/ DDL reads the latest catalog
+     *    data that is required (similar to PG). DocDB Schema-level safety is still enforced
+     *    separately via per-table schema version checks.
      */
     if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version()) ||
-        tablet_server_.SkipCatalogVersionChecks() ||
-        (FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_enable_object_locking_infra)) {
+        tablet_server_.SkipCatalogVersionChecks() || request.using_table_locks_globally()) {
+      VLOG(1) << "Skipping catalog version check for request: "
+                << request.ShortDebugString();
       return Status::OK();
     }
     SCHECK(!(request.has_ysql_db_catalog_version() && request.has_ysql_catalog_version()),
@@ -363,21 +362,42 @@ class CatalogVersionChecker {
           "Both fields ysql_db_catalog_version and ysql_catalog_version are set");
     auto version_info = VERIFY_RESULT(FetchVersionInfo(request));
     if (!tserver_version_info_) {
-      tserver_version_info_.emplace(
-          version_info.db_oid, GetLastBreakingVersion(version_info.db_oid));
+      auto [catalog_version, breaking_version] = GetCatalogVersion(version_info.db_oid);
+      tserver_version_info_.emplace(version_info.db_oid, catalog_version, breaking_version);
     }
 
-    if (*tserver_version_info_ != version_info) {
-      SCHECK_EQ(
-          tserver_version_info_->db_oid, version_info.db_oid,
-          InvalidArgument, "Different db_oid values are not expected");
-      if (version_info.version < tserver_version_info_->version) {
-        return STATUS(
-            QLError,
-            Format("The catalog snapshot used for this transaction has been invalidated: "
-                   "expected: $0, got: $1", tserver_version_info_->version, version_info.version),
-            TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
-      }
+    VLOG(2) << "Request: " << request.ShortDebugString()
+            << ", Tserver version info: "
+            << tserver_version_info_->db_oid.value_or(0) << ", " << tserver_version_info_->version
+            << ", " << tserver_version_info_->breaking_version
+            << ", fail_for_non_breaking_version_change: " << fail_for_non_breaking_version_change
+            << ", Received version info: "
+            << version_info.db_oid.value_or(0) << ", " << version_info.version;
+
+    SCHECK_EQ(
+        tserver_version_info_->db_oid, version_info.db_oid,
+        InvalidArgument, "Different db_oid values are not expected");
+
+    const auto base_msg = "The catalog snapshot used for this transaction has been invalidated";
+    if (version_info.version < tserver_version_info_->breaking_version) {
+      auto detailed_msg = Format(
+          "$0. Received from PG: $1, expected to be >= breaking catalog version: $2",
+          base_msg, version_info.version, tserver_version_info_->breaking_version);
+      LOG(ERROR) << detailed_msg;
+      return STATUS(
+          QLError, FLAGS_TEST_hide_details_for_pg_regress ? base_msg : detailed_msg,
+          TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
+    }
+
+    if (fail_for_non_breaking_version_change &&
+        (tserver_version_info_->version > version_info.version)) {
+      auto detailed_msg = Format(
+          "$0. Received from PG: $1, actual catalog version: $2",
+          base_msg, version_info.version, tserver_version_info_->version);
+      LOG(ERROR) << detailed_msg;
+      return STATUS(
+          QLError, FLAGS_TEST_hide_details_for_pg_regress ? base_msg : detailed_msg,
+          TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
     }
     return Status::OK();
   }
@@ -388,9 +408,10 @@ class CatalogVersionChecker {
   struct VersionInfo {
     DbOid db_oid;
     uint64_t version;
+    uint64_t breaking_version;
 
-    VersionInfo(DbOid db_oid_, uint64_t version_)
-        : db_oid(db_oid_), version(version_) {}
+    VersionInfo(DbOid db_oid_, uint64_t version_, uint64_t breaking_version_)
+        : db_oid(db_oid_), version(version_), breaking_version(breaking_version_) {}
 
     friend bool operator==(const VersionInfo&, const VersionInfo&) = default;
   };
@@ -398,16 +419,17 @@ class CatalogVersionChecker {
   template <class PB>
   Result<VersionInfo> FetchVersionInfo(const PB& request) const {
     if (request.has_ysql_catalog_version()) {
-      return VersionInfo(std::nullopt, request.ysql_catalog_version());
+      return VersionInfo(std::nullopt, request.ysql_catalog_version(), 0);
     }
     DCHECK(request.has_ysql_db_catalog_version());
     SCHECK(request.has_ysql_db_oid(), InvalidArgument, "ysql_db_oid is not specified");
-    return VersionInfo(request.ysql_db_oid(), request.ysql_db_catalog_version());
+    return VersionInfo(request.ysql_db_oid(), request.ysql_db_catalog_version(), 0);
   }
 
-  [[nodiscard]] uint64_t GetLastBreakingVersion(DbOid db_oid) const;
+  [[nodiscard]] std::pair<uint64_t, uint64_t> GetCatalogVersion(DbOid db_oid) const;
 
   TabletServerIf& tablet_server_;
+  const bool use_cache_;
   std::optional<VersionInfo> tserver_version_info_;
 };
 

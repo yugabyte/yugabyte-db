@@ -23,15 +23,38 @@ import org.yb.YBTestRunner;
  */
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressYbBitmapScans extends BasePgRegressTest {
+  private static final int kNumShardsPerTserver = 3;
+
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
-  // Avoid spontaneous analyze in the middle of the test
+  // The schedule builds a 145k-row, 3-index table, which under TSAN does not fit in the 1800s
+  // method timeout with the default RF3 cluster: replicating every write three times and running
+  // six daemons per test instance starves the host when several tests run in parallel.  RF1 cuts
+  // the daemons to two and the write amplification to one copy, at the cost of no longer
+  // exercising raft replication here; those races are covered by the docdb C++ tests.
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  // 3 shards on the single tserver give the same tablet count as the default 1 shard on each of
+  // 3 tservers, keeping tablet boundaries, plans and row ordering unchanged.
+  @Override
+  protected int getNumShardsPerTServer() {
+    return kNumShardsPerTserver;
+  }
+
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
+    // Avoid spontaneous analyze in the middle of the test
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // Must be >= the tablet count so that all tablets are read concurrently, otherwise the
+    // expected EXPLAIN DIST read request counts grow.  pg_doc_op derives it from the tserver
+    // count, which a single tserver makes too small.
+    flagMap.put("ysql_select_parallelism", Integer.toString(2 * kNumShardsPerTserver));
     return flagMap;
   }
 

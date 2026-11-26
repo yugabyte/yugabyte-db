@@ -47,7 +47,9 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -57,6 +59,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
@@ -80,6 +83,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -89,11 +93,18 @@
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enforce_tablet_replica_limits);
+DECLARE_int32(ht_lease_duration_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
 DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(num_cpus);
+DECLARE_int32(num_reactor_threads);
+DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -110,9 +121,8 @@ DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_bool(TEST_pause_before_enabling_db_connections);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 namespace yb {
 namespace tserver {
@@ -499,6 +509,10 @@ class MasterExportSnapshotTest
       public ::testing::WithParamInterface<master::YsqlColocationConfig> {
  public:
   void SetUp() override {
+    // The snapshot generated as of a time reflects the tablet consensus state at that time, while
+    // the ground truth export reflects the current one. A load balancer leader move in between
+    // makes them differ, so keep tablet leadership stable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     PostgresMiniClusterTest::SetUp();
     messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
@@ -716,6 +730,26 @@ class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
     ASSERT_OK(source_conn_->ExecuteFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
   }
+
+  // Creates a table with a vector index and inserts even ids, then odd ids, returning the time
+  // between the two batches.
+  // Each clone replays hundreds of pgvector DDLs, which takes minutes in sanitizer builds, so the
+  // vector index tests do one clone each to fit the test timeout.
+  Result<Timestamp> SetUpVectorIndexTable() {
+    RETURN_NOT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(source_conn_->Execute(
+        "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
+    RETURN_NOT_OK(source_conn_->Execute(
+        "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+    for (int i = 0; i <= 10; i += 2) {
+      RETURN_NOT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+    }
+    auto timestamp = VERIFY_RESULT(GetCurrentTime());
+    for (int i = 1; i <= 10; i += 2) {
+      RETURN_NOT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+    }
+    return timestamp;
+  }
 };
 
 class PgCloneTestWithColocatedDBParam
@@ -817,47 +851,39 @@ TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) 
 }
 
 TEST_F(PgCloneTest, CloneVectorIndex) {
-  ASSERT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
-  ASSERT_OK(source_conn_->Execute(
-      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
-  ASSERT_OK(source_conn_->Execute(
-      "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+  auto timestamp = ASSERT_RESULT(SetUpVectorIndexTable());
 
-  for (int i = 0; i <= 10; i += 2) {
-    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
-  }
-  auto timestamp = ASSERT_RESULT(GetCurrentTime());
-  for (int i = 1; i <= 10; i += 2) {
-    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
-  }
-
-  LOG(INFO) << "Create first clone";
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       timestamp.ToInt64()));
 
-  LOG(INFO) << "Read first clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 2; 6");
   }
-  LOG(INFO) << "Drop first clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+}
 
-  LOG(INFO) << "Create second clone";
+TEST_F(PgCloneTest, CloneVectorIndexLatest) {
+  ASSERT_OK(ResultToStatus(SetUpVectorIndexTable()));
+
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
 
-  LOG(INFO) << "Read second clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 3; 5");
   }
-  LOG(INFO) << "Drop second clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
@@ -867,8 +893,7 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
 class PgCloneObjectLocksTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };
@@ -1114,7 +1139,19 @@ TEST_P(PgCloneTestWithColocatedDBParam, CloneWithAlterTableSchema) {
   ASSERT_EQ(rows[0], kRow);
 }
 
-TEST_F(PgCloneTest, CloneYsqlDbTimeout) {
+// Lowers the admin operation timeout cluster-wide (the in-process master and tservers read the
+// flag directly; postgres backends inherit it through their environment), so the delay that
+// CloneYsqlDbTimeout injects to exceed it can be 30 s instead of the default 120 s.
+class PgCloneTimeoutTest : public PgCloneTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_client_admin_operation_timeout_sec) =
+        30 * kTimeMultiplier;
+    PgCloneTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgCloneTest, CloneYsqlDbTimeout, PgCloneTimeoutTest) {
   // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
   // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
@@ -1691,6 +1728,17 @@ TEST_P(PgCloneTestWithColocatedDBTabletLimitsCheck, TabletLimitsCheck) {
 class PgCloneColocationTestWithTabletLimitsCheck : public PgCloneColocationTest {
  public:
   void SetUp() override {
+    // num_cpus is only meant to affect the tablet replica limit computation. Keep it from also
+    // sizing the process wide rocksdb priority thread pool and the RPC reactors for one core,
+    // which serializes the sys catalog snapshot flushes of all three masters.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_reactor_threads) = 4;
+    // Cloning writes ~200k sys catalog entries, so the snapshot creation flush stalls each master
+    // for seconds. Relax the consensus timeouts so the leader keeps its lease and the followers do
+    // not start an election, which would abort the in-progress clone.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 15000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 15000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 30;
     // Simulate a single core cluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
     PgCloneColocationTest::SetUp();
@@ -1824,12 +1872,13 @@ TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
 TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyDBTest) {
   // Regression test for GitHub issue #29335.
   // Create a partitioned table with many partitions, an index, and CHECK constraints
-  // in the source DB. ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
+  // in the source DB.  ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
   // but CHECK constraint OIDs in pg_constraint are always dynamically allocated via
-  // GetNewObjectId. This forces the tserver to call ReservePgsqlOids during the clone's
-  // DDL replay, populating its OID cache with a stale range. This should be invalidated after
+  // GetNewObjectId.  This forces the tserver to call ReservePgsqlOids during the clone's
+  // DDL replay, populating its OID cache with a stale range.  This should be invalidated after
   // the clone so if any objects are dropped and recreated, they will get a new OID instead of
-  // colliding with the hidden objects.
+  // colliding with the hidden objects.  The partitions and constraints make the cached range
+  // overlap enough explicit OIDs that the recreated relations hit hidden ones.
   auto create_partitioned_table = [&](pgwrapper::PGConn& conn) -> Status {
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE t (key INT, value INT, CHECK (key >= 0), CHECK (value >= 0)) "
@@ -1892,6 +1941,52 @@ TEST_F(PgCloneTest, CloneWithBackslashInDbName) {
   auto clone_conn = ASSERT_RESULT(ConnectToDB(kBackslashDbName));
   auto count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
   ASSERT_EQ(count, 0);
+}
+
+// Clones from source databases whose names contain characters that need quoting when passed to
+// ysql_dump.
+class PgCloneOddSourceDbNameTest : public PgCloneTest {
+ protected:
+  // Creates `source_db_name` with its own snapshot schedule and a table only it has, clones it
+  // into kTargetNamespaceName1 and checks the clone has that table but not the fixture source's
+  // kSourceTableName.
+  void TestCloneFromSourceDbNamed(const std::string& source_db_name) {
+    const std::string kOddSourceTableName = "odd_source_t";
+    ASSERT_OK(CreateDatabase(pgwrapper::PqEscapeIdentifier(source_db_name)));
+    auto schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+        master_backup_proxy_.get(), YQL_DATABASE_PGSQL, source_db_name,
+        snapshot_schedule_interval(), kRetention, kTimeout));
+    ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+    auto odd_source_conn = ASSERT_RESULT(ConnectToDB(source_db_name));
+    ASSERT_OK(odd_source_conn.ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kOddSourceTableName));
+    ASSERT_OK(odd_source_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kOddSourceTableName));
+
+    ASSERT_OK(odd_source_conn.ExecuteFormat(
+        "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1,
+        pgwrapper::PqEscapeIdentifier(source_db_name)));
+
+    auto clone_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto value = ASSERT_RESULT(clone_conn.FetchRow<int32_t>(
+        Format("SELECT value FROM $0 WHERE key = 1", kOddSourceTableName)));
+    ASSERT_EQ(value, 10);
+    auto fixture_table_count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
+        "SELECT count(*) FROM pg_class WHERE relname = $0 AND relkind = 'r'",
+        pgwrapper::PqEscapeLiteral(kSourceTableName))));
+    ASSERT_EQ(fixture_table_count, 0);
+  }
+};
+
+TEST_F(PgCloneOddSourceDbNameTest, EqualsSign) {
+  TestCloneFromSourceDbNamed("src=db");
+}
+
+TEST_F(PgCloneOddSourceDbNameTest, LeadingDash) {
+  TestCloneFromSourceDbNamed("-d" + kSourceNamespaceName);
+}
+
+TEST_F(PgCloneOddSourceDbNameTest, ConnStrSpecialChars) {
+  TestCloneFromSourceDbNamed("-d src='db' = \\ x");
 }
 
 TEST_F(PgCloneTest, CloneWithQuotedSourceOwner) {
@@ -2182,6 +2277,113 @@ TEST_F(PgCloneTest, CloneAfterPitrRemovedTableFromSnapshot) {
   auto t1_count = ASSERT_RESULT(
       target_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
   ASSERT_EQ(t1_count, 0);
+}
+
+class SysCatalogRestoreWithWritePipeliningTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+    // Run both DDLs in one multi-statement transaction so its writes span the restore.
+    ToggleDDLMode(/* use_legacy = */ false);
+    PgCloneInitiallyEmptyDBTest::SetUp();
+  }
+};
+
+// Run a DDL with write pipelining across a restore. Since write pipelining attaches metadata to its
+// writes, we need to ensure that writes after the restore don't try to recreate the txn, and
+// abort instead.
+TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransactionAcrossRestore)) {
+  // Snapshot isolation would cause the post-restore write to conflict with the restore's catalog
+  // version write, so use read committed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+
+  // Hold the first async write confirmation until after the restore. This causes the next write to
+  // also include metadata (which previously would cause a recreated txn + fatal).
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency(
+      {{"DdlTransactionAcrossRestore::ReleaseAsyncWrites",
+        "TabletServiceImpl::WaitForAsyncWrite::BeforeRegister"}});
+  sync_point->EnableProcessing();
+
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  HybridTime restore_ht = ASSERT_RESULT(HybridTime::ParseHybridTime(restore_time.ToString()));
+  // Sleep a bit before we start the txn.
+  SleepFor(500ms);
+
+  ASSERT_OK(source_conn_->Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  // Not CREATE TABLE: an uncommitted table would be under DDL verification and block the restore.
+  ASSERT_OK(source_conn_->Execute("CREATE VIEW view1 AS SELECT 1"));
+
+  auto restoration_id = ASSERT_RESULT(
+      RestoreSnapshotSchedule(master_backup_proxy_.get(), schedule_id_, restore_ht, kTimeout));
+  ASSERT_OK(WaitForRestoration(master_backup_proxy_.get(), restoration_id, kTimeout));
+
+  auto ddl_after_restore = source_conn_->Execute("CREATE TABLE table2 (i int)");
+
+  // Unblock the writes. The txn should abort and roll back cleanly.
+  TEST_SYNC_POINT("DdlTransactionAcrossRestore::ReleaseAsyncWrites");
+  ASSERT_OK(source_conn_->Execute("COMMIT"));
+
+  ASSERT_FALSE(ddl_after_restore.ok())
+      << "post-restore DDL write across a sys-catalog restore unexpectedly succeeded";
+
+  // Ensure that the txn was rolled back.
+  auto table2_exists =
+      ASSERT_RESULT(source_conn_->FetchRow<bool>("SELECT to_regclass('table2') IS NOT NULL"));
+  ASSERT_FALSE(table2_exists) << "table2 from the aborted transaction unexpectedly persisted";
+}
+
+class RepartitionReplicaLoadTest : public PostgresMiniClusterTest {
+ protected:
+  static constexpr auto kTimeout = 120s * kTimeMultiplier;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
+    PostgresMiniClusterTest::SetUp();
+  }
+
+  Result<TableId> TableIdOf(const std::string& table_name) {
+    auto tables = VERIFY_RESULT(client_->ListTables(
+        table_name, /* exclude_ysql */ false, /* ysql_db_filter */ "", client::SkipHidden::kTrue));
+    SCHECK_EQ(tables.size(), 1u, IllegalState, Format("Expected one table named $0", table_name));
+    return tables.front().table_id();
+  }
+};
+
+// Importing a two-tablet snapshot into a one-tablet table repartitions it: the one tablet is
+// marked DELETED and dropped from the table on the spot. With the deleted-tablet cleanup off,
+// nothing else takes its replicas out of the load count.
+TEST_F(RepartitionReplicaLoadTest, RepartitionedTabletLeavesReplicaLoad) {
+  auto* master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 2 TABLETS"));
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  const auto first_table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
+  const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(first_table_id));
+  const auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
+      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
+  ASSERT_EQ(snapshots.size(), 1);
+
+  ASSERT_OK(conn.Execute("DROP TABLE repartitioned"));
+  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  const auto table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
+  auto table = master->catalog_manager().GetTableInfo(table_id);
+  ASSERT_NE(table.get(), nullptr);
+  const auto old_tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(old_tablets.size(), 1u);
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return ReplicaLoadMatchesReplicaMaps(master); }, kTimeout,
+      "Counters match the maps before the import"));
+
+  ASSERT_RESULT(snapshot_util.StartImportSnapshot(snapshots[0]));
+  const auto& old_tablet = old_tablets.front();
+  ASSERT_TRUE(old_tablet->LockForRead()->is_deleted());
+  ASSERT_FALSE(old_tablet->GetReplicaLocations()->empty());
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return ReplicaLoadMatchesReplicaMaps(master); }, kTimeout,
+      "Repartitioned tablet left the count"));
 }
 
 }  // namespace master

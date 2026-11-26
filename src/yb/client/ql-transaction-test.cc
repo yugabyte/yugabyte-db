@@ -30,7 +30,10 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/rpc/rpc.h"
 
@@ -70,27 +73,35 @@ DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(TEST_load_transactions_sync);
 DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
 DECLARE_bool(TEST_transaction_allow_rerequest_status);
+DECLARE_bool(raft_defer_applying_replication);
+
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(priority_thread_pool_size);
+DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
+
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_uint64(db_max_flushing_bytes);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
-DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
+DECLARE_uint32(raft_deferred_update_delay_ms);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 
 namespace yb {
 namespace client {
@@ -353,6 +364,33 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   VerifyData();
 }
 
+// A restarted transaction keeps the origination stamp its commit carries.
+TEST_F(QLTransactionTest, RestartKeepsOriginationInfo) {
+  const auto kClockDelta = 100ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250'000ULL;
+
+  auto write_txn = CreateTransaction();
+  ASSERT_OK(WriteRows(CreateSession(write_txn)));
+  ASSERT_OK(write_txn->CommitFuture().get());
+
+  server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
+
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
+  const OriginationInfo origination_info{
+      .database_oid = 16384, .origination_ht = HybridTime::FromMicros(1'700'000'000'000'000)};
+  txn1->SetOriginationInfo(origination_info);
+  auto session = CreateSession(txn1);
+  auto row = SelectRow(session, KeyForTransactionAndIndex(0, 0));
+  ASSERT_NOK(row);
+  ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status())) << row;
+
+  auto txn2 = ASSERT_RESULT(txn1->CreateRestartedTransaction());
+  const auto restarted_info = txn2->GetOriginationInfo();
+  ASSERT_EQ(restarted_info.database_oid, origination_info.database_oid);
+  ASSERT_EQ(restarted_info.origination_ht, origination_info.origination_ht);
+  txn2->Abort();
+}
+
 TEST_F(QLTransactionTest, Child) {
   auto txn = CreateTransaction();
   TransactionManager manager2(client_.get(), clock_, client::LocalTabletFilter());
@@ -518,6 +556,41 @@ TEST_F(QLTransactionTest, ResendApplying) {
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
   AssertNoRunningTransactions();
+}
+
+class QLTransactionRaftApplyingDelayTest : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    // Heartbeats send queued ops, so they must not fire inside the deferral window under test.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 1500;
+    QLTransactionTest::SetUp();
+  }
+};
+
+// The participant holds back sending APPLYING to followers, so intents outlive the commit until
+// the deferred signal replicates it.
+TEST_F_EX(QLTransactionTest, RaftApplyingReplicationDelay, QLTransactionRaftApplyingDelayTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_deferred_update_delay_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_defer_applying_replication) = true;
+  WriteData();
+  std::this_thread::sleep_for(300ms);
+  ASSERT_GT(CountIntents(cluster_.get()), 0);
+  VerifyData();
+  ASSERT_OK(WaitIntentsCleaned());
+  VerifyData();
+}
+
+TEST_F_EX(QLTransactionTest, RaftApplyingReplicationDelayManyTransactions,
+          QLTransactionRaftApplyingDelayTest) {
+  constexpr size_t kNumTransactions = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 60s / 1us;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_deferred_update_delay_ms) = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_defer_applying_replication) = true;
+  for (size_t i = 0; i != kNumTransactions; ++i) {
+    WriteData(WriteOpType::INSERT, i);
+  }
+  ASSERT_OK(WaitTransactionsCleaned());
+  VerifyData(kNumTransactions);
 }
 
 TEST_F(QLTransactionTest, ConflictResolution) {
@@ -1749,8 +1822,8 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
       if (!tablet) {
         continue;
       }
-      auto persistent_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId());
-      if (persistent_op_id.intents.index > 10) {
+      auto persistent_state = ASSERT_RESULT(tablet->GetPersistentState());
+      if (persistent_state.intents.index > 10) {
         has_flushed_intents_db = true;
         break;
       }
@@ -1978,10 +2051,11 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   auto follower_uuid = follower->permanent_uuid();
   auto tablet_id = follower->tablet_id();
 
-  auto& sync_point = *SyncPoint::GetInstance();
   CountDownLatch start_shutdown_latch(1);
   CountDownLatch write_batch_latch(1);
-  sync_point.SetCallBack(
+  OpId apply_op_id;
+  SyncPointScope sync_point;
+  sync_point->SetCallBack(
       "TransactionParticipant::Impl::StartShutdown",
       [follower, &start_shutdown_latch](void* arg) {
     auto* context = static_cast<tablet::TransactionParticipantContext*>(arg);
@@ -1990,8 +2064,7 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
       start_shutdown_latch.CountDown();
     }
   });
-  OpId apply_op_id;
-  sync_point.SetCallBack(
+  sync_point->SetCallBack(
       "RaftConsensus::UpdateReplica",
       [follower, &write_batch_latch, &start_shutdown_latch, &apply_op_id](void* arg) {
     auto* request = static_cast<consensus::LWConsensusRequestPB*>(arg);
@@ -2016,7 +2089,7 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
     }
   });
 
-  sync_point.EnableProcessing();
+  sync_point->EnableProcessing();
 
   TestThreadHolder thread_holder;
 
@@ -2033,7 +2106,7 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   auto mini_tserver = cluster_->find_tablet_server(follower_uuid);
   mini_tserver->Shutdown();
   LOG(INFO) << "RESTART MID";
-  sync_point.DisableProcessing();
+  sync_point->DisableProcessing();
   follower = nullptr;
   ASSERT_OK(mini_tserver->Start());
   LOG(INFO) << "RESTART END";
@@ -2058,6 +2131,130 @@ TEST_F(QLTransactionTest, DeleteTableDuringWrite) {
   ASSERT_OK(WaitFor([this] {
     return !HasTransactions();
   }, 10s * kTimeMultiplier, "Cleanup transactions from coordinator"));
+}
+
+// Regression test for #30145: use-after-free of TransactionCoordinator::Impl.
+//
+// ApplyingReplicated calls rpcs_.Unregister before it uses any coordinator state, so
+// Rpcs::CompleteShutdown considers the callback finished and allows status tablet deletion to
+// destroy the coordinator while the callback is still running. TabletPeer::CompleteShutdown drops
+// the last TabletPtr, ~Tablet runs ~TransactionCoordinator, and the next statement -
+// LOG_WITH_PREFIX(WARNING) - makes a virtual call to Impl::LogPrefix on freed memory.
+//
+// The sync point this test needs is compiled out under NDEBUG, hence YB_DEBUG_ONLY_TEST (otherwise
+// test will get stuck waiting on sync point).
+TEST_F(QLTransactionTest, YB_DEBUG_ONLY_TEST(StatusTabletDeletedDuringApplyingReplicated)) {
+  const auto kTimeout = 60s * kTimeMultiplier;
+  constexpr auto kSyncPoint = "TransactionCoordinator::Impl::ApplyingReplicated:BeforeUse";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  // Resend APPLYING more often, so the callback arrives soon after involved tablets are deleted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
+
+  // Pause the first failing ApplyingReplicated callback - it has already unregistered its rpc and
+  // is about to use `this` for the first time.
+  CountDownLatch paused(1);
+  CountDownLatch resume(1);
+  std::atomic<bool> pause_next{true};
+  // Status tablet of the paused coordinator. The cluster has several status tablets, so we should
+  // delete this one to reproduce the GHI #30145.
+  TabletId paused_coordinator_tablet;
+  auto& sync_point = *yb::SyncPoint::GetInstance();
+  sync_point.SetCallBack(kSyncPoint, [&](void* tablet_id) {
+    if (!pause_next.exchange(false)) {
+      return;
+    }
+    paused_coordinator_tablet = *static_cast<const TabletId*>(tablet_id);
+    LOG(INFO) << "ApplyingReplicated paused for coordinator " << paused_coordinator_tablet
+              << ": rpc unregistered, `this` not used yet";
+    paused.CountDown();
+    CHECK(resume.WaitFor(kTimeout)) << "Timed out waiting for the test to release the callback";
+    LOG(INFO) << "ApplyingReplicated continues into LOG_WITH_PREFIX";
+  });
+  sync_point.EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&resume, &sync_point] {
+    resume.CountDown();  // Don't leave a paused callback behind.
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+  });
+
+  // Commit a transaction whose intents are never applied, so the coordinator keeps resending
+  // APPLYING.
+  DisableApplyingIntents();
+  ASSERT_NO_FATALS(WriteData());
+
+  // Delete involved tablets, so every subsequent APPLYING rpc completes with non-OK status and
+  // ApplyingReplicated gets into the sync point.
+  ASSERT_OK(client_->DeleteTable(table_.table()->id()));
+
+  ASSERT_TRUE(paused.WaitFor(kTimeout)) << "ApplyingReplicated callback was never reached";
+
+  // Find the leader peer of the status tablet of the paused coordinator. Deleting any other status
+  // tablet frees a different Impl and the callback continues on a live object, so nothing is
+  // caught.
+  //
+  // Only keep a weak reference to the tablet - TabletPeer::CompleteShutdown drops the last
+  // TabletPtr, so a strong reference held by the test would keep ~Impl from running and ASAN
+  // would see nothing.
+  tserver::TSTabletManager* status_tablet_manager = nullptr;
+  std::weak_ptr<tablet::Tablet> weak_status_tablet;
+  for (size_t i = 0; i != cluster_->num_tablet_servers() && !status_tablet_manager; ++i) {
+    auto* ts_manager = cluster_->GetTabletManager(i);
+    for (const auto& peer : ts_manager->GetTabletPeers()) {
+      if (peer->tablet_id() != paused_coordinator_tablet ||
+          peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
+        continue;
+      }
+      weak_status_tablet = ASSERT_RESULT(peer->shared_tablet());
+      status_tablet_manager = ts_manager;
+      break;
+    }
+  }
+  ASSERT_TRUE(status_tablet_manager != nullptr)
+      << "Leader peer of the paused coordinator's status tablet " << paused_coordinator_tablet
+      << " not found";
+  LOG(INFO) << "Deleting the paused coordinator's status tablet: " << paused_coordinator_tablet;
+
+  // Delete the status tablet from a separate thread. With the bug present Rpcs::CompleteShutdown
+  // returns immediately, because the paused callback has already unregistered its rpc. A fix that
+  // keeps the rpc registered for the whole callback would block this call until `resume` is
+  // released, so we should not call it inline.
+  Status delete_status;
+  std::atomic<bool> delete_returned{false};
+  std::thread deleter([&] {
+    std::optional<tserver::TabletServerErrorPB::Code> error_code;
+    delete_status = status_tablet_manager->DeleteTablet(
+        paused_coordinator_tablet, tablet::TABLET_DATA_TOMBSTONED,
+        tablet::ShouldAbortActiveTransactions::kFalse,
+        /* cas_config_opid_index_less_or_equal= */ std::nullopt, /* hide_only= */ false,
+        /* keep_data= */ true, &error_code);
+    delete_returned.store(true);
+  });
+
+  // Wait for DeleteTablet to return, not for the Tablet strong count to reach zero.
+  // weak_status_tablet.expired() only means that ~Tablet has started, the coordinator is deleted
+  // later, while ~Tablet destroys its members. Waiting for expiration leaves the callback racing
+  // with the free and reproduced the failure only 3 times out of 10. DeleteTablet returns after
+  // TabletPeer::CompleteShutdown has completed tablet_.reset(), so ~Impl has run by then.
+  //
+  // The wait is short, because a fix that keeps the rpc registered makes DeleteTablet wait for
+  // `resume`. We should release the callback well before FLAGS_rpcs_shutdown_timeout_ms, otherwise
+  // Rpcs::CompleteShutdown gives up waiting and fails the Check failed: calls_.empty() of GHI
+  // #20347 instead of completing the shutdown.
+  const auto coordinator_freed =
+      WaitFor([&delete_returned] { return delete_returned.load(); },
+              5s * kTimeMultiplier, "DeleteTablet to complete").ok();
+  LOG(INFO) << "Coordinator freed while the callback was paused: " << coordinator_freed
+            << ", tablet strong refs dropped: " << weak_status_tablet.expired();
+
+  // Let the callback continue into LOG_WITH_PREFIX(WARNING) on the freed Impl.
+  resume.CountDown();
+  deleter.join();
+  ASSERT_OK(delete_status);
+
+  // Wait for the callback to finish using the coordinator, so the ASAN report belongs to this
+  // test and not to the cluster teardown.
+  SleepFor(1s * kTimeMultiplier);
 }
 
 class QLTransactionTestSmallWriteBuffer :
@@ -2112,6 +2309,200 @@ TEST_F_EX(QLTransactionTest, ShutdownWhileLoadingTransactions, QLTransactionTest
   ASSERT_OK(ts->Restart(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), 30s * kTimeMultiplier));
+}
+
+namespace {
+
+// Thread markers for the sync point callbacks below, which get no other way to tell the threads
+// they are interested in from unrelated ones.
+thread_local bool tl_intents_flush_deadlock_writer = false;
+thread_local bool tl_intents_flush_deadlock_flush_task = false;
+
+} // namespace
+
+class IntentsFlushDeadlockTest : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    mini_cluster_opt_.num_tablet_servers = 1;
+    // Immutable memtable bytes over this limit stop writes to the DB until a flush brings them back
+    // under it. At 1 byte, a single immutable memtable does.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_max_flushing_bytes) = 1;
+    // The intents flush and the regular flush must be able to run at the same time. Mini-cluster
+    // tests run flushes on the priority thread pool, which has one worker below four CPUs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+    SetNumTablets(1);
+    QLTransactionTest::SetUp();
+  }
+};
+
+// Three tablet threads wait on each other:
+//   1. A regular DB writer parked in DBImpl::DelayWrite as the write-group leader, because the
+//      regular DB's immutable memtables exceed db_max_flushing_bytes and writes are stopped until
+//      a flush brings them back under it.
+//   2. An intents DB flush job that, in Tablet::IntentsDbFlushFilter, used to force-flush the
+//      regular DB while holding the intents DB mutex. DBImpl::FlushMemTable entered the regular
+//      write thread behind the parked leader and waited for it.
+//   3. The regular DB flush that ends the stall. Its OnFlushCompleted listener calls
+//      TransactionParticipant::ProcessRecentlyAppliedTransactions, which holds the participant
+//      mutex and reads the intents DB frontier under the intents DB mutex held by (2). The parked
+//      writer is only signalled after the listener returns.
+// The intents flush job must have checked the regular DB's flush ability before the regular
+// memtable was switched, and must request its flush after the writer parked; the sync point in
+// the filter holds it in that window.
+TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWriter)) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+
+  // Unflushed regular records and unflushed intents: the filter wants the regular DB flushed
+  // before the intents memtable.
+  ASSERT_OK(WriteRows(CreateSession()));
+  auto txn = CreateTransaction();
+  ASSERT_OK(WriteRows(CreateSession(txn), /* transaction= */ 1));
+
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), table_->name().table_name(), ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* regular_db = tablet->regular_db();
+  auto* intents_db = tablet->intents_db();
+
+  // An existing regular DB entry, so the stalled write below carries a well-formed DocDB key.
+  std::string existing_key, existing_value;
+  {
+    std::unique_ptr<rocksdb::Iterator> iter(regular_db->NewIterator(rocksdb::ReadOptions()));
+    iter->SeekToFirst();
+    ASSERT_TRUE(iter->Valid());
+    existing_key = iter->key().ToBuffer();
+    existing_value = iter->value().ToBuffer();
+  }
+
+  CountDownLatch filter_at_gate(1), filter_gate(1), flush_task_parked(1);
+  CountDownLatch flush_at_gate(1), flush_gate(1);
+  CountDownLatch writer_stalled(1);
+  std::atomic<bool> pause_next_flush{true};
+  std::atomic<int> regular_flushes{0};
+  const auto tablet_id = tablet->tablet_id();
+
+  // Everything the callbacks capture by reference is declared above this cleanup, which clears
+  // the callbacks before those objects are destroyed.
+  auto& sync_point = *SyncPoint::GetInstance();
+  auto sync_point_cleanup = ScopeExit([&] {
+    sync_point.DisableProcessing();
+    filter_gate.CountDown();
+    flush_gate.CountDown();
+    sync_point.ClearAllCallBacks();
+  });
+  // (2) Hold the intents flush job between its flush-ability check and its regular DB flush
+  // request. It keeps the intents DB mutex meanwhile.
+  sync_point.SetCallBack("Tablet::IntentsDbFlushFilter:BeforeRegularDbFlush", [&](void*) {
+    filter_at_gate.CountDown();
+    filter_gate.Wait();
+  });
+  // The requested flush runs on a pool thread; mark it so the next callback can tell it apart.
+  sync_point.SetCallBack("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush", [&](void*) {
+    tl_intents_flush_deadlock_flush_task = true;
+  });
+  sync_point.SetCallBack("WriteThread::EnterUnbatched:Wait", [&](void*) {
+    if (tl_intents_flush_deadlock_flush_task) {
+      tl_intents_flush_deadlock_flush_task = false;
+      flush_task_parked.CountDown();
+    }
+  });
+  // (3) Hold this tablet's regular flush with the DB mutex released and its result not installed,
+  // so the stall it caused stays in place while the writer arrives. The sync point runs for every
+  // DB in the process, so key on the DB's log prefix ("T <tablet> ... [R]: ").
+  sync_point.SetCallBack("FlushJob::WriteLevel0Table", [&, tablet_id](void* arg) {
+    const auto& log_prefix = *static_cast<const std::string*>(arg);
+    if (log_prefix.find(tablet_id) == std::string::npos ||
+        log_prefix.find("[R]") == std::string::npos) {
+      return;
+    }
+    ++regular_flushes;
+    if (pause_next_flush.exchange(false)) {
+      flush_at_gate.CountDown();
+      flush_gate.Wait();
+    }
+  });
+  // (1)
+  sync_point.SetCallBack("DBImpl::DelayWrite:Wait", [&](void*) {
+    if (tl_intents_flush_deadlock_writer) {
+      writer_stalled.CountDown();
+    }
+  });
+  sync_point.EnableProcessing();
+
+  // (2) The filter sees unflushed regular data and no immutable memtable, may not defer, and goes
+  // to force-flush the regular DB.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 0;
+  rocksdb::FlushOptions flush_options(rocksdb::FlushReason::kTestOnly);
+  flush_options.wait = false;
+  ASSERT_OK(intents_db->Flush(flush_options));
+  ASSERT_TRUE(filter_at_gate.WaitFor(kTimeout)) << "intents flush filter did not force-flush";
+
+  // (3) Switching the regular memtable puts its bytes over the limit: regular writes stop until it
+  // is flushed.
+  ASSERT_OK(regular_db->Flush(flush_options));
+  ASSERT_TRUE(flush_at_gate.WaitFor(kTimeout)) << "regular flush did not start";
+
+  // (1)
+  struct WriterState {
+    CountDownLatch done{1};
+    Status status;
+  };
+  auto writer_state = std::make_shared<WriterState>();
+  // The regular DB's own flush filter (TabletPeer::InitTabletPeer) refuses a memtable without
+  // frontiers, and skips one whose op id is ahead of the log.
+  const auto frontier_op_id = peers.front()->GetLatestLogEntryOpId();
+  const auto frontier_ht = tablet->clock()->Now();
+  std::thread writer([regular_db, writer_state, existing_key, existing_value, frontier_op_id,
+                      frontier_ht] {
+    tl_intents_flush_deadlock_writer = true;
+    rocksdb::WriteBatch batch;
+    batch.Put(existing_key, existing_value);
+    docdb::ConsensusFrontiers frontiers;
+    docdb::set_op_id(frontier_op_id, &frontiers);
+    docdb::set_hybrid_time(frontier_ht, &frontiers);
+    batch.SetFrontiers(&frontiers);
+    rocksdb::WriteOptions write_options;
+    write_options.disableWAL = true;
+    writer_state->status = regular_db->Write(write_options, &batch);
+    writer_state->done.CountDown();
+  });
+  // If an assertion below fails while the writer is parked, wake it the way shutdown would and
+  // let it go, so that teardown can proceed.
+  auto writer_guard = ScopeExit([&] {
+    if (writer.joinable()) {
+      regular_db->StartShutdown();
+      writer.detach();
+    }
+  });
+  ASSERT_TRUE(writer_stalled.WaitFor(kTimeout)) << "regular DB writer did not stall";
+
+  // (2) requests the regular DB flush and returns, releasing the intents DB mutex. The requested
+  // flush queues behind (1) on a pool thread. Code that flushed the regular DB from inside the
+  // filter parked the intents flush job here instead, with the mutex held.
+  filter_gate.CountDown();
+  ASSERT_TRUE(flush_task_parked.WaitFor(kTimeout))
+      << "requested regular DB flush did not queue behind the writer";
+
+  // (3) completes and lifts the stall. Its listener takes the intents DB mutex, now free, and the
+  // writer is signalled.
+  flush_gate.CountDown();
+
+  const bool writer_done = writer_state->done.WaitFor(kTimeout);
+  if (writer_done) {
+    writer.join();
+  }
+  ASSERT_TRUE(writer_done) << "regular DB writer never resumed: tablet is deadlocked";
+  ASSERT_OK(writer_state->status);
+
+  // The requested flush must still be carried out: the regular DB flushes the writer's memtable,
+  // after which the intents memtable is flushable.
+  ASSERT_OK(WaitFor(
+      [&] { return regular_flushes.load() >= 2; }, kTimeout, "requested regular DB flush"));
+  ASSERT_OK(WaitFor(
+      [&] { return intents_db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData; },
+      kTimeout, "intents DB flush"));
 }
 
 } // namespace client

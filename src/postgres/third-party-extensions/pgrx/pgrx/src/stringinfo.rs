@@ -10,7 +10,7 @@
 //! A safe wrapper around Postgres `StringInfo` structure
 #![allow(dead_code, non_snake_case)]
 
-use crate::{pg_sys, AllocatedByPostgres, AllocatedByRust, PgBox, WhoAllocated};
+use crate::{AllocatedByPostgres, AllocatedByRust, PgBox, WhoAllocated, pg_sys};
 use core::ffi::CStr;
 use core::fmt::{Display, Formatter};
 use core::slice;
@@ -86,11 +86,7 @@ impl StringInfo<AllocatedByPostgres> {
     /// This function is unsafe as it cannot confirm the provided [`pg_sys::StringInfo`] pointer is
     /// valid
     pub unsafe fn from_pg(sid: pg_sys::StringInfo) -> Option<Self> {
-        if sid.is_null() {
-            None
-        } else {
-            Some(StringInfo { inner: PgBox::from_pg(sid) })
-        }
+        if sid.is_null() { None } else { Some(StringInfo { inner: PgBox::from_pg(sid) }) }
     }
 }
 

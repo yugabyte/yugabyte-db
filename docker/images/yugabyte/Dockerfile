@@ -5,7 +5,7 @@ ARG BASE_IMAGE=docker.io/library/almalinux:8
 # Use following command to create UBI-8 based docker image
 # docker build --build-arg BASE_IMAGE=registry.access.redhat.com/ubi8/ubi
 
-FROM $BASE_IMAGE as intermediate
+FROM $BASE_IMAGE as stage1
 
 ENV YB_HOME=/home/yugabyte
 WORKDIR $YB_HOME
@@ -26,7 +26,7 @@ EOF
 RUN tar -xvf share/ybc-*.tar.gz \
     && rm -rf ybc-*/conf/
 
-FROM $BASE_IMAGE
+FROM $BASE_IMAGE as stage2
 ARG BASE_IMAGE
 ARG VERSION=Development
 ARG RELEASE=Unknown
@@ -102,7 +102,6 @@ RUN set -x; \
       net-tools \
       openssl \
       openssl-devel \
-      redhat-rpm-config \
       rsync \
       procps \
       sysstat \
@@ -111,19 +110,22 @@ RUN set -x; \
       hostname \
     ); \
     if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
-      packages+=(python3.11-devel python3.11-pip); \
+      packages+=(python3.11-devel python3.11-pip redhat-rpm-config); \
     fi; \
     $yum_install "${packages[@]}" \
     && if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
          alternatives --set python3 /usr/bin/python3.11; \
          alternatives --set python /usr/bin/python3.11; \
     fi \
+    && python3 -m pip install --upgrade pip \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
     && python3 -m pip install --upgrade watchdog \
     && if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
          yum remove --disableplugin=subscription-manager -y python3-pip; \
+       else \
+         rpm -e python3.11-pip; \
        fi \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
@@ -146,13 +148,7 @@ RUN set -x; \
               --no-user-group yugabyte; \
     fi
 
-# Create with correct permissions the openssl-config directory which will be used for fips
-# credentials generated via post-install.sh
-RUN mkdir -p $YB_HOME/openssl-config \
-    && chown -R 10001:0 $YB_HOME/openssl-config \
-    && chmod -R g=u $YB_HOME/openssl-config
-
-COPY --from=intermediate $YB_HOME $YB_HOME
+COPY --from=stage1 $YB_HOME $YB_HOME
 
 # Create with correct permissions the openssl-config directory which will be used for fips
 # credentials generated via post-install.sh
@@ -186,6 +182,10 @@ RUN mkdir $YB_HOME/controller && \
     # Link the logs
     ln -s /mnt/disk0/ybc-data/controller/logs $YB_HOME/controller/logs
 
+
+RUN chown 10001:0 $YB_HOME \
+    && chmod g=u $YB_HOME
+
 # Copy licenses
 ARG ghr_url=https://raw.githubusercontent.com/yugabyte/yugabyte-db/master
 RUN mkdir /licenses && \
@@ -204,6 +204,40 @@ RUN set -x; \
     && curl -L -o /tmp/tini.sha256sum \
       https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-${arch}.sha256sum \
     && egrep $(sha256sum /sbin/tini) /tmp/tini.sha256sum
+
+# Remove repos for hardened images
+RUN set -x; \
+    if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+      rm -rf /etc/yum.repos.d/rf-*; \
+    fi
+
+FROM scratch
+ARG VERSION=Development
+ARG RELEASE=Unknown
+ARG USER=root
+ARG YBC_VERSION=Unknown
+
+LABEL name="YugabyteDB" \
+    maintainer="YugaByte" \
+    vendor="YugabyteDB, Inc" \
+    release=$RELEASE \
+    version=$VERSION \
+    summary="YugabytDB Image" \
+    description="YugabyteDB is a free and open-source, distributed, relational, NewSQL database \
+        management system designed to handle large amounts of data spanning across multiple \
+        availability zones and geographic regions while providing single-digit latency, \
+        high availability, and no single point of failure."
+
+ENV container=yugabyte-db
+ENV YB_HOME=/home/yugabyte
+ENV YB_MANAGED_DEVOPS_USE_PYTHON3=1
+ENV YB_DEVOPS_USE_PYTHON3=1
+# libpq reads client TLS certs from ~/.yugabytedb, which the Helm chart mounts under /home/yugabyte.
+# Without this, root gets /root and a UID with no passwd entry (such as OpenShift's) gets /.
+ENV HOME=/home/yugabyte
+WORKDIR $YB_HOME
+
+COPY --from=stage2 / /
 
 # Expose the required ports.
 EXPOSE 7000 7100 7200 9000 9100 12000 11000 6379 9042 5433 10100 18018

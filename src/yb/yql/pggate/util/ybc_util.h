@@ -38,10 +38,13 @@ typedef struct YbcStatusStruct* YbcStatus;
 bool YBCStatusIsNotFound(YbcStatus s);
 bool YBCStatusIsUnknownSession(YbcStatus s);
 bool YBCStatusIsSnapshotTooOld(YbcStatus s);
+bool YBCStatusIsResponseCacheMiss(YbcStatus s);
 bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
+bool YBCStatusIsRetryableRequestTooOld(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
+bool YBCStatusIsNotSupported(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
@@ -154,6 +157,7 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info);
 const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info);
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type);
 uint32_t YBCWaitEventForWaitingOnTServer();
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info);
 int YBCGetRandomUniformInt(int a, int b);
 YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 int YBCGetCircularBufferSizeInKiBs();
@@ -178,7 +182,26 @@ uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t ke
 
 char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
 
-bool YBCIsObjectLockingEnabled();
+/*
+ * Latch whether the transaction that is about to start uses global object locking. PG decides it in
+ * YbSetObjectLockingForCurrTxn: the yb_enable_global_object_locking_infra auto flag is on, and the
+ * transaction doesn't start with yb_read_time set. The flag is PGC_SIGHUP and yb_read_time can be
+ * changed by SET LOCAL, so without a per-transaction copy object locking could flip on or off
+ * mid-transaction. Must be called from PG's StartTransaction() before AtStart_Cache(), which
+ * already consults the value, and must not be called for savepoints or for the internal
+ * transaction restarts that happen within one PG transaction.
+ */
+void YBCSetGlobalObjectLockingForCurrTxn(bool enabled);
+/*
+ * Latch whether the transaction that is about to start reads the catalog as of yb_read_time.
+ * Called next to YBCSetGlobalObjectLockingForCurrTxn(), under the same rules.
+ */
+void YBCSetHistoricalCatalogReadForCurrTxn(bool historical_catalog_read);
+
+/* The values latched by the two calls above. */
+bool YBCIsObjectLockingLatchedForCurrTxn();
+bool YBCIsHistoricalCatalogReadForCurrTxn();
+
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

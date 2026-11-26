@@ -35,6 +35,6 @@
 #include <common/hmac.h>
 #endif
 
-#include <common/pg_yb_param_status_flags.h>
+#include <common/pg_yb_conn_mgr_protocol.h>
 
 #endif /* ODYSSEY_POSTGRES_H */

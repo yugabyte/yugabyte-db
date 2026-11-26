@@ -49,6 +49,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestUtils;
@@ -692,6 +693,46 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     assertNotNull(userIntentJsonNode);
 
     assertEquals("false", userIntentJsonNode.get("enableYEDIS").toString());
+  }
+
+  @Test
+  public void testUniverseCreateWithDisabledReleaseFails() {
+    String ybVersion = "0.0.0.1-b1";
+    ReleaseManager.ReleaseMetadata rm = ReleaseManager.ReleaseMetadata.create(ybVersion);
+    rm.state = ReleaseManager.ReleaseState.DISABLED;
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 1", "subnet-1");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "DisabledReleaseUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("ybSoftwareVersion", ybVersion);
+    userIntentJson.set("regionList", Json.newArray().add(r.getUuid().toString()));
+    userIntentJson.put("accessKeyCode", accessKeyCode);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    setClustersAndNodeDetailsSet(bodyJson, userIntentJson, placement(p), i.getInstanceTypeCode());
+
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
+    assertBadRequest(result, "Release " + ybVersion + " is not ACTIVE");
+    verify(mockCommissioner, times(0))
+        .submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class));
   }
 
   @Test
@@ -1378,7 +1419,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     di.storageType = StorageType.GP2;
     di.volumeSize = 100;
     di.numVolumes = 2;
-    primaryCluster.userIntent.deviceInfo = di;
+    ProviderInitializer providerInitializer =
+        TestUtils.existingProviderInitializer(primaryCluster.userIntent).setDeviceInfo(di);
 
     List<PlacementAZ> azList =
         primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
@@ -1396,7 +1438,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     String accessKeyCode = "someKeyCode";
     AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
-    primaryCluster.userIntent.accessKeyCode = accessKeyCode;
+    providerInitializer.setAccessCode(accessKeyCode);
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
 
@@ -1436,8 +1478,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(Common.CloudType.onprem)
+        .setInstanceType("type.small");
     taskParams.upsertPrimaryCluster(userIntent, null, null);
     taskParams.nodeDetailsSet = new HashSet<>();
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
@@ -1537,8 +1580,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 3);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(Common.CloudType.onprem)
+        .setInstanceType("type.small");
     taskParams.nodeDetailsSet = new HashSet<>();
 
     taskParams.upsertPrimaryCluster(userIntent, null, null);

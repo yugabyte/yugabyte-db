@@ -87,6 +87,8 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const PRE_CHECK_STAGE_STEP_NUMBER = 1;
+const UPGRADE_MASTER_SERVERS_STAGE_STEP_NUMBER = 2;
 const TSERVER_AZ_UPGRADE_STAGE_START_INDEX = 3;
 export const DbUpgradeProgressPanel = ({
   dbUpgradeTask,
@@ -153,12 +155,22 @@ export const DbUpgradeProgressPanel = ({
 
   const targetDbVersion = dbUpgradeTask?.details?.versionNumbers?.ybSoftwareVersion;
   const softwareUpgradeProgress = getTaskSoftwareUpgradeProgress(dbUpgradeTask);
+  const hasSoftwareUpgradeProgress =
+    !!softwareUpgradeProgress && isNonEmptyObject(softwareUpgradeProgress);
   const dbUpgradeTaskPauseState = softwareUpgradeProgress?.canaryPauseState;
   const tserverAZUpgradeStatesList = softwareUpgradeProgress?.tserverAZUpgradeStatesList;
   const clusters = universe?.spec?.clusters ?? [];
   const readReplicaClusterUuid = getReadOnlyCluster(clusters)?.uuid;
   const upgradeAzStageCount = tserverAZUpgradeStatesList?.length ?? 0;
   const softwareUpgradeState = universe?.info?.software_upgrade_state;
+  // finalize_required from precheck is true during pre-check; only show the future finalize step
+  // once progress exists. Kubernetes reaches PreFinalize without progress, so show finalize then.
+  const shouldShowFinalizeStage =
+    softwareUpgradeState === UniverseInfoSoftwareUpgradeState.PreFinalize ||
+    (hasSoftwareUpgradeProgress && isDbUpgradeFinalizeRequired);
+  const finalizeStageStepNumber = hasSoftwareUpgradeProgress
+    ? TSERVER_AZ_UPGRADE_STAGE_START_INDEX + upgradeAzStageCount
+    : PRE_CHECK_STAGE_STEP_NUMBER + 1;
   const stages = classifyDbUpgradeStages(dbUpgradeTask, softwareUpgradeState);
   const { preCheckStage, upgradeMasterServersStage, upgradeAzStages, finalizeStage } = stages;
   const isPausedAfterSuccessfulMasterServersUpgrade =
@@ -214,7 +226,7 @@ export const DbUpgradeProgressPanel = ({
       </Typography>
       <AccordionCard
         title={t('preCheckStage.title')}
-        stepNumber={1}
+        stepNumber={PRE_CHECK_STAGE_STEP_NUMBER}
         state={preCheckStage}
         accordionProps={getAccordionPropsForId(ActiveAccordionId.PRE_CHECK)}
         ref={setAccordionElementRef(ActiveAccordionId.PRE_CHECK)}
@@ -228,11 +240,11 @@ export const DbUpgradeProgressPanel = ({
           onCloseSidePanel={onCloseSidePanel}
         />
       </AccordionCard>
-      {softwareUpgradeProgress && isNonEmptyObject(softwareUpgradeProgress) && (
+      {hasSoftwareUpgradeProgress && (
         <>
           <AccordionCard
             title={t('upgradeMasterServersStage.title')}
-            stepNumber={2}
+            stepNumber={UPGRADE_MASTER_SERVERS_STAGE_STEP_NUMBER}
             state={upgradeMasterServersStage}
             accordionProps={getAccordionPropsForId(ActiveAccordionId.UPGRADE_MASTER)}
             ref={setAccordionElementRef(ActiveAccordionId.UPGRADE_MASTER)}
@@ -373,48 +385,48 @@ export const DbUpgradeProgressPanel = ({
               </AccordionCard>
             );
           })}
-          {isDbUpgradeFinalizeRequired && (
-            <AccordionCard
-              title={t('finalizeStage.title')}
-              stepNumber={TSERVER_AZ_UPGRADE_STAGE_START_INDEX + upgradeAzStageCount}
-              state={finalizeStage}
-              accordionProps={getAccordionPropsForId(ActiveAccordionId.FINALIZE)}
-              ref={setAccordionElementRef(ActiveAccordionId.FINALIZE)}
-            >
-              <AssessPerformancePrompt upgradeStageCategory={UpgradeStageCategory.FINALIZE} />
-              {finalizeStage === AccordionCardState.NEUTRAL && (
-                <TemporaryRestrictionsNotice
-                  upgradeStageCategory={UpgradeStageCategory.FINALIZE}
-                  isYsqlMajorUpgrade={isYsqlMajorUpgrade}
-                />
-              )}
-              {universe?.info?.software_upgrade_state ===
-                UniverseInfoSoftwareUpgradeState.PreFinalize && (
-                <div className={classes.cardButtonsContainer}>
-                  <RbacValidator accessRequiredOn={rollbackRbacAccessRequiredOn} isControl>
-                    <YBButton
-                      variant="secondary"
-                      onClick={handleRollbackUpgrade}
-                      dataTestId="roll-back-upgrade-button-finalize"
-                    >
-                      {t('rollBack')}
-                    </YBButton>
-                  </RbacValidator>
-                  <RbacValidator accessRequiredOn={finalizeRbacAccessRequiredOn} isControl>
-                    <YBButton
-                      variant="ybaPrimary"
-                      startIcon={<ConnectIcon width={24} height={24} />}
-                      onClick={handleFinalizeUpgrade}
-                      dataTestId="finalize-upgrade-now-button"
-                    >
-                      {t('finalizeUpgradeNow')}
-                    </YBButton>
-                  </RbacValidator>
-                </div>
-              )}
-            </AccordionCard>
-          )}
         </>
+      )}
+      {shouldShowFinalizeStage && (
+        <AccordionCard
+          title={t('finalizeStage.title')}
+          stepNumber={finalizeStageStepNumber}
+          state={finalizeStage}
+          accordionProps={getAccordionPropsForId(ActiveAccordionId.FINALIZE)}
+          ref={setAccordionElementRef(ActiveAccordionId.FINALIZE)}
+        >
+          <AssessPerformancePrompt upgradeStageCategory={UpgradeStageCategory.FINALIZE} />
+          {finalizeStage === AccordionCardState.NEUTRAL && (
+            <TemporaryRestrictionsNotice
+              upgradeStageCategory={UpgradeStageCategory.FINALIZE}
+              isYsqlMajorUpgrade={isYsqlMajorUpgrade}
+            />
+          )}
+          {universe?.info?.software_upgrade_state ===
+            UniverseInfoSoftwareUpgradeState.PreFinalize && (
+            <div className={classes.cardButtonsContainer}>
+              <RbacValidator accessRequiredOn={rollbackRbacAccessRequiredOn} isControl>
+                <YBButton
+                  variant="secondary"
+                  onClick={handleRollbackUpgrade}
+                  dataTestId="roll-back-upgrade-button-finalize"
+                >
+                  {t('rollBack')}
+                </YBButton>
+              </RbacValidator>
+              <RbacValidator accessRequiredOn={finalizeRbacAccessRequiredOn} isControl>
+                <YBButton
+                  variant="ybaPrimary"
+                  startIcon={<ConnectIcon width={24} height={24} />}
+                  onClick={handleFinalizeUpgrade}
+                  dataTestId="finalize-upgrade-now-button"
+                >
+                  {t('finalizeUpgradeNow')}
+                </YBButton>
+              </RbacValidator>
+            </div>
+          )}
+        </AccordionCard>
       )}
       <DbUpgradeRollBackModal
         modalProps={{

@@ -28,13 +28,14 @@ use serde::{Serialize, Deserialize};
 
 // pg_module_magic!(); // Uncomment this outside of docs!
 
-#[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize, AggregateName)]
+#[pg_binary_protocol]
 pub struct DemoSum {
     count: i32,
 }
 
 #[pg_aggregate]
-impl Aggregate for DemoSum {
+impl Aggregate<DemoSum> for DemoSum {
     const INITIAL_CONDITION: Option<&'static str> = Some(r#"{ "count": 0 }"#);
     type Args = i32;
     fn state(
@@ -86,13 +87,13 @@ Sometimes aggregates need to handle multiple arguments. The
 # use pgrx::prelude::*;
 # use serde::{Serialize, Deserialize};
 #
-# #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize)]
+# #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize, AggregateName)]
 # pub struct DemoSum {
 #     count: i32,
 # }
 #
 #[pg_aggregate]
-impl Aggregate for DemoSum {
+impl Aggregate<DemoSum> for DemoSum {
     const INITIAL_CONDITION: Option<&'static str> = Some(r#"{ "count": 0 }"#);
     type Args = (i32, i32);
     fn state(
@@ -131,13 +132,13 @@ The [`name!(ident, Type)`][macro@crate::name] macro can be used to set the name 
 # use pgrx::prelude::*;
 # use serde::{Serialize, Deserialize};
 #
-# #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize)]
+# #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize, AggregateName)]
 # pub struct DemoSum {
 #     count: i32,
 # }
 #
 # #[pg_aggregate]
-impl Aggregate for DemoSum {
+impl Aggregate<DemoSum> for DemoSum {
     const INITIAL_CONDITION: Option<&'static str> = Some(r#"{ "count": 0 }"#);
     type Args = (
         i32,
@@ -172,19 +173,19 @@ CREATE AGGREGATE DemoSum (
 ## Function attributes
 
 Functions inside the `impl` may use the [`#[pgrx]`](macro@crate::pgrx) attribute. It
-accepts the same parameters as [`#[pg_extern]`][macro@pgrx-macros::pg_extern].
+accepts the same parameters as [`#[pg_extern]`][macro@crate::pg_extern].
 
 ```rust
 # use pgrx::prelude::*;
 # use serde::{Serialize, Deserialize};
 #
-# #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize)]
+# #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize, AggregateName)]
 # pub struct DemoSum {
 #     count: i32,
 # }
 #
 #[pg_aggregate]
-impl Aggregate for DemoSum {
+impl Aggregate<DemoSum> for DemoSum {
     const INITIAL_CONDITION: Option<&'static str> = Some(r#"{ "count": 0 }"#);
     type Args = i32;
     #[pgrx(parallel_safe, immutable)]
@@ -221,14 +222,16 @@ Sometimes it's useful to have aggregates share state, or use some other type for
 # use serde::{Serialize, Deserialize};
 #
 #[derive(Copy, Clone, Default, PostgresType, Serialize, Deserialize)]
+#[pg_binary_protocol]
 pub struct DemoSumState {
     count: i32,
 }
 
+#[derive(AggregateName)]
 pub struct DemoSum;
 
 #[pg_aggregate]
-impl Aggregate for DemoSum {
+impl Aggregate<DemoSum> for DemoSum {
     const INITIAL_CONDITION: Option<&'static str> = Some(r#"{ "count": 0 }"#);
     type Args = i32;
     type State = DemoSumState;
@@ -276,6 +279,39 @@ use crate::pgbox::PgBox;
 
 pub use pgrx_sql_entity_graph::{FinalizeModify, ParallelOption};
 
+/// A trait representing a type-level identifier for an aggregate function.
+///
+/// This trait is used to associate a constant name with a Rust type, which is then used
+/// as the name of the corresponding SQL aggregate in PostgreSQL (e.g., the name you'd use in
+/// `SELECT my_agg(col) FROM table;`).
+///
+/// This is especially useful in combination with procedural macros like
+/// [`#[derive(AggregateName)]`](macro@crate::AggregateName), which automatically implements this trait
+/// for a given struct or enum.
+///
+/// # Examples
+///
+/// ## Default name (based on type name)
+/// ```
+/// #[derive(pgrx::AggregateName)]
+/// struct MySum;
+///
+/// assert_eq!(<MySum as pgrx::ToAggregateName>::NAME, "MySum");
+/// ```
+///
+/// ## Custom name using `#[aggregate_name = "..."]`
+/// ```
+/// #[derive(pgrx::AggregateName)]
+/// #[aggregate_name = "my_custom_sum"]
+/// struct MySum;
+///
+/// assert_eq!(<MySum as pgrx::ToAggregateName>::NAME, "my_custom_sum");
+/// ```
+pub trait ToAggregateName {
+    /// The name of the aggregate. (eg. What you'd pass to `SELECT agg(col) FROM tab`.)
+    const NAME: &'static str;
+}
+
 /// Aggregate implementation trait.
 ///
 /// When decorated with [`#[pgrx_macros::pg_aggregate]`](pgrx_macros::pg_aggregate), enables the
@@ -284,7 +320,7 @@ pub use pgrx_sql_entity_graph::{FinalizeModify, ParallelOption};
 ///
 /// The [`#[pgrx_macros::pg_aggregate]`](pgrx_macros::pg_aggregate) will automatically fill fields
 /// marked optional with stubs.
-pub trait Aggregate
+pub trait Aggregate<T: ToAggregateName>
 where
     Self: Sized,
 {
@@ -306,9 +342,6 @@ where
     /// For multiple arguments, provide a tuple.
     ///
     /// Use [`pgrx::name!()`](crate::name) to set the SQL name of the argument.
-    ///
-    /// If the final argument is to be variadic, use [`pgrx::variadic`](crate::variadic). When used
-    /// with [`pgrx::name!()`](crate::name), it must be used **inside** the [`pgrx::name!()`](crate::name) macro.
     type Args;
 
     /// The types of the direct argument(s) to an ordered-set aggregate's `finalize`.
@@ -333,9 +366,6 @@ where
 
     /// **Optional:** This function can be skipped, `#[pg_aggregate]` will create a stub.
     type MovingState;
-
-    /// The name of the aggregate. (eg. What you'd pass to `SELECT agg(col) FROM tab`.)
-    const NAME: &'static str;
 
     /// Set to true if this is an ordered set aggregate.
     ///

@@ -32,7 +32,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"
@@ -46,25 +45,11 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
 namespace {
-
-Result<dockv::DocKey> BuildDocKey(
-    const dockv::PartitionSchema& partition_schema,
-    dockv::KeyEntryValues hashed_components,
-    const LWQLValuePB*const* hashed_values,
-    dockv::KeyEntryValues range_components = {}) {
-
-  if (!hashed_components.empty()) {
-    DCHECK(hashed_values);
-    auto hash = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
-        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size())));
-    return dockv::DocKey(hash, std::move(hashed_components), std::move(range_components));
-  }
-  return dockv::DocKey(std::move(range_components));
-}
 
 [[nodiscard]] inline bool IsForInOperator(const LWPgsqlExpressionPB& expr) {
   // For IN operator expr->has_condition() returns 'true'.
@@ -411,12 +396,13 @@ Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
   return doc_op_->ExecuteInit(params);
 }
 
-void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids) {
-  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, /* keep_order */ false));
+void PgDmlRead::SetRequestedYbctids(
+    std::reference_wrapper<const std::vector<Slice>> ybctids, bool keep_order) {
+  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, keep_order));
 }
 
-void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator) {
-  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), false);
+void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator, bool keep_order) {
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), keep_order);
   ybctid_holder->Reserve(generator.capacity);
   while (true) {
     const auto ybctid = generator.next();
@@ -441,6 +427,14 @@ Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
 Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   read_req_->mutable_vector_idx_options()->mutable_hnsw_options()->set_ef_search(ef_search);
   return Status::OK();
+}
+
+void PgDmlRead::ANNAddPartitionKeyPrefix(Slice prefix) {
+  read_req_->mutable_vector_idx_options()->add_dup_partition_key_prefixes(prefix);
+}
+
+void PgDmlRead::ANNSetTenant(Slice tenant) {
+  read_req_->mutable_vector_idx_options()->dup_tenant(tenant);
 }
 
 InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
@@ -806,7 +800,8 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromKeyBinds() {
   }
 
   auto doc_key = VERIFY_RESULT(BuildDocKey(
-      bind_->partition_schema(), std::move(hashed_components), hashed_values.data()));
+      bind_->partition_schema(), std::move(hashed_components), hashed_values.data(),
+      /* range_components= */ {}));
   auto& range_components = doc_key.range_group();
   range_components.reserve(bind_->num_key_columns() - num_hash_key_columns);
   struct InOperatorInfo {
@@ -895,8 +890,7 @@ bool PgDmlRead::IsAllKeyColumnsBound() const {
 // The resulting bounds are applied, or re-applied in the parallel case, during the execution.
 // If the resulting request range is empty, the execution is going to be skipped.
 //--------------------------------------------------------------------------------------------------
-Status PgDmlRead::ApplyParallelRange(
-    Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive) {
+Status PgDmlRead::ApplyParallelRange(Slice lower_bound, Slice upper_bound) {
   // Clean up operations remaining from the previous range's scan
   if (doc_op_) {
     RETURN_NOT_OK(down_cast<PgDocReadOp*>(doc_op_.get())->ResetPgsqlOps());
@@ -906,25 +900,25 @@ Status PgDmlRead::ApplyParallelRange(
   }
   if (auto* secondary_index = SecondaryIndex(); secondary_index) {
     secondary_index->RequireReExecution();
-    return secondary_index->query().ApplyParallelRange(
-        lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
+    return secondary_index->query().ApplyParallelRange(lower_bound, upper_bound);
   }
 
-  // Override the lower bound
-  if (lower_bound.empty()) {
-    read_req_->clear_lower_bound();
-  } else {
-    read_req_->mutable_lower_bound()->dup_key(lower_bound);
-    read_req_->mutable_lower_bound()->set_is_inclusive(lower_bound_inclusive);
+  PgReadRange parallel_range(bind_);
+  if (!lower_bound.empty()) {
+    parallel_range.SetDocKeyBound(
+      lower_bound, /* is_inclusive = */ true, /* is_lower_bound = */ true);
   }
-
-  // Override the upper bound
-  if (upper_bound.empty()) {
-    read_req_->clear_upper_bound();
-  } else {
-    read_req_->mutable_upper_bound()->dup_key(upper_bound);
-    read_req_->mutable_upper_bound()->set_is_inclusive(upper_bound_inclusive);
+  if (!upper_bound.empty()) {
+    parallel_range.SetDocKeyBound(
+      upper_bound, /* is_inclusive = */ false, /* is_lower_bound = */ false);
   }
+  // Override the scan range
+  read_req_->clear_lower_bound();
+  read_req_->clear_upper_bound();
+  auto valid = parallel_range.ApplyBounds(*read_req_);
+  RSTATUS_DCHECK(valid, InvalidArgument, Format("Parallel range [$0, $1) is empty",
+                                                lower_bound.ToDebugHexString(),
+                                                upper_bound.ToDebugHexString()));
 
   return Status::OK();
 }

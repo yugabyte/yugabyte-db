@@ -9,7 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use pgrx::prelude::*;
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 extension_sql!(
     r#"
@@ -43,6 +43,8 @@ fn spi_return_query() -> Result<
     let query = "SELECT oid, relname::text || '-pg16' FROM pg_class";
     #[cfg(feature = "pg17")]
     let query = "SELECT oid, relname::text || '-pg17' FROM pg_class";
+    #[cfg(feature = "pg18")]
+    let query = "SELECT oid, relname::text || '-pg18' FROM pg_class";
 
     Spi::connect(|client| {
         client
@@ -88,7 +90,7 @@ fn spi_insert_title(title: &str) -> Result<Option<i64>, spi::Error> {
 #[pg_extern]
 fn spi_insert_title2(
     title: &str,
-) -> TableIterator<(name!(id, Option<i64>), name!(title, Option<String>))> {
+) -> TableIterator<'_, (name!(id, Option<i64>), name!(title, Option<String>))> {
     let tuple = Spi::get_two_with_args(
         "INSERT INTO spi.spi_example(title) VALUES ($1) RETURNING id, title",
         &[title.into()],

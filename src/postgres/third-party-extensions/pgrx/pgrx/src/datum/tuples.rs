@@ -7,7 +7,7 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::{pg_sys, FromDatum, IntoDatum};
+use crate::{FromDatum, IntoDatum, pg_sys};
 
 impl<A, B> IntoDatum for (Option<A>, Option<B>)
 where

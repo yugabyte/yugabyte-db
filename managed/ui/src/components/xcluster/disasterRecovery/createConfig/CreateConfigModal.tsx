@@ -13,9 +13,12 @@ import {
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
+  checkIsAutomaticDdlReplicationSupported,
   formatUuidForXCluster,
-  getCategorizedNeedBootstrapPerTableResponse
+  getCategorizedNeedBootstrapPerTableResponse,
+  getIsMatviewReplicationSupported
 } from '../../ReplicationUtils';
+import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
@@ -32,7 +35,7 @@ import {
   XClusterConfigAction,
   XClusterConfigType,
   XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  getXClusterUniverseTableFilters
 } from '../../constants';
 import {
   DurationUnit,
@@ -105,13 +108,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const queryClient = useQueryClient();
   const theme = useTheme();
 
-  const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
-    () =>
-      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
-        (response) => response.data
-      )
-  );
   const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
     api.fetchUniverse(sourceUniverseUuid)
   );
@@ -122,6 +118,51 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     runtimeConfigQueryKey.universeScope(committedTargetUniverseUuid ?? ''),
     () => api.fetchRuntimeConfigs(committedTargetUniverseUuid!, true),
     { enabled: !!committedTargetUniverseUuid }
+  );
+  const targetUniverseQuery = useQuery<Universe>(
+    universeQueryKey.detail(committedTargetUniverseUuid),
+    () => api.fetchUniverse(committedTargetUniverseUuid),
+    { enabled: !!committedTargetUniverseUuid }
+  );
+
+  const runtimeConfigEntries = runtimeConfigQuery.data?.configEntries ?? [];
+  const isDbScopedEnabled =
+    runtimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG
+    )?.value ?? false;
+  const isAutomaticDdlCreationEnabled =
+    runtimeConfigEntries.find(
+      (config: any) =>
+        config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_AUTOMATIC_DDL_CREATION_FEATURE_FLAG
+    )?.value ?? false;
+  // Mirrors the backend's create-time decision in DrConfigHelper#createDrConfig: automatic DDL mode
+  // requires db scoped replication, the runtime flag, and a high enough YBDB version on both sides.
+  const isAutomaticDdlMode =
+    isDbScopedEnabled &&
+    isAutomaticDdlCreationEnabled &&
+    !!sourceUniverseQuery.data &&
+    !!targetUniverseQuery.data &&
+    checkIsAutomaticDdlReplicationSupported(
+      getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)?.userIntent
+        .ybSoftwareVersion ?? ''
+    ) &&
+    checkIsAutomaticDdlReplicationSupported(
+      getPrimaryCluster(targetUniverseQuery.data.universeDetails.clusters)?.userIntent
+        .ybSoftwareVersion ?? ''
+    );
+  const isMatviewReplicationSupported = getIsMatviewReplicationSupported(
+    isAutomaticDdlMode,
+    sourceUniverseQuery.data,
+    targetUniverseQuery.data
+  );
+
+  const universeTableFilters = getXClusterUniverseTableFilters(isMatviewReplicationSupported);
+  const tablesQuery = useQuery<YBTable[]>(
+    universeQueryKey.tables(sourceUniverseUuid, universeTableFilters),
+    () =>
+      fetchTablesInUniverse(sourceUniverseUuid, universeTableFilters).then(
+        (response) => response.data
+      )
   );
 
   const drConfigMutation = useMutation(
@@ -298,12 +339,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     // We need to update the defaultValues with reset() after regionMetadataQuery is successful.
     formMethods.reset(getDefaultValues(runtimeConfigQuery.data.configEntries ?? []));
   }
-
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
-  const isDbScopedEnabled =
-    runtimeConfigEntries.find(
-      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG
-    )?.value ?? false;
 
   const targetRuntimeConfigEntries = targetRuntimeConfigQuery.data?.configEntries ?? [];
   const skipPitrSnapshotSchedules =
@@ -518,7 +553,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             sourceUniverseUuid: sourceUniverseUuid,
             tableType: TableType.PGSQL_TABLE_TYPE,
             xClusterConfigType: xClusterConfigType,
-            targetUniverseUuid: targetUniverseUuid
+            targetUniverseUuid: targetUniverseUuid,
+            isMatviewReplicationSupported: isMatviewReplicationSupported
           }}
           categorizedNeedBootstrapPerTableResponse={categorizedNeedBootstrapPerTableResponse}
         />

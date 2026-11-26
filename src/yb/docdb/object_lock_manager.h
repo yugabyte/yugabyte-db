@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <vector>
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
@@ -35,6 +38,10 @@ struct LockData {
   TabletId status_tablet;
   MonoTime start_time;
   TransactionId background_transaction_id = TransactionId::Nil();
+  // Callers may treat the request as finished once this is invoked, e.g. TSLocalLockManager leaves
+  // its in-progress scope, after which Shutdown() can proceed. So after invoking it, including
+  // inline from Lock(), nothing in the lock manager may be accessed other than state that
+  // Shutdown() waits for.
   StdStatusCallback callback;
 
   std::string ToString() const {
@@ -87,11 +94,15 @@ class ObjectLockManager {
   // Snapshot conflicting transactions for the given lock keys and register callbacks on each to
   // be notified when they release all locks. The callback fires once all conflicting transactions
   // have completed their unlock.
+  //
+  // Note: WaitForLockers is generally invoked at the start of a phase/txn when either no object
+  // locks are held or session object locks alone are held.
   void WaitForConflictingLockers(
       const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
       StdStatusCallback callback,
       CoarseTimePoint deadline,
-      const TransactionId& background_txn_id);
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet);
 
   void Poll();
 
@@ -104,10 +115,19 @@ class ObjectLockManager {
 
   void ConsumePendingSharedLockRequests();
 
+  // Collects, for each waiting object lock owner (transaction/subtransaction), the set of
+  // transactions currently blocking it. Used to populate pg_locks.ybdetails.blocked_by for
+  // object/table locks.
+  void PopulateObjectLockWaiterBlockers(
+      std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner);
+
+  void UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet);
+
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
-  std::unordered_map<ObjectLockPrefix, LockState>
-      TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  std::unordered_map<ObjectLockPrefix, LockState> TEST_GetLockStateMapForTxn(
+      TransactionId txn) const;
+  TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const;
 
  private:
   std::unique_ptr<ObjectLockManagerImpl> impl_;

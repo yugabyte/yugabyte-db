@@ -56,15 +56,17 @@ permutation s3_check_relhasindex s1_begin_rr s2_begin_rr s1_create_index_test1 s
 
 # If the table already has an index, typically a primary key, concurrent CREATE INDEX NONCONCURRENTLY
 # should be able to go through
-permutation s3_add_pkey_test1 s3_check_relhasindex  s1_begin_rr s2_begin_rr s1_create_index_test1 s2_create_index_test1 s1_commit s2_commit s3_check_relhasindex s3_show_pg_index
+# The table-rewriting steps below are annotated with yb_never_waits: they have nothing to wait on, but
+# a rewrite can outlast the assume-session-is-blocked heuristic and be misreported as waiting.
+permutation s3_add_pkey_test1(yb_never_waits) s3_check_relhasindex  s1_begin_rr s2_begin_rr s1_create_index_test1 s2_create_index_test1 s1_commit s2_commit s3_check_relhasindex s3_show_pg_index
 
 # The rest of the tests do not verify inplace updates but check possible issues that arise from yb object locks for tuples not matching PG semantics exactly.
 
 # Verify fix for GH issue #30095 where table rewrites on different tables deadlocked.
-permutation s1_begin_rr s2_begin_rr s1_alter_table_test1_add_col_rewrite s2_alter_table_test2_add_col_rewrite s1_commit s2_commit s3_check_pgattr_test1 s3_check_pgattr_test2
+permutation s1_begin_rr s2_begin_rr s1_alter_table_test1_add_col_rewrite(yb_never_waits) s2_alter_table_test2_add_col_rewrite(yb_never_waits) s1_commit s2_commit s3_check_pgattr_test1 s3_check_pgattr_test2
 
 # GRANT permissions on a table conflicts with an ALTER TABLE rewrite in PG15 as well as YB, as no object locks are acquired on the table during GRANT.
-permutation s1_begin_rr  s2_begin_rr s1_alter_table_test1_add_col_rewrite s2_grant_ins_test1 s1_commit s2_commit s3_check_relacl s3_check_pgattr_test1
+permutation s1_begin_rr  s2_begin_rr s1_alter_table_test1_add_col_rewrite(yb_never_waits) s2_grant_ins_test1 s1_commit s2_commit s3_check_relacl s3_check_pgattr_test1
 
 # GRANTs on same table conflict with each other in PG15 as well as YB, as no object locks are acquired on the table during GRANT.
 permutation s1_begin_rr s2_begin_rr s1_grant_test1 s2_grant_upd_test1 s1_commit s2_commit s3_check_relacl

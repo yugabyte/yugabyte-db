@@ -32,6 +32,22 @@ export const useMKRStyles = makeStyles((theme) => ({
   rotationInfoText: {
     fontSize: 12,
     color: theme.palette.grey[600]
+  },
+  keyRetentionNote: {
+    marginTop: theme.spacing(0.5),
+    fontSize: 11.5,
+    lineHeight: '16px',
+    fontWeight: 400,
+    color: theme.palette.grey[600],
+    '& strong': {
+      fontWeight: 600
+    }
+  },
+  keyRetentionLink: {
+    fontSize: '11.5px',
+    lineHeight: '16px',
+    fontWeight: 400,
+    color: '#6D7C88'
   }
 }));
 

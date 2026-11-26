@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <vector>
+
+#include <boost/dynamic_bitset/dynamic_bitset.hpp>
+
 #include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
@@ -28,6 +32,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 
@@ -172,6 +177,14 @@ size_t FindPartitionStartIndex(
 PartitionKeyPtr FindPartitionStart(
     const VersionedTablePartitionListPtr& versioned_partitions, const PartitionKey& partition_key,
     size_t group_by = 1);
+
+// A partition key prefix is the leading bytes shared by the partition keys of a set of rows: for a
+// hash partitioned table, the partition key itself (the encoded hash code); for a range
+// partitioned table, the encoded values of one or more leading range key columns.
+// Sets the bits of selected (one per partition) for the partitions that can hold rows whose
+// partition keys start with prefix.
+Status SelectPartitionsForPartitionKeyPrefix(
+    const TablePartitionList& partitions, Slice prefix, boost::dynamic_bitset<>& selected);
 
 } // namespace client
 } // namespace yb

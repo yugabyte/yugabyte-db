@@ -28,6 +28,10 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
     write_req_->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
   }
 
+  void SetOnConflictAction(PgsqlWriteRequestPB::PgsqlOnConflictAction action) {
+    write_req_->set_on_conflict_action(action);
+  }
+
   void SetIsBackfill(bool is_backfill) {
     write_req_->set_is_backfill(is_backfill);
   }
@@ -35,9 +39,11 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
   static Result<std::unique_ptr<PgInsert>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
-      YbcPgTransactionSetting transaction_setting, bool skip_intents_write, bool packed) {
+      YbcPgTransactionSetting transaction_setting,
+      const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
+      bool packed) {
     std::unique_ptr<PgInsert> result{new PgInsert{pg_session, transaction_setting, packed}};
-    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_write));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_info));
     return result;
   }
 

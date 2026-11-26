@@ -10,16 +10,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+#include <atomic>
+#include <future>
+
 #include <gtest/gtest.h>
 
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+
+#include "yb/docdb/consensus_frontier.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
@@ -40,9 +51,14 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/rocksdb/db.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -51,28 +67,48 @@
 
 #include "yb/tools/yb-admin_util.h"
 
+#include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_enable_remote_bootstrap);
+DECLARE_bool(TEST_pause_rbs_before_download_wal);
+DECLARE_bool(enable_async_snapshot_directory_cleanup);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(snapshot_create_flush_before_submit);
+DECLARE_bool(TEST_enable_sync_points);
+DECLARE_int32(snapshot_preflush_timeout_ms);
+DECLARE_int32(tablet_flush_concurrency);
+DECLARE_int32(tablet_flush_max_outstanding);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(default_snapshot_retention_hours);
+DECLARE_bool(TEST_pause_after_tombstoning_snapshot);
 DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
 DECLARE_bool(TEST_fail_tserver_snapshot_op);
 DECLARE_int32(unresponsive_ts_rpc_retry_limit);
+
+METRIC_DECLARE_gauge_uint64(tablet_flush_active);
 
 namespace yb {
 
@@ -197,6 +233,37 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     return &controller_;
   }
 
+  // Setup returns once each tablet has elected a leader, but that leader may not be ready yet.
+  Result<MiniTabletServer*> WaitForReadyLeader(const TabletId& tablet_id) {
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(
+        cluster_.get(), tablet_id, CoarseMonoClock::Now() + 30s * kTimeMultiplier,
+        RequireLeaderIsReady::kTrue));
+    auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
+    SCHECK_NOTNULL(leader);
+    return leader;
+  }
+
+  uint64_t ActiveFlushes(MiniTabletServer* server) {
+    return server->server()->metric_entity()
+        ->FindOrNull<AtomicGauge<uint64_t>>(METRIC_tablet_flush_active)->value();
+  }
+
+  Result<tserver::TabletSnapshotOpResponsePB> CreateTabletSnapshot(
+      MiniTabletServer* leader, const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) {
+    tserver::TabletSnapshotOpRequestPB request;
+    request.set_dest_uuid(leader->server()->permanent_uuid());
+    request.set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
+    request.add_tablet_id(tablet_id);
+    request.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+    tserver::TabletSnapshotOpResponsePB response;
+    tserver::TabletServerBackupServiceProxy proxy(
+        &client_->proxy_cache(), HostPort::FromBoundEndpoint(leader->bound_rpc_addr()));
+    RpcController controller;
+    controller.set_timeout(10s);
+    RETURN_NOT_OK(proxy.TabletSnapshotOp(request, &response, &controller));
+    return response;
+  }
+
   Status CheckAllSnapshots(
       const std::map<TxnSnapshotId, SysSnapshotEntryPB::State>& snapshot_info) {
     ListSnapshotsRequestPB list_req;
@@ -298,13 +365,16 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
   }
 
   TxnSnapshotId CreateSnapshot(
+      const vector<YBTableName>& table_names,
       std::optional<int32_t> retention_duration_hours = std::nullopt,
       std::optional<bool> imported = std::nullopt) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
-    TableIdentifierPB* const table = req.mutable_tables()->Add();
-    table->set_table_name(kTableName.table_name());
-    table->mutable_namespace_()->set_name(kTableName.namespace_name());
+    for (const auto& table_name : table_names) {
+      TableIdentifierPB* const table = req.mutable_tables()->Add();
+      table->set_table_name(table_name.table_name());
+      table->mutable_namespace_()->set_name(table_name.namespace_name());
+    }
     if (retention_duration_hours) {
       req.set_retention_duration_hours(*retention_duration_hours);
     }
@@ -329,6 +399,12 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     EXPECT_OK(CheckAllSnapshots({{ snapshot_id, SysSnapshotEntryPB::COMPLETE }}));
 
     return snapshot_id;
+  }
+
+  TxnSnapshotId CreateSnapshot(
+      std::optional<int32_t> retention_duration_hours = std::nullopt,
+      std::optional<bool> imported = std::nullopt) {
+    return CreateSnapshot({kTableName}, retention_duration_hours, imported);
   }
 
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
@@ -560,9 +636,588 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+TEST_F(SnapshotTest, PreflushDoesNotBlockReplication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = 20000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(1);
+  workload.Setup();
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3);
+  const auto tablet_id = peers.front()->tablet_id();
+  auto last_tablet = ASSERT_RESULT(peers.back()->shared_tablet());
+  CountDownLatch flushed(3), release_others(1), release_last(1), others_released(2);
+  std::atomic<bool> submitted{false};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (tablet->tablet_id() != tablet_id) {
+      return;
+    }
+    flushed.CountDown();
+    if (tablet == last_tablet.get()) {
+      release_last.Wait();
+    } else {
+      release_others.Wait();
+      others_released.CountDown();
+    }
+  });
+  sync->SetCallBack("SnapshotPreflush::BeforeSubmit", [&](void*) {
+    submitted.store(true, std::memory_order_release);
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release_others.CountDown();
+    release_last.CountDown();
+    workload.StopAndJoin();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  TxnSnapshotId snapshot_id;
+  threads.AddThreadFunctor([&] { snapshot_id = CreateSnapshot(); });
+  ASSERT_TRUE(flushed.WaitFor(10s));
+  ASSERT_FALSE(submitted.load(std::memory_order_acquire));
+  std::vector<int64_t> applied_before;
+  for (const auto& peer : peers) {
+    applied_before.push_back(ASSERT_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index);
+  }
+  // Hold completion after the physical flush, so this tests replication independence rather
+  // than how many writes RocksDB can buffer with its disk progress artificially stopped.
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  for (size_t i = 0; i != peers.size(); ++i) {
+    auto consensus = ASSERT_RESULT(peers[i]->GetConsensus());
+    ASSERT_OK(WaitFor([&] {
+      return consensus->GetLastAppliedOpId().index > applied_before[i];
+    }, 5s, "Replica applies writes during snapshot preflight"));
+  }
+  release_others.CountDown();
+  ASSERT_TRUE(others_released.WaitFor(5s));
+  ASSERT_FALSE(submitted.load(std::memory_order_acquire));
+  release_last.CountDown();
+  threads.JoinAll();
+  ASSERT_TRUE(submitted.load(std::memory_order_acquire));
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+}
+
+TEST_F(SnapshotTest, UnavailablePreflushReplicaDoesNotBlockQuorumWrites) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = 1000;
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(1);
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3);
+  const auto tablet_id = peers.front()->tablet_id();
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
+  auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
+  follower->Shutdown();
+  auto restart = ScopeExit([&] {
+    workload.StopAndJoin();
+    ASSERT_OK(follower->RestartStoppedServer());
+    ASSERT_OK(follower->WaitStarted());
+  });
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  workload.Start();
+  const auto response = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
+  ASSERT_TRUE(response.has_error());
+  // A follower failure must remain retryable, not report that the leader's tablet disappeared.
+  ASSERT_NE(response.error().code(), tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  const auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+  const auto snapshot_dir = JoinPathSegments(
+      leader_peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString());
+  ASSERT_FALSE(leader_peer->tablet_metadata()->fs_manager()->env()->FileExists(snapshot_dir));
+}
+
+TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(1);
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3);
+  const auto tablet_id = peers.front()->tablet_id();
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
+  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+  auto consensus = ASSERT_RESULT(leader_peer->GetConsensus());
+  const auto original_term = consensus->LeaderTerm();
+  const auto follower = *std::find_if(peers.begin(), peers.end(), [&](const auto& peer) {
+    return peer != leader_peer;
+  });
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  Result<tserver::TabletSnapshotOpResponsePB> response = STATUS(IllegalState, "Not sent");
+  CountDownLatch ready(1), release(1);
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("SnapshotPreflush::BeforeSubmit", [&](void*) {
+    ready.CountDown();
+    release.Wait();
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] {
+    response = CreateTabletSnapshot(leader, tablet_id, snapshot_id);
+  });
+  ASSERT_TRUE(ready.WaitFor(5s));
+  consensus::ChangeConfigRequestPB change;
+  change.set_tablet_id(tablet_id);
+  change.set_type(consensus::REMOVE_SERVER);
+  change.mutable_server()->set_permanent_uuid(follower->permanent_uuid());
+  std::optional<tserver::TabletServerErrorPB::Code> error;
+  auto changed = std::make_shared<std::promise<Status>>();
+  auto changed_future = changed->get_future();
+  ASSERT_OK(consensus->ChangeConfig(change,
+      [changed](const Status& status) { changed->set_value(status); }, &error));
+  ASSERT_EQ(changed_future.wait_for(5s), std::future_status::ready);
+  ASSERT_OK(changed_future.get());
+  ASSERT_EQ(consensus->LeaderTerm(), original_term);
+  release.CountDown();
+  threads.JoinAll();
+  const auto reply = ASSERT_RESULT(std::move(response));
+  ASSERT_TRUE(reply.has_error());
+  const auto status = StatusFromPB(reply.error().status());
+  ASSERT_TRUE(status.IsTryAgain()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "configuration changed");
+  ASSERT_FALSE(leader_peer->tablet_metadata()->fs_manager()->env()->FileExists(JoinPathSegments(
+      leader_peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString())));
+  // The attempt failed after admission; its local flush slot must not leak.
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes(leader) == 0; }, 5s, "Leader flush slot released"));
+}
+
+// Local flush admission is part of preflight admission: a leader without a free local flush slot
+// rejects the request before any follower is asked to flush.
+TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  // Written directly, so the > snapshot_preflush_concurrency validator does not apply.
+  const auto saved_capacity = FLAGS_tablet_flush_max_outstanding;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 1;
+  auto restore_capacity = ScopeExit([saved_capacity] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = saved_capacity;
+  });
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(2);
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 6);
+  const auto snapshot_tablet_id = peers.front()->tablet_id();
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(snapshot_tablet_id));
+  // Occupy the leader's only flush slot with a different tablet hosted on the same server.
+  tablet::TabletPtr other;
+  for (const auto& peer : peers) {
+    if (peer->tablet_id() != snapshot_tablet_id &&
+        peer->permanent_uuid() == leader->server()->permanent_uuid()) {
+      other = ASSERT_RESULT(peer->shared_tablet());
+    }
+  }
+  ASSERT_NE(other, nullptr);
+  CountDownLatch flushed(1), release(1);
+  std::atomic<int> snapshot_tablet_flushes{0};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (tablet == other.get()) {
+      flushed.CountDown();
+      release.Wait();
+    } else if (tablet->tablet_id() == snapshot_tablet_id) {
+      snapshot_tablet_flushes.fetch_add(1, std::memory_order_acq_rel);
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  Status admin_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] {
+    tserver::TabletServerAdminServiceProxy proxy(
+        &client_->proxy_cache(), HostPort::FromBoundEndpoint(leader->bound_rpc_addr()));
+    tserver::FlushTabletsRequestPB request;
+    request.set_dest_uuid(leader->server()->permanent_uuid());
+    request.add_tablet_ids(other->tablet_id());
+    tserver::FlushTabletsResponsePB response;
+    RpcController controller;
+    controller.set_timeout(30s);
+    admin_status = proxy.FlushTablets(request, &response, &controller);
+    if (admin_status.ok() && response.has_error()) {
+      admin_status = StatusFromPB(response.error().status());
+    }
+  });
+  ASSERT_TRUE(flushed.WaitFor(10s));
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  // Overload surfaces as an RPC-level busy error, which the master's task layer retries.
+  const auto rejected = CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id);
+  ASSERT_NOK(rejected);
+  ASSERT_EQ(rpc::RpcError(rejected.status()), rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY)
+      << rejected.status();
+  ASSERT_STR_CONTAINS(rejected.status().ToString(), "Tablet flush capacity exhausted");
+  ASSERT_EQ(snapshot_tablet_flushes.load(std::memory_order_acquire), 0);
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(admin_status);
+  const auto retry = ASSERT_RESULT(CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id));
+  ASSERT_FALSE(retry.has_error()) << retry.DebugString();
+  ASSERT_EQ(snapshot_tablet_flushes.load(std::memory_order_acquire), 3);
+}
+
+// Follower legs of a preflight run on the receiver's preflight lane, so a follower whose admin
+// flush workers are all held by bulk flushes still completes the snapshot within its budget.
+TEST_F(SnapshotTest, FollowerAdminFlushesDoNotDelayPreflight) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  const auto saved_timeout = FLAGS_snapshot_preflush_timeout_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = 5000;
+  auto restore_timeout = ScopeExit([saved_timeout] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = saved_timeout;
+  });
+  const auto num_admin_workers = static_cast<size_t>(FLAGS_tablet_flush_concurrency);
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(static_cast<int>(num_admin_workers + 1));
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3 * (num_admin_workers + 1));
+  const auto snapshot_tablet_id = peers.front()->tablet_id();
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(snapshot_tablet_id));
+  auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
+  // Every other tablet has a replica on the follower; hold one admin flush per worker there.
+  std::vector<tablet::TabletPtr> held;
+  for (const auto& peer : peers) {
+    if (peer->tablet_id() != snapshot_tablet_id &&
+        peer->permanent_uuid() == follower->server()->permanent_uuid()) {
+      held.push_back(ASSERT_RESULT(peer->shared_tablet()));
+    }
+  }
+  ASSERT_EQ(held.size(), num_admin_workers);
+  CountDownLatch flushed(num_admin_workers), release(1);
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (std::find_if(held.begin(), held.end(),
+                     [tablet](const auto& t) { return t.get() == tablet; }) != held.end()) {
+      flushed.CountDown();
+      release.Wait();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  std::vector<Status> admin_statuses(held.size());
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  for (size_t i = 0; i != held.size(); ++i) {
+    threads.AddThreadFunctor([&, i] {
+      tserver::TabletServerAdminServiceProxy proxy(
+          &client_->proxy_cache(), HostPort::FromBoundEndpoint(follower->bound_rpc_addr()));
+      tserver::FlushTabletsRequestPB request;
+      request.set_dest_uuid(follower->server()->permanent_uuid());
+      request.add_tablet_ids(held[i]->tablet_id());
+      tserver::FlushTabletsResponsePB response;
+      RpcController controller;
+      controller.set_timeout(60s);
+      admin_statuses[i] = proxy.FlushTablets(request, &response, &controller);
+      if (admin_statuses[i].ok() && response.has_error()) {
+        admin_statuses[i] = StatusFromPB(response.error().status());
+      }
+    });
+  }
+  ASSERT_TRUE(flushed.WaitFor(30s));
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  const auto reply = ASSERT_RESULT(CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id));
+  ASSERT_FALSE(reply.has_error()) << reply.DebugString();
+  release.CountDown();
+  threads.JoinAll();
+  for (const auto& status : admin_statuses) {
+    ASSERT_OK(status);
+  }
+}
+
+// Every captured replica must flush, so a peer still being remote bootstrapped delays snapshot
+// creation until it is running; the error stays retryable for the master.
+TEST_F(SnapshotTest, BootstrappingPeerDelaysPreflight) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  const auto kTimeout = 30s * kTimeMultiplier;
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(1);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3);
+  const auto tablet_id = peers.front()->tablet_id();
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
+  ASSERT_OK(cluster_->AddTabletServer());
+  auto* joining = cluster_->mini_tablet_server(3);
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  auto* leader_details = ts_map[leader->server()->permanent_uuid()].get();
+  auto* joining_details = ts_map[joining->server()->permanent_uuid()].get();
+  ASSERT_NE(leader_details, nullptr);
+  ASSERT_NE(joining_details, nullptr);
+  // Four replicas of an RF3 table would fail the fixture's cluster verification and hide the
+  // real failure, so drop the table however this test ends.
+  auto drop_table = ScopeExit([this] {
+    ASSERT_OK(client_->DeleteTable(kTableName, /* wait = */ true));
+  });
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
+  auto unpause = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+  });
+  ASSERT_OK(itest::AddServer(
+      leader_details, tablet_id, joining_details, consensus::PeerMemberType::PRE_VOTER,
+      std::nullopt, kTimeout));
+  // The joining peer is registered while copying data, so it cannot serve a flush yet.
+  ASSERT_OK(WaitFor([&] {
+    return joining->server()->tablet_manager()->GetTablet(tablet_id).ok();
+  }, kTimeout, "Bootstrapping peer registered"));
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  const auto reply = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
+  ASSERT_TRUE(reply.has_error());
+  const auto status = StatusFromPB(reply.error().status());
+  ASSERT_TRUE(status.IsTryAgain()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Snapshot preflush on replica");
+  // The joining peer answers with TABLET_NOT_FOUND; the leader must not forward that code, which
+  // the master treats as terminal.
+  ASSERT_NE(reply.error().code(), tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+  ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(4, leader_details, tablet_id, kTimeout));
+  ASSERT_OK(WaitFor([&] {
+    auto peer = joining->server()->tablet_manager()->GetTablet(tablet_id);
+    return peer.ok() && (**peer).state() == tablet::RUNNING;
+  }, kTimeout, "Joined peer running"));
+  const auto retry = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
+  ASSERT_FALSE(retry.has_error()) << retry.DebugString();
+}
+
+TEST_F(SnapshotTest, MissingFollowerTabletIsRetryable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(1);
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3);
+  const auto tablet_id = peers.front()->tablet_id();
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
+  auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
+  auto restore_bootstrap = ScopeExit([&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = true;
+  });
+  std::optional<tserver::TabletServerErrorPB::Code> error;
+  ASSERT_OK(follower->server()->tablet_manager()->DeleteTablet(
+      tablet_id, tablet::TABLET_DATA_DELETED, tablet::ShouldAbortActiveTransactions::kFalse,
+      std::nullopt, false, false, &error));
+  // Verify the follower's actual wire response, rather than simulating a transport failure.
+  tserver::TabletServerAdminServiceProxy proxy(
+      &client_->proxy_cache(), HostPort::FromBoundEndpoint(follower->bound_rpc_addr()));
+  tserver::FlushTabletsRequestPB request;
+  request.set_dest_uuid(follower->server()->permanent_uuid());
+  request.add_tablet_ids(tablet_id);
+  tserver::FlushTabletsResponsePB response;
+  RpcController controller;
+  controller.set_timeout(5s);
+  ASSERT_OK(proxy.FlushTablets(request, &response, &controller));
+  ASSERT_TRUE(response.has_error());
+  ASSERT_EQ(response.error().code(), tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  const auto reply = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
+  ASSERT_TRUE(reply.has_error());
+  ASSERT_NE(reply.error().code(), tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+  ASSERT_TRUE(StatusFromPB(reply.error().status()).IsTryAgain()) << reply.DebugString();
+  auto cleanup = ScopeExit([&] { workload.StopAndJoin(); });
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+  ASSERT_FALSE(leader_peer->tablet_metadata()->fs_manager()->env()->FileExists(JoinPathSegments(
+      leader_peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString())));
+  // Permanent deletion deliberately prevents remote bootstrap; remove the test table before
+  // the fixture's cluster-wide health verification rather than trying to resurrect this replica.
+  ASSERT_OK(client_->DeleteTable(kTableName, /* wait = */ true));
+}
+
+// Verifies that snapshot deletion completes once the snapshot directory is tombstoned, without
+// waiting for physical cleanup, and that the tombstones are cleaned up once cleanup is unpaused.
+TEST_F(SnapshotTest, DeleteSnapshotTombstoneCompletedBeforePhysicalCleanup) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
+  auto workload = SetupWorkload();
+  const auto snapshot_id = CreateSnapshot();
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = true;
+  TestThreadHolder delete_thread_holder;
+  Status delete_status;
+  std::atomic<bool> delete_finished = false;
+  delete_thread_holder.AddThreadFunctor([&] {
+    delete_status = DeleteSnapshotAndWait(snapshot_id);
+    delete_finished.store(true, std::memory_order_release);
+  });
+  auto unblock_deletion = ScopeExit([&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
+    delete_thread_holder.JoinAll();
+  });
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
+    for (const auto& tablet_peer : ts->server()->tablet_manager()->GetTabletPeers()) {
+      const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id.ToString());
+      auto* const env = tablet_peer->tablet_metadata()->fs_manager()->env();
+      ASSERT_OK(WaitFor([&] {
+        if (env->FileExists(snapshot_dir)) {
+          return false;
+        }
+        const auto children = env->GetChildren(top_snapshots_dir, ExcludeDots::kTrue);
+        if (!children.ok()) {
+          return false;
+        }
+        return std::any_of(children->begin(), children->end(), [&](const auto& child) {
+          return child.starts_with(snapshot_id.ToString()) &&
+                 tablet::TabletSnapshots::IsDeletedSnapshotDir(child);
+        });
+      }, 15s, Format("Wait for snapshot $0 to be tombstoned", snapshot_id)));
+    }
+  }
+
+  // Raft apply is complete while the bounded cleanup workers are paused. This is the externally
+  // visible best-effort contract: physical deletion must not hold up deleting the snapshot.
+  ASSERT_OK(WaitFor(
+      [&] { return delete_finished.load(std::memory_order_acquire); }, 15s,
+      "Wait for logical snapshot deletion to complete"));
+  ASSERT_OK(delete_status);
+
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  ASSERT_GE(workload.rows_inserted(), 100);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
+  delete_thread_holder.JoinAll();
+
+  // Close the loop: with physical cleanup unpaused, both the active snapshot directory and its
+  // tombstone are removed.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
+    for (const auto& tablet_peer : ts->server()->tablet_manager()->GetTabletPeers()) {
+      const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id.ToString());
+      auto* const env = tablet_peer->tablet_metadata()->fs_manager()->env();
+      ASSERT_OK(WaitFor([&] {
+        if (env->FileExists(snapshot_dir)) {
+          return false;
+        }
+        const auto children = env->GetChildren(top_snapshots_dir, ExcludeDots::kTrue);
+        if (!children.ok()) {
+          return false;
+        }
+        return std::none_of(children->begin(), children->end(), [&](const auto& child) {
+          return child.starts_with(snapshot_id.ToString());
+        });
+      }, 15s, Format("Wait for snapshot $0 tombstones to be cleaned up", snapshot_id)));
+    }
+  }
+}
+
+// DELETE_ON_TABLET does not record itself in the flushed frontier, so a tserver that goes down
+// with the delete still unflushed replays it on bootstrap. The replay must be a no-op, and the
+// writes applied around the delete must survive.
+TEST_F(SnapshotTest, UnflushedDeleteReplayedOnRestart) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+
+  auto workload = SetupWorkload();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+
+  // CREATE_ON_TABLET flushes and records itself in the frontier, so everything that follows it
+  // in the log stays above the frontier until the next flush.
+  const auto snapshot_id = CreateSnapshot();
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+  workload.Start();
+  workload.WaitInserted(200);
+  workload.StopAndJoin();
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  const auto rows_inserted = workload.rows_inserted();
+
+  auto peers =
+      ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  for (const auto& peer : peers) {
+    const auto snapshot_dir =
+        JoinPathSegments(peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString());
+    auto* const env = peer->tablet_metadata()->fs_manager()->env();
+    ASSERT_OK(WaitFor(
+        [&] { return !env->FileExists(snapshot_dir); }, kTimeout,
+        Format("Wait for snapshot $0 to be deleted on $1", snapshot_id, peer->LogPrefix())));
+    // The delete is applied, so it is the latest op in the log, and the log is ahead of the
+    // flushed frontier: bootstrap will replay it.
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto flushed_op_id = docdb::MaxPersistentOpIdForDb(
+        tablet->regular_db(), /* invalid_if_no_new_data = */ false);
+    const auto last_op_id = peer->GetLatestLogEntryOpId();
+    LOG(INFO) << peer->LogPrefix() << "flushed op id: " << flushed_op_id
+              << ", last log op id: " << last_op_id;
+    ASSERT_LT(flushed_op_id.index, last_op_id.index);
+  }
+  peers.clear();
+
+  // Lose the memtables with the restart, so bootstrap has to replay the writes and the delete.
+  // Nothing flushes during the first restart either, so the second one replays them again.
+  const auto flush_rocksdb_on_shutdown = FLAGS_flush_rocksdb_on_shutdown;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+  auto restore_flush_on_shutdown = ScopeExit([flush_rocksdb_on_shutdown] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = flush_rocksdb_on_shutdown;
+  });
+  for (int restart = 0; restart < 2; ++restart) {
+    ASSERT_OK(cluster_->RestartSync());
+    ASSERT_OK(WaitAllReplicasReady(cluster_.get(), kTimeout));
+    peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+    for (const auto& peer : peers) {
+      const auto top_snapshots_dir = peer->tablet_metadata()->snapshots_dir();
+      const auto children = ASSERT_RESULT(
+          peer->tablet_metadata()->fs_manager()->env()->GetChildren(
+              top_snapshots_dir, ExcludeDots::kTrue));
+      for (const auto& child : children) {
+        ASSERT_FALSE(child.starts_with(snapshot_id.ToString()))
+            << peer->LogPrefix() << "unexpected " << child << " in " << top_snapshots_dir;
+      }
+    }
+    peers.clear();
+
+    ClusterVerifier cluster_verifier(cluster_.get());
+    cluster_verifier.SetVerificationTimeout(kTimeout);
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+    ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+        kTableName, ClusterVerifier::EXACTLY, rows_inserted));
+  }
+}
+
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.
-// Until the snapshot is deleted, the table is hidden and once the
-// snapshot gets deleted, the table is subsequently deleted.
 TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
   auto workload = SetupWorkload(); // Used to create table
@@ -596,6 +1251,56 @@ TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
   ASSERT_OK(WaitFor(
       std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s, "IsTableDropped"));
+}
+
+TEST_F(SnapshotTest, CleanupHiddenTabletsInTabletIdOrder) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  const vector<YBTableName> table_names = {
+      kTableName,
+      YBTableName(YQL_DATABASE_CQL, kTableName.namespace_name(), "snapshot_test_table_2"),
+  };
+  for (const auto& table_name : table_names) {
+    auto workload = CreateDefaultWorkload();
+    workload.set_table_name(table_name);
+    workload.set_num_tablets(1);
+    workload.Setup();
+  }
+
+  struct TableData {
+    YBTableName name;
+    TableId id;
+    TabletId tablet_id;
+  };
+  vector<TableData> tables;
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  for (const auto& table_name : table_names) {
+    auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
+        table_name.namespace_type(), table_name.namespace_name(), table_name.table_name());
+    ASSERT_NE(table, nullptr);
+    auto tablets = ASSERT_RESULT(table->GetTabletsIncludeInactive());
+    ASSERT_EQ(tablets.size(), 1);
+    tables.push_back({table_name, table->id(), tablets.front()->tablet_id()});
+  }
+
+  const auto snapshot_id = CreateSnapshot(table_names);
+  for (const auto& table : tables) {
+    ASSERT_OK(SnapshotCoversTablets(snapshot_id, table.id));
+  }
+
+  std::sort(tables.begin(), tables.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.tablet_id > rhs.tablet_id;
+  });
+  for (const auto& table : tables) {
+    ASSERT_OK(client_->DeleteTable(table.name, true));
+    ASSERT_OK(TableHidden(table.id));
+  }
+
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  for (const auto& table : tables) {
+    ASSERT_OK(WaitFor(
+        std::bind(&SnapshotTest::IsTableDropped, this, table.id), 120s,
+        Format("IsTableDropped: $0", table.id)));
+  }
 }
 
 TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {
@@ -898,7 +1603,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_table_num_tablets += 1;
         break;
       default:
-        ASSERT_OK(STATUS_SUBSTITUTE(
+        ASSERT_OK(STATUS_FORMAT(
             IllegalState, "Unexpected snapshot entry type $0", entry.type()));
     }
   }
@@ -1091,13 +1796,6 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
   for (int iter = 0; iter < kNumIters; ++iter) {
     const auto log_prefix = Format("Iteration $0: ", iter);
     ASSERT_OK(ts1->FlushTablets({}));
-    const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
-    auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
-    for (const auto& tablet_id : tablet_ids) {
-      ASSERT_OK(WaitForServersToAgree(
-          kTimeout, ts_map, tablet_id, 0,
-          /* expected_index = */ nullptr, itest::MustBeCommitted::kTrue));
-    }
 
     const auto rows_inserted = workload.rows_inserted();
     LOG(INFO) << log_prefix << "writing more data";
@@ -1105,17 +1803,23 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
     workload.WaitInserted(rows_inserted + 100);
     workload.Stop();
 
-    LOG(INFO) << log_prefix << "paused workload, starting snapshot deletion";
+    // CREATE_ON_TABLET is the snapshot operation that still records itself in the flushed frontier
+    // (DELETE_ON_TABLET no longer does), so the crash is injected right after the create saves it.
+    // Create flushes before that update, so this no longer checks that ModifyFlushedFrontier
+    // flushes before stamping (#26910); TabletSnapshotsTest covers that directly. It still checks
+    // recovery from a crash between the frontier save and the reply to the master: bootstrap skips
+    // the create, the master retries it, and the rows written before it survive.
+    LOG(INFO) << log_prefix << "paused workload, starting snapshot creation";
     constexpr auto kCrashProbabilityFlagName =
         "TEST_simulated_crash_after_modify_flushed_frontier_probability";
     ASSERT_OK(cluster_->SetFlag(ts1, kCrashProbabilityFlagName, "0.3"));
-    ASSERT_OK(snapshot_util.DeleteSnapshot(snapshot_id));
-    LOG(INFO) << log_prefix << "snapshot deletion started";
+    const auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(table));
+    LOG(INFO) << log_prefix << "snapshot creation started";
 
     ASSERT_OK(LoggedWaitFor(
         [&]() -> Result<bool> {
           auto state = VERIFY_RESULT(snapshot_util.SnapshotState(snapshot_id));
-          if (state == SysSnapshotEntryPB::DELETED) {
+          if (state == SysSnapshotEntryPB::COMPLETE) {
             return true;
           }
           YB_LOG_EVERY_N_SECS(INFO, 1)
@@ -1123,7 +1827,7 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
           RETURN_NOT_OK(RestartIfNotAlive(ts1, log_prefix));
           return false;
         },
-        kTimeout, "Wait for snapshot cleanup"));
+        kTimeout * 3, "Wait for snapshot creation"));
     auto status = cluster_->SetFlag(ts1, kCrashProbabilityFlagName, "0");
     // Network error is acceptable since process may crash due to injected fault.
     ASSERT_TRUE(status.ok() || status.IsNetworkError())
@@ -1131,24 +1835,126 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
 
     // Give some time for process to exit in case of crash.
     SleepFor(500ms * kTimeMultiplier);
-    ASSERT_OK(RestartIfNotAlive(ts1, log_prefix));
 
     // Wait for local bootstrap to complete and pending operations to be applied.
-    ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
+    // A fault injected just before the flag was reset could still be tearing the process down, so
+    // restart ts1 whenever it is found dead and retry until it stays up and answers.
+    auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
     auto* ts1_details = ts_map[ts1->uuid()].get();
-    for (const auto& tablet_id : tablet_ids) {
-      ASSERT_OK(WaitUntilTabletRunning(ts1_details, tablet_id, kTimeout));
-      ASSERT_OK(WaitForServerToBeQuiet(
-          kTimeout, {ts1_details}, tablet_id,
-          /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue));
-    }
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(RestartIfNotAlive(ts1, log_prefix));
+          for (const auto& tablet_id : tablet_ids) {
+            if (!WaitUntilTabletRunning(ts1_details, tablet_id, 2s * kTimeMultiplier).ok() ||
+                !WaitForServerToBeQuiet(
+                     2s * kTimeMultiplier, {ts1_details}, tablet_id,
+                     /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue).ok()) {
+              return false;
+            }
+          }
+          return ts1->IsProcessAlive();
+        },
+        kTimeout * 3, log_prefix + "Wait for ts1 tablets to be running and quiet"));
 
     ClusterVerifier cluster_verifier(cluster_.get());
     cluster_verifier.SetVerificationTimeout(kTimeout);
     ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+
+    ASSERT_OK(snapshot_util.DeleteSnapshot(snapshot_id));
+    ASSERT_OK(snapshot_util.WaitSnapshotInState(
+        snapshot_id, SysSnapshotEntryPB::DELETED, kTimeout));
   }
 
   workload.StopAndJoin();
+}
+
+// Followers postpone the snapshot operation until a large transaction committed before the snapshot
+// hybrid time is written to regular DB. Both followers are killed meanwhile, so bootstrap replays
+// the snapshot operation before apply tasks are started, and has to finish the apply.
+// One follower is flushed before the kill, so its apply is loaded from regular DB, while the other
+// one replays it from WAL.
+TEST_F_EX(SnapshotTest, LargeTransactionApplyingOnKilledFollowers,
+          SnapshotExternalMiniClusterTest) {
+  constexpr int kNumKeys = 500;
+  constexpr auto kTimeout = 60s * kTimeMultiplier;
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("txn_max_apply_batch_records", "5"));
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = ASSERT_RESULT(snapshot_util.InitWithCluster(cluster_.get()));
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      kTableName.namespace_name(), kTableName.namespace_type()));
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, /* num_tablets= */ 1, client.get(), &table, kTableName));
+
+  TabletId tablet_id;
+  std::vector<ExternalTabletServer*> followers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    followers.clear();
+    bool has_leader = false;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->tablet_server(i);
+      for (const auto& entry : VERIFY_RESULT(cluster_->GetTablets(ts))) {
+        if (entry.table_name() != kTableName.table_name()) {
+          continue;
+        }
+        tablet_id = entry.tablet_id();
+        if (entry.is_leader()) {
+          has_leader = true;
+        } else {
+          followers.push_back(ts);
+        }
+      }
+    }
+    return has_leader && followers.size() == 2;
+  }, kTimeout, "Wait for tablet leader"));
+
+  // Keeps followers applying the transaction much longer than the test needs to kill them.
+  for (auto* ts : followers) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_inject_sleep_before_applying_intents_ms", "200"));
+  }
+
+  server::ClockPtr clock(new server::HybridClock());
+  ASSERT_OK(clock->Init());
+  client::TransactionManager txn_manager(client.get(), clock, client::LocalTabletFilter());
+  auto txn = std::make_shared<client::YBTransaction>(&txn_manager);
+  ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto session = client->NewSession(kTimeout);
+  session->SetTransaction(txn);
+  for (int key = 0; key != kNumKeys; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(
+        &table, session, key, key, client::WriteOpType::INSERT, client::Flush::kFalse));
+  }
+  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(txn->CommitFuture().get());
+
+  std::vector<std::unique_ptr<LogWaiter>> postponed;
+  for (auto* ts : followers) {
+    postponed.push_back(std::make_unique<LogWaiter>(ts, "Postpone applying SNAPSHOT_OP"));
+  }
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
+  for (auto& waiter : postponed) {
+    ASSERT_OK(waiter->WaitFor(kTimeout));
+  }
+  ASSERT_OK(followers[0]->FlushTablets({tablet_id}));
+  for (auto* ts : followers) {
+    ts->Shutdown();
+  }
+  // Followers knew that the snapshot operation is committed, but their WAL might not record it.
+  for (auto* ts : followers) {
+    ASSERT_OK(ts->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {{"TEST_play_pending_uncommitted_entries", "true"}}));
+  }
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  // Each replica restores its own checkpoint, so replica checksums differ if one is incomplete.
+  ClusterVerifier cluster_verifier(cluster_.get());
+  cluster_verifier.SetVerificationTimeout(kTimeout);
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY, kNumKeys));
 }
 
 } // namespace yb

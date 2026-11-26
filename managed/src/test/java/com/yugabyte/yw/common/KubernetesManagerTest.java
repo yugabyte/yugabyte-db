@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -43,12 +44,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -144,9 +149,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
         break;
       case HELM_DELETE:
         kubernetesManager.helmDelete(configProvider, "demo-universe", "demo-namespace");
-        break;
-      case VOLUME_DELETE:
-        kubernetesManager.deleteStorage(configProvider, "demo-universe", "demo-namespace");
         break;
     }
 
@@ -364,17 +366,276 @@ public class KubernetesManagerTest extends FakeDBApplication {
     assertEquals(true, status);
   }
 
+  // PLAT-22918: zero replicas is ready only when zero are expected.
+  private Object[] statefulSetStatusParams() {
+    return new Object[] {
+      new Object[] {"replicas=0|readyReplicas=|availableReplicas=", 0, true},
+      new Object[] {"replicas=0|readyReplicas=|availableReplicas=3", 3, false},
+      new Object[] {"replicas=|readyReplicas=|availableReplicas=", 0, false},
+      new Object[] {"replicas=2|readyReplicas=2|availableReplicas=2", 1, false},
+      new Object[] {"replicas=1|readyReplicas=1|availableReplicas=1", 3, false},
+    };
+  }
+
   @Test
-  public void testCheckStatefulSetStatus_success_no_replicas() {
-    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
-    ShellResponse response2 =
-        ShellResponse.create(0, "replicas=0|readyReplicas=|availableReplicas=3");
-    Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+  @Parameters(method = "statefulSetStatusParams")
+  public void testCheckStatefulSetStatus_expectedReplicaCount(
+      String kubectlStatus, int expectedReplicas, boolean expectedReady) {
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "statefulset1"))
+        .thenReturn(ShellResponse.create(0, kubectlStatus));
     boolean status =
-        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
-    assertEquals(true, status);
+        kubernetesManager.checkStatefulSetStatus(
+            new HashMap<>(), "test-ns", "test-release", expectedReplicas);
+    assertEquals(expectedReady, status);
+  }
+
+  private static final String TWO_MASTER_PVCS_JSON =
+      "{\"items\":[{\"metadata\":{\"name\":\"datadir0-yb-master-0\"}},"
+          + "{\"metadata\":{\"name\":\"datadir0-yb-master-1\"}}]}";
+  private static final String MASTER_0_PODS_JSON =
+      "{\"items\":[{\"metadata\":{\"name\":\"yb-master-0\"},\"spec\":{\"volumes\":"
+          + "[{\"name\":\"datadir0\",\"persistentVolumeClaim\":"
+          + "{\"claimName\":\"datadir0-yb-master-0\"}}]}}]}";
+  private static final String NO_PODS_JSON = "{\"items\":[]}";
+  private static final List<List<String>> DELETE_MASTER_1_PVC =
+      List.of(
+          List.of("kubectl", "--namespace", "test-ns", "delete", "pvc", "datadir0-yb-master-1"));
+
+  private void mockDeleteUnusedPVCsKubectl(String... stsStatuses) {
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(0, "yb-master")),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        stsStatuses);
+  }
+
+  // Answers the kubectl calls deleteUnusedPVCs makes. The StatefulSet listing and status calls
+  // take their answers in order, the last one repeated.
+  private void mockDeleteUnusedPVCsKubectl(
+      List<ShellResponse> stsListResponses,
+      String pvcsJson,
+      String podsJson,
+      String... stsStatuses) {
+    List<ShellResponse> stsLists = new ArrayList<>(stsListResponses);
+    List<String> statuses = new ArrayList<>(List.of(stsStatuses));
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(0);
+              if (cmd.contains("statefulsets")) {
+                return stsLists.size() > 1 ? stsLists.remove(0) : stsLists.get(0);
+              } else if (cmd.contains("statefulset")) {
+                return ShellResponse.create(
+                    0, statuses.size() > 1 ? statuses.remove(0) : statuses.get(0));
+              } else if (cmd.contains("delete")) {
+                return ShellResponse.create(0, "deleted");
+              } else if (cmd.contains("pvc")) {
+                return ShellResponse.create(0, pvcsJson);
+              } else if (cmd.contains("pods")) {
+                return ShellResponse.create(0, podsJson);
+              }
+              throw new AssertionError("Unexpected command " + cmd);
+            });
+  }
+
+  // The kubectl commands run so far that contain the given argument.
+  private List<List<String>> kubectlCommands(String arg) {
+    ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+    Mockito.verify(shellProcessHandler, Mockito.atLeastOnce())
+        .run(captor.capture(), any(ShellProcessContext.class));
+    return captor.getAllValues().stream()
+        .filter(cmd -> cmd.contains(arg))
+        .collect(Collectors.toList());
+  }
+
+  // PLAT-22918: a master that is briefly not ready (e.g. waiting for its volume to detach) must
+  // not fail the shrink; GC waits for it and then deletes only the unused PVC.
+  @Test
+  public void testDeleteUnusedPVCs_waitsForStatefulSetReady() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        "replicas=1|readyReplicas=|availableReplicas=",
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    kubernetesManager.deleteUnusedPVCs(
+        new HashMap<>(), "test-ns", "test-release", "yb-master", true, 1, Duration.ofSeconds(120));
+    assertEquals(DELETE_MASTER_1_PVC, kubectlCommands("delete"));
+  }
+
+  // PLAT-22918: a StatefulSet that never becomes ready fails with a readable error, deleting
+  // nothing.
+  @Test
+  public void testDeleteUnusedPVCs_notReadyTimesOutWithoutDeleting() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl("replicas=1|readyReplicas=|availableReplicas=");
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.deleteUnusedPVCs(
+                    new HashMap<>(),
+                    "test-ns",
+                    "test-release",
+                    "yb-master",
+                    true,
+                    1,
+                    Duration.ofSeconds(0)));
+    String message = thrown.getMessage();
+    assertTrue(message, message.contains("Namespace: test-ns,"));
+    assertTrue(
+        message,
+        message.contains("label selector: app.kubernetes.io/name=yb-master,release=test-release,"));
+    assertTrue(message, message.contains("expected replicas: 1"));
+    assertTrue(message, message.contains("readyReplicas=-1"));
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-22918: an AZ with tservers but no masters has no master StatefulSet (the chart renders
+  // none for 0 replicas). GC must not look for one; it deletes the leftover master PVCs.
+  @Test
+  public void testDeleteUnusedPVCs_zeroMastersSkipsStatefulSetCheck() {
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(0, "")), TWO_MASTER_PVCS_JSON, NO_PODS_JSON);
+    kubernetesManager.deleteUnusedPVCs(
+        new HashMap<>(), "test-ns", "test-release", "yb-master", true, 0, Duration.ofSeconds(120));
+    assertTrue(kubectlCommands("statefulsets").isEmpty());
+    assertEquals(2, kubectlCommands("delete").size());
+  }
+
+  // PLAT-22918: a failing kubectl call, e.g. an API server that briefly times out, is retried
+  // within the wait.
+  @Test
+  public void testDeleteUnusedPVCs_retriesKubectlError() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        List.of(
+            ShellResponse.create(
+                1, "Unable to connect to the server: dial tcp 192.0.2.1:443: i/o timeout"),
+            ShellResponse.create(0, "yb-master")),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    kubernetesManager.deleteUnusedPVCs(
+        new HashMap<>(), "test-ns", "test-release", "yb-master", true, 1, Duration.ofSeconds(120));
+    assertEquals(2, kubectlCommands("statefulsets").size());
+    assertEquals(DELETE_MASTER_1_PVC, kubectlCommands("delete"));
+  }
+
+  // PLAT-22918: an error that keeps failing is retried for the whole wait, then reported.
+  @Test
+  public void testDeleteUnusedPVCs_kubectlErrorRetriedUntilTimeout() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    String kubectlError =
+        "Unable to connect to the server: getting credentials: exec: executable"
+            + " gke-gcloud-auth-plugin failed with exit code 1";
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(1, kubectlError)),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.deleteUnusedPVCs(
+                    new HashMap<>(),
+                    "test-ns",
+                    "test-release",
+                    "yb-master",
+                    true,
+                    1,
+                    Duration.ofSeconds(1)));
+    assertTrue(
+        thrown.getMessage(), thrown.getMessage().contains("StatefulSet not ready after 1 s"));
+    assertTrue(thrown.getMessage(), thrown.getMessage().contains(kubectlError));
+    assertTrue(kubectlCommands("statefulsets").size() > 1);
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-22918: an aborted task stops the wait at once instead of being retried.
+  @Test
+  public void testDeleteUnusedPVCs_abortNotRetried() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(ShellResponse.ERROR_CODE_EXECUTION_CANCELLED, "")),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    assertThrows(
+        CancellationException.class,
+        () ->
+            kubernetesManager.deleteUnusedPVCs(
+                new HashMap<>(),
+                "test-ns",
+                "test-release",
+                "yb-master",
+                true,
+                1,
+                Duration.ofSeconds(1)));
+    assertEquals(1, kubectlCommands("statefulsets").size());
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-22918: a master pod missing from the listing must not have its live PVC deleted.
+  @Test
+  public void testDeleteUnusedPVCs_missingPodThrowsWithoutDeleting() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(0, "yb-master")),
+        TWO_MASTER_PVCS_JSON,
+        NO_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.deleteUnusedPVCs(
+                    new HashMap<>(),
+                    "test-ns",
+                    "test-release",
+                    "yb-master",
+                    true,
+                    1,
+                    Duration.ofSeconds(120)));
+    assertTrue(thrown.getMessage(), thrown.getMessage().contains("Found 0 of 1 pods"));
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-21834: When the label selector matches no StatefulSet (e.g. querying yb-master on a
+  // read-only cluster, which has no master StatefulSets), the label query returns an empty
+  // string. Previously "".split(" ") produced {""} which slipped past the length check and led to
+  // `kubectl get statefulset ""` failing with "resource name may not be empty". Verify we now fail
+  // fast with a clear error instead.
+  @Test
+  public void testCheckStatefulSetStatus_emptyOutput_throws() {
+    ShellResponse emptyResponse = ShellResponse.create(0, "");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(emptyResponse);
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3));
+    assertTrue(thrown.getMessage().contains("No StatefulSets found"));
+    // Only the label query should have run; we must not attempt the second per-name lookup with an
+    // empty resource name.
+    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  // PLAT-21834: Whitespace-only output should also be treated as "no StatefulSet found".
+  @Test
+  public void testCheckStatefulSetStatus_whitespaceOutput_throws() {
+    ShellResponse whitespaceResponse = ShellResponse.create(0, "   ");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(whitespaceResponse);
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3));
+    assertTrue(thrown.getMessage().contains("No StatefulSets found"));
   }
 
   private void setupUniverse() {
@@ -524,7 +785,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
                 isMultiAZ,
                 universe.getUniverseDetails().nodePrefix,
                 universe.getName(),
-                az.getName(),
+                az.getCode(),
                 cluster.clusterType == ClusterType.ASYNC,
                 universe.getUniverseDetails().useNewHelmNamingStyle);
         helmReleaseNames.add(helmRelease);
@@ -750,7 +1011,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
       ArgumentCaptor<Map<String, String>> configCaptor = ArgumentCaptor.forClass(Map.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               configCaptor.capture(),
@@ -758,8 +1019,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      // The second call should be helm install
-      List<String> installCommand = allCommands.get(1);
+      // Calls are: helm status, helm list, helm install.
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should contain --labels flag", installCommand.contains("--labels"));
       int labelsIndex = installCommand.indexOf("--labels");
@@ -822,7 +1083,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Verify helm install was called without --labels flag
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               anyMap(),
@@ -830,7 +1091,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      List<String> installCommand = allCommands.get(1);
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should not contain --labels flag when no commonLabels present",
           !installCommand.contains("--labels"));
@@ -965,7 +1226,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Verify helm install was called with --labels flag containing converted values
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               anyMap(),
@@ -973,7 +1234,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      List<String> installCommand = allCommands.get(1);
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should contain --labels flag", installCommand.contains("--labels"));
       int labelsIndex = installCommand.indexOf("--labels");
@@ -1034,7 +1295,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Verify helm install was called without --labels flag when commonLabels is empty
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               anyMap(),
@@ -1042,7 +1303,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      List<String> installCommand = allCommands.get(1);
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should not contain --labels flag when commonLabels is empty",
           !installCommand.contains("--labels"));
@@ -1050,5 +1311,290 @@ public class KubernetesManagerTest extends FakeDBApplication {
       Files.deleteIfExists(overrideFile);
       helmChartFile.delete();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // helmInstall retry safety (PLAT-22307)
+  //
+  // A retried EditKubernetesUniverse re-runs HELM_INSTALL for AZs whose release the previous
+  // attempt already created. Uninstalling a healthy release there deletes pods that may be
+  // serving quorum masters, so only a release helm cannot converge on its own is recreated.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Stubs the shell handler that helmInstall/helmUpgrade go through, recording each command.
+   *
+   * @param helmListOutput what 'helm list --short' returns
+   * @param helmStatusJson what 'helm status -o json' returns, or null to fail the call the way helm
+   *     does for a release that does not exist
+   * @return the commands issued, in order
+   */
+  private List<List<String>> stubHelmShellCommands(String helmListOutput, String helmStatusJson) {
+    List<List<String>> issued = new ArrayList<>();
+    AtomicBoolean uninstalled = new AtomicBoolean(false);
+    when(shellProcessHandler.run(
+            anyList(),
+            anyMap(),
+            anyBoolean(),
+            anyString(),
+            any(RedactingService.RedactionTarget.class)))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(0);
+              issued.add(cmd);
+              if (cmd.contains("status")) {
+                return helmStatusJson == null
+                    ? ShellResponse.create(1, "Error: release: not found")
+                    : ShellResponse.create(0, helmStatusJson);
+              }
+              if (cmd.contains("list")) {
+                // A successful uninstall removes the release, so stop listing it afterwards.
+                return ShellResponse.create(0, uninstalled.get() ? "" : helmListOutput);
+              }
+              if (cmd.contains("uninstall")) {
+                uninstalled.set(true);
+              }
+              return ShellResponse.create(0, "ok");
+            });
+    return issued;
+  }
+
+  /** True if any issued command starts with the given words. */
+  private static boolean issuedCommand(List<List<String>> commands, String... prefix) {
+    List<String> expected = ImmutableList.copyOf(prefix);
+    return commands.stream()
+        .anyMatch(
+            cmd ->
+                cmd.size() >= expected.size() && cmd.subList(0, expected.size()).equals(expected));
+  }
+
+  /** Sets up the chart, config and file mocks helmInstall/helmUpgrade need. */
+  private File setUpHelmInstallTest() throws IOException {
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+    setupKubernetesManagerForHelmTests();
+    when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+    when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L);
+    // helmUpgrade renders a template to disk before diffing.
+    when(fileHelperService.createTempFile("helm-template", ".output"))
+        .thenReturn(Files.createTempFile("helm-template", ".output"));
+    return helmChartFile;
+  }
+
+  private void runHelmInstall(Path overrideFile) {
+    kubernetesManager.helmInstall(
+        universe.getUniverseUUID(),
+        "2.7.0.0-b1", // version < 2.8.0.0 uses the legacy chart
+        configProvider,
+        defaultProvider.getUuid(),
+        "demo-universe",
+        "demo-namespace",
+        overrideFile.toString());
+  }
+
+  @Test
+  public void testHelmInstallUpgradesInPlaceWhenReleaseAlreadyDeployed() throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      List<List<String>> commands =
+          stubHelmShellCommands(
+              "demo-universe\n", "{\"info\": {\"status\": \"deployed\"}, \"version\": 1}");
+
+      runHelmInstall(overrideFile);
+
+      assertFalse(
+          "a deployed release must never be uninstalled -- its pods may be quorum masters",
+          issuedCommand(commands, "helm", "uninstall"));
+      assertFalse(
+          "a deployed release must not be reinstalled", issuedCommand(commands, "helm", "install"));
+      assertTrue(
+          "expected the release to be converged with helm upgrade",
+          issuedCommand(commands, "helm", "upgrade", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  @Parameters({"failed", "pending-install", "pending-upgrade", "unknown"})
+  public void testHelmInstallRecreatesReleaseNotInDeployedState(String status) throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      List<List<String>> commands =
+          stubHelmShellCommands(
+              "demo-universe\n",
+              String.format("{\"info\": {\"status\": \"%s\"}, \"version\": 1}", status));
+
+      runHelmInstall(overrideFile);
+
+      // Helm cannot converge these states, so recreating the release is still the right recovery.
+      assertTrue(
+          "expected helm uninstall for a release in state " + status,
+          issuedCommand(commands, "helm", "uninstall", "demo-universe"));
+      assertTrue(
+          "expected helm install for a release in state " + status,
+          issuedCommand(commands, "helm", "install", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallInstallsWhenReleaseDoesNotExist() throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      List<List<String>> commands = stubHelmShellCommands("", null /* helm status fails */);
+
+      runHelmInstall(overrideFile);
+
+      assertFalse("nothing to uninstall", issuedCommand(commands, "helm", "uninstall"));
+      assertTrue(
+          "expected helm install", issuedCommand(commands, "helm", "install", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallDoesNotMatchReleaseNameBySubstring() throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      // 'helm list --short' prints one release per line. 'demo-universe-2' must not be read as
+      // 'demo-universe' being present, which used to send an uninstall for a release that does
+      // not exist and fail the subtask.
+      List<List<String>> commands =
+          stubHelmShellCommands("demo-universe-2\nsome-other-release\n", null);
+
+      runHelmInstall(overrideFile);
+
+      assertFalse(
+          "must not uninstall on a substring match", issuedCommand(commands, "helm", "uninstall"));
+      assertTrue(
+          "expected helm install", issuedCommand(commands, "helm", "install", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmReleaseExistsMatchesWholeLinesOnly() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("demo-universe-2\ndemo-universe\nunrelated\n", null);
+
+    assertTrue(kubernetesManager.helmReleaseExists(configProvider, "demo-universe", "demo-ns"));
+    assertTrue(kubernetesManager.helmReleaseExists(configProvider, "demo-universe-2", "demo-ns"));
+    assertFalse(kubernetesManager.helmReleaseExists(configProvider, "demo-univ", "demo-ns"));
+    assertFalse(kubernetesManager.helmReleaseExists(configProvider, "demo-universe-3", "demo-ns"));
+  }
+
+  @Test
+  public void testGetHelmReleaseStatus() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("", "{\"info\": {\"status\": \"deployed\"}, \"version\": 3}");
+    assertEquals(
+        Optional.of("deployed"),
+        kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
+  }
+
+  @Test
+  public void testGetHelmReleaseStatusEmptyWhenReleaseMissing() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("", null /* helm status fails */);
+    assertEquals(
+        Optional.empty(),
+        kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
+  }
+
+  @Test
+  public void testGetHelmReleaseStatusEmptyOnUnparseableOutput() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("", "not json");
+    assertEquals(
+        Optional.empty(),
+        kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
+  }
+
+  private List<List<String>> runDeleteStorage(
+      List<String> helmReleaseNames, int stsExitCode, int pvcExitCode) {
+    setupKubernetesManagerForHelmTests();
+    when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(900L);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(stsExitCode, "No resources found"))
+        .thenReturn(ShellResponse.create(pvcExitCode, "No resources found"));
+    try {
+      kubernetesManager.deleteStorage(
+          universe.getUniverseUUID(), configProvider, helmReleaseNames, "demo-namespace");
+    } finally {
+      Mockito.verify(shellProcessHandler, Mockito.atLeastOnce())
+          .run(command.capture(), context.capture());
+    }
+    return command.getAllValues();
+  }
+
+  @Test
+  public void testDeleteStorageDeletesStatefulSetsThenPVCs() {
+    List<List<String>> commands = runDeleteStorage(ImmutableList.of("demo-az1"), 0, 0);
+    assertEquals(
+        ImmutableList.of(
+            ImmutableList.of(
+                "kubectl",
+                "delete",
+                "statefulset",
+                "--namespace",
+                "demo-namespace",
+                "-l",
+                "release in (demo-az1)",
+                "--ignore-not-found",
+                "--timeout",
+                "900s"),
+            ImmutableList.of(
+                "kubectl",
+                "delete",
+                "pvc",
+                "--namespace",
+                "demo-namespace",
+                "-l",
+                "release in (demo-az1)",
+                "--timeout",
+                "900s")),
+        commands);
+  }
+
+  @Test
+  public void testDeleteStorageForSeveralReleases() {
+    List<List<String>> commands = runDeleteStorage(ImmutableList.of("demo-az1", "demo-az2"), 0, 0);
+    assertEquals(2, commands.size());
+    assertEquals("release in (demo-az1,demo-az2)", commands.get(0).get(6));
+    assertEquals("release in (demo-az1,demo-az2)", commands.get(1).get(6));
+  }
+
+  @Test
+  public void testDeleteStorageFailsWhenStatefulSetDeleteFails() {
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class, () -> runDeleteStorage(ImmutableList.of("demo-az1"), 1, 0));
+    assertTrue(e.getMessage(), e.getMessage().startsWith("Unable to delete StatefulSets"));
+    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  @Test
+  public void testDeleteStorageFailsWhenPVCDeleteFails() {
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class, () -> runDeleteStorage(ImmutableList.of("demo-az1"), 0, 1));
+    assertTrue(e.getMessage(), e.getMessage().startsWith("Unable to delete PVCs"));
   }
 }

@@ -16,6 +16,7 @@
 #include <concepts>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -125,6 +126,7 @@ class PgApiImpl {
   void Shutdown();
 
   void SetupPgBackendCgroup(YbcPgOid dboid);
+  void SetConnectedDatabaseOid(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }
 
@@ -132,6 +134,10 @@ class PgApiImpl {
   void Interrupt();
 
   void ResetCatalogReadTime();
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, const char* transaction_id,
+      std::span<const uint32_t> aborted_subtxn_set);
+  void ResetHistoricalReadContext();
   [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   uint64_t GetSessionID() const { return pg_client_.SessionID(); }
@@ -167,6 +173,10 @@ class PgApiImpl {
   ReplicationInfoSnapshot& replication_info_snapshot() { return replication_info_snapshot_; }
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
+
+  [[nodiscard]] uint32_t GetSharedYsqlCatalogPrefetchLoad() const;
+  Result<uint64_t> GetSharedDbLastPrefetchedCatalogVersion(PgOid db_oid);
+
   Result<uint32_t> GetNumberOfDatabases();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
@@ -386,6 +396,9 @@ class PgApiImpl {
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
+  Result<client::TableSizeInfo> GetTablegroupDiskSize(
+      PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated);
+
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
   Status NewCreateIndex(const char *database_name,
@@ -435,6 +448,9 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
+  Status StartTableBackfill(
+      const PgObjectId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
@@ -449,6 +465,7 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
+  Status DmlAppendAggregateTarget(PgStatement *handle, PgExpr *expr, int index);
 
   Status DmlAppendQual(
       PgStatement *handle, PgExpr *expr, uint32_t serialization_version,
@@ -490,11 +507,7 @@ class PgApiImpl {
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
-  Status DmlApplyParallelRange(YbcPgStatement handle,
-                               Slice lower_bound,
-                               bool lower_bound_inclusive,
-                               Slice upper_bound,
-                               bool upper_bound_inclusive);
+  Status DmlApplyParallelRange(YbcPgStatement handle, Slice lower_bound, Slice upper_bound);
 
   Status DmlBindBounds(PgStatement* handle,
                        const Slice lower_bound,
@@ -531,6 +544,9 @@ class PgApiImpl {
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   Status DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 
+  Status DmlGetOnConflictOutcome(
+      PgStatement *handle, PgsqlResponsePB::PgsqlOnConflictOutcome *on_conflict_outcome);
+
   // This function adds a key column to be used in the construction of the tuple id (ybctid).
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YbcPgTypeEntity *type_entity);
@@ -556,6 +572,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
+  SetupPerformOptionsAccessorTag ClearSessionState();
   Status FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx);
   Status AdjustOperationsBuffering(int multiple = 1);
 
@@ -565,17 +582,20 @@ class PgApiImpl {
       const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting,
-      bool skip_intents_write);
+      const YbcPgSkipIntentsOptimizationInfo& skip_intents_info);
 
   Status NewInsert(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
-                   bool skip_intents_write,
+                   const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
                    PgStatement **handle);
 
   Status ExecInsert(PgStatement *handle);
 
   Status InsertStmtSetUpsertMode(PgStatement *handle);
+
+  Status InsertStmtSetOnConflictAction(PgStatement *handle,
+                                       PgsqlWriteRequestPB::PgsqlOnConflictAction action);
 
   Status InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
 
@@ -586,7 +606,7 @@ class PgApiImpl {
   Status NewUpdate(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
-                   bool skip_intents_write,
+                   const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
                    PgStatement **handle);
 
   Status ExecUpdate(PgStatement *handle);
@@ -596,7 +616,7 @@ class PgApiImpl {
   Status NewDelete(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
-                   bool skip_intents_write,
+                   const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
                    PgStatement **handle);
 
   Status ExecDelete(PgStatement *handle);
@@ -618,7 +638,7 @@ class PgApiImpl {
   Status NewSelect(
       const PgObjectId& table_id, const PgObjectId& index_id,
       const YbcPgPrepareParameters* prepare_params, const YbcPgTableLocalityInfo& locality_info,
-      bool skip_intents_read, PgStatement** handle);
+      const YbcPgSkipIntentsOptimizationInfo& skip_intents_info, PgStatement** handle);
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -640,6 +660,9 @@ class PgApiImpl {
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
+
+  Status DmlANNBindKeyFilter(
+      PgStatement *handle, std::span<const YbcPgVectorKeyColumn> columns);
 
   void IncrementIndexRecheckCount();
 
@@ -666,7 +689,8 @@ class PgApiImpl {
   // Analyze.
   Status NewSample(
       const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-      bool skip_intents_read, int targrows, const SampleRandomState& rand_state,
+      const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
+      int targrows, const SampleRandomState& rand_state,
       PgStatement **handle);
 
   Result<bool> SampleNextBlock(PgStatement* handle);
@@ -677,13 +701,14 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction(int64_t start_time);
+  Status BeginTransaction(int64_t start_time, uint64_t origination_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
-  bool IsRestartReadPointRequested();
+  void ResetRetryReadLimitCaps();
+  bool IsReadRestartRetryInProgress() const;
   Status CommitPlainTransaction(
         const std::optional<PgDdlCommitInfo>& ddl_commit_info = std::nullopt);
   Status AbortPlainTransaction();
@@ -708,6 +733,8 @@ class PgApiImpl {
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
   bool IsDdlModeWithRegularTransactionBlock() const;
+  bool UsingObjectLocksLocally() const;
+  bool UsingObjectLocksGloballyForCurrentTxn() const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
@@ -803,7 +830,7 @@ class PgApiImpl {
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
-  Status PrefetchRegisteredSysTables();
+  Status PrefetchRegisteredSysTables(bool completes_connection_prefetch);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
@@ -842,6 +869,10 @@ class PgApiImpl {
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
                                   YbcOrderingMode ordering_mode,
+                                  const char *yb_publication_name,
+                                  const PgOid *yb_publication_relfilenodes,
+                                  size_t yb_num_publication_tables,
+                                  bool yb_publication_all_tables,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -897,7 +928,8 @@ class PgApiImpl {
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
-  bool IsCronLeader() const;
+  bool HasCronLease() const;
+  bool CanCronStartJobs() const;
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 
@@ -912,7 +944,7 @@ class PgApiImpl {
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
   Status NewGlobalViewRead(PgGlobalViewRead** handle);
-  YbcPgResultPB ExecGlobalViewScan(
+  YbcPgGvScanResult ExecGlobalViewScan(
       PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
       std::string_view tserver_uuid);
 
@@ -955,8 +987,6 @@ class PgApiImpl {
       const YbcPgInitPostgresInfo& init_postgres_info, YbcPgAshConfig& ash_config,
       YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
   Status Init(std::optional<uint64_t> session_id);
-
-  SetupPerformOptionsAccessorTag ClearSessionState();
 
   template <std::derived_from<PgMemctx::Registrable> R, std::derived_from<R> I>
   Status AddToCurrentPgMemctx(std::unique_ptr<I> impl, R** handle);
@@ -1027,7 +1057,6 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
 
-  const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;

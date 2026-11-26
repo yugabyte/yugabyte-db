@@ -7,20 +7,21 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+use cargo_toml::Manifest;
 use eyre::Context;
-use pgrx_pg_config::{get_target_dir, PgConfig, Pgrx};
+use pgrx_pg_config::{PgConfig, Pgrx, get_target_dir};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use crate::manifest::{get_package_manifest, pg_config_and_version};
-use crate::profile::CargoProfile;
 use crate::CommandExecute;
+use crate::cargo::CargoProfile;
+use crate::manifest::{get_package_manifest, pg_config_and_version};
 
 /// Run the test suite for this crate
 #[derive(clap::Args, Debug, Clone)]
 #[clap(author)]
 pub(crate) struct Test {
-    /// Do you want to run against pg13, pg14, pg15, pg16, pg17, or all?
+    /// Do you want to run against pg13, pg14, pg15, pg16, pg17, pg18, or all?
     #[clap(env = "PG_VERSION")]
     pg_version: Option<String>,
     /// If specified, only run tests containing this string in their names
@@ -54,15 +55,13 @@ pub(crate) struct Test {
 
 impl CommandExecute for Test {
     #[tracing::instrument(level = "error", skip(self))]
-    fn execute(self) -> eyre::Result<()> {
-        #[tracing::instrument(level = "error", skip(me))]
-        fn perform(me: Test, pgrx: &Pgrx) -> eyre::Result<()> {
+    fn execute(mut self) -> eyre::Result<()> {
+        #[tracing::instrument(level = "error", skip(me, package_manifest))]
+        fn perform(me: Test, pgrx: &Pgrx, package_manifest: &Manifest) -> eyre::Result<()> {
             let mut features = me.features.clone();
-            let (package_manifest, _package_manifest_path) =
-                get_package_manifest(&me.features, me.package.as_ref(), me.manifest_path.as_ref())?;
             let (pg_config, _pg_version) = pg_config_and_version(
                 pgrx,
-                &package_manifest,
+                package_manifest,
                 me.pg_version.clone(),
                 Some(&mut features),
                 true,
@@ -75,12 +74,12 @@ impl CommandExecute for Test {
 
             test_extension(
                 &pg_config,
-                me.manifest_path.as_ref(),
-                me.package.as_ref(),
+                me.manifest_path.as_deref(),
+                me.package.as_deref(),
                 &profile,
                 me.no_schema,
                 &features,
-                me.testname,
+                me.testname.as_deref(),
                 me.runas,
                 me.pgdata,
             )?;
@@ -90,22 +89,33 @@ impl CommandExecute for Test {
 
         let (package_manifest, _) = get_package_manifest(
             &self.features,
-            self.package.as_ref(),
-            self.manifest_path.as_ref(),
+            self.package.as_deref(),
+            self.manifest_path.as_deref(),
         )?;
         let pgrx = Pgrx::from_config()?;
-        if self.pg_version == Some("all".to_string()) {
+
+        // If the first positional arg isn't a recognized PG version (pgXX or "all")
+        // and no testname was given, treat it as a testname filter
+        if let Some(ref v) = self.pg_version
+            && v != "all"
+            && !pgrx.is_feature_flag(v)
+            && self.testname.is_none()
+        {
+            self.testname = self.pg_version.take();
+        }
+
+        if self.pg_version.as_deref() == Some("all") {
             // run the tests for **all** the Postgres versions we know about
             for v in crate::manifest::all_pg_in_both_tomls(&package_manifest, &pgrx) {
                 let mut versioned_test = self.clone();
                 versioned_test.pg_version = Some(v?.label()?);
-                perform(versioned_test, &pgrx)?;
+                perform(versioned_test, &pgrx, &package_manifest)?;
             }
 
             Ok(())
         } else {
             // attempt to run the test for the Postgres version `run_test()` will figure out
-            perform(self, &pgrx)
+            perform(self, &pgrx, &package_manifest)
         }
     }
 }
@@ -117,12 +127,12 @@ impl CommandExecute for Test {
 ))]
 pub fn test_extension(
     pg_config: &PgConfig,
-    user_manifest_path: Option<impl AsRef<Path>>,
-    user_package: Option<&String>,
+    user_manifest_path: Option<&Path>,
+    user_package: Option<&str>,
     profile: &CargoProfile,
     no_schema: bool,
     features: &clap_cargo::Features,
-    testname: Option<impl AsRef<str>>,
+    testname: Option<&str>,
     runas: Option<String>,
     pgdata: Option<PathBuf>,
 ) -> eyre::Result<()> {
@@ -132,11 +142,11 @@ pub fn test_extension(
     }
 
     if let Some(ref testname) = testname {
-        tracing::Span::current().record("testname", tracing::field::display(&testname.as_ref()));
+        tracing::Span::current().record("testname", tracing::field::display(&testname));
     }
     let target_dir = get_target_dir()?;
 
-    let mut command = crate::env::cargo();
+    let mut command = crate::cargo::cargo();
 
     let no_default_features_arg = features.no_default_features;
     let mut features_arg = features.features.join(" ");
@@ -184,7 +194,7 @@ pub fn test_extension(
 
     if let Some(user_manifest_path) = user_manifest_path {
         command.arg("--manifest-path");
-        command.arg(user_manifest_path.as_ref());
+        command.arg(user_manifest_path);
     }
 
     if let Some(user_package) = user_package {
@@ -193,7 +203,7 @@ pub fn test_extension(
     }
 
     if let Some(testname) = testname {
-        command.arg(testname.as_ref());
+        command.arg(testname);
     }
 
     eprintln!("{command:?}");

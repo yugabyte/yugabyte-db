@@ -3,6 +3,8 @@ title: pg_partman extension
 headerTitle: Partition manager extension
 linkTitle: pg_partman
 description: Using the pg_partman extension in YugabyteDB
+tags:
+  feature: early-access
 menu:
   v2025.2:
     identifier: extension-pgpartman
@@ -167,7 +169,7 @@ These limitations ensure that pg_partman features align with the capabilities an
 
 ### Supported partitioning methods
 
-Only native partitioning is supported in YugabyteDB. Non-native partitioning, which uses table inheritance and triggers to route data to the appropriate child tables, is not supported because YugabyteDB does not support table inheritance.
+Only native partitioning is supported in YugabyteDB. Non-native partitioning, which uses table inheritance and triggers to route data to the appropriate child tables, is not supported.
 
 Versions of pg_partman later than v4.7.4 have deprecated non-native partitioning, so migrating partition sets from non-native to native partitioning methods can be challenging.
 

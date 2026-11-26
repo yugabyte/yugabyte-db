@@ -15,12 +15,19 @@
 
 #include <arpa/inet.h>
 
+#include <algorithm>
+#include <memory>
+#include <mutex>
+#include <vector>
+
 #include "yb/common/common.messages.h"
 #include "yb/common/common.pb.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
@@ -40,6 +47,21 @@ DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
     "Number of samples captured from each component per sampling event");
+
+DEFINE_NON_RUNTIME_int32(ash_pg_shared_memory_tracker_num_shards, -1,
+    "Number of independently locked shards used by the high-churn PG shared-memory ASH "
+    "wait-state trackers (Perform and object-lock acquisition), which see a Track/Untrack per "
+    "PG operation. Sharding reduces mutex contention between those threads, at the cost of "
+    "acquiring every shard's lock when ASH samples the tracker. -1 indicates a dynamic scheme "
+    "that gives one shard per effective core, with a minimum of 8 and a maximum of 128. If the "
+    "value is overridden, that value would be used in favor of the dynamic scheme. "
+    "1 disables sharding. The other (long-lived, low-churn) trackers are always "
+    "single-mutex. This is read once, when a tracker is first used, so changing it requires a "
+    "restart.");
+DEFINE_validator(ash_pg_shared_memory_tracker_num_shards,
+    FLAG_COND_VALIDATOR(
+        _value == -1 || (_value >= 1 && _value <= yb::ash::kMaxWaitStateTrackerNumShards),
+        "Must be -1, for the dynamic scheme, or in the range [1, 128]"));
 
 DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
@@ -600,19 +622,60 @@ ScopedWaitStatus::~ScopedWaitStatus() {
   MaybeSleepForTests(wait_state.get(), prev_code_);
 }
 
+WaitStateTracker::WaitStateTracker(size_t num_shards) : shards_(num_shards) {
+  DCHECK_GT(num_shards, 0);
+}
+
+WaitStateTrackerShard& WaitStateTracker::ShardForPtr(const yb::ash::WaitStateInfoPtr& p) {
+  if (shards_.size() == 1) {
+    return shards_.front();
+  }
+  // The pointer has to be hashed rather than shifted: WaitStateInfo is allocated through
+  // make_shared, so it sits at a fixed offset inside an allocation of fixed granularity, and the
+  // low bits of the raw address are therefore nearly constant -- shifting them into place would
+  // leave whole shards unused.
+  return shards_[HashUtil::MixHash64(reinterpret_cast<uintptr_t>(p.get())) % shards_.size()];
+}
+
 void WaitStateTracker::Track(const yb::ash::WaitStateInfoPtr& wait_state_ptr) {
-  std::lock_guard lock(mutex_);
-  entries_.emplace(wait_state_ptr);
+  // Null wait states carry no information, and consumers of GetWaitStates() skip them.
+  if (!wait_state_ptr) {
+    return;
+  }
+  auto& shard = ShardForPtr(wait_state_ptr);
+  std::lock_guard lock(shard.mutex);
+  shard.entries.emplace(wait_state_ptr);
 }
 
 void WaitStateTracker::Untrack(const yb::ash::WaitStateInfoPtr& ptr) {
-  std::lock_guard lock(mutex_);
-  entries_.erase(ptr);
+  if (!ptr) {
+    return;
+  }
+  auto& shard = ShardForPtr(ptr);
+  std::lock_guard lock(shard.mutex);
+  shard.entries.erase(ptr);
 }
 
 std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
-  std::lock_guard lock(mutex_);
-  return {entries_.begin(), entries_.end()};
+  // ASH is a statistical sampler and does not need a consistent cut across shards, so we snapshot
+  // one shard at a time and never hold more than a single shard's lock. Track/Untrack on the other
+  // shards proceed concurrently with sampling. Each wait state maps to a fixed shard, so it is
+  // neither dropped nor double-counted across the per-shard snapshots.
+  std::vector<yb::ash::WaitStateInfoPtr> result;
+  for (const auto& shard : shards_) {
+    std::lock_guard lock(shard.mutex);
+    result.insert(result.end(), shard.entries.begin(), shard.entries.end());
+  }
+  return result;
+}
+
+size_t WaitStateTracker::TEST_NumNonEmptyShards() const {
+  size_t result = 0;
+  for (const auto& shard : shards_) {
+    std::lock_guard lock(shard.mutex);
+    result += shard.entries.empty() ? 0 : 1;
+  }
+  return result;
 }
 
 WaitStateType GetWaitStateType(WaitStateCode code) {
@@ -809,14 +872,22 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kWaitingOnTServer:
       return "Name of the PgClient - TServer RPC.";
 
-    case WaitStateCode::kYSQLReserved:
     case WaitStateCode::kCatalogRead:
-    case WaitStateCode::kIndexRead:
-    case WaitStateCode::kTableRead:
-    case WaitStateCode::kStorageFlush:
     case WaitStateCode::kCatalogWrite:
-    case WaitStateCode::kIndexWrite:
+      return "OID of the catalog relation which is read or written. It is empty when a single "
+             "request covers more than one catalog relation, which is the case for the catalog "
+             "prefetching done when a connection starts.";
+
+    case WaitStateCode::kTableRead:
     case WaitStateCode::kTableWrite:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kIndexWrite:
+    case WaitStateCode::kStorageFlush:
+      return "OID of the relation which the request is sent to. It is empty when a single "
+             "request covers more than one relation, which is the case for a flush of buffered "
+             "writes to several relations.";
+
+    case WaitStateCode::kYSQLReserved:
     case WaitStateCode::kTransactionCommit:
     case WaitStateCode::kTransactionTerminate:
     case WaitStateCode::kTransactionRollbackToSavepoint:
@@ -829,37 +900,60 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
 
 namespace {
 
-WaitStateTracker flush_and_compaction_wait_states_tracker;
-WaitStateTracker raft_log_appender_wait_states_tracker;
-WaitStateTracker pg_shared_memory_perform_tracker;
-WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
-WaitStateTracker xcluster_poller_tracker;
-WaitStateTracker min_running_hybrid_time_tracker;
+// Resolves ash_pg_shared_memory_tracker_num_shards. -1 follows the same dynamic scheme as
+// GetDbBlockCacheNumShardBits(): one shard per effective core. NumEffectiveCPUs() is cgroup-aware,
+// so in a container this is the container's share and not the host's -- the reason a fixed default
+// is wrong at both ends of the range we ship to. Any other value is an explicit operator override.
+size_t GetPgSharedMemoryTrackerNumShards() {
+  const auto flag_value = FLAGS_ash_pg_shared_memory_tracker_num_shards;
+  if (flag_value >= 0) {
+    return static_cast<size_t>(flag_value);
+  }
+  // The shard index is a hash modulo the shard count, so unlike the block cache this does not
+  // need to be a power of two. The clamp also covers a nonsensical NumEffectiveCPUs().
+  return static_cast<size_t>(std::clamp(
+      NumEffectiveCPUs(), kMinWaitStateTrackerNumShards, kMaxWaitStateTrackerNumShards));
+}
+
+// The trackers below are created on first use rather than at static-initialization time, so that
+// the flag has been parsed by the time it is read. They are intentionally leaked: a Track/Untrack
+// from a thread that outlives static destruction must not touch a freed tracker.
+WaitStateTracker* CreatePgSharedMemoryTracker(const char* name) {
+  const auto num_shards = GetPgSharedMemoryTrackerNumShards();
+  LOG(INFO) << "ASH wait-state tracker " << name << " uses " << num_shards << " shard(s)";
+  return new WaitStateTracker(num_shards);
+}
 
 }  // namespace
 
 WaitStateTracker& FlushAndCompactionWaitStatesTracker() {
-  return flush_and_compaction_wait_states_tracker;
+  static auto* const tracker = new WaitStateTracker();
+  return *tracker;
 }
 
 WaitStateTracker& RaftLogWaitStatesTracker() {
-  return raft_log_appender_wait_states_tracker;
+  static auto* const tracker = new WaitStateTracker();
+  return *tracker;
 }
 
 WaitStateTracker& SharedMemoryPgPerformTracker() {
-  return pg_shared_memory_perform_tracker;
+  static auto* const tracker = CreatePgSharedMemoryTracker("pg_shared_memory_perform");
+  return *tracker;
 }
 
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
-  return pg_shared_memory_acquire_object_lock_tracker;
+  static auto* const tracker = CreatePgSharedMemoryTracker("pg_shared_memory_acquire_object_lock");
+  return *tracker;
 }
 
 WaitStateTracker& XClusterPollerTracker() {
-  return xcluster_poller_tracker;
+  static auto* const tracker = new WaitStateTracker();
+  return *tracker;
 }
 
 WaitStateTracker& MinRunningHybridTimeTracker() {
-  return min_running_hybrid_time_tracker;
+  static auto* const tracker = new WaitStateTracker();
+  return *tracker;
 }
 
 }  // namespace yb::ash

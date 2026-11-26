@@ -151,6 +151,9 @@ public class Audit extends Model {
     @EnumValue("PA Collector")
     PACollector,
 
+    @EnumValue("PA Export Config")
+    PerfAdvisorEndpoint,
+
     @EnumValue("GFlags")
     GFlags,
 
@@ -332,6 +335,15 @@ public class Audit extends Model {
 
     @EnumValue("Unregister Universe from PA Collector")
     PACollectorUnregister,
+
+    @EnumValue("Create PA Export Config")
+    CreatePerfAdvisorEndpoint,
+
+    @EnumValue("Edit PA Export Config")
+    EditPerfAdvisorEndpoint,
+
+    @EnumValue("Delete PA Export Config")
+    DeletePerfAdvisorEndpoint,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,
@@ -642,6 +654,9 @@ public class Audit extends Model {
     @EnumValue("Import Universe to the Kubernetes Operator")
     OperatorImportUniverse,
 
+    @EnumValue("Manage Cross-Cloud Federated IAM")
+    ManageCrossCloudFederation,
+
     @EnumValue("Run Script on Database Nodes")
     RunScript,
 
@@ -701,6 +716,11 @@ public class Audit extends Model {
   @Column(columnDefinition = "TEXT")
   @DbJson
   private JsonNode additionalDetails;
+
+  @ApiModelProperty(value = "Task Diff", accessMode = READ_ONLY, dataType = "Object")
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode taskDiff;
 
   @ApiModelProperty(
       value = "API call",
@@ -762,6 +782,32 @@ public class Audit extends Model {
       UUID taskUUID,
       JsonNode details,
       String userAddress) {
+    return create(
+        user,
+        apiCall,
+        apiMethod,
+        target,
+        targetID,
+        action,
+        body,
+        taskUUID,
+        details,
+        userAddress,
+        null);
+  }
+
+  public static Audit create(
+      Users user,
+      String apiCall,
+      String apiMethod,
+      TargetType target,
+      String targetID,
+      ActionType action,
+      JsonNode body,
+      UUID taskUUID,
+      JsonNode details,
+      String userAddress,
+      JsonNode taskDiff) {
     Audit entry = new Audit();
     entry.setCustomerUUID(user.getCustomerUUID());
     entry.setUserUUID(user.getUuid());
@@ -774,6 +820,7 @@ public class Audit extends Model {
     entry.setTaskUUID(taskUUID);
     entry.setPayload(body);
     entry.setAdditionalDetails(details);
+    entry.setTaskDiff(taskDiff);
     entry.setUserAddress(userAddress);
     entry.save();
     return entry;
@@ -811,6 +858,11 @@ public class Audit extends Model {
 
   public void updateAdditionalDetails(JsonNode additionalDetails) {
     this.additionalDetails = additionalDetails;
+    this.update();
+  }
+
+  public void updateTaskDiff(JsonNode taskDiff) {
+    this.taskDiff = taskDiff;
     this.update();
   }
 

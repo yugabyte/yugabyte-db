@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.eq;
@@ -30,8 +31,10 @@ import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
 import com.yugabyte.yw.nodeagent.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.DownloadFileResponse;
+import com.yugabyte.yw.nodeagent.Error;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
+import com.yugabyte.yw.nodeagent.HealthCheckInput;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentImplBase;
 import com.yugabyte.yw.nodeagent.NodeConfig;
 import com.yugabyte.yw.nodeagent.PingRequest;
@@ -235,6 +238,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
         .thenReturn(Duration.ofSeconds(5));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribeMaxOutputBufferLines)))
+        .thenReturn(5);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectTimeout)))
         .thenReturn(Duration.ofSeconds(10));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentIdleConnectionTimeout)))
@@ -243,6 +248,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
         .thenReturn(Duration.ofSeconds(30));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout)))
         .thenReturn(Duration.ofSeconds(10));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentTokenLifetime)))
+        .thenReturn(Duration.ofMinutes(60));
 
     // Generate a unique in-process server name.
     String serverName = InProcessServerBuilder.generateName();
@@ -429,6 +436,43 @@ public class NodeAgentClientTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRunAsyncTaskFailureIncludesOutput() {
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) -> {
+          responseObserver.onNext(
+              DescribeTaskResponse.newBuilder()
+                  .setState("RUNNING")
+                  .setOutput("Failed to start yb-master.service: Unit not found\n")
+                  .build());
+          responseObserver.onNext(
+              DescribeTaskResponse.newBuilder()
+                  .setState("FAILED")
+                  .setError(Error.newBuilder().setCode(1).setMessage("exit status 1").build())
+                  .build());
+          responseObserver.onCompleted();
+        });
+
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                nodeAgentClient.runPreflightCheck(
+                    nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */));
+
+    assertEquals(
+        "Code: 1, Error: exit status 1, State: FAILED, Output:\n"
+            + "Failed to start yb-master.service: Unit not found",
+        ex.getMessage());
+  }
+
+  @Test
+  public void testFormatNodeAgentFailureOmitsEmptyOutput() {
+    assertEquals(
+        "Code: 1, Error: exit status 1",
+        NodeAgentClient.formatNodeAgentFailure("Code: 1, Error: exit status 1", "   "));
+  }
+
+  @Test
   public void testRunAsyncTask() {
     asyncTaskData.setTaskFunc(
         in ->
@@ -471,6 +515,25 @@ public class NodeAgentClientTest extends FakeDBApplication {
             nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */);
     assertNotNull(output);
     assertEquals(NodeAgentClient.MAX_TRANSIENT_FAILURES + 1, describeAttempts.get());
+  }
+
+  @Test
+  public void testRunAsyncTaskTimesOut() {
+    Duration timeout = Duration.ofMillis(500);
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) ->
+            responseObserver.onError(
+                Status.DEADLINE_EXCEEDED.withDescription("poll deadline").asRuntimeException()));
+
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                nodeAgentClient.runOrGetHealthCheck(
+                    nodeAgent, HealthCheckInput.newBuilder().build(), null /* user */, timeout));
+
+    assertTrue(ex.getMessage().contains("did not complete within " + timeout));
+    assertTrue(ex.getCause() instanceof StatusRuntimeException);
   }
 
   @Test

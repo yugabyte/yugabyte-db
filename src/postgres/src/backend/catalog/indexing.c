@@ -25,7 +25,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_special_scans.h"
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
@@ -271,7 +271,8 @@ CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
 						isnull, /* is-null flags */
 						HEAPTUPLE_YBCTID(heapTuple),	/* heap tuple */
 						heapRelation,
-						indexInfo);
+						indexInfo,
+						false /* persist_missing_row */ );
 	}
 
 	ExecDropSingleTupleTableSlot(slot);

@@ -146,6 +146,31 @@ TEST_F(ConsensusMetadataTest, TestFlush) {
   }
 }
 
+// FlushIfChanged() writes only when the durable state differs from the snapshot.
+TEST_F(ConsensusMetadataTest, FlushIfChanged) {
+  const int64_t kNewTerm = 4;
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      &fs_manager_, kTabletId, fs_manager_.uuid(), config_, kInitialTerm));
+  const auto snapshot = cmeta->GetConsensusMetadataPB();
+
+  // Unchanged: nothing is written, and a stale in-memory copy is not flushed either.
+  ASSERT_OK(cmeta->FlushIfChanged(snapshot));
+  cmeta->set_current_term(kNewTerm);
+  ASSERT_OK(cmeta->FlushIfChanged(cmeta->GetConsensusMetadataPB()));
+  {
+    std::unique_ptr<ConsensusMetadata> cmeta_read;
+    ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta_read));
+    ASSERT_VALUES_EQUAL(*cmeta_read, kInvalidOpIdIndex, fs_manager_.uuid(), kInitialTerm);
+  }
+
+  ASSERT_OK(cmeta->FlushIfChanged(snapshot));
+  {
+    std::unique_ptr<ConsensusMetadata> cmeta_read;
+    ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta_read));
+    ASSERT_VALUES_EQUAL(*cmeta_read, kInvalidOpIdIndex, fs_manager_.uuid(), kNewTerm);
+  }
+}
+
 // Builds a distributed configuration of voters with the given uuids.
 RaftConfigPB BuildConfig(const vector<string>& uuids) {
   RaftConfigPB config;

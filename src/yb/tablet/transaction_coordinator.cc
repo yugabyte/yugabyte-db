@@ -73,6 +73,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -127,6 +128,16 @@ DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
 DEFINE_test_flag(bool, skip_returning_old_transactions, false,
                  "When set, the coordinator returns an empty response to all GetOldTransactions "
                  "requests.");
+
+DEFINE_test_flag(uint64, commit_time_override_ht, 0,
+                 "When set, transactions listed in TEST_commit_time_override_txn_ids commit at "
+                 "this hybrid time instead of the hybrid time of their commit record. Lets a test "
+                 "make different transactions commit at the same time. The caller must pick a "
+                 "time after the transactions wrote all their intents and before they commit.");
+
+DEFINE_test_flag(string, commit_time_override_txn_ids, "",
+                 "Comma separated ids of the transactions that TEST_commit_time_override_ht "
+                 "applies to.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -420,7 +431,11 @@ class TransactionState {
 
     replicating_ = nullptr;
 
-    // We are not leader, so could abort all queued requests.
+    // Replication of this transaction's update failed (e.g., this peer lost leadership, the Raft
+    // append failed, or a leader-side check refused it); the transaction itself is not aborted and
+    // keeps its status.  Fail the requests queued behind the update: the client can resend a
+    // refused COMMITTED update, and an ABORTED update dropped here is redone when the transaction
+    // expires.
     ClearRequests(STATUS(Aborted, "Replication failed"));
   }
 
@@ -775,6 +790,16 @@ class TransactionState {
             TryAgain, "Heartbeat with inactive pg_session_req_version",
             AdvisoryLocksError(*pg_session_req_version_));
       }
+      // A transaction of a blocked database is aborted here, so its locks release and its waiters
+      // fail at once; the client's own cleanup on the refused heartbeat does not abort it at the
+      // coordinator.
+      if (status.ok() && state.has_origination_info()) {
+        status = context_.coordinator_context().CheckTransactionMayContinue(
+            state.origination_info());
+        if (!status.ok()) {
+          Abort();
+        }
+      }
       // When session level txns are involved in a deadlock due to cyclic advisory lock request
       // dependencies, the detector sends an update transaction request with PENDING status but
       // deadlock status set. In such cases, don't update meta information like first_touch_ etc.
@@ -933,6 +958,18 @@ class TransactionState {
     return Status::OK();
   }
 
+  void MaybeOverrideCommitTimeForTest() {
+    if (PREDICT_TRUE(FLAGS_TEST_commit_time_override_ht == 0)) {
+      return;
+    }
+    const auto txn_ids = Format(",$0,", FLAGS_TEST_commit_time_override_txn_ids);
+    if (txn_ids.find(Format(",$0,", id_)) == std::string::npos) {
+      return;
+    }
+    commit_time_ = HybridTime(FLAGS_TEST_commit_time_override_ht);
+    LOG_WITH_PREFIX(INFO) << "Overriding commit time to " << commit_time_ << " for test";
+  }
+
   Status CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::PENDING) {
       auto status = STATUS_FORMAT(
@@ -947,6 +984,7 @@ class TransactionState {
 
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
+    MaybeOverrideCommitTimeForTest();
     first_entry_raft_index_ = data.op_id.index;
     RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
 
@@ -1585,7 +1623,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     if (!managed_transactions_.empty()) {
       auto& txn = *managed_transactions_.get<FirstEntryIndexTag>().begin();
       if (details) {
-        *details += Format("Transaction coordinator: $0\n", txn);
+        *details += Format("Transaction coordinator: $0", txn);
       }
       return txn.first_entry_raft_index();
     }
@@ -1713,10 +1751,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       const rpc::Rpcs::Handle& handle, const NotifyApplyingData& action,
       const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
     client::UpdateClock(resp, &context_);
-    rpcs_.Unregister(handle);
+    // Prevent Rpcs::CompleteShutdown from destroying the coordinator while it could be
+    // used through `this`.
+    auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
     if (status.ok()) {
       return;
     }
+
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "TransactionCoordinator::Impl::ApplyingReplicated:BeforeUse",
+        const_cast<std::string*>(&context_.tablet_id()));
     LOG_WITH_PREFIX(WARNING)
         << "Failed to send apply for transaction: " << action.transaction << ": "
         << status;
@@ -2051,7 +2095,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                   const Status& status,
                   const tserver::GetTransactionStatusAtParticipantResponsePB& resp) {
                 client::UpdateClock(resp, &context_);
-                rpcs_.Unregister(handle);
+                // Prevent Rpcs::CompleteShutdown from destroying the coordinator while it could be
+                // used through `this`.
+                auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
 
                 VLOG_WITH_PREFIX(4)
                     << "TXN: " << transaction_id << " batch status at " << p.tablet << ": "

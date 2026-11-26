@@ -49,6 +49,7 @@ _LAZY_EXPORTS = {
     ),
     "MekoMarkdownParser": ("rag_pipeline.md_parser", "MekoMarkdownParser"),
     "parse_markdown": ("rag_pipeline.md_parser", "parse_markdown"),
+    "stream_markdown": ("rag_pipeline.md_parser", "stream_markdown"),
     "parse_file": ("rag_pipeline.md_parser", "parse_file"),
     "ParsedDocument": ("rag_pipeline.md_parser", "ParsedDocument"),
     "ParsedChunk": ("rag_pipeline.md_parser", "ParsedChunk"),
@@ -66,6 +67,10 @@ _LAZY_EXPORTS = {
     ),
     "DocumentPreprocessor": (
         "rag_pipeline.document_preprocessor", "DocumentPreprocessor",
+    ),
+    "AutoColumnEmbeddingProcessor": (
+        "rag_pipeline.auto_column_embedding_processor",
+        "AutoColumnEmbeddingProcessor",
     ),
 }
 

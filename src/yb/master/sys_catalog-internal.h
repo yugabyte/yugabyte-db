@@ -19,7 +19,6 @@
 
 #include "yb/docdb/doc_read_context.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/sys_catalog_constants.h"

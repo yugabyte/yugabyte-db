@@ -137,11 +137,13 @@ SELECT pctest1.* FROM pctest1, pctest2
 */
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+-- Keep Gather Merge over a sorted BNL on record; the copy in the parallel
+-- hints section shows the Sort variant.
 EXPLAIN (costs off)
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
 
@@ -400,3 +402,15 @@ reset parallel_leader_participation;
 DROP TABLE pctest1;
 DROP TABLE pctest2;
 DROP TABLE pctest3;
+
+-- #32676: Parallel scan with a row condition including the split point
+CREATE TABLE t32676 (a int, b int, v int, PRIMARY KEY (a ASC, b ASC)) SPLIT AT VALUES ((500,500));
+INSERT INTO t32676 SELECT i/1000, i%1000, i FROM generate_series(1, 1000000) i;
+EXPLAIN (costs off)
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+set yb_test_force_parallel=force;
+EXPLAIN (costs off)
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+DROP TABLE t32676;

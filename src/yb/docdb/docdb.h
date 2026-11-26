@@ -14,12 +14,14 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include <boost/function.hpp>
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
@@ -136,7 +138,8 @@ Status AssembleDocWriteBatch(
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
     ReadRestartData* read_restart_data,
-    const std::string& table_name);
+    const std::string& table_name,
+    const std::optional<CdrMetadata>& cdr_metadata);
 
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
@@ -214,6 +217,8 @@ struct ApplyStateWithCommitInfo {
   ApplyTransactionState state;
   HybridTime commit_ht;
   OpId apply_op_id;
+  // Invalid if the stored state was written by a version that did not store it.
+  HybridTime log_ht;
 
   template <class PB>
   static Result<ApplyStateWithCommitInfo> FromPB(const PB& pb) {
@@ -221,11 +226,12 @@ struct ApplyStateWithCommitInfo {
       .state = VERIFY_RESULT(ApplyTransactionState::FromPB(pb)),
       .commit_ht = HybridTime(pb.commit_ht()),
       .apply_op_id = OpId::FromPB(pb.apply_op_id()),
+      .log_ht = HybridTime::FromPB(pb.log_ht()),
     };
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(state, commit_ht, apply_op_id);
+    return YB_STRUCT_TO_STRING(state, commit_ht, apply_op_id, log_ht);
   }
 };
 

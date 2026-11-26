@@ -261,6 +261,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   // Creates a kubernetes universe (host-n1..n3, host-n1 in AZ "az-1") with the given overrides
   // persisted on the primary cluster's UserIntent, mimicking an operator-managed universe.
+  // The universe must be created on a kubernetes provider: cloud type is read from that provider,
+  // not from a providerType stamped onto an unrelated provider.
   private Universe createK8sUniverseWithOverrides(
       String universeName, String universeOverrides, Map<String, String> azOverrides) {
     if (Provider.get(customer.getUuid(), CloudType.kubernetes).isEmpty()) {
@@ -270,7 +272,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     }
     Universe u =
         Universe.saveDetails(
-            ModelFactory.createUniverse(universeName, customer.getId()).getUniverseUUID(),
+            ModelFactory.createUniverse(universeName, customer.getId(), CloudType.kubernetes)
+                .getUniverseUUID(),
             ApiUtils.mockUniverseUpdater("host", CloudType.kubernetes));
     return Universe.saveDetails(
         u.getUniverseUUID(),
@@ -286,6 +289,40 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     Result r = getNodeDetails(universe.getUniverseUUID(), nodeName);
     checkOk(r);
     return parseResult(r).get("kubernetesOverrides").asText();
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sRedactsLdapSecretsInLiveHelmValues() {
+    Universe u = createK8sUniverseWithOverrides("k8s-helm-secrets", null, null);
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
+        .thenReturn(
+            "gflags:\n"
+                + "  tserver:\n"
+                + "    ycql_ldap_bind_passwd: dummy-bind-pass\n"
+                + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+                + " ldapbindpasswd=dummy-hba-pass ldapserver=ldap.example.com\"\n");
+
+    assertEquals(
+        "gflags:\n"
+            + "  tserver:\n"
+            + "    ycql_ldap_bind_passwd: REDACTED\n"
+            + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=REDACTED ldapserver=ldap.example.com\"\n",
+        getKubernetesOverrides(u, "host-n1"));
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sRedactsLdapSecretsInStoredOverrides() {
+    Universe u =
+        createK8sUniverseWithOverrides(
+            "k8s-stored-secrets",
+            "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n",
+            null);
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any())).thenReturn("");
+
+    assertEquals(
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n",
+        getKubernetesOverrides(u, "host-n1"));
   }
 
   @Test

@@ -20,8 +20,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
@@ -107,7 +110,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             status,
             percentComplete,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -778,7 +781,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         99.0,
         "TLS Toggle ON",
         responseJson);
-    when(mockCommissioner.buildTaskStatus(any(), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(any(), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
@@ -820,7 +823,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("retryable", false);
     responseJson.put("canRollback", false);
 
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -834,6 +837,40 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.isArray(), is(true));
     JsonNode taskJson = universeTasks.get(0);
     assertThat(taskJson.get("userEmail").asText(), equalTo(CustomerTask.BACKGROUND_TASK_USER));
+  }
+
+  @Test
+  public void testTaskDetailsIncludesOriginalTaskUUID() {
+    String authToken = user.createAuthToken();
+    UUID originalTaskUuid = UUID.randomUUID();
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatusAndResponse(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            Update,
+            TaskType.EditUniverse,
+            "Foo",
+            "Running",
+            10.0,
+            responseJson);
+    responseJson.put("originalTaskUUID", originalTaskUuid.toString());
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/tasks/" + task.getTaskUUID() + "/details",
+            authToken);
+
+    assertThat(result.status(), is(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
+    assertThat(universeTasks.isArray(), is(true));
+    assertValue(universeTasks.get(0), "originalTaskUUID", originalTaskUuid.toString());
   }
 
   // PLAT-21392: retry/abort authz must locate the universe at "taskParams.universeUUID"
@@ -875,5 +912,48 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
           node == null ? null : node.asText(),
           equalTo(universeUUID.toString()));
     }
+  }
+
+  private String rollbackUrl(UUID taskUUID) {
+    return "/api/customers/" + customer.getUuid() + "/tasks/" + taskUUID + "/rollback";
+  }
+
+  private UUID createFailedEditTask() {
+    return createTaskWithStatus(
+        universe.getUniverseUUID(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        TaskType.EditKubernetesUniverse,
+        "Foo",
+        "Failure",
+        50.0);
+  }
+
+  @Test
+  public void testRollbackTaskBlockedForOperatorOwnedUniverse() {
+    when(mockCommissioner.isRollbackBlockedByOperator(any(CustomerTask.class))).thenReturn(true);
+    UUID taskUUID = createFailedEditTask();
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken()));
+
+    assertThat(result.status(), is(FORBIDDEN));
+    assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
+    verify(mockCommissioner, never()).getTaskParams(any());
+  }
+
+  @Test
+  public void testRollbackTaskNotBlockedForUniverseNotOwnedByOperator() {
+    UUID taskUUID = createFailedEditTask();
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken()));
+
+    // Past the operator check: the request reaches the manager, which rejects a task that cannot
+    // be rolled back.
+    assertThat(result.status(), is(BAD_REQUEST));
+    verify(mockCommissioner).getTaskParams(taskUUID);
   }
 }

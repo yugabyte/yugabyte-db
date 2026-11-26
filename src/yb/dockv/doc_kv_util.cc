@@ -17,6 +17,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -57,8 +58,10 @@ Result<size_t> CheckHybridTimeSizeAndValueType(const Slice& key) {
 
 namespace {
 
-template<char kEndOfString, class Out>
-Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result) {
+template<char kEndOfString, bool kDescribeErrors, class Out>
+typename DecodePolicy<kDescribeErrors>::template ResultType<const char*> DecodeEncodedStr(
+    const char* p, const char* end, Out* result) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   static_assert(kEndOfString == '\0' || kEndOfString == '\xff',
                 "Invalid kEndOfString character. Only 0x00 and 0xff accepted");
   constexpr char kEndOfStringEscape = kEndOfString ^ 1;
@@ -70,16 +73,20 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
     if (PREDICT_FALSE(stop >= end - 1)) {
       if (stop == end) {
         if (p == end) {
-          return STATUS(Corruption, "Encoded string is empty");
+          return DOCKV_DECODE_ERROR("Encoded string is empty");
         }
-        return STATUS(
-            Corruption, StringPrintf(
-                            "Encoded string is not terminated with \\0x%02x\\0x%02x", kEndOfString,
-                            kEndOfString));
+        return Policy::Error([&]() -> Status {
+          return STATUS_FORMAT(
+              Corruption, "Encoded string is not terminated with \\0x$0\\0x$0",
+              HexString(static_cast<uint8_t>(kEndOfString), 2));
+        });
       }
       DCHECK_EQ(stop, end - 1);
-      return STATUS(
-          Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ", kEndOfString));
+      return Policy::Error([&]() -> Status {
+        return STATUS_FORMAT(
+            Corruption, "Encoded string ends with only one \\0x$0 ",
+            HexString(static_cast<uint8_t>(kEndOfString), 2));
+      });
     }
     if (PREDICT_TRUE(stop[1] == kEndOfString)) {
       result->append(p, stop);
@@ -87,12 +94,15 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
       break;
     }
     if (PREDICT_FALSE(stop[1] != kEndOfStringEscape)) {
-      return STATUS(
-          Corruption,
-          StringPrintf(
-              "Invalid sequence in encoded string: "
-              R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
-              kEndOfString, stop[1], kEndOfString, kEndOfString, kEndOfString, kEndOfStringEscape));
+      return Policy::Error([&]() -> Status {
+        return STATUS_FORMAT(
+            Corruption,
+            "Invalid sequence in encoded string: "
+            R"#(\0x$0\0x$1 (must be either \0x$0\0x$0 or \0x$0\0x$2))#",
+            HexString(static_cast<uint8_t>(kEndOfString), 2),
+            HexString(static_cast<uint8_t>(stop[1]), 2),
+            HexString(static_cast<uint8_t>(kEndOfStringEscape), 2));
+      });
     }
     result->append(p, stop + 1);
     p = stop + 2;
@@ -101,12 +111,13 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
   return p;
 }
 
-template<char kEndOfString, class Out>
-Status DecodeEncodedStr(Slice* slice, Out* result) {
-  const auto* begin = VERIFY_RESULT(DecodeEncodedStr<kEndOfString>(
+template<char kEndOfString, bool kDescribeErrors, class Out>
+typename DecodePolicy<kDescribeErrors>::StatusType DecodeEncodedStr(Slice* slice, Out* result) {
+  using Policy = DecodePolicy<kDescribeErrors>;
+  const auto* begin = DOCKV_DECODE_VERIFY_RESULT(DecodeEncodedStr<kEndOfString, kDescribeErrors>(
      slice->cdata(), slice->cend(), result));
   *slice = Slice(begin, slice->cend());
-  return Status::OK();
+  return Policy::Ok();
 }
 
 struct DevNull {
@@ -139,12 +150,21 @@ Result<std::string> FullyDecodeString(const Slice& encoded_str, const Decoder& d
 
 } // namespace
 
-Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result) {
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType DecodeComplementZeroEncodedStr(
+    Slice* slice, std::string* result) {
   if (result == nullptr) {
     DevNull dev_null;
-    return DecodeEncodedStr<'\xff'>(slice, &dev_null);
+    return DecodeEncodedStr<'\xff', kDescribeErrors>(slice, &dev_null);
   }
-  return DecodeEncodedStr<'\xff'>(slice, result);
+  return DecodeEncodedStr<'\xff', kDescribeErrors>(slice, result);
+}
+
+template Status DecodeComplementZeroEncodedStr<true>(Slice* slice, std::string* result);
+template ProbeStatus DecodeComplementZeroEncodedStr<false>(Slice* slice, std::string* result);
+
+Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result) {
+  return DecodeComplementZeroEncodedStr<true>(slice, result);
 }
 
 Result<std::string> DecodeComplementZeroEncodedStr(const Slice& encoded_str) {
@@ -153,31 +173,40 @@ Result<std::string> DecodeComplementZeroEncodedStr(const Slice& encoded_str) {
   });
 }
 
-Status DecodeZeroEncodedStr(Slice* slice, std::string* result) {
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType DecodeZeroEncodedStr(
+    Slice* slice, std::string* result) {
   if (result == nullptr) {
     DevNull dev_null;
-    return DecodeEncodedStr<'\0'>(slice, &dev_null);
+    return DecodeEncodedStr<'\0', kDescribeErrors>(slice, &dev_null);
   }
-  return DecodeEncodedStr<'\0'>(slice, result);
+  return DecodeEncodedStr<'\0', kDescribeErrors>(slice, result);
+}
+
+template Status DecodeZeroEncodedStr<true>(Slice* slice, std::string* result);
+template ProbeStatus DecodeZeroEncodedStr<false>(Slice* slice, std::string* result);
+
+Status DecodeZeroEncodedStr(Slice* slice, std::string* result) {
+  return DecodeZeroEncodedStr<true>(slice, result);
 }
 
 Result<const char*> DecodeZeroEncodedStr(const char* begin, const char* end, ValueBuffer* out) {
-  return DecodeEncodedStr<'\0'>(begin, end, out);
+  return DecodeEncodedStr<'\0', true>(begin, end, out);
 }
 
 Result<const char*> SkipZeroEncodedStr(const char* begin, const char* end) {
   DevNull dev_null;
-  return DecodeEncodedStr<'\0'>(begin, end, &dev_null);
+  return DecodeEncodedStr<'\0', true>(begin, end, &dev_null);
 }
 
 Result<const char*> DecodeComplementZeroEncodedStr(
     const char* begin, const char* end, ValueBuffer* out) {
-  return DecodeEncodedStr<'\xff'>(begin, end, out);
+  return DecodeEncodedStr<'\xff', true>(begin, end, out);
 }
 
 Result<const char*> SkipComplementZeroEncodedStr(const char* begin, const char* end) {
   DevNull dev_null;
-  return DecodeEncodedStr<'\xff'>(begin, end, &dev_null);
+  return DecodeEncodedStr<'\xff', true>(begin, end, &dev_null);
 }
 
 Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str) {

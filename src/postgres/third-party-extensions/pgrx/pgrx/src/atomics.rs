@@ -7,43 +7,78 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-#![deny(unsafe_op_in_unsafe_fn)]
+
+use crate::{PGRXSharedMemory, PgSharedMemoryInitialization};
 use std::cell::UnsafeCell;
 use std::ffi::CStr;
 
 pub struct PgAtomic<T> {
     name: &'static CStr,
-    inner: UnsafeCell<*mut T>,
+    inner: UnsafeCell<*mut Shared<T>>,
 }
 
+unsafe impl<T: PGRXSharedMemory> Sync for PgAtomic<T> {}
+
 impl<T> PgAtomic<T> {
-    pub const fn new(name: &'static CStr) -> Self {
+    /// Create a pointer of an atomic that points to nothing.
+    ///
+    /// # Safety
+    ///
+    /// * Caller must be confident that there are no name conflicts.
+    pub const unsafe fn new(name: &'static CStr) -> Self {
         Self { name, inner: UnsafeCell::new(std::ptr::null_mut()) }
     }
 
-    pub fn name(&self) -> &'static CStr {
+    /// Get the name of the shared memory.
+    pub const fn name(&self) -> &'static CStr {
         self.name
     }
 }
 
-impl<T> PgAtomic<T>
-where
-    T: atomic_traits::Atomic + Default,
-{
-    /// SAFETY: Must only be called from inside the Postgres shared memory init hook
-    pub unsafe fn attach(&self, value: *mut T) {
-        unsafe {
-            *self.inner.get() = value;
-        }
-    }
-
+impl<T: PGRXSharedMemory> PgAtomic<T> {
+    /// Obtain the reference (which comes with `&T` access).
     pub fn get(&self) -> &T {
         unsafe {
             let shared = self.inner.get().read().as_ref().expect("PgAtomic was not initialized");
-            shared
+            &shared.data
         }
     }
 }
 
-unsafe impl<T> Send for PgAtomic<T> where T: atomic_traits::Atomic + Default {}
-unsafe impl<T> Sync for PgAtomic<T> where T: atomic_traits::Atomic + Default {}
+impl<T: PGRXSharedMemory> PgSharedMemoryInitialization for PgAtomic<T> {
+    type Value = T;
+
+    unsafe fn on_shmem_request(&'static self) {
+        unsafe {
+            crate::pg_sys::RequestAddinShmemSpace(size_of::<Shared<T>>());
+        }
+    }
+
+    unsafe fn on_shmem_startup(&'static self, value: T) {
+        unsafe {
+            use crate::pg_sys;
+
+            let shm_name = self.name;
+            let addin_shmem_init_lock = &raw mut (*pg_sys::MainLWLockArray.add(21)).lock;
+            pg_sys::LWLockAcquire(addin_shmem_init_lock, pg_sys::LWLockMode::LW_EXCLUSIVE);
+
+            let mut found = false;
+            let fv_shmem =
+                pg_sys::ShmemInitStruct(shm_name.as_ptr(), size_of::<Shared<T>>(), &mut found)
+                    .cast::<Shared<T>>();
+            assert!(fv_shmem.is_aligned(), "shared memory is not aligned");
+            if !found {
+                fv_shmem.write(Shared { data: value });
+            }
+
+            *self.inner.get() = fv_shmem;
+
+            pg_sys::LWLockRelease(addin_shmem_init_lock);
+        }
+    }
+}
+
+#[repr(transparent)]
+struct Shared<T> {
+    data: T,
+}

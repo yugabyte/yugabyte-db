@@ -25,6 +25,14 @@ struct od_client_ctl {
 
 #define OD_CLIENT_MAX_PEERLEN 128
 
+/*
+ * YB: Largest client certificate (DER) that conn mgr forwards to Postgres.
+ * base64 inflates it by roughly 4/3, and the encoded certificate has to share
+ * Postgres' 10000 byte startup packet budget (MAX_STARTUP_PACKET_LENGTH) with
+ * the user, database and GUC parameters.
+ */
+#define YB_CLIENT_CERT_DER_MAX 4096
+
 struct od_client {
 	od_client_state_t state;
 	od_pool_client_type_t type;
@@ -95,6 +103,14 @@ struct od_client {
 	char yb_client_address[32];
 
 	/*
+	 * Logical client's ip addr and port, sent to Postgres as reserved
+	 * startup parameters (empty if unknown). Saved here to propagate
+	 * to authentication after these are determined
+	 */
+	char yb_ycm_client_addr[64];
+	char yb_ycm_client_port[8];
+
+	/*
 	 * Only set for the authentication flow via the auth backend.
 	 * This refers to the actual client connected to the conn manager.
 	 */
@@ -111,6 +127,14 @@ struct od_client {
 	 * Fields are NULL/0 if no such case.
 	 */
 	kiwi_prepared_statement_t yb_unnamed_prep_stmt;
+
+	/*
+	 * YB: The client's leaf certificate (DER), captured during the
+	 * client to conn mgr TLS handshake. Allocated by i2d_X509;
+	 * free with OPENSSL_free().
+	 */
+	unsigned char *yb_client_cert_der;
+	int yb_client_cert_der_len;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -173,6 +197,10 @@ static inline void od_client_init(od_client_t *client)
 	client->yb_external_client = NULL;
 	client->yb_logical_client_version = 0;
 	yb_prepared_statement_init(&client->yb_unnamed_prep_stmt);
+	client->yb_client_cert_der = NULL;
+	client->yb_client_cert_der_len = 0;
+	client->yb_ycm_client_addr[0] = '\0';
+	client->yb_ycm_client_port[0] = '\0';
 }
 
 static inline od_client_t *od_client_allocate(void)
@@ -195,6 +223,7 @@ static inline void od_client_free(od_client_t *client)
 	if (client->prep_stmt_ids) {
 		od_hashmap_free(client->prep_stmt_ids);
 	}
+	kiwi_be_startup_free(&client->startup);
 	yb_kiwi_vars_free(&client->yb_vars_startup);
 	yb_kiwi_vars_free(&client->yb_vars_session);
 	yb_kiwi_vars_free(&client->yb_startup_settings);
@@ -203,6 +232,11 @@ static inline void od_client_free(od_client_t *client)
 		client->deploy_err = NULL;
 	}
 	yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
+	if (client->yb_client_cert_der) {
+		OPENSSL_free(client->yb_client_cert_der);
+		client->yb_client_cert_der = NULL;
+		client->yb_client_cert_der_len = 0;
+	}
 	free(client);
 }
 

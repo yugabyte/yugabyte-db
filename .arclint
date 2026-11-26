@@ -1,7 +1,6 @@
 {
   "exclude": [
      "([.]clang-tidy)",
-     "([.]csv$)",
      "([.]dump$)",
      "([.]gitignore$)",
      "([.]ipynb$)",
@@ -79,16 +78,33 @@
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
+      "exclude": [
+        "(^managed/byoc-api-proxy/)"
+      ],
       "script-and-regex.script":
       "managed/lint/lint-java.sh",
       "script-and-regex.regex":
-        "/(?P<message>.*)/is"
+        "/^(?P<severity>error): (?P<message>.+)/s"
+    },
+    "eslint-ui": {
+      "type": "script-and-regex",
+      "include": "(^managed/ui/src/.*[.](js|jsx|ts|tsx)$)",
+      "exclude": [
+        "(^managed/ui/src/redesign/.*[.]tsx?$)",
+        "(^managed/ui/src/redesign/types/)",
+        "(^managed/ui/src/v2/api/)"
+      ],
+      "script-and-regex.script":
+      "managed/lint/lint-ui.sh",
+      "script-and-regex.regex":
+        "/^ +(?<line>[0-9]+):(?<number>[0-9]+) +(?<message>.*) +(?<name>[a-zA-Z_-]+)$/m"
     },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
         "(/pom[.]xml$)",
+        "([.]csv$)",
         "([.]md$)",
         "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
@@ -96,6 +112,7 @@
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",
         "(^managed/yba-cli/GNUmakefile)",
+        "(^managed/devops/supportbundle/.*/GNUmakefile$)",
         "(^managed/ui/)",
         "(^troubleshoot/troubleshooting-framework-ui/)",
         "(^yugabyted-ui/.*/go[.]mod)",
@@ -110,6 +127,7 @@
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
+        "(^managed/src/main/resources/federation/)",
         "(^src/postgres/)",
         "(^src/yb/integration-tests/.*[.]out$)",
         "(^[.]gitignore$)",
@@ -141,6 +159,7 @@
         "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
         "(^src/yb/gutil/port[.]h$)",
         "(^src/yb/rocksdb/util/murmurhash[.]cc$)",
+        "(^src/yb/util/crc32c/)",
         "(_pch[.]h$)"
       ],
       "include": [
@@ -163,6 +182,18 @@
         "(^build/c[+][+]11$)": "disabled",
         "(.*)": "error"
       }
+    },
+    "pg_catalog_dat": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/include/catalog/[^/]+[.]dat$)"
+      ],
+      "exclude": [
+        "(^src/postgres/src/include/catalog/pg_yb_migration[.]dat$)"
+      ],
+      "script-and-regex.script": "src/lint/pg_catalog_dat.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d*):(?P<original>.*)/m"
     },
     "postgres": {
       "type": "script-and-regex",
@@ -200,7 +231,8 @@
         "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/pg_duckdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
-        "(^src/postgres/third-party-extensions/pgvector/sql/.*$)"
+        "(^src/postgres/third-party-extensions/pgvector/sql/.*$)",
+        "(^src/postgres/third-party-extensions/postgresql_anonymizer/sql/.*$)"
       ],
       "script-and-regex.script": "src/lint/regress_test.sh",
       "script-and-regex.regex":
@@ -243,11 +275,25 @@
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     },
+    "ysql_migration": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/pgwrapper/ysql_migrations/[^/]+[.]sql$)"
+      ],
+      "script-and-regex.script": "src/lint/ysql_migration.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d*):(?P<original>.*)/m"
+    },
     "client-version-check": {
       "type": "script-and-regex",
       "include": [
         "(^managed/src/main/resources/swagger[.]json$)",
-        "(^managed/src/main/resources/openapi/.*[.]yaml$)"
+        "(^managed/src/main/resources/openapi/.*[.]yaml$)",
+        "(^managed/client/java/openapi-java-config[.]json$)",
+        "(^managed/client/java/openapi-java-config-v2[.]json$)",
+        "(^managed/client/java/pom[.]xml$)",
+        "(^managed/client/java/v1/pom.xml$)",
+        "(^managed/client/java/v2/pom.xml$)"
       ],
       "script-and-regex.script": "managed/lint/check-client-version.sh",
       "script-and-regex.regex":

@@ -40,6 +40,8 @@ import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -110,6 +112,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private String exampleTableID2;
   private String exampleStreamID2;
   private String exampleTable2Name;
+  private String exampleMatviewTableID;
+  private String exampleMatviewTableName;
   private Set<String> exampleTables;
   private HashMap<String, String> exampleTablesAndStreamIDs;
   private ObjectNode createRequest;
@@ -165,6 +169,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     exampleTableID2 = "000030af000030008000000000004001";
     exampleStreamID2 = "fea203ffca1f48349901e0de2b52c416";
     exampleTable2Name = "exampleTable2";
+    exampleMatviewTableID = "000030af000030008000000000004002";
+    exampleMatviewTableName = "exampleMatview1";
 
     exampleTables = new HashSet<>();
     exampleTables.add(exampleTableID1);
@@ -293,6 +299,13 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   public void initClientGetTablesList(CommonTypes.TableType tableType) throws Exception {
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(buildTableInfoList(tableType));
+    when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+        .thenReturn(mockListTablesResponse);
+  }
+
+  private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> buildTableInfoList(
+      CommonTypes.TableType tableType) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
     // Adding table 1.
     MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
@@ -319,9 +332,50 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             .build());
     tableInfoList.add(table2TableInfoBuilder.build());
 
+    return tableInfoList;
+  }
+
+  /**
+   * Same as {@link #initClientGetTablesList(CommonTypes.TableType)}, plus a materialized view in
+   * the same namespace, and the table schema mock the create/edit paths need for it.
+   */
+  public void initClientGetTablesListWithMatview(CommonTypes.TableType tableType) throws Exception {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
+        buildTableInfoList(tableType);
+    tableInfoList.add(
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
+            .setTableType(tableType)
+            .setId(ByteString.copyFromUtf8(exampleMatviewTableID))
+            .setName(exampleMatviewTableName)
+            .setRelationType(MasterTypes.RelationType.MATVIEW_TABLE_RELATION)
+            .setNamespace(
+                MasterTypes.NamespaceIdentifierPB.newBuilder()
+                    .setName(namespace1Name)
+                    .setId(ByteString.copyFromUtf8(namespace1Id))
+                    .build())
+            .build());
+
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
         .thenReturn(mockListTablesResponse);
+
+    GetTableSchemaResponse mockMatviewSchemaResponse =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            exampleMatviewTableName,
+            exampleMatviewTableID,
+            null,
+            true,
+            tableType,
+            Collections.emptyList(),
+            false);
+    lenient()
+        .when(mockClient.getTableSchemaByUUID(exampleMatviewTableID))
+        .thenReturn(mockMatviewSchemaResponse);
   }
 
   private void mockDefaultInstanceClusterConfig() throws Exception {
@@ -904,6 +958,138 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditTablesDeferredToTask() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+
+    // Request to keep only one of the two tables; this is a real change.
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest.putArray("tables").add(exampleTableID1);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest);
+    assertOk(result);
+
+    // The controller must defer the table-set computation (and its universe RPCs) to the task:
+    // the submitted params carry only the raw inputs, with the computed sets and table info unset.
+    ArgumentCaptor<XClusterConfigTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditXClusterConfig), paramsCaptor.capture());
+    XClusterConfigTaskParams submitted = paramsCaptor.getValue();
+    assertNull(submitted.getTableIdsToAdd());
+    assertNull(submitted.getTableIdsToRemove());
+    assertNull(submitted.getTableInfoList());
+    assertNotNull(submitted.getEditFormData());
+    assertEquals(Collections.singleton(exampleTableID1), submitted.getEditFormData().tables);
+
+    assertAuditEntry(1, customer.getUuid());
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testEditTablesDeferredDropsOtherEditFields() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+
+    // An empty table list does not count as an edit operation, so it can be combined with a
+    // status change. The deferred task must only see the set-tables request, never the status.
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest.putArray("tables");
+    editTablesRequest.put("status", "Paused");
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest);
+    assertOk(result);
+
+    ArgumentCaptor<XClusterConfigTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditXClusterConfig), paramsCaptor.capture());
+    XClusterConfigEditFormData submittedForm = paramsCaptor.getValue().getEditFormData();
+    assertNull(submittedForm.status);
+    assertEquals(Collections.emptySet(), submittedForm.tables);
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testEditTablesDryRunNoChangeRejected() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    initClientGetTablesList();
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+
+    // dryRun with the same table set as the config: no change is detected, so the precheck must
+    // fail synchronously with BAD_REQUEST and submit no task.
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    editTablesRequest.put("dryRun", true);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertResponseError("No change in the xCluster config table list is detected", result);
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testGetSetTablesTaskParamsSkipsValidationOnRetry() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    initClientGetTablesList();
+
+    Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUUID);
+    // Requested set equals the current config, so the computed diff is empty.
+    Set<String> requestedTables = new HashSet<>(xClusterConfig.getTableIds());
+
+    // First attempt (validateRequestedChange = true): the empty diff is rejected.
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            XClusterConfigController.getSetTablesTaskParams(
+                mockService,
+                xClusterConfig,
+                sourceUniverse,
+                targetUniverse,
+                requestedTables,
+                null /* bootstrapParams */,
+                true /* autoIncludeIndexTables */,
+                true /* dryRun */,
+                true /* validateRequestedChange */));
+
+    // Retry (validateRequestedChange = false): the same empty diff is tolerated, since a retry
+    // recomputes against a partially-applied config.
+    XClusterConfigTaskParams params =
+        XClusterConfigController.getSetTablesTaskParams(
+            mockService,
+            xClusterConfig,
+            sourceUniverse,
+            targetUniverse,
+            requestedTables,
+            null /* bootstrapParams */,
+            true /* autoIncludeIndexTables */,
+            true /* dryRun */,
+            false /* validateRequestedChange */);
+    assertNotNull(params);
+
+    xClusterConfig.delete();
+  }
+
+  @Test
   public void testEditStatus() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
@@ -1351,6 +1537,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
 
     String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    // The table-set validation runs in the task for a real submit, but is still enforced
+    // synchronously on the dryRun precheck path.
+    editFormData.dryRun = true;
     IllegalArgumentException exception =
         assertThrows(
             IllegalArgumentException.class,
@@ -1360,6 +1549,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(
         exception.getMessage(),
         containsString("For YSQL tables, all the tables in a keyspace must be selected"));
+    editFormData.dryRun = false;
 
     params.allowBootstrap = true;
     Result result =
@@ -1564,5 +1754,96 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     xClusterConfig.delete();
     reverseConfig.delete();
+  }
+
+  @Test
+  public void testCreateXClusterConfigWithMatviewRejected() throws Exception {
+    mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    initClientGetTablesListWithMatview(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    mockDefaultInstanceClusterConfig();
+
+    // Both universes are new enough for YBDB to replicate materialized views, but a basic (manual
+    // mode) config still cannot include them.
+    TestHelper.updateUniverseVersion(
+        Universe.getOrBadRequest(sourceUniverseUUID),
+        XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+
+    ArrayNode tablesWithMatview = Json.newArray();
+    tablesWithMatview.add(exampleTableID1);
+    tablesWithMatview.add(exampleTableID2);
+    tablesWithMatview.add(exampleMatviewTableID);
+    ObjectNode createRequestWithMatview = createRequest.deepCopy();
+    createRequestWithMatview.putArray("tables").addAll(tablesWithMatview);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", apiEndpoint, user.createAuthToken(), createRequestWithMatview));
+    assertBadRequest(
+        result,
+        "Materialized views can be part of replication only for xCluster/DR configs in automatic"
+            + " DDL mode; the following requested tables are materialized views: ["
+            + exampleMatviewTableID
+            + "]");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testCreateXClusterConfigWithoutMatviewStillSucceeds() throws Exception {
+    // A matview exists on the source universe but is not requested; creation is unaffected.
+    initClientGetTablesListWithMatview(CommonTypes.TableType.YQL_TABLE_TYPE);
+    mockDefaultInstanceClusterConfig();
+
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertOk(result);
+    assertNumXClusterConfigs(1);
+  }
+
+  @Test
+  public void testEditTablesWithMatviewRejected() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    initClientGetTablesListWithMatview(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    mockDefaultInstanceClusterConfig();
+
+    TestHelper.updateUniverseVersion(
+        Universe.getOrBadRequest(sourceUniverseUUID),
+        XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest
+        .putArray("tables")
+        .add(exampleTableID1)
+        .add(exampleTableID2)
+        .add(exampleMatviewTableID);
+    // The set-tables validations are deferred to the EditXClusterConfig task; only the dryRun
+    // precheck still rejects the request synchronously.
+    editTablesRequest.put("dryRun", true);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest));
+    assertBadRequest(
+        result,
+        "Materialized views can be part of replication only for xCluster/DR configs in automatic"
+            + " DDL mode; the following requested tables are materialized views: ["
+            + exampleMatviewTableID
+            + "]");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
   }
 }

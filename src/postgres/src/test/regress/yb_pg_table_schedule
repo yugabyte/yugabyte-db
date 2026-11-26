@@ -1,14 +1,15 @@
 # src/test/regress/yb_pg_table_schedule
 # This schedule is for ported tests only.
+#
+# Do not add tests here: yb.port.alter_table alone takes most of the 30-minute
+# test method timeout on ASAN because it runs hundreds of DDLs (including table
+# rewrites), each creating or altering DocDB tables.  Add tests to a
+# yb_pg_table<N>_schedule that has room, or start a new one with its own test
+# method.
 
 # Dependencies for yb.port.alter_table
 test: yb.depd.int8_tbl
 test: yb.depd.onek
 test: yb.depd.part_test_int4_ops
-# TODO(jason): yb.port.insert is no longer a dependency, so move it to
-# yb_pg_dml_serial_schedule.  (Note: yb.depd.part_test_int4_ops is a dependency
-# for yb.port.insert.)
-test: yb.port.insert
 
-test: yb.port.create_table_like
 test: yb.port.alter_table

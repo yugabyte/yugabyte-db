@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/request_id_allocator.h"
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
@@ -207,21 +208,10 @@ class YBClient::Data {
       const TransactionMetadata* txn,
       const SubTransactionId sub_transaction_id);
 
-  Status BackfillIndex(YBClient* client,
-                       const YBTableName& table_name,
-                       const TableId& table_id,
-                       CoarseTimePoint deadline,
-                       std::optional<TransactionMetadata> requester_transaction,
-                       bool wait = true);
-  Status IsBackfillIndexInProgress(YBClient* client,
-                                   const TableId& table_id,
-                                   const TableId& index_id,
-                                   CoarseTimePoint deadline,
-                                   bool* backfill_in_progress);
-  Status WaitForBackfillIndexToFinish(YBClient* client,
-                                      const TableId& table_id,
-                                      const TableId& index_id,
-                                      CoarseTimePoint deadline);
+  void BackfillIndexAsync(
+      YBClient* client, const YBTableName& index_name, TableIdView index_id,
+      const std::optional<TransactionMetadata>& requester_transaction,
+      CoarseTimePoint deadline, BackfillIndexCallback&& callback);
 
   // Has the index entered the backfill stage yet?
   // Returns true if the backfill has started or has already completed.
@@ -305,6 +295,14 @@ class YBClient::Data {
                                  std::shared_ptr<std::vector<YBTableInfo>> info,
                                  StatusCallback callback);
 
+  // Asynchronous counterpart of YBClient::GetNamespaceInfo. The RPC retains `resp` until
+  // `callback` has run.
+  void GetNamespaceInfo(YBClient* client,
+                        const NamespaceId& namespace_id,
+                        CoarseTimePoint deadline,
+                        std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+                        StdStatusCallback callback);
+
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
       const TableId& table_id,
@@ -364,7 +362,8 @@ class YBClient::Data {
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       CoarseTimePoint deadline,
       StdStatusCallback callback,
-      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr);
+      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr,
+      std::shared_ptr<std::vector<TabletId>> xcluster_bootstrap_tablet_ids = nullptr);
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
@@ -386,6 +385,11 @@ class YBClient::Data {
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
       CoarseTimePoint deadline, GetTableLocationsCallback callback);
+
+  void GetTabletLocations(
+      YBClient* client, const std::vector<TabletId>& tablet_ids,
+      master::IncludeHidden include_hidden, CoarseTimePoint deadline,
+      GetTabletLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
@@ -480,7 +484,8 @@ class YBClient::Data {
 
   // Provide the status of the transaction to YB-Master.
   Status ReportYsqlDdlTxnStatus(
-      const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
+      const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time,
+      const CoarseTimePoint& deadline);
 
   Status IsYsqlDdlVerificationInProgress(
     const TransactionMetadata& txn,
@@ -510,11 +515,12 @@ class YBClient::Data {
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
       std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
-  // Get xCluster streams by source table ids.
+  // Get xCluster streams by source table ids, optionally asking the source to create the streams of
+  // the tables that do not have one.
   Status GetXClusterStreams(
       YBClient* client, CoarseTimePoint deadline,
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const std::vector<TableId>& source_table_ids,
+      const std::vector<TableId>& source_table_ids, bool create_stream_if_missing,
       std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
   Status IsXClusterBootstrapRequired(
@@ -639,18 +645,12 @@ class YBClient::Data {
       GUARDED_BY(per_tag_tokens_mutex_);
 
   server::ClockPtr clock_;
-  const ClientId id_;
+
+  // Allocates ids for the retryable write requests, so the server could track different RPCs
+  // related to the same write operation and reject duplicates, and owns the client ids they are
+  // sent with. The implementation is picked by FLAGS_client_request_id_allocator.
+  const std::unique_ptr<internal::RequestIdAllocator> request_id_allocator_;
   const std::string log_prefix_;
-
-  // Used to track requests that were sent to a particular tablet, so it could track different
-  // RPCs related to the same write operation and reject duplicates.
-  struct TabletRequests {
-    RetryableRequestId request_id_seq = 0;
-    std::set<RetryableRequestId> running_requests;
-  };
-
-  simple_spinlock tablet_requests_mutex_;
-  TabletRequests requests_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 

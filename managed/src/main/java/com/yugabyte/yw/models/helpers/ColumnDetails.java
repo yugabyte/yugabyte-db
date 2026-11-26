@@ -85,7 +85,8 @@ public class ColumnDetails {
     DATE("date"),
     TIME("time"),
     JSONB("jsonb"),
-    USER_DEFINED_TYPE("user_defined_type");
+    USER_DEFINED_TYPE("user_defined_type"),
+    VECTOR("vector");
 
     static final Set<YQLDataType> COLLECTION_TYPES = ImmutableSet.of(LIST, MAP, SET);
 
@@ -157,6 +158,8 @@ public class ColumnDetails {
           return JSONB;
         case USER_DEFINED_TYPE:
           return USER_DEFINED_TYPE;
+        case VECTOR:
+          return VECTOR;
       }
       throw new IllegalArgumentException("Type " + type + " has no YQL equivalent.");
     }

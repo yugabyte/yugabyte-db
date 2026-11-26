@@ -13,9 +13,9 @@ use super::error::Error;
 use crate::datum::{AnyNumeric, FromDatum, Numeric};
 use crate::{direct_function_call, pg_sys};
 use core::str::FromStr;
+use pgrx_pg_sys::PgTryBuilder;
 use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use pgrx_pg_sys::panic::CaughtError;
-use pgrx_pg_sys::PgTryBuilder;
 
 macro_rules! anynumeric_to_primitive {
     ($ty:ty, $as_:ty, $pg_func:ident) => {

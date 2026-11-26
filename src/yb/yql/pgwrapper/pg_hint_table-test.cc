@@ -11,9 +11,13 @@
 // under the License.
 //
 
+#include <future>
 #include <string>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
 #include "yb/util/json_document.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -165,8 +169,24 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
   ASSERT_STR_EQ("Hash Join", ASSERT_RESULT(ExecuteExplainAndGetJoinType(&conn1, explain_query)));
 }
 
-TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
+class PgHintTableTestReadCommitted : public PgHintTableTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgHintTableTest::UpdateMiniClusterOptions(options);
+    // TODO(#39367): Without Read Committed isolation, concurrent updates of a hint fail with
+    // "could not serialize access due to concurrent update" when transactional DDL is on.
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+TEST_F_EX(PgHintTableTest, SimpleConcurrencyTest, PgHintTableTestReadCommitted) {
   auto conn_explain = ASSERT_RESULT(ConnectWithHintTable());
+  // The planner refreshes the hint cache by scanning hint_plan.hints within the statement's read
+  // snapshot, so the concurrent hint updates below can force a read restart. EXPLAIN is not query
+  // layer retriable by default; opt it in so the restart is handled transparently, as it is for a
+  // plain SELECT.
+  ASSERT_OK(conn_explain.Execute("SET yb_extra_commands_to_retry TO 'EXPLAIN'"));
   auto conn_hint1 = ASSERT_RESULT(ConnectWithHintTable());
   auto conn_hint2 = ASSERT_RESULT(ConnectWithHintTable());
 
@@ -252,6 +272,95 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
   }
 }
 
+// Concurrent writes to hint_plan.hints that conflict are retried by the query layer, as before
+// #37717 (#39047). An upsert's write is buffered or in flight when the table's AFTER STATEMENT
+// trigger registers a catalog change, and its outcome is only collected at the end of the
+// statement. A write conflict collected there was refused a retry, and the client got 40001.
+//
+// 1. conn_first upserts the hint row outside a transaction block and is held at the start of the
+//    hint table's invalidation trigger, until the test creates a release file.
+// 2. conn_second upserts the same row outside a transaction block. Depending on whether
+//    conn_first's write has reached DocDB, conn_second either commits (conn_first's write then
+//    conflicts) or waits on conn_first's write (and conflicts once conn_first commits). The test
+//    waits until it sees one of the two.
+// 3. The test releases conn_first. Both statements must succeed: the losing one is retried.
+//
+// The refused retry needs transactional DDL, which is on by default only in release builds, so the
+// fixture turns it on.
+class PgHintTableTestTxnDdl : public PgHintTableTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgHintTableTest::UpdateMiniClusterOptions(options);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
+  }
+};
+
+TEST_F_EX(PgHintTableTest, ConflictingHintUpsertIsRetried, PgHintTableTestTxnDdl) {
+  constexpr auto kFirstHint = "MergeJoin(pg_class pg_attribute)";
+  constexpr auto kSecondHint = "YbBatchedNL(pg_class pg_attribute)";
+  auto conn_first = ASSERT_RESULT(ConnectWithHintTable());
+  auto conn_second = ASSERT_RESULT(ConnectWithHintTable());
+  auto conn_check = ASSERT_RESULT(Connect());
+  const auto upsert = [](const std::string& hint) {
+    return Format(
+        "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
+        "VALUES ('$0', '', '$1') "
+        "ON CONFLICT (norm_query_string, application_name) DO UPDATE SET hints = '$1'",
+        query_id, hint);
+  };
+  ASSERT_OK(conn_first.Execute(upsert("SeqScan(pg_class)")));
+  const auto first_pid = ASSERT_RESULT(conn_first.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  const auto release_file = GetTestPath("release_hint_trigger");
+  ASSERT_OK(conn_first.ExecuteFormat(
+      "SET pg_hint_plan.yb_test_hint_cache_invalidate_wait_file = '$0'", release_file));
+  std::vector<ExternalDaemon*> tservers;
+  for (auto* ts : cluster_->tserver_daemons()) {
+    tservers.push_back(ts);
+  }
+  LogWaiter hold_waiter(tservers, "waiting for file " + release_file);
+
+  // Step 1.
+  auto first = std::async(std::launch::async, [&conn_first, &upsert] {
+    return conn_first.Execute(upsert(kFirstHint));
+  });
+  auto status = hold_waiter.WaitFor(30s * kTimeMultiplier);
+
+  // Step 2.
+  auto second = std::async(std::launch::async, [&conn_second, &upsert] {
+    return conn_second.Execute(upsert(kSecondHint));
+  });
+  if (status.ok()) {
+    status = WaitFor([&conn_check, &second]() -> Result<bool> {
+      return second.wait_for(0s) == std::future_status::ready ||
+             VERIFY_RESULT(conn_check.FetchRow<PGUint64>(
+                 "SELECT COUNT(*) FROM pg_locks "
+                 "WHERE NOT granted AND relation = 'hint_plan.hints'::regclass")) > 0;
+    }, 30s * kTimeMultiplier, "conn_second commits or waits on conn_first");
+  }
+  // conn_first is held until the release, so it must still be running here.
+  const auto first_held = first.wait_for(0s) == std::future_status::timeout;
+
+  // Step 3. Release conn_first either way, so that both statements finish. If the release file
+  // cannot be written, cancel conn_first's statement instead: it would otherwise wait forever.
+  const auto release_status = WriteStringToFile(Env::Default(), "", release_file);
+  if (!release_status.ok()) {
+    WARN_NOT_OK(ResultToStatus(conn_check.FetchRow<bool>(
+                    Format("SELECT pg_cancel_backend($0)", first_pid))),
+                "Failed to cancel conn_first");
+  }
+  const auto first_status = first.get();
+  const auto second_status = second.get();
+  ASSERT_OK(status);
+  ASSERT_OK(release_status);
+  ASSERT_TRUE(first_held) << "conn_first finished before its release: " << first_status;
+  ASSERT_OK(first_status);
+  ASSERT_OK(second_status);
+  const auto hint = ASSERT_RESULT(conn_check.FetchRow<std::string>(Format(
+      "SELECT hints FROM hint_plan.hints WHERE norm_query_string = '$0'", query_id)));
+  ASSERT_TRUE(hint == kFirstHint || hint == kSecondHint) << hint;
+}
+
 void FailIfNotConcurrentDDLErrors(const Status& status) {
   // Expect a catalog version mismatch error during concurrent operations
   if (!status.ok()) {
@@ -273,19 +382,8 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     // TODO(#28742): Enabling ysql_yb_ddl_transaction_block_enabled causes the test to fail with
     // "could not serialize access due to concurrent update" errors.
     PgHintTableTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 };
 

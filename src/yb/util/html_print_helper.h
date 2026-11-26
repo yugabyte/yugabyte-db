@@ -50,7 +50,8 @@ class HtmlPrintHelper {
 };
 
 // Helper class to print HTML tables.
-// Table can be sorted by clicking on the column header.
+// Table can be sorted by clicking on the column header. Headers show a dim sort indicator, and
+// the active sort column shows an up or down arrow.
 // Table will have a search box to filter rows.
 // Table is closed when the object goes out of scope.
 // Usage:

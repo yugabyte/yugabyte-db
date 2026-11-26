@@ -51,6 +51,7 @@
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/tablet_memory_manager.h"
 
 #include "yb/util/mem_tracker.h"
@@ -195,10 +196,16 @@ class SysCatalogTable {
   static Schema BuildTableSchema();
 
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const { return raft_notifications_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
+  ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
+
+  tserver::FullCompactionManager* full_compaction_manager() const {
+    return full_compaction_manager_.get();
+  }
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
     return std::atomic_load(&tablet_peer_);
@@ -245,9 +252,13 @@ class SysCatalogTable {
   }
 
   using ReadRestartFn = std::function<Status (const ReadHybridTime &, HybridTime *)>;
+  // If 'out_read_ht' is set, it receives the hybrid time the read was finally served at (after
+  // any read restarts). Callers that cache what they read use it to order snapshots against each
+  // other; see PgCatalogVersionsCache::Install.
   Status ReadWithRestarts(
       const ReadRestartFn& fn,
-      tablet::RequireLease require_lease = tablet::RequireLease::kTrue) const;
+      tablet::RequireLease require_lease = tablet::RequireLease::kTrue,
+      HybridTime* out_read_ht = nullptr) const;
 
   // Read the global ysql catalog version info from the pg_yb_catalog_version catalog table.
   Status ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
@@ -262,7 +273,8 @@ class SysCatalogTable {
   // catalog table.
   Status ReadYsqlAllDBCatalogVersions(
       const TableId& ysql_catalog_table_id,
-      DbOidToCatalogVersionMap* versions);
+      DbOidToCatalogVersionMap* versions,
+      HybridTime* out_read_ht = nullptr);
   // Read the ysql catalog cache invalidation messages info for all databases from the
   // pg_yb_invalidation_messages catalog table.
   Result<DbOidVersionToMessageListMap> ReadYsqlCatalogInvalationMessages();
@@ -434,7 +446,8 @@ class SysCatalogTable {
       uint32_t db_oid,
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
-      DbOidToCatalogVersionMap* versions);
+      DbOidToCatalogVersionMap* versions,
+      HybridTime* out_read_ht = nullptr);
   Status ReadYsqlDBCatalogVersionImplWithReadTime(
       const TableId& ysql_catalog_table_id,
       uint32_t db_oid,
@@ -484,6 +497,8 @@ class SysCatalogTable {
   // Thread pool for callbacks on Raft replication events.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+
   // Thread pool for preparing transactions, shared between all tablets.
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
@@ -494,11 +509,22 @@ class SysCatalogTable {
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 
+  // Created by the first SetupTabletPeer and shared by every tablet peer it sets up.  The peer
+  // points at it, so it must outlive the peer's use of it: CompleteShutdown shuts the peer down
+  // before the master's SysCatalogTable is destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
+
+  // Thread pool for scheduled and statistics-based full compactions of the sys catalog tablet.
+  std::unique_ptr<ThreadPool> full_compaction_pool_;
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
   Master* master_;
 
   ElectedLeaderCallback leader_cb_;
+
+  // Term for which leader_cb_ was last run from SysCatalogStateChanged.
+  std::atomic<int64_t> leader_cb_term_{-1};
 
   consensus::RaftPeerPB local_peer_pb_;
 
@@ -512,9 +538,15 @@ class SysCatalogTable {
 
   scoped_refptr<Counter> peer_write_count;
 
-  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
+  // Visit() runs concurrently on the leader initialization thread and on background task threads,
+  // so the lazily populated metric map needs its own lock.
+  std::mutex visitor_duration_metrics_mutex_;
+  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_
+      GUARDED_BY(visitor_duration_metrics_mutex_);
 
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
+
+  std::unique_ptr<tserver::FullCompactionManager> full_compaction_manager_;
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 

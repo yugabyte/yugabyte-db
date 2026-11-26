@@ -324,9 +324,8 @@ Result<DocResult*> CachedPgDocOpFetchStream::NextDocResult() {
 
 template <class R>
 MergingPgDocOpFetchStream<R>::MergingPgDocOpFetchStream(
-    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops, size_t nattrs)
-    : PgDocOpFetchStream(fetch_func),
-      nattrs_(nattrs) {
+    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops)
+    : PgDocOpFetchStream(fetch_func) {
   ResetOps(ops);
 }
 
@@ -361,14 +360,19 @@ Result<uint64_t> MergingPgDocOpFetchStream<R>::EmplaceOpDocResult(
 template <>
 Result<uint64_t> MergingPgDocOpFetchStream<PgDocResult>::EmplaceOpDocResult(
     const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs_
+  int max_index = -1;
+  for (const auto& target : *targets_) {
+    max_index = std::max(max_index, target->index());
+  }
+  size_t nattrs = static_cast<size_t>(max_index + 1);
+  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs
                     << " merge sort keys: " << merge_sort_keys_->size();
   return EmplaceDocResult(
       VERIFY_RESULT_REF(FindReadStream(op, response)),
       std::move(data),
       targets_,
       merge_sort_keys_,
-      nattrs_);
+      nattrs);
 }
 
 template <class R>
@@ -411,9 +415,19 @@ Result<DocResult*> MergingPgDocOpFetchStream<R>::NextDocResult() {
     DCHECK(current_stream_ == nullptr);
     while (true) {
       size_t num_not_ready = 0;
-      for (const auto& stream : read_streams_) {
-        if (stream.FetchStatus() == StreamFetchStatus::kNeedsFetch) {
-          ++num_not_ready;
+      for (auto it = read_streams_.begin(); it != read_streams_.end();) {
+        switch (it->FetchStatus()) {
+          case StreamFetchStatus::kNeedsFetch:
+            ++num_not_ready;
+            FALLTHROUGH_INTENDED;
+          case StreamFetchStatus::kHasLocalData:
+            ++it;
+            break;
+          case StreamFetchStatus::kDone:
+            it = read_streams_.erase(it);  // erase returns the next valid iterator
+            break;
+          default:
+            LOG(FATAL) << "Invalid stream fetch status: " << it->FetchStatus();
         }
       }
       if (num_not_ready == 0) {

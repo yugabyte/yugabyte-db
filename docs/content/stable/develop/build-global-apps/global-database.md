@@ -89,14 +89,15 @@ To review the tablet information, in the [YugabyteDB UI](http://127.0.0.1:15433/
 
 As the application will run in `us-east` and you want it to failover to `us-central`, configure the database in the same manner by setting preferred regions.
 
-Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2 (note that currently in YugabyteDB Aeon you can only set a single preferred region) as follows:
+Set `us-east` as preferred rank 1 and `us-central` as rank 2 (YugabyteDB Aeon currently allows only a single preferred region). Use a region wildcard so both AZs in each region share that rank:
 
 ```shell
 ./bin/yb-admin \
-    set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:2 aws.us-west-1.us-west-1a:3
+    --master_addresses 127.0.0.1:7100 \
+    set_preferred_zones aws.us-east-2.*:1 aws.us-central-1.*:2 aws.us-west-1.*:3
 ```
 
-The leaders are placed in `us-east`.
+This pins tablet leaders to `us-east`. Replica placement is unchanged.
 
 ![Global Database - Preferred Leaders](/images/develop/global-apps/global-database-preferred-leaders.png)
 

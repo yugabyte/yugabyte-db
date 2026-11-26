@@ -39,6 +39,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
@@ -79,6 +80,7 @@ DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 DECLARE_bool(TEST_disable_connection_timeout);
 DECLARE_uint32(TEST_read_deadline_check_granularity);
 DECLARE_uint64(arena_warn_threshold_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 namespace yb {
 
@@ -554,14 +556,25 @@ TEST_F(CqlTest, ReadTimeoutTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
-  starting_time = CoarseMonoClock::now();
-  auto result = session.ExecuteAndRenderToString(
-      "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
-  // Use a slightly lower bound to account for clock granularity and propagation latency on macOS.
-  ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
-      FLAGS_client_read_write_timeout_ms - 1);
-  // Verify that read operation failed due to passed deadline.
-  ASSERT_NOK(result);
+  Result<std::string> result = std::string();
+  // On slow builds the deadline may expire before the read is executed by the tablet (e.g. in
+  // tablet lookup or the RPC queue), retry then.
+  for (int attempt = 0; attempt < 10; ++attempt) {
+    starting_time = CoarseMonoClock::now();
+    result = session.ExecuteAndRenderToString(
+        "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+    // Use a slightly lower bound to account for clock granularity and propagation latency on
+    // macOS.
+    ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
+        FLAGS_client_read_write_timeout_ms - 1);
+    // Verify that read operation failed due to passed deadline.
+    ASSERT_NOK(result);
+    if (result.status().message().ToBuffer().find("Deadline for query passed") !=
+        std::string::npos) {
+      break;
+    }
+    LOG(INFO) << "Deadline expired before read execution, retrying: " << result.status();
+  }
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
 }
@@ -1014,10 +1027,10 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   for (int i = 0; i < 9; i += 2) {
     CassandraResult res =  ASSERT_RESULT(
         session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i)));
-    ASSERT_EQ(res.RenderToString(), strings::Substitute("$0,$1", i, i));
+    ASSERT_EQ(res.RenderToString(), Format("$0,$1", i, i));
   }
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", ToString(addrs[0])), &buf));
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
   auto stmt_stats = root["prepared_statements"];
@@ -1069,7 +1082,7 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
 
   EasyCurl curl;
   faststring buf;
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", ToString(addrs[0])), &buf));
 
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
@@ -1096,10 +1109,10 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   }
 
   // reset the counters and verify
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
-                                              ToString(addrs[0])), &buf));
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                              ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements-reset",
+                                 ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements",
+                                 ToString(addrs[0])), &buf));
 
   auto post_reset_root = ASSERT_RESULT(doc.Parse(buf.ToString()));
   auto stmt_stats_post_reset = ASSERT_RESULT(post_reset_root["unprepared_statements"].GetArray());
@@ -1493,11 +1506,8 @@ TEST_F(CqlTest, AggregateArenaReset) {
   constexpr int kNumRows = 1000;
   constexpr size_t kValueLen = 1000;
 
-  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
-  // through a single arena and trip this warning. With recycling, each arena
-  // generation stays well below the threshold.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
-  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
+  // Keep Raft catch-up batches to lagging followers well below the arena warn threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 64_KB;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -1512,6 +1522,13 @@ TEST_F(CqlTest, AggregateArenaReset) {
     ASSERT_OK(session.ExecuteQuery(
         Format("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v)));
   }
+
+  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
+  // through a single arena and trip this warning. With recycling, each arena
+  // generation stays well below the threshold.
+  // Armed after the inserts so that write path arenas are not counted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
 
   CassandraStatement stmt("SELECT min(v) FROM tbl");
   stmt.SetPageSize(100);

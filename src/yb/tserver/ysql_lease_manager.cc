@@ -11,6 +11,10 @@
 // under the License.
 //
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/master/master_ysql_lease.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
@@ -22,6 +26,8 @@
 #include "yb/tserver/ysql_lease_manager.h"
 #include "yb/tserver/ysql_lease_poller.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
@@ -32,6 +38,12 @@ using namespace std::placeholders;
 DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
     "Whether tservers should monitor their ysql op lease and kill their hosted pg "
     "sessions when it expires. Only available as a flag for tests.");
+
+DEFINE_test_flag(bool, pause_ysql_lease_refresh_after_epoch_update, false,
+    "Pause after publishing a new ysql lease epoch but before resetting the local "
+    "lock manager.");
+DEFINE_test_flag(uint64, delay_ysql_lease_expiry_pg_kill_ms, 0,
+    "Delay between a tserver detecting YSQL lease expiry and killing hosted PG sessions.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql);
@@ -46,6 +58,7 @@ class YSQLLeaseManager::Impl {
       EXCLUDES(lease_toggle_lock_, lock_);
 
   Status StartYSQLLeaseRefresher();
+  void TriggerLeaseRefresh();
   void StartTSLocalLockManager() EXCLUDES(lock_);
 
   void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
@@ -136,11 +149,16 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
                  "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
                  lease_refresh_info.lease_epoch());
       restart_pg = true;
+      if (ts_local_lock_manager_ && ts_local_lock_manager_->IsBootstrapped()) {
+        ts_local_lock_manager_->StartShutdown();
+      }
     }
     lease_expiry_time_ = new_lease_expiry_time;
     lease_is_live_ = true;
     lease_epoch_ = lease_refresh_info.lease_epoch();
   }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_ysql_lease_refresh_after_epoch_update);
 
   // It is safer to end the pg-sessions after resetting the local lock manager.
   // This way, if a new session gets created it will also be reset. But that is better than
@@ -167,6 +185,8 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
 
 Status YSQLLeaseManager::Impl::StartYSQLLeaseRefresher() { return lease_client_.Start(); }
 
+void YSQLLeaseManager::Impl::TriggerLeaseRefresh() { lease_client_.TriggerASAP(); }
+
 void YSQLLeaseManager::Impl::StartTSLocalLockManager() {
   std::lock_guard l(lock_);
   StartTSLocalLockManagerUnlocked();
@@ -184,6 +204,7 @@ void YSQLLeaseManager::Impl::Shutdown() {
   if (lock_manager) {
     lock_manager->Shutdown();
   }
+  server_.object_lock_shared_state_manager()->Shutdown();
   lease_client_.Shutdown();
 }
 
@@ -278,6 +299,12 @@ std::optional<CoarseTimePoint> YSQLLeaseManager::Impl::CheckLeaseStatusInner() {
   }
   // todo(zdrudi): make this a fatal?
   LOG(INFO) << "Lease has expired, killing pg sessions.";
+  if (FLAGS_TEST_delay_ysql_lease_expiry_pg_kill_ms != 0) {
+    LOG(INFO) << "TEST: sleeping for " << FLAGS_TEST_delay_ysql_lease_expiry_pg_kill_ms
+              << "ms before killing pg sessions.";
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_ysql_lease_expiry_pg_kill_ms);
+    LOG(INFO) << "TEST: done sleeping, proceeding to kill pg sessions.";
+  }
   WARN_NOT_OK(server_.KillPg(), "Couldn't stop PG");
   return {};
 }
@@ -294,6 +321,8 @@ YSQLLeaseManager::~YSQLLeaseManager() = default;
 YSQLLeaseInfo YSQLLeaseManager::GetYSQLLeaseInfo() const { return impl_->GetYSQLLeaseInfo(); }
 
 Status YSQLLeaseManager::StartYSQLLeaseRefresher() { return impl_->StartYSQLLeaseRefresher(); }
+
+void YSQLLeaseManager::TriggerLeaseRefresh() { impl_->TriggerLeaseRefresh(); }
 
 void YSQLLeaseManager::StartTSLocalLockManager() {
   return impl_->StartTSLocalLockManager();

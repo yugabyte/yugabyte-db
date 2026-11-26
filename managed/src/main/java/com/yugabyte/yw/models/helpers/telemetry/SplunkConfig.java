@@ -4,6 +4,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -28,5 +29,10 @@ public class SplunkConfig extends TelemetryProviderConfig {
 
   public SplunkConfig() {
     setType(ProviderType.SPLUNK);
+  }
+
+  @Override
+  public List<String> secretValues() {
+    return nonEmpty(token);
   }
 }

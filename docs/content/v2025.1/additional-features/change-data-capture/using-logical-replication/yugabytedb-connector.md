@@ -45,6 +45,40 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
+## Connector compatibility
+
+The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin. Download the JAR and read the release notes on the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
+
+When installing the connector for the first time, always use the latest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version (such as v2026.1).
+
+Connector versions follow one of these schemes.
+
+Before `dz.2.5.2.yb.2026.1.2.0.1`:
+
+```output
+dz.<debezium-base>.yb.<yugabytedb-series>[.<connector-patch>]
+```
+
+Starting with `dz.2.5.2.yb.2026.1.2.0.1`:
+
+```output
+dz.<debezium-base>.yb.<yugabytedb-version>.<connector-patch>
+```
+
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.2.5.2` | Upstream Debezium release the connector is built on. |
+| `yb.<yugabytedb-series>` | `yb.2025.2` | YugabyteDB release series. Used before `dz.2.5.2.yb.2026.1.2.0.1`. |
+| `yb.<yugabytedb-version>` | `yb.2026.1.2.0` | Full four-part YugabyteDB release. Used starting with `dz.2.5.2.yb.2026.1.2.0.1`. |
+| `<connector-patch>` | `.3` | Connector patch for that series or database version. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release, appended to the release series in both schemes (for example, `dz.2.5.2.yb.2026.1.SNAPSHOT.3`). Don't use in production. |
+
+For example, `dz.2.5.2.yb.2025.2.3` is connector patch 3 for the v2025.2 series, and `dz.2.5.2.yb.2026.1.2.0.1` is connector patch 1 for YugabyteDB v2026.1.2.0. In the earlier scheme, the first release in a series has no connector patch; for example, `dz.2.5.2.yb.2025.2` was followed by `dz.2.5.2.yb.2025.2.2`.
+
+A connector release supports every YugabyteDB release in the release series it was built for, and all earlier releases, but *not later release series*. For example, connector release `dz.2.5.2.yb.2026.1.2.0.1` supports YugabyteDB v2025.2 and earlier, and every v2026.1 release (including those after v2026.1.2.0), but not v2026.2 or later.
+
+Because connectors are backward compatible with YugabyteDB releases, you don't need to match the connector to the database release; use the latest stable connector release regardless of the YugabyteDB version you are running. If a connector release for a particular YugabyteDB version is not available, use the latest released connector.
+
 ## How the connector works
 
 To optimally configure and run a Debezium connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -1406,7 +1440,7 @@ See `slot.name` and `publication.name` on how to set a unique replication slot n
 
 ## Deployment
 
-To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
+To deploy the connector, you install the connector JAR, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
 **Prerequisites**
 
@@ -1415,10 +1449,9 @@ To deploy the connector, you install the connector archive, configure the connec
 
 **Procedure**
 
-1. Download the latest [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/).
-2. Extract the files into your Kafka Connect environment.
-3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
-4. Restart your Kafka Connect process to pick up the new JAR files.
+1. Download the latest connector JAR (`yugabytedb-source-connector-<version>-jar-with-dependencies.jar`) from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
+2. Copy the JAR into a directory on the Kafka Connect [plugin.path](https://kafka.apache.org/documentation/#connectconfigs).
+3. Restart your Kafka Connect process to pick up the new JAR.
 
 {{< note title="Note" >}}
 

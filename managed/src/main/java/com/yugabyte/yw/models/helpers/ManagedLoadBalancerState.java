@@ -1,0 +1,51 @@
+// Copyright (c) YugabyteDB, Inc.
+
+package com.yugabyte.yw.models.helpers;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import lombok.Data;
+
+/**
+ * The load balancers that YBA created or took over for a universe. A subtask records a load
+ * balancer before the cloud call and removes it after the cloud delete, so the list names every
+ * load balancer that may exist. An entry can outlive its cluster: a force delete of a read replica
+ * whose cloud delete failed leaves it for the next edit or the universe destroy to delete.
+ */
+@Data
+public class ManagedLoadBalancerState {
+
+  private List<ManagedLoadBalancer> loadBalancers = new ArrayList<>();
+
+  // Node name -> lower-cased load balancer names in the client cert its tserver runs. Here, not on
+  // NodeDetails: an edit saves the nodes its request sent. Gone with the last load balancer, when
+  // every cert is stale for the next one anyway.
+  private Map<String, Set<String>> certNames = new HashMap<>();
+
+  public Optional<ManagedLoadBalancer> find(UUID clusterUuid, UUID regionUuid, String name) {
+    return loadBalancers.stream()
+        .filter(lb -> lb.matches(clusterUuid, regionUuid, name))
+        .findFirst();
+  }
+
+  /** Adds the load balancer, or replaces the one with the same cluster, region and name. */
+  public void put(ManagedLoadBalancer lb) {
+    remove(lb.getClusterUuid(), lb.getRegionUuid(), lb.getName());
+    loadBalancers.add(lb);
+  }
+
+  public void remove(UUID clusterUuid, UUID regionUuid, String name) {
+    loadBalancers.removeIf(lb -> lb.matches(clusterUuid, regionUuid, name));
+  }
+
+  @JsonIgnore
+  public boolean isEmpty() {
+    return loadBalancers.isEmpty();
+  }
+}

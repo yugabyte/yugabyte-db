@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement, useLayoutEffect } from 'react';
+import { ChangeEvent, ReactElement, useEffect, useMemo } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +8,8 @@ import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/ut
 import {
   sortAndGroup,
   getDefaultInstanceType,
-  useGetZones
+  useGetZones,
+  mergeDeviceInfoPreservingStorage
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
@@ -90,17 +91,21 @@ export const InstanceTypeField = ({
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
+      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones,
+      refetchOnWindowFocus: false
     }
   );
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!data?.length || !provider?.code) return;
 
     const instanceExists = (code: string | null | undefined) =>
       !!code && !!data.find((instance) => instance.instanceTypeCode === code);
 
     const currentInstanceType = getValues(UPDATE_FIELD);
+
+    // In edit mode, allow a cleared value — do not autofill it back.
+    if (isEditMode && !currentInstanceType) return;
 
     if (!instanceExists(currentInstanceType)) {
       const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
@@ -111,9 +116,16 @@ export const InstanceTypeField = ({
       setValue(UPDATE_FIELD, code);
       const option = data.find((i) => i.instanceTypeCode === code);
       if (option) {
+        const fromInstance = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
+          isEditMode
+            ? mergeDeviceInfoPreservingStorage(
+                fromInstance,
+                getValues(UPDATE_DEVICE_INFO_FIELD),
+                option
+              )
+            : fromInstance
         );
       }
     } else if (!isEditMode && !getValues(UPDATE_DEVICE_INFO_FIELD)) {
@@ -136,12 +148,26 @@ export const InstanceTypeField = ({
     isEditMode
   ]);
 
-  const instanceTypes = sortAndGroup(data, provider?.code);
+  const instanceTypes = useMemo(() => sortAndGroup(data, provider?.code), [data, provider?.code]);
 
-  const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
-    const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
-    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo);
+  const handleChange = (_e: ChangeEvent<{}>, option: InstanceType | null) => {
+    if (!option) {
+      setValue(UPDATE_FIELD, null, { shouldValidate: true });
+      setValue(UPDATE_DEVICE_INFO_FIELD, null);
+      return;
+    }
+    setValue(UPDATE_FIELD, option.instanceTypeCode, { shouldValidate: true });
+    const fromInstance = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
+    setValue(
+      UPDATE_DEVICE_INFO_FIELD,
+      isEditMode
+        ? mergeDeviceInfoPreservingStorage(
+            fromInstance,
+            getValues(UPDATE_DEVICE_INFO_FIELD),
+            option
+          )
+        : fromInstance
+    );
   };
 
   return (
@@ -151,7 +177,7 @@ export const InstanceTypeField = ({
       render={({ field, fieldState }) => {
         const value =
           instanceTypes.find((i: InstanceTypeWithGroup) => i.instanceTypeCode === field.value) ??
-          '';
+          null;
 
         return (
           <Box
@@ -168,6 +194,10 @@ export const InstanceTypeField = ({
                 options={instanceTypes as unknown as Record<string, string>[]}
                 getOptionLabel={getOptionLabel}
                 renderOption={renderOption}
+                isOptionEqualToValue={(option, val) =>
+                  option?.instanceTypeCode === val?.instanceTypeCode
+                }
+                filterSelectedOptions={false}
                 onChange={handleChange}
                 ybInputProps={{
                   error: !!fieldState.error,

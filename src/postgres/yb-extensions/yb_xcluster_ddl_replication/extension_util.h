@@ -24,10 +24,6 @@
 #include "tcop/deparse_utility.h"
 #include "utils/memutils.h"
 
-#define EXTENSION_NAME			   "yb_xcluster_ddl_replication"
-#define DDL_QUEUE_TABLE_NAME	   "ddl_queue"
-#define REPLICATED_DDLS_TABLE_NAME "replicated_ddls"
-
 #define INIT_MEM_CONTEXT_AND_SPI_CONNECT(desc) \
 	do \
 	{ \
@@ -93,11 +89,25 @@ extern bool IsTemporaryTrigger(Oid trigger_oid);
 
 extern bool IsTemporaryRule(Oid rule_oid);
 
+/*
+ * Whether a CREATE TABLE AS / SELECT INTO reads any temporary relation
+ * (also includes temp views, subqueries or CTEs).  False for other commands.
+ */
+extern bool CreateTableAsUsesTempRelation(CollectedCommand *cmd);
+
 /* Returns the relation's colocation id or InvalidOid (0) if not colocated. */
 extern Oid	GetColocationIdFromRelation(Relation *rel, bool is_table_rewrite);
 
 extern char *get_typname(Oid pg_type_oid);
 
 extern bool IsExtensionDdl(CommandTag command_tag);
+
+/*
+ * Returns whether an ANALYZE of this relation is worth telling the target
+ * about. Temporary relations, system catalogs, information_schema, the
+ * extension's own tables, and any relkind other than RELKIND_RELATION /
+ * RELKIND_MATVIEW / RELKIND_PARTITIONED_TABLE are skipped.
+ */
+extern bool ShouldReplicateAnalyzedRelation(Oid relid);
 
 #endif

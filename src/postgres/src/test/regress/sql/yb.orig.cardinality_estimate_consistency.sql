@@ -15,16 +15,24 @@ set enable_bitmapscan = on;
 --
 set enable_seqscan = off;
 
+-- Keep the baseline serial: yb_enable_cbo = on dynamically raises
+-- yb_parallel_range_rows.
+set yb_parallel_range_rows = 0;
+
 drop function if exists non_pushable cascade;
 
+-- parallel safe: plpgsql functions are parallel unsafe by default, which
+-- would keep the queries using it from having parallel plans.
 create function non_pushable(v bigint)
 returns bigint
-language plpgsql immutable as
+language plpgsql immutable parallel safe as
 $$
 begin
   return v + 1;
 end;
 $$;
+
+drop view if exists index_scan_estimates cascade;
 
 drop table if exists queries;
 
@@ -81,7 +89,24 @@ insert into queries values
         select b from r where b <= 500 and b % 100 <= 33$$),
 
     (DEFAULT, $$/*+ BitmapScan(r) */
-        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$)
+        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+
+    -- a has 10 rows per value (i_r_a).  A distinct index scan returns one row
+    -- per group, so at every stage its estimate should be one tenth of the
+    -- plain scan's over the same predicates: the index condition on groups,
+    -- the storage filter on the prefix column passing or failing whole
+    -- groups, the local filter on the output.
+    (DEFAULT, $$select a from r where a <= 500$$),
+
+    (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33$$),
+
+    (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$),
+
+    (DEFAULT, $$select distinct a from r where a <= 500$$),
+
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33$$),
+
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$)
 ;
 
 drop type if exists index_plan_rows cascade;
@@ -94,12 +119,62 @@ create type index_plan_rows as (
     "Storage Filter" text,
     "Filter" text,
     "Plan Rows" bigint,
-    "Total Cost" float8
+    "Total Cost" float8,
+    "Parallel Aware" boolean
 );
 
 
 select * from queries order by qid;
 
+-- Index Scan node estimates from each query's plan under the current
+-- settings.  workers = Gather's "Workers Planned", or 0 in a serial plan.
+create view index_scan_estimates as
+select
+    qid,
+    row_number() over (partition by qid) nid,
+    "Node Type",
+    "Index Name",
+    "Index Cond",
+    coalesce("Storage Index Filter", "Storage Filter") as "Index Filter",
+    "Filter",
+    "Plan Rows",
+    "Total Cost",
+    "Parallel Aware",
+    coalesce(
+        (jsonb_path_query_first(
+            js.explain_line::jsonb,
+            'strict $.** ? (@."Node Type" == "Gather" || @."Node Type" == "Gather Merge")'
+        ) ->> 'Workers Planned')::int,
+        0) workers
+from
+  queries,
+  lateral explain_query_json(query) js,
+  lateral jsonb_path_query(
+    js.explain_line::jsonb,
+    'strict $.** ? (@."Node Type" like_regex "Index.* Scan")'
+  ) pln,
+  lateral jsonb_populate_record(null::index_plan_rows, pln) rec;
+
+drop table if exists serial_scan_estimates;
+
+create table serial_scan_estimates as
+select * from index_scan_estimates;
+
+-- Repeat with parallel plans forced.  yb_test_force_parallel overrides the
+-- cost-based plan choice and the scan method hints.
+set yb_test_force_parallel = force;
+set max_parallel_workers_per_gather = 2;
+
+drop table if exists parallel_scan_estimates;
+
+create table parallel_scan_estimates as
+select * from index_scan_estimates;
+
+reset max_parallel_workers_per_gather;
+reset yb_test_force_parallel;
+reset yb_parallel_range_rows;
+
+-- Row count estimate consistency between the equivalent serial scans.
 select
     "Index Cond",
     "Index Filter",
@@ -116,26 +191,7 @@ select
     "Index Name",
     qid,
     nid
-from (
-    select
-        qid,
-        row_number() over (partition by qid) nid,
-        "Node Type",
-        "Index Name",
-        "Index Cond",
-        coalesce("Storage Index Filter", "Storage Filter") as "Index Filter",
-        "Filter",
-        "Plan Rows",
-        "Total Cost"
-    from
-      queries,
-      lateral explain_query_json(query) js,
-      lateral jsonb_path_query(
-        js.explain_line::jsonb,
-        'strict $.** ? (@."Node Type" like_regex "Index.* Scan")'
-      ) pln,
-      lateral jsonb_populate_record(null::index_plan_rows, pln) rec
-) v
+from serial_scan_estimates
 order by
     regexp_replace("Index Cond", 'pk', 'b'),
     regexp_replace("Index Filter", 'pk', 'b'),
@@ -147,7 +203,48 @@ order by
     qid,
     nid;
 
+-- Parallel scan shapes; also guards the comparison below from passing
+-- vacuously.
+select "Node Type", "Index Name", workers, count(*) scans
+from parallel_scan_estimates
+where "Parallel Aware"
+group by "Node Type", "Index Name", workers
+order by "Node Type", "Index Name", workers;
 
+-- Parallel scan row estimates should be the serial estimates divided by the
+-- parallel divisor per get_parallel_divisor(), allowing 1 row of slack for
+-- rounding.  Only the scans that kept their serial plan shape are
+-- comparable.  Expect no rows.
+select
+    s."Index Cond",
+    s."Index Filter",
+    s."Filter",
+    "Node Type",
+    "Index Name",
+    s."Plan Rows" serial_rows,
+    p.workers,
+    p."Plan Rows" parallel_rows,
+    round(s."Plan Rows" / d.divisor) expected_rows,
+    qid,
+    nid
+from
+    serial_scan_estimates s
+    join parallel_scan_estimates p
+        using (qid, nid, "Node Type", "Index Name"),
+    lateral (
+        select case
+                   when p."Parallel Aware"
+                       then p.workers + greatest(0, 1 - 0.3 * p.workers)
+                   else 1
+               end::numeric divisor
+    ) d
+where abs(p."Plan Rows" - round(s."Plan Rows" / d.divisor)) > 1
+order by qid, nid;
+
+
+drop view index_scan_estimates;
+drop table serial_scan_estimates;
+drop table parallel_scan_estimates;
 drop function non_pushable cascade;
 drop type index_plan_rows cascade;
 drop table queries;

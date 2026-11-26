@@ -11,6 +11,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -108,6 +109,20 @@ public class StorageConfigReconcilerTest extends FakeDBApplication {
     spec.setAzureStorageSasTokenSecret(secretRef);
     sc.setSpec(spec);
     return sc;
+  }
+
+  @Test
+  public void testGetConfigPayloadIncludesImmutableStorage() {
+    StorageConfig sc = createStorageConfigCr("immutable-storage-config");
+    Data data = new Data();
+    data.setBACKUP_LOCATION("s3://test-bucket/backups");
+    data.setIMMUTABLE_STORAGE(true);
+    sc.getSpec().setData(data);
+
+    JsonNode payload = storageConfigReconciler.getConfigPayloadFromCRD(sc, UUID.randomUUID());
+
+    assertTrue(payload.get("IMMUTABLE_STORAGE").asBoolean());
+    assertEquals("s3://test-bucket/backups", payload.get("BACKUP_LOCATION").asText());
   }
 
   @Test
@@ -279,5 +294,84 @@ public class StorageConfigReconcilerTest extends FakeDBApplication {
     assertTrue(
         "All OperatorResource entries (storage config + orphaned secret) should be removed",
         OperatorResource.getAll().isEmpty());
+  }
+
+  /** Returns the tracked resource details for {@code name}, or null when it is not tracked. */
+  private KubernetesResourceDetails trackedDetails(String name) {
+    return storageConfigReconciler.getResourceTracker().getResourceDependencies().keySet().stream()
+        .filter(d -> name.equals(d.name))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** Builds a Kubernetes Secret with the given name and namespace. */
+  private Secret createSecret(String name, String namespace) {
+    Secret secret = new Secret();
+    ObjectMeta secretMeta = new ObjectMeta();
+    secretMeta.setName(name);
+    secretMeta.setNamespace(namespace);
+    secret.setMetadata(secretMeta);
+    return secret;
+  }
+
+  /** Builds a StorageConfig CR with an Azure secret ref and an already set status resource UUID. */
+  private StorageConfig createInitializedStorageConfigCrWithAzureSecret(
+      String name, String secretName) {
+    StorageConfig sc = createStorageConfigCrWithAzureSecret(name, secretName, NAMESPACE);
+    StorageConfigStatus status = new StorageConfigStatus();
+    status.setResourceUUID(UUID.randomUUID().toString());
+    sc.setStatus(status);
+    return sc;
+  }
+
+  @Test
+  public void testOnUpdateWithAzureSecretTracksSecretAfterOnAddEarlyReturn() throws Exception {
+    String configName = "azure-storage-config-update";
+    String secretName = "azure-sas-token-secret-update";
+    doReturn(UUID.randomUUID().toString()).when(operatorUtils).getCustomerUUID();
+    Secret secret = createSecret(secretName, NAMESPACE);
+    when(operatorUtils.getSecret(eq(secretName), eq(NAMESPACE))).thenReturn(secret);
+    doThrow(new RuntimeException("mock - skip edit")).when(ccs).getOrBadRequest(any(), any());
+
+    StorageConfig sc = createInitializedStorageConfigCrWithAzureSecret(configName, secretName);
+
+    // A YBA restart replays onAdd for the already initialized config, which returns early.
+    storageConfigReconciler.onAdd(sc);
+    storageConfigReconciler.onUpdate(sc, sc);
+
+    KubernetesResourceDetails scDetails = trackedDetails(configName);
+    assertTrue("Storage config should be tracked after the update", scDetails != null);
+    assertEquals(
+        "Secret should be tracked as a dependency of the updated storage config",
+        1,
+        storageConfigReconciler.getResourceTracker().getDependencies(scDetails).size());
+  }
+
+  @Test
+  public void testOnUpdateTracksSecretAgainstUpdatedConfigNotLastAddedOne() throws Exception {
+    String addedConfigName = "storage-config-added";
+    String updatedConfigName = "storage-config-updated";
+    String secretName = "azure-sas-token-secret-multi";
+
+    // getCustomerUUID throws (see setup), so this add only tracks the resource.
+    storageConfigReconciler.onAdd(createStorageConfigCr(addedConfigName));
+
+    doReturn(UUID.randomUUID().toString()).when(operatorUtils).getCustomerUUID();
+    Secret secret = createSecret(secretName, NAMESPACE);
+    when(operatorUtils.getSecret(eq(secretName), eq(NAMESPACE))).thenReturn(secret);
+    doThrow(new RuntimeException("mock - skip edit")).when(ccs).getOrBadRequest(any(), any());
+
+    storageConfigReconciler.onUpdate(
+        createInitializedStorageConfigCrWithAzureSecret(updatedConfigName, secretName),
+        createInitializedStorageConfigCrWithAzureSecret(updatedConfigName, secretName));
+
+    ResourceTracker tracker = storageConfigReconciler.getResourceTracker();
+    assertEquals(
+        "Secret should be a dependency of the config being updated",
+        1,
+        tracker.getDependencies(trackedDetails(updatedConfigName)).size());
+    assertTrue(
+        "Secret should not be attributed to the previously added config",
+        tracker.getDependencies(trackedDetails(addedConfigName)).isEmpty());
   }
 }

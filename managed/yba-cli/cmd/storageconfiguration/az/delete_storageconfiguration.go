@@ -7,6 +7,7 @@ package azure
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // deleteAZStorageConfigurationCmd represents the storage command
@@ -20,7 +21,8 @@ var deleteAZStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DeleteStorageConfigurationUtil(cmd, "Azure")
+		storageconfigurationutil.DeleteStorageConfigurationUtil(
+			cmd, "Azure", util.AzureStorageConfigType)
 	},
 }
 

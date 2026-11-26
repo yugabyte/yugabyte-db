@@ -13,6 +13,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -61,6 +62,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/tablet/tablet_types.pb.h"
@@ -97,6 +99,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);
@@ -127,6 +130,7 @@ DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
+DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_ht_delta);
 DECLARE_bool(cdcsdk_enable_dynamic_table_support);
 DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
 DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
@@ -171,6 +175,8 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
+DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 
@@ -186,6 +192,8 @@ namespace cdc {
 
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
+YB_STRONGLY_TYPED_BOOL(RetryInit);
+YB_STRONGLY_TYPED_BOOL(TransactionalDdl);
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
@@ -241,6 +249,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
     bool has_publication_refresh_indicator = false;
+    std::map<std::string, CDCSDKAbortedSubtxnsPB> aborted_subtxns;
   };
 
   Result<string> GetUniverseId(PostgresMiniCluster* cluster);
@@ -456,7 +465,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<int64> GetChangeRecordCount(
       const xrepl::StreamId& stream_id, const YBTableName& table,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+      std::map<TabletId, CDCSDKCheckpointPB>& tablet_to_checkpoint,
       const int64 expected_total_records, bool explicit_checkpointing_enabled = false,
       std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records = {});
 
@@ -516,6 +525,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
 
+  void CheckTextTuple(
+      const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+      const std::optional<std::string>& value);
+
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
       uint32_t* count, uint32_t num_cols);
@@ -562,7 +575,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint64_t session_id = kVWALSessionId1,
       const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
       bool include_oid_to_relfilenode = false,
-      int timeout = kRpcTimeout);
+      int timeout = kRpcTimeout,
+      const std::vector<uint32_t>& publication_oids = {},
+      bool pub_all_tables = false,
+      RetryInit retry = RetryInit::kTrue);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -590,7 +606,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
-      int wal_segment_index = 0);
+      int wal_segment_index = 0,
+      int expected_records_count = 0);
 
   Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
       const xrepl::StreamId& stream_id,
@@ -619,7 +636,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false);
+      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false,
+      int timeout = kRpcTimeout);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -711,6 +729,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void WaitUntilSplitIsSuccesful(
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
+
+  void WaitUntilPeerLeaderState(
+      const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description);
 
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,
@@ -831,13 +852,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void AssertSafeTimeAsExpectedInTabletPeersForConsistentSnapshot(
       const TabletId& tablet_id, const HybridTime expected_safe_time);
 
+  // The default timeout must exceed FLAGS_transaction_resend_applying_interval_usec (5s): a
+  // committed txn whose apply notification was dropped pins the consistent stream safe time, and
+  // GetChanges streams nothing until the coordinator resends.
   Status WaitForGetChangesToFetchRecords(
       GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int& expected_count, bool is_explicit_checkpoint = false,
       const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
       const int64& safe_hybrid_time = -1, const int& wal_segment_index = 0,
-      const double& timeout_secs = 5);
+      const double& timeout_secs = 30);
 
   Status WaitForGetChangesToFetchRecordsAcrossTablets(
       const xrepl::StreamId& stream_id,
@@ -856,6 +880,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                             const tablet::TabletPeerPtr& tablet_peer);
 
   void LogRetentionBarrierDetails(const tablet::TabletPeerPtr& tablet_peer);
+
+  // If 'expected', waits until every peer of the table's tablets has CDCSDK retention barriers.
+  // Otherwise asserts that no peer has them.
+  void VerifyCDCSDKRetentionBarriers(const TableId& table_id, bool expected);
 
   void ConsumeSnapshotAndVerifyRecords(
       const xrepl::StreamId& stream_id,
@@ -919,11 +947,29 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status ExecuteYBAdminCommand(
       const std::string& command_name, const std::vector<string>& command_args);
 
+  Result<std::string> ExecuteYBAdminCommand(
+      const std::string& master_addresses, const std::string& command_name,
+      const std::vector<string>& command_args);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(const xrepl::StreamId& stream_id);
 
   void TestDisableOfDynamicTableAdditionOnCDCStream(bool use_consistent_snapshot_stream);
 
   Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
+
+  Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
+      const std::string& master_addresses, const std::string& slot_name);
+
+  // Creates a slot that detects publication changes through publication refresh, as on a
+  // release without implicit detection.
+  Result<xrepl::StreamId> CreatePubRefreshSlot(const std::string& slot_name);
+
+  // Inserts key, sets the catalog barrier with the consumer stopped, optionally inserts
+  // key_after_barrier once the barrier time has passed, and then streams and acknowledges until the
+  // slot pauses. Returns the records streamed.
+  Result<std::vector<CDCSDKProtoRecordPB>> SetBarrierAndPause(
+      const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
+      pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier = std::nullopt);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 
@@ -931,6 +977,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
       bool use_consistent_snapshot_stream);
+
+  Result<std::string> CleanupStaleCDCStreams(bool dry_run);
 
   void TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 
@@ -945,6 +993,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestXClusterTablesNotAddedToStream(
       bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation);
+
+  void TestPublicationsBoundStreamsAcrossMasterRestart(
+      bool bind_to_all_tables_pub, const std::string& output_plugin_name);
 
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
@@ -964,6 +1015,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestSchemaPackingNotFoundForConcurrentDDLAndDML(bool multiple_responses);
 
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);

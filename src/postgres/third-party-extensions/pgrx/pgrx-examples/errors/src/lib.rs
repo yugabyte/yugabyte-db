@@ -10,7 +10,7 @@
 use pgrx::prelude::*;
 use pgrx::{error, info, warning, PgRelation, FATAL, PANIC};
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[pg_extern]
 fn array_with_null_and_panic(input: Vec<Option<i32>>) -> i64 {

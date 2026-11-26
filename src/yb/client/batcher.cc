@@ -62,6 +62,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pgsql_utils.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -97,11 +98,14 @@ DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing p
 
 DEFINE_RUNTIME_AUTO_bool(enable_write_pipelining_infra, kLocalVolatile, false, true,
     "Enable the infrastructure required for write pipelining. Pipelined writes are sent with "
-    "use_async_write set and awaited with the WaitForAsyncWrite RPC.");
+    "use_async_write set and awaited with the WaitForAsyncWrite RPC. Picked once per "
+    "transaction, so a change does not affect transactions already in progress.");
 
 DEFINE_RUNTIME_bool(ysql_enable_write_pipelining, true,
     "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
-    "write statements in a transaction are executed concurrently, reducing overall latency.");
+    "write statements in a transaction are executed concurrently, reducing overall latency. "
+    "Picked once per transaction, so a change does not affect transactions already in "
+    "progress.");
 
 using std::pair;
 using std::shared_ptr;
@@ -123,10 +127,10 @@ namespace {
 
 const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTServersMsg);
 
-bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
+bool UseAsyncWrites(YBTableType table_type, const YBTransaction* transaction) {
   // Use async writes for transactional writes in YSQL.
-  return FLAGS_enable_write_pipelining_infra && FLAGS_ysql_enable_write_pipelining &&
-         table_type == YBTableType::PGSQL_TABLE_TYPE && !txn_id.IsNil();
+  return table_type == YBTableType::PGSQL_TABLE_TYPE && transaction &&
+         transaction->UseAsyncWrites();
 }
 
 bool OpSkipIntents(const YBOperation& op) {
@@ -144,6 +148,42 @@ bool OpSkipIntents(const YBOperation& op) {
   }
   LOG(FATAL) << "Internal error: unknown operation: " << op.type();
   return false;
+}
+
+bool OpReadAtInTxnLimit(const YBOperation& op) {
+  switch (op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return ReadAtInTxnLimit(down_cast<const YBPgsqlReadOp&>(op).request());
+    case YBOperation::Type::PGSQL_WRITE:
+      return ReadAtInTxnLimit(down_cast<const YBPgsqlWriteOp&>(op).request());
+    case YBOperation::Type::QL_READ:     [[fallthrough]];
+    case YBOperation::Type::QL_WRITE:    [[fallthrough]];
+    case YBOperation::Type::REDIS_READ:  [[fallthrough]];
+    case YBOperation::Type::REDIS_WRITE: [[fallthrough]];
+    case YBOperation::Type::PGSQL_LOCK:
+      return false;
+  }
+  LOG(FATAL) << "Internal error: unknown operation: " << op.type();
+  return false;
+}
+
+bool OpForceSnapshotRead(const YBOperation& op) {
+  return op.type() == YBOperation::Type::PGSQL_READ &&
+         down_cast<const YBPgsqlReadOp&>(op).force_snapshot_read();
+}
+
+// For per-RPC flags. Unlike skip_intents, which decides Batcher::transaction() and so must agree
+// across every op in the batcher, these shape the request of one RPC, which all ops of a group
+// share, so the ops must agree. Checked below rather than assumed.
+Result<bool> GroupAgreesOn(
+    const InFlightOpsGroup& group, bool (*pred)(const YBOperation&), const char* name) {
+  const auto result = pred(*group.begin->yb_op);
+  for (auto it = group.begin; it != group.end; ++it) {
+    RSTATUS_DCHECK_EQ(
+        pred(*it->yb_op), result, IllegalState,
+        Format("Ops of one group disagree on $0: $1", name, group.ToString()));
+  }
+  return result;
 }
 
 }  // namespace
@@ -427,10 +467,10 @@ void Batcher::TransactionReady(ash::WaitStateInfoPtr wait_state, const Status& s
   }
 }
 
-std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+std::pair<std::map<PartitionKey, Status>, std::map<internal::RequestIdAllocation, Status>>
     Batcher::CollectOpsErrors() {
   std::map<PartitionKey, Status> errors_by_partition_key;
-  std::map<RetryableRequestId, Status> errors_by_request_id;
+  std::map<internal::RequestIdAllocation, Status> errors_by_request;
   for (auto& op : ops_queue_) {
     if (op.tablet) {
       const auto& partition = op.tablet->partition();
@@ -470,16 +510,16 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
 
     if (!op.error.ok()) {
       errors_by_partition_key.emplace(op.partition_key, op.error);
-      // Write operations under retrying with the retry batcher should have a valid request_id
-      // for de-duplication at server side. All operations in this batcher having same request
-      // id should be executed by a single WriteRpc.
-      if (op.yb_op->request_id().has_value()) {
-        errors_by_request_id.emplace(*op.yb_op->request_id(), op.error);
+      // Write operations under retrying with the retry batcher carry the retryable request for
+      // de-duplication at server side. All operations in this batcher sharing a request should
+      // be executed by a single WriteRpc.
+      if (op.yb_op->retryable_request()) {
+        errors_by_request.emplace(op.yb_op->retryable_request(), op.error);
       }
     }
   }
 
-  return std::make_pair(errors_by_partition_key, errors_by_request_id);
+  return std::make_pair(errors_by_partition_key, errors_by_request);
 }
 
 void Batcher::AllLookupsDone() {
@@ -497,7 +537,7 @@ void Batcher::AllLookupsDone() {
 
   auto errors_pair = CollectOpsErrors();
   const auto& errors_by_partition_key = errors_pair.first;
-  const auto& errors_by_request_id = errors_pair.second;
+  const auto& errors_by_request = errors_pair.second;
 
   state_ = BatcherState::kTransactionPrepare;
 
@@ -509,19 +549,19 @@ void Batcher::AllLookupsDone() {
     // If some operation tablet lookup failed - set this error for all operations designated for
     // the same partition key. We are doing this to keep guarantee on the order of ops for the
     // same partition key (see InFlightOp::sequence_number_).
-    // Also set this error for all operations with same request id. This happens when retrying
-    // a batcher, we do this to avoid the request id is marked as replicated at server side
-    // before all operations with this request id are all done.
-    EraseIf([this, &errors_by_partition_key, &errors_by_request_id](auto& op) {
+    // Also set this error for all operations with the same retryable request. This happens when
+    // retrying a batcher, we do this to avoid the request id is marked as replicated at server
+    // side before all operations with this request id are all done.
+    EraseIf([this, &errors_by_partition_key, &errors_by_request](auto& op) {
       if (op.error.ok()) {
         const auto lookup_error_it = errors_by_partition_key.find(op.partition_key);
         if (lookup_error_it != errors_by_partition_key.end()) {
           op.error = lookup_error_it->second;
-        } else if (op.yb_op->request_id().has_value()) {
-          const auto lookup_error_by_request_id_it =
-              errors_by_request_id.find(*op.yb_op->request_id());
-          if (lookup_error_by_request_id_it != errors_by_request_id.end()) {
-            op.error = lookup_error_by_request_id_it->second;
+        } else if (op.yb_op->retryable_request()) {
+          const auto lookup_error_by_request_it =
+              errors_by_request.find(op.yb_op->retryable_request());
+          if (lookup_error_by_request_it != errors_by_request.end()) {
+            op.error = lookup_error_by_request_it->second;
           }
         }
       }
@@ -680,31 +720,28 @@ const std::string& Batcher::proxy_uuid() const {
   return client_->proxy_uuid();
 }
 
-const ClientId& Batcher::client_id() const {
-  return client_->id();
-}
-
 server::Clock* Batcher::Clock() const {
   return client_->Clock();
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
+RequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
   return client_->NextRequestIdAndMinRunningRequestId();
 }
 
 void Batcher::RequestsFinished() {
-  client_->RequestsFinished(retryable_requests_ | boost::adaptors::map_keys);
+  for (const auto& request : retryable_requests_) {
+    request.allocator->Finish(request.id);
+  }
 }
 
-void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {
-  auto it = other->retryable_requests_.find(id);
+void Batcher::MoveRequestFrom(const BatcherPtr& other, const RequestIdAllocation& request) {
+  auto it = other->retryable_requests_.find(request);
   if (it == other->retryable_requests_.end()) {
-    // The request id has been moved.
-    DCHECK(retryable_requests_.contains(id));
+    // Moved with another op of the same RPC.
+    DCHECK(retryable_requests_.contains(request));
     return;
   }
-  retryable_requests_.insert(std::move(*it));
-  other->retryable_requests_.erase(it);
+  retryable_requests_.insert(other->retryable_requests_.extract(it));
 }
 
 Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
@@ -730,6 +767,13 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
     .skip_intents = SkipIntents(),
+    // Set per relation and never on colocated ones, so the ops of a group agree.
+    .read_at_in_txn_limit =
+        VERIFY_RESULT(GroupAgreesOn(group, OpReadAtInTxnLimit, "read_at_in_txn_limit")),
+    // On the sys catalog tablet, a SERIALIZABLE transaction's forced snapshot reads and row-marked
+    // reads must come in separate flushes.
+    .force_snapshot_read =
+        VERIFY_RESULT(GroupAgreesOn(group, OpForceSnapshotRead, "force_snapshot_read")),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata
@@ -738,9 +782,9 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
   if (transaction) {
-    data.pending_async_write_op_id = VERIFY_RESULT(
-        transaction->GetAsyncWriteOpIdForReadCheck(tablet_id));
-    if (data.pending_async_write_op_id.valid()) {
+    data.pending_async_write_op_ids =
+        VERIFY_RESULT(transaction->GetAsyncWriteOpIdsForReadCheck(tablet_id));
+    if (!data.pending_async_write_op_ids.empty()) {
       data.need_metadata = true;
     }
   }
@@ -750,13 +794,11 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     case OpGroup::kWrite: [[fallthrough]];
     case OpGroup::kLock: [[fallthrough]];
     case OpGroup::kUnlock: {
-      data.use_async_write = UseAsyncWrites(
-          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      data.use_async_write = UseAsyncWrites(first_op->table()->table_type(), transaction.get());
       return std::make_shared<WriteRpc>(data, pool_tag_);
     }
     case OpGroup::kLeaderRead: {
-      data.use_async_write = UseAsyncWrites(
-          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      data.use_async_write = UseAsyncWrites(first_op->table()->table_type(), transaction.get());
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG, pool_tag_);
     }
     case OpGroup::kConsistentPrefixRead:
@@ -796,8 +838,25 @@ void Batcher::Flushed(
   }
 
   if (--outstanding_rpcs_ == 0) {
+    // A failed operation aborts the transaction, so its siblings could fail with a kAborted error,
+    // which outranks the original failure. Restore the original failure for such operations.
+    const auto flush_abort_cause =
+        transaction ? transaction->batcher_if().FlushAbortCause() : Status::OK();
+    const auto is_aborted_by_flush = [flush_aborted = !flush_abort_cause.ok()](
+        const InFlightOp& op) {
+      return flush_aborted && TransactionError(op.error).value() == TransactionErrorCode::kAborted;
+    };
+    // Restored errors go last, so the first error with the abort cause comes from an RPC that
+    // actually failed: the tserver reports the relation of the first kConflict error to YSQL.
+    // Ops sharing that RPC (e.g. colocated tables) all get its error and can't be told apart here.
     for (auto& op : ops_queue_) {
-      if (!op.error.ok()) {
+      if (!op.error.ok() && !is_aborted_by_flush(op)) {
+        CombineError(op);
+      }
+    }
+    for (auto& op : ops_queue_) {
+      if (!op.error.ok() && is_aborted_by_flush(op)) {
+        op.error = flush_abort_cause;
         CombineError(op);
       }
     }
@@ -859,6 +918,10 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     }
   }
 
+  if (!rpc.HasResponse()) {
+    return;
+  }
+
   // Check individual row errors.
   for (const auto& err_pb : rpc.resp().per_row_errors()) {
     // TODO: handle case where we get one of the more specific TS errors
@@ -907,14 +970,15 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
                                     const CollectedErrors& errors) {
   SetDeadline(failed_batcher->deadline());
   SetRpcStartTime(failed_batcher->rpcs_start_time_micros());
+  SetBuffersHolder(std::move(failed_batcher->buffers_holder_));
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
                       << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
-    // Transmit failed request id to retry_batcher.
-    if (op->request_id()) {
-      MoveRequestDetailsFrom(failed_batcher, *op->request_id());
+    // The retry batcher takes the request over, so that the failed one does not finish it.
+    if (op->retryable_request()) {
+      MoveRequestFrom(failed_batcher, op->retryable_request());
     }
     Add(op);
   }

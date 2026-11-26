@@ -16,7 +16,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.ha.PlatformInstanceClient.FipsModeMismatchException;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
@@ -56,6 +58,8 @@ public class PlatformInstanceController extends AuthenticatedController {
   @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @Inject CustomerTaskManager taskManager;
+
+  @Inject private PACollectorSync paCollectorSync;
 
   @ApiOperation(
       notes = "Available since YBA version 2.20.0.",
@@ -292,6 +296,8 @@ public class PlatformInstanceController extends AuthenticatedController {
             boolean succeeded = false;
             try {
               succeeded = replicationManager.validateRemoteBackup(config, leader, backup.getName());
+            } catch (FipsModeMismatchException e) {
+              throw e;
             } catch (Exception e) {
               log.error("Connection test to the current leader {} failed", leader, e);
               throw new PlatformServiceException(
@@ -346,6 +352,11 @@ public class PlatformInstanceController extends AuthenticatedController {
           }
           return null;
         });
+    // The restored DB still carries the old leader's PA registration - its YBA URL, its
+    // Prometheus URL and collection_enabled=false for this instance. Kicked off here rather than
+    // from inside the promotion, which must not be failable by an external call to a service that
+    // calls back into YBA.
+    paCollectorSync.syncNow();
     auditService()
         .createAuditEntry(
             request,

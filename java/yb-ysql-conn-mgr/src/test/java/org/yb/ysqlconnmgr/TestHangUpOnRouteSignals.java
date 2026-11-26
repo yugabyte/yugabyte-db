@@ -194,7 +194,15 @@ public class TestHangUpOnRouteSignals extends BaseYsqlConnMgr {
         Connection[] idleConns = new Connection[IDLE_BACKEND_COUNT];
 
         try {
-            // Phase 1: create idle backends in db1/us1.
+            // Phase 1: authenticate yugabyte connections. Done before creating
+            // the idle backends so slow handshakes (e.g. TSAN) do not let them
+            // expire before the pool stats are checked.
+            for (int i = 0; i < YB_COUNT; i++) {
+                ybConns[i] = connectYugabyte();
+                ybStmts[i] = ybConns[i].createStatement();
+            }
+
+            // Phase 2: create idle backends in db1/us1.
             // All connections must be open simultaneously so each gets its own
             // physical backend; closing them afterwards leaves those backends
             // idle in the pool.
@@ -206,12 +214,6 @@ public class TestHangUpOnRouteSignals extends BaseYsqlConnMgr {
             for (int i = 0; i < IDLE_BACKEND_COUNT; i++) {
                 idleConns[i].close();
                 idleConns[i] = null;
-            }
-
-            // Phase 2: authenticate yugabyte connections
-            for (int i = 0; i < YB_COUNT; i++) {
-                ybConns[i] = connectYugabyte();
-                ybStmts[i] = ybConns[i].createStatement();
             }
 
             // Phase 3: occupy backends (7 active yb + 7 idle db1 = 14 = MAX)

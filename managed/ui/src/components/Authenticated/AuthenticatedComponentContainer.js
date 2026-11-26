@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 
 import { connect } from 'react-redux';
+import { groupBy } from 'lodash';
 import AuthenticatedComponent from './AuthenticatedComponent';
 import {
   fetchUniverseList,
@@ -19,8 +20,8 @@ import {
   getGCPTypeListResponse,
   getAZUTypeList,
   getAZUTypeListResponse,
+  listAllAccessKeys,
   listAccessKeysResponse,
-  listAccessKeys,
   listAccessKeysReqCompleted
 } from '../../actions/cloud';
 import {
@@ -49,8 +50,12 @@ import {
   fetchAdminNotifications,
   fetchAdminNotificationsResponse,
   fetchPerfAdvisorList,
-  fetchPerfAdvisorListResponse
+  fetchPerfAdvisorListResponse,
+  updateUserProfileSuccess
 } from '../../actions/customers';
+import {
+  bindTourProgress
+} from '../../redesign/features-v2/onboarding/universe-revamp/tour-progress';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
@@ -144,13 +149,12 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          Promise.all(
-            response.payload.data.map((provider) => {
-              return dispatch(listAccessKeys(provider.uuid)).then((response) => {
-                dispatch(listAccessKeysResponse(response.payload));
-              });
-            })
-          ).then(() => {
+          // One call for all providers. Dispatch per provider: the reducer drops a payload that
+          // overlaps existing keys, so a combined payload would lose new providers' keys on refetch.
+          listAllAccessKeys().then((keysResponse) => {
+            Object.values(groupBy(keysResponse.data, (key) => key.idKey.providerUUID)).forEach(
+              (data) => dispatch(listAccessKeysResponse({ status: keysResponse.status, data }))
+            );
             dispatch(listAccessKeysReqCompleted());
           });
         }
@@ -194,6 +198,10 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUser(userId)).then((userResponse) => {
         if (userResponse.payload.status === 200) {
           dispatch(fetchUserSuccess(userResponse));
+          const user = userResponse.payload.data;
+          bindTourProgress(user, (updated) => {
+            dispatch(updateUserProfileSuccess({ data: updated, status: 200 }));
+          });
         } else {
           dispatch(fetchUserFailure(userResponse.payload.error));
         }

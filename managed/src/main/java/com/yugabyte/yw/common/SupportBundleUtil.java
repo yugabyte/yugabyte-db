@@ -29,7 +29,10 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -40,6 +43,7 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.PagedList;
 import java.io.File;
@@ -60,6 +64,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -103,6 +108,14 @@ public class SupportBundleUtil {
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
     Date dateToday = sdf.parse(sdf.format(new Date()));
     return dateToday;
+  }
+
+  /**
+   * Truncates a date to midnight local time. Needed when comparing a caller-supplied instant
+   * against dates parsed out of log file names, which carry no time of day.
+   */
+  public Date getDateWithoutTime(Date date) {
+    return new DateTime(date).withTimeAtStartOfDay().toDate();
   }
 
   public Date getDateFromBundleFileName(String fileName) throws ParseException {
@@ -296,6 +309,14 @@ public class SupportBundleUtil {
     SupportBundle.delete(supportBundle.getBundleUUID());
   }
 
+  public void deleteSupportBundleV2(SupportBundleV2 supportBundle) {
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    SupportBundleV2.delete(supportBundle.getBundleUUID());
+  }
+
   /**
    * Uses capturing groups in regex pattern for easy retrieval of the file type. File type is
    * considered to be the first capturing group in the file name regex. Used to segregate files
@@ -462,7 +483,8 @@ public class SupportBundleUtil {
 
     String fileErrorMessage =
         errorMessage + System.lineSeparator() + ExceptionUtils.getStackTrace(e);
-    writeStringToFile(fileErrorMessage, localFilePath);
+    // The exception message can quote the failed command's output.
+    writeKubectlOutputToFile(fileErrorMessage, localFilePath);
   }
 
   public enum KubernetesResourceType {
@@ -474,6 +496,23 @@ public class SupportBundleUtil {
     SECRETS,
     EVENTS,
     STORAGECLASS
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class OverriddenRuntimeConfig {
+    public String key;
+    public String value;
+    public String scopeType;
+    public UUID scopeUuid;
+    public String scopeName;
+  }
+
+  @Data
+  @AllArgsConstructor
+  private static class ScopeInfo {
+    private String scopeType;
+    private String scopeName;
   }
 
   @Data
@@ -545,10 +584,19 @@ public class SupportBundleUtil {
     }
   }
 
+  /**
+   * For the metadata JSON, which the tree redaction has already handled; it can still carry the
+   * telemetry exporter credentials (PLAT-22613). Raw kubectl/helm output goes through
+   * writeKubectlOutputToFile instead, which also redacts the gflags.
+   */
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
+    return write(RedactingService.redactTelemetryCredentials(message), localFilePath, append);
+  }
+
+  private boolean write(String content, String localFilePath, boolean append) {
     try {
       FileUtils.writeStringToFile(
-          new File(localFilePath), message, Charset.forName("UTF-8"), append);
+          new File(localFilePath), content, Charset.forName("UTF-8"), append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
@@ -558,6 +606,31 @@ public class SupportBundleUtil {
 
   public boolean writeStringToFile(String message, String localFilePath) {
     return writeStringToFile(message, localFilePath, false);
+  }
+
+  /**
+   * Writes raw kubectl/helm output, which carries the universe gflags ("helm get values" always,
+   * and the pod specs as container args with charts before PLAT-13974) and the telemetry
+   * credentials. The gflags are redacted as KubernetesManager redacts kubectl output for the log,
+   * with the passes that can run past an unclosed value one line at a time. That redaction cuts an
+   * HBA line from ldapbindpasswd to its end, so it is not for the metadata JSON, which the tree
+   * redaction has already handled.
+   */
+  public boolean writeKubectlOutputToFile(String output, String localFilePath) {
+    String redacted;
+    try {
+      // NativeKubernetesManager returns null for these commands; the file is left empty.
+      redacted =
+          RedactingService.redactTelemetryCredentials(
+              RedactingService.redactShellOutput(
+                  Objects.toString(output, ""), RedactionTarget.LOGS));
+    } catch (RuntimeException e) {
+      log.error(
+          "Failed to redact the output for {}; leaving it out of the bundle.", localFilePath, e);
+      write("Output withheld: redaction failed, see the YBA log.\n", localFilePath, false);
+      return false;
+    }
+    return write(redacted, localFilePath, false);
   }
 
   /**
@@ -624,7 +697,7 @@ public class SupportBundleUtil {
 
         String resourceOutput =
             kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
-        writeStringToFile(resourceOutput, localFilePath);
+        writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         logK8sError(
             String.format(
@@ -1005,6 +1078,63 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "alert.json");
   }
 
+  public void getRuntimeConfigMetadata(Customer customer, String destDir) {
+    Map<UUID, ScopeInfo> scopeInfoByUuid = new HashMap<>();
+    Set<UUID> scopeUuids = new HashSet<>();
+
+    scopeUuids.add(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+    scopeInfoByUuid.put(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID, new ScopeInfo("GLOBAL", "global"));
+
+    scopeUuids.add(customer.getUuid());
+    scopeInfoByUuid.put(customer.getUuid(), new ScopeInfo("CUSTOMER", customer.getName()));
+
+    for (Provider provider : Provider.getAll(customer.getUuid())) {
+      scopeUuids.add(provider.getUuid());
+      scopeInfoByUuid.put(provider.getUuid(), new ScopeInfo("PROVIDER", provider.getName()));
+    }
+
+    for (Universe universe : customer.getUniverses()) {
+      scopeUuids.add(universe.getUniverseUUID());
+      scopeInfoByUuid.put(
+          universe.getUniverseUUID(), new ScopeInfo("UNIVERSE", universe.getName()));
+    }
+
+    List<OverriddenRuntimeConfig> entries = new ArrayList<>();
+    for (RuntimeConfigEntry entry : RuntimeConfigEntry.getAll(scopeUuids)) {
+      ScopeInfo scopeInfo = scopeInfoByUuid.get(entry.getScopeUUID());
+      if (scopeInfo == null) {
+        log.warn(
+            "Skipping runtime config '{}' for unknown scope {}",
+            entry.getPath(),
+            entry.getScopeUUID());
+        continue;
+      }
+      String value = entry.getValue();
+      if (CommonUtils.isSensitiveField(lastRuntimeConfigPathSegment(entry.getPath()))) {
+        value = CommonUtils.getEmptiableMaskedValue(entry.getPath(), value);
+      }
+      entries.add(
+          new OverriddenRuntimeConfig(
+              entry.getPath(),
+              value,
+              scopeInfo.getScopeType(),
+              entry.getScopeUUID(),
+              scopeInfo.getScopeName()));
+    }
+
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(entries), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "overridden_runtime_config.json");
+  }
+
+  static String lastRuntimeConfigPathSegment(String path) {
+    if (path == null) {
+      return "";
+    }
+    int lastDot = path.lastIndexOf('.');
+    return lastDot < 0 ? path : path.substring(lastDot + 1);
+  }
+
   public void gatherAndSaveAllMetadata(
       Customer customer, Universe universe, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
@@ -1019,6 +1149,7 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getAuditLogs(customer, universe, destDir, startDate, endDate));
     ignoreExceptions(() -> getYugawarePropertyMetadata(customer, destDir));
     ignoreExceptions(() -> getAlertMetadata(customer, destDir));
+    ignoreExceptions(() -> getRuntimeConfigMetadata(customer, destDir));
   }
 
   /**

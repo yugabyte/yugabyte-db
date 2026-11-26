@@ -21,6 +21,7 @@ import { SoftwareUpgradeTaskType } from '../../universes/helpers/universeHelpers
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { api } from '../../../redesign/helpers/api';
+import { retryTask } from '@app/v2/api/task/task';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -37,8 +38,7 @@ class TaskDetail extends Component {
   };
 
   retryTaskClicked = (currentTaskUUID) => {
-    api
-      .retryTask(currentTaskUUID)
+    retryTask(currentTaskUUID, {})
       .then(() => {
         browserHistory.push('/tasks');
       })

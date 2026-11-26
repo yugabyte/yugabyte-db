@@ -367,6 +367,15 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipTmpDirGflagConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.filepaths.skip_tmp_dir_gflag_consistency_check",
+          ScopeType.PROVIDER,
+          "Skip tmp_dir gflag consistency check",
+          "When true, skips the on-prem create-universe precheck that requires provider"
+              + " remoteTmpDirectory to match master/tserver tmp_dir gflags.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
       new ConfKeyInfo<>(
           "yb.gcp.operations.status_polling_interval",
@@ -479,6 +488,16 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> managedLoadBalancerEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.managed_load_balancer_enabled",
+          ScopeType.PROVIDER,
+          "Enable managed load balancers",
+          "Lets universes created with this provider ask YBA to create and manage a private load"
+              + " balancer. Preview.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Boolean> ybcEnabledForProvider =
       new ConfKeyInfo<>(
           "ybc.provider.enabled",
@@ -590,6 +609,26 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use system-level systemd instead of user-level systemd for service management",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> ynpProvisionTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ynp_provision_timeout",
+          ScopeType.PROVIDER,
+          "YNP provisioning timeout",
+          "Maximum time the YNP provisioning command may run on a node before it is aborted."
+              + " Without a bound, a provisioning step that hangs on the node (a package manager"
+              + " waiting on a lock, an unanswered metadata request) holds the whole universe task"
+              + " open indefinitely. Raise it for slow images or air-gapped repositories.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ynpSetupTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ynp_setup_timeout",
+          ScopeType.PROVIDER,
+          "YNP setup timeout",
+          "Maximum time the YNP setup step (uploading and extracting the node-agent package) may"
+              + " run on a node before it is aborted.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCapacityReservationGcp =
       new ConfKeyInfo<>(
           "yb.task.enable_capacity_reservation_gcp",
@@ -607,4 +646,24 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " purposes",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowYnpManagedProviderEdit =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_ynp_managed_provider_edit",
+          ScopeType.PROVIDER,
+          "Allow Editing YNP Managed Provider",
+          "Allow users to change the configuration of an on-prem provider created by YNP. Use only"
+              + " as a workaround when YNP cannot apply a needed change, because changes made here"
+              + " are not applied to the nodes that are already provisioned.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentUseUniverseCertificatesOnInstall =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_universe_certificates_on_install",
+          ScopeType.PROVIDER,
+          "Use Universe Certificates in Node Agent Installation",
+          "Use universe certificates in new node agent installation instead of the default"
+              + " certificates. Existing node agents will not be affected until they are"
+              + " reinstalled during tasks like OS Image Upgrade, Reprovisioning node etc",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -262,7 +262,7 @@ public class ImageBundle extends Model {
         Customer.get(provider.getCustomerUUID()).getUniversesForProvider(provider.getUuid());
     Set<Universe> universeUsingImageBundle =
         universes.stream()
-            .filter(u -> checkImageBudleInCluster(u, uuid, defaultImageBundle))
+            .filter(u -> checkImageBundleInCluster(u, uuid, defaultImageBundle))
             .collect(Collectors.toSet());
 
     return universeUsingImageBundle.stream().count();
@@ -274,17 +274,22 @@ public class ImageBundle extends Model {
   }
 
   @JsonIgnore
-  private boolean checkImageBudleInCluster(
+  private boolean checkImageBundleInCluster(
       Universe universe, UUID imageBundleUUID, List<ImageBundle> defaultBundles) {
     Architecture arch = universe.getUniverseDetails().arch;
     ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, defaultBundles);
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent.imageBundleUUID == null
+      if (!cluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())) {
+        continue;
+      }
+      UUID clusterImageBundleUUID =
+          cluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+
+      if (clusterImageBundleUUID == null
           && defaultBundle != null
           && imageBundleUUID.equals(defaultBundle.getUuid())) {
         return true;
-      } else if (cluster.userIntent.imageBundleUUID != null
-          && cluster.userIntent.imageBundleUUID.equals(imageBundleUUID)) {
+      } else if (clusterImageBundleUUID != null && clusterImageBundleUUID.equals(imageBundleUUID)) {
         return true;
       }
     }

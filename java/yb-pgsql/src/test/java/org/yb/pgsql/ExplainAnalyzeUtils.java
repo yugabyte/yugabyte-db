@@ -128,7 +128,8 @@ public class ExplainAnalyzeUtils {
 
     // Seek and Next Estimation
     PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
-    PlanCheckerBuilder estimatedNextsAndPrevs(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedPrevs(ValueChecker<Double> checker);
 
     // Roundtrips Estimation
     PlanCheckerBuilder estimatedTableRoundtrips(Checker checker);
@@ -147,7 +148,7 @@ public class ExplainAnalyzeUtils {
   }
 
   public interface MetricsCheckerBuilder extends ObjectCheckerBuilder {
-    MetricsCheckerBuilder metric(String key, ValueChecker<Double> checker);
+    MetricsCheckerBuilder metric(String key, Checker checker);
   }
 
   public static final class ExplainAnalyzeOptionsBuilder {

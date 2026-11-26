@@ -15,7 +15,6 @@
 
 #include <thread>
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -48,6 +47,10 @@ void OperationCounter::Shutdown() {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+}
+
+bool OperationCounter::ReadyToShutdown() const {
+  return value_.load(std::memory_order_acquire) == 0;
 }
 
 void OperationCounter::Release() {

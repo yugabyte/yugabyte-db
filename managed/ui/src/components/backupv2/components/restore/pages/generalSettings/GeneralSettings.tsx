@@ -24,7 +24,7 @@ import { PageRef, RestoreContextMethods, RestoreFormContext } from '../../Restor
 import { SelectTablesConfig } from './SelectTablesConfig';
 import { BackupRestoreStepper } from '../../common/BackupRestoreStepper';
 import { getPreflightCheck } from '../../api';
-import { isDefinedNotNull } from '../../../../../../utils/ObjectUtils';
+import { createErrorMessage, isDefinedNotNull } from '../../../../../../utils/ObjectUtils';
 import { getValidationSchema } from './ValidationSchema';
 import { fetchTablesInUniverse } from '../../../../../../actions/xClusterReplication';
 import { TableType } from '../../../../../../redesign/helpers/dtos';
@@ -129,7 +129,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   }, [targetUniverseUUID]);
 
   // send the preflight api request , when the user choses the universe
-  const { isFetching, isSuccess, isError } = useQuery(
+  const { isFetching, isSuccess, isError, error: preflightError } = useQuery(
     ['backup', 'preflight', backupDetails!.commonBackupInfo.backupUUID, targetUniverseUUID],
     () =>
       getPreflightCheck({
@@ -211,7 +211,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     // if the preflight check and table fetch fails, show the error message.
 
     if (isError || isTableFetchingError) {
-      toast.error(isError ? 'Preflight check failed!.' : 'Table fetch failed!.');
+      toast.error(isError ? createErrorMessage(preflightError) : 'Table fetch failed!.');
       setDisableSubmit(true);
     }
   }, [isError, isTableFetchingError]);

@@ -150,6 +150,7 @@ class AsyncStartElection : public RetrySpecificTSRpcTaskWithTable {
   bool SendRequest(int attempt) override;
 
  private:
+  const TabletInfoPtr tablet_;
   const TabletId tablet_id_;
   consensus::RunLeaderElectionRequestPB req_;
   consensus::RunLeaderElectionResponsePB resp_;
@@ -308,6 +309,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   void Finished(const Status& status) override;
 
+  void UnregisterAsyncTaskCallback() override;
+
  private:
   void HandleResponse(int attempt) override;
   virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }
@@ -327,8 +330,11 @@ class AsyncBackfillDone : public AsyncAlterTable {
                     ThreadPool* callback_pool,
                     const TabletInfoPtr& tablet,
                     const std::string& table_id,
-                    LeaderEpoch epoch)
-    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)), table_id_(table_id) {}
+                    LeaderEpoch epoch,
+                    uint64_t birth_time = 0)
+    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+      table_id_(table_id),
+      birth_time_(birth_time) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kBackfillDone;
@@ -340,6 +346,35 @@ class AsyncBackfillDone : public AsyncAlterTable {
   bool SendRequest(int attempt) override;
 
   const std::string table_id_;
+  const uint64_t birth_time_;
+};
+
+// Finalizes a nonconcurrently-built index: sends a change-metadata RPC that sets the index's
+// birth_time and marks IndexInfoPB.birth_time_state final on the tablet. This is the nonconcurrent
+// counterpart of AsyncBackfillDone (which finalizes the online-backfill path).
+class AsyncMarkNonConcurrentIndexDone : public AsyncAlterTable {
+ public:
+  AsyncMarkNonConcurrentIndexDone(Master* master,
+                         ThreadPool* callback_pool,
+                         const TabletInfoPtr& tablet,
+                         const std::string& table_id,
+                         LeaderEpoch epoch,
+                         uint64_t birth_time)
+    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+      table_id_(table_id),
+      birth_time_(birth_time) {}
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kMarkNonConcurrentIndexDone;
+  }
+
+  std::string type_name() const override { return "Mark non-concurrent index done."; }
+
+ private:
+  bool SendRequest(int attempt) override;
+
+  const std::string table_id_;
+  const uint64_t birth_time_;
 };
 
 class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
@@ -591,6 +626,7 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
  private:
   TabletId tablet_id() const override { return tablet_id_; }
 
+  Status PickReplica() override;
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void UnregisterAsyncTaskCallback() override;
@@ -601,6 +637,8 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
   tserver::AddTableToTabletResponsePB resp_;
   std::shared_ptr<std::atomic<size_t>> task_counter_;
   std::function<void(const Status&)> callback_;
+  // Set once the tserver accepted the table, so retries only re-check tablet states.
+  bool table_added_ = false;
 };
 
 // Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the
@@ -685,6 +723,42 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   tserver::SplitTabletResponsePB resp_;
 };
 
+// Tiered storage: tells one replica which storage tier its SSTs belong on (AlterTabletTier).
+// Started by the cluster balancer, one task per replica, addressed to that replica's tserver:
+// tiering is per replica and nothing goes through Raft. The reply means "intent persisted, first
+// pass queued": the tserver's reconciler finishes the move and the tablet report carries the
+// outcome, so the task completes on the reply and nothing polls.
+class AsyncAlterTabletTier : public RetrySpecificTSRpcTaskWithTable {
+ public:
+  AsyncAlterTabletTier(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const TabletServerId& ts_uuid, std::string target_tier, LeaderEpoch epoch,
+      std::string reason);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kAlterTabletTier;
+  }
+
+  std::string type_name() const override { return "Alter Tablet Tier"; }
+
+  std::string description() const override;
+
+  bool started_by_lb() const override { return true; }
+
+  TabletId tablet_id() const override;
+  const TabletServerId& ts_uuid() const { return permanent_uuid_; }
+  const std::string& target_tier() const { return target_tier_; }
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  const TabletInfoPtr tablet_;
+  const std::string target_tier_;
+  const std::string reason_;
+  tserver::AlterTabletTierResponsePB resp_;
+};
+
 class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
  public:
   AsyncTsTestRetry(
@@ -760,6 +834,34 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   uint64_t version_;
   StdStatusCallback callback_;
   tserver::UpdateTransactionTablesVersionResponsePB resp_;
+};
+
+// Pushes a copy of the xCluster-guarded information to one TServer.
+class AsyncApplyXClusterGuardedInfoIfNewer : public RetrySpecificTSRpcTask {
+ public:
+  AsyncApplyXClusterGuardedInfoIfNewer(
+      Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+      std::shared_ptr<const XClusterGuardedInfoPB> info, MonoTime deadline,
+      StdStatusCallback callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kApplyXClusterGuardedInfoIfNewer;
+  }
+
+  std::string type_name() const override { return "Apply xCluster-Guarded Info If Newer"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return {}; }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
+
+  const std::shared_ptr<const XClusterGuardedInfoPB> info_;
+  StdStatusCallback callback_;
+  tserver::ApplyXClusterGuardedInfoIfNewerResponsePB resp_;
 };
 
 } // namespace yb::master

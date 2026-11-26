@@ -38,8 +38,8 @@ import com.google.common.collect.ImmutableMap;
 public class TestMisc extends BaseYsqlConnMgr {
 
   private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =
-      "FATAL: yb_use_tserver_key_auth can only be set if the connection is made over " +
-      "unix domain socket";
+      "FATAL: yb_ycm_internal_use_tserver_key_auth can only be set if the connection " +
+      "is made over unix domain socket";
 
   private final static String GET_BACKEND_TYPE_QUERY =
       "SELECT backend_type FROM pg_stat_activity WHERE pid = %d";
@@ -211,8 +211,8 @@ public class TestMisc extends BaseYsqlConnMgr {
   public void testNegSetYsqlConnMgr() throws Exception {
     Properties props = new Properties();
     props.put("options", String.format("-c %s=%s -c %s=%s",
-        "yb_use_tserver_key_auth", "true",
-        "yb_is_client_ysqlconnmgr", "true"));
+        "yb_ycm_internal_use_tserver_key_auth", "true",
+        "yb_ycm_internal_is_client_ysqlconnmgr", "true"));
 
     try (Connection conn =
                 getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
@@ -418,7 +418,54 @@ public class TestMisc extends BaseYsqlConnMgr {
     testSequenceFunctions("SELECT lastval()");
   }
 
-  private void testPgPreparedStatementsStateHelper(boolean optimized_mode) throws Exception {
+  @Test
+  public void testCurrvalLastvalUndefinedInPooledMode() throws Exception {
+    testCurrvalLastvalUndefinedHelper("pooled_with_curval_lastval");
+  }
+
+  // pooled_with_currval_lastval is accepted as a synonym of pooled_with_curval_lastval.
+  @Test
+  public void testCurrvalLastvalUndefinedInPooledModeAlias() throws Exception {
+    testCurrvalLastvalUndefinedHelper("pooled_with_currval_lastval");
+  }
+
+  // currval/lastval before any nextval must raise PG's usual error. This guards against bringing
+  // back the fallback that returned the start value, which the next nextval then handed out again.
+  private void testCurrvalLastvalUndefinedHelper(String mode) throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                     mode));
+
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE SEQUENCE undef_seq START 1");
+
+      try {
+        stmt.executeQuery("SELECT currval('undef_seq')");
+        fail("Expected currval before nextval to fail");
+      } catch (SQLException e) {
+        assertTrue(e.getMessage(), e.getMessage().contains(
+            "currval of sequence \"undef_seq\" is not yet defined in this session"));
+      }
+
+      try {
+        stmt.executeQuery("SELECT lastval()");
+        fail("Expected lastval before nextval to fail");
+      } catch (SQLException e) {
+        assertTrue(e.getMessage(), e.getMessage().contains(
+            "lastval is not yet defined in this session"));
+      }
+
+      ResultSet rs = stmt.executeQuery("SELECT nextval('undef_seq')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong(1));
+      assertConnectionStickyState(stmt, false);
+    }
+  }
+
+  private void testPgPreparedStatementsStateHelper() throws Exception {
     Properties props = new Properties();
     props.setProperty("prepareThreshold", "1");
     try (Connection conn1 = getConnectionBuilder()
@@ -446,34 +493,20 @@ public class TestMisc extends BaseYsqlConnMgr {
             rowCount++;
           }
           // Expectation of cached plans on the physical connection being used:
-          // Optimized mode:
           // 1. SELECT 1 (S_0 on conn1/conn2)
           // 2. SELECT 1 (S_1 on conn1/conn2)
-          // 2. SELECT * FROM pg_prepared_statements
-          // Unoptimized mode:
-          // 1. SELECT 1 (S_0 on conn1)
-          // 2. SELECT 1 (S_1 on conn1)
-          // 3. SELECT 1 (S_0 on conn2)
-          // 4. SELECT 1 (S_1 on conn2)
-          // 5. SELECT * FROM pg_prepared_statements
-          if (optimized_mode) {
-            assertEquals(3, rowCount);
-          } else {
-            assertEquals(5, rowCount);
-          }
+          // 3. SELECT * FROM pg_prepared_statements
+          assertEquals(3, rowCount);
         }
   }
 
   @Test
   public void testPgPreparedStatementsState() throws Exception {
-    // Assert the state of pg_prepared_statements table across optimization
-    // modes to assert the behavior of cached plans created by connection
-    // manager to handle the extended query protocol.
+    // Assert the state of pg_prepared_statements table to assert the behavior
+    // of cached plans created by connection manager to handle the extended
+    // query protocol.
     disableWarmupModeAndRestartCluster();
-    modifyExtendedQueryProtocolAndRestartCluster(true);
-    testPgPreparedStatementsStateHelper(true);
-    modifyExtendedQueryProtocolAndRestartCluster(false);
-    testPgPreparedStatementsStateHelper(false);
+    testPgPreparedStatementsStateHelper();
   }
 
   private void testPreparedStatementsOnNewPhysicalConnsHelper() throws Exception {
@@ -508,9 +541,6 @@ public class TestMisc extends BaseYsqlConnMgr {
     // connection manager smartly allows any physical connection to be ready
     // to handle the Bind and Execute phases of the prepared statement.
     disableWarmupModeAndRestartCluster();
-    modifyExtendedQueryProtocolAndRestartCluster(true);
-    testPreparedStatementsOnNewPhysicalConnsHelper();
-    modifyExtendedQueryProtocolAndRestartCluster(false);
     testPreparedStatementsOnNewPhysicalConnsHelper();
   }
 
@@ -541,10 +571,47 @@ public class TestMisc extends BaseYsqlConnMgr {
     // prepared statements, we can ascertain hash collision and verify that
     // Connection Manager can handle this corner case.
     disableWarmupModeAndRestartCluster();
-    modifyExtendedQueryProtocolAndRestartCluster(true);
     testPreparedStatementHashCollisionsHelper();
-    modifyExtendedQueryProtocolAndRestartCluster(false);
-    testPreparedStatementHashCollisionsHelper();
+  }
+
+  @Test
+  public void testAttachAfterBackendTerminated() throws Exception {
+    // With warmup disabled the test user's pool has a single backend, so the
+    // next query is attached to the terminated one.
+    disableWarmupModeAndRestartCluster();
+
+    try (Connection suConn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement suStmt = suConn.createStatement()) {
+      suStmt.execute("CREATE ROLE test_user LOGIN");
+
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withUser("test_user")
+               .connect();
+           Statement stmt = conn.createStatement()) {
+        int terminatedPid = getProcessId(stmt);
+        assertNotEquals("Failed to obtain the process ID.", terminatedPid, -1);
+
+        // TODO(#36754): drop the wait once the attach check also handles
+        // POLLIN (upstream Odyssey #1787).
+        // Wait for the backend to exit and close its socket; a fixed sleep is
+        // not enough in slow (e.g. TSAN) builds.
+        try (ResultSet rs = suStmt.executeQuery(String.format(
+                 "SELECT pg_terminate_backend(%d, 60000)", terminatedPid))) {
+          assertTrue(rs.next());
+          assertTrue("pg_terminate_backend failed for pid " + terminatedPid,
+                     rs.getBoolean(1));
+        }
+
+        // The pooled server is dead; connection manager must skip it instead
+        // of failing the query.
+        int newPid = getProcessId(stmt);
+        assertNotEquals("Failed to obtain the process ID.", newPid, -1);
+        assertNotEquals("Query ran on the terminated backend", terminatedPid, newPid);
+      }
+    }
   }
 
   @Test
@@ -612,6 +679,28 @@ public class TestMisc extends BaseYsqlConnMgr {
     } catch (Exception e) {
       LOG.error("Failed to connect with 70-character user name", e);
       fail();
+    }
+  }
+
+  @Test
+  public void testSessionParameterWithBackslash() throws Exception {
+    // A session setting containing a backslash must be replayed correctly
+    // when the logical connection is attached to the backend again.
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String value = "C:\\dir\\file";
+
+    ConnectionBuilder connBuilder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection conn1 = connBuilder.connect();
+         Statement stmt1 = conn1.createStatement();
+         Connection conn2 = connBuilder.connect();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute(String.format("SET myapp.path = '%s'", value));
+      // conn2 uses the only backend, so conn1's setting is replayed on its next query.
+      stmt2.execute("SELECT 1");
+      ResultSet rs = stmt1.executeQuery("SHOW myapp.path");
+      assertTrue("No result from SHOW myapp.path", rs.next());
+      assertEquals(value, rs.getString(1));
     }
   }
 }

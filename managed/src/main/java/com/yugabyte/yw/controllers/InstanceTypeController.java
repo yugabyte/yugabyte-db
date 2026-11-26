@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.annotations.BlockYnpManagedProvider;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -227,6 +228,7 @@ public class InstanceTypeController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Adding an instance type")
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     InstanceType input = parseJsonAndValidate(request, InstanceType.class);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);

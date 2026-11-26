@@ -79,6 +79,13 @@ import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUs
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
+import {
+  buildFederationPayload,
+  CloudAccessHeading,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION,
+  useIsCrossCloudFederatedIamUiEnabled
+} from '../components/CrossCloudFederatedIamFields';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -88,6 +95,12 @@ interface AWSProviderCreateFormProps {
 export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
+  federationGcsCredentialFile?: File;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
   enableHostedZone: boolean;
   hostedZoneId: string;
   ntpServers: string[];
@@ -131,6 +144,7 @@ const YB_IMAGE_TYPE_OPTIONS: OptionProps[] = [
 ];
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -198,6 +212,11 @@ export const AWSProviderCreateForm = ({
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
+    federationGcsEnabled: false,
+    federationGcsAudience: '',
+    federationS3Enabled: false,
+    federationS3RoleArn: '',
+    federationS3Audience: '',
     enableHostedZone: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
@@ -216,6 +235,7 @@ export const AWSProviderCreateForm = ({
   });
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+  const isFederatedIamUiEnabled = useIsCrossCloudFederatedIamUiEnabled();
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
@@ -384,10 +404,20 @@ export const AWSProviderCreateForm = ({
               infoTitle="Cloud Info"
               infoContent="Enter your cloud credentials and specify how Yugabyte should leverage cloud services."
             >
+              <CloudAccessHeading
+                infoTitle="Access to AWS"
+                infoContent="Choose how YugabyteDB Anywhere authenticates to this AWS account to create and manage universe nodes."
+              >
+                Access to AWS
+              </CloudAccessHeading>
               <FormField>
                 <FieldLabel
-                  infoTitle="Credential Type"
-                  infoContent="For public cloud Providers YBA creates compute instances, and therefore requires sufficient permissions to do so."
+                  // With the preview on, this help moves to the "Access to AWS" heading.
+                  {...(!isFederatedIamUiEnabled && {
+                    infoTitle: 'Credential Type',
+                    infoContent:
+                      'For public cloud Providers YBA creates compute instances, and therefore requires sufficient permissions to do so.'
+                  })}
                 >
                   Credential Type
                 </FieldLabel>
@@ -435,6 +465,11 @@ export const AWSProviderCreateForm = ({
                   />
                 </FormField>
               )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="aws"
+              />
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -698,7 +733,8 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          ...buildFederationPayload(formValues)
         }
       },
       ntpServers: formValues.ntpServers,

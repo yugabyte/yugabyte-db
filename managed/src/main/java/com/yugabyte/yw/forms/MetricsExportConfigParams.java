@@ -4,8 +4,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
@@ -39,13 +39,7 @@ public class MetricsExportConfigParams extends UpgradeTaskParams {
     boolean exportEnabled =
         metricsExportConfig.isExportActive()
             && CollectionUtils.isNotEmpty(metricsExportConfig.getUniverseMetricsExporterConfig());
-    boolean isK8s =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes);
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     // On K8s the collector is a sidecar injected by the opentelemetry operator, so there is no
     // install step; the installed/installOtelCollector check only applies to VM universes.
     if (exportEnabled

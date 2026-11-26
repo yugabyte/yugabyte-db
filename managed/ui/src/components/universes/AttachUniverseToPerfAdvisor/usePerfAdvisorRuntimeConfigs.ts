@@ -16,5 +16,6 @@ export const usePerfAdvisorRuntimeConfigs = (): PaFeatureRuntimeConfigs => ({
   showAnomalyHighlighting: false,
   showExplainPlan: true,
   showPgssRpcStats: true,
-  showQueriesExport: true
+  showQueriesExport: true,
+  showDatabasesView: true
 });

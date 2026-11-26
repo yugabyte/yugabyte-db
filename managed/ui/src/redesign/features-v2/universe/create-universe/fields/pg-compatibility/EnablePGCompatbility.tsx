@@ -1,4 +1,4 @@
-import { FC, useState } from 'react';
+import { FC, useState, useEffect } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -8,7 +8,7 @@ import { YBEarlyAccessTag } from '../../../../../components';
 import { AnalyzeDialog } from '../../../../../features/universe/universe-actions/edit-pg-compatibility/AnalyzeDialog';
 import { isVersionPGSupported } from '../../../../../features/universe/universe-form/utils/helpers';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
-import { PG_COMPATIBILITY_FIELD } from '../FieldNames';
+import { YSQL_FIELD, PG_COMPATIBILITY_FIELD } from '../FieldNames';
 
 //icons
 // import InfoIcon from '../../../../../assets/approved/info-new.svg';
@@ -36,13 +36,14 @@ const StyledLinkText = styled(Link)({
 });
 
 export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, dbVersion }) => {
-  const { control } = useFormContext<DatabaseSettingsProps>();
+  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
   const [openAnalyzeModal, setAnalyzeModal] = useState(false);
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings.pgCompatibility'
   });
 
   //watchers
+  const isYSQLEnabled = useWatch({ name: YSQL_FIELD });
   const pgValue = useWatch({ name: PG_COMPATIBILITY_FIELD });
 
   const isPGSupported = isVersionPGSupported(dbVersion);
@@ -50,6 +51,10 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
   useUpdateEffect(() => {
     if (pgValue) setAnalyzeModal(true);
   }, [pgValue]);
+
+  useEffect(() => {
+    if (!isVersionPGSupported(dbVersion)) setValue(PG_COMPATIBILITY_FIELD, false);
+  }, [dbVersion]);
 
   return (
     <FieldContainer>
@@ -72,19 +77,23 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
         >
           <YBTooltip
             title={
-              isPGSupported ? (
-                ''
+              isYSQLEnabled ? (
+                isPGSupported ? (
+                  ''
+                ) : (
+                  <StyledSubText>
+                    <Trans>
+                      {t('tooltip')}
+                      <StyledLinkText
+                        underline="always"
+                        href="https://docs.yugabyte.com/stable/reference/configuration/postgresql-compatibility/"
+                        target="_blank"
+                      ></StyledLinkText>
+                    </Trans>
+                  </StyledSubText>
+                )
               ) : (
-                <StyledSubText>
-                  <Trans>
-                    {t('tooltip')}
-                    <StyledLinkText
-                      underline="always"
-                      href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
-                      target="_blank"
-                    ></StyledLinkText>
-                  </Trans>
-                </StyledSubText>
+                <StyledSubText>{t('YSQLWarn')}</StyledSubText>
               )
             }
           >
@@ -95,7 +104,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
                   'data-testid': 'PGCompatibiltyField-Toggle'
                 }}
                 control={control}
-                disabled={disabled || !isPGSupported}
+                disabled={disabled || !isYSQLEnabled || !isPGSupported}
                 dataTestId="enable-PG-compatibility-field"
                 label={t('label')}
               />

@@ -4,7 +4,7 @@ use serde::ser::{SerializeStruct, Serializer};
 use serde::Serialize;
 use std::alloc::{alloc, dealloc, Layout};
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 // An Action describe a change that occurred on a table
 #[derive(Serialize)]
@@ -38,10 +38,14 @@ impl Action {
 
     // This is a simple COMMIT Statement
     pub fn commit(txn: PgBox<pg_sys::ReorderBufferTXN>, change_count: i64) -> Self {
+        #[cfg(any(feature = "pg13", feature = "pg14"))]
+        let committed = txn.commit_time;
+        #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))]
+        let committed = unsafe { txn.xact_time.commit_time };
         Self {
             typ: "COMMIT".into(),
             // TODO: convert the commit timestamp into a human readable format ?
-            committed: Some(txn.commit_time),
+            committed: Some(committed),
             rel: None,
             old: None,
             new: None,
@@ -134,7 +138,10 @@ struct DecodingState {
 // A Tuple describes the values of a table row before or after a change
 struct Tuple {
     rel: pgrx::PgRelation,
+    #[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15", feature = "pg16"))]
     data: PgBox<pg_sys::ReorderBufferTupleBuf>,
+    #[cfg(any(feature = "pg17", feature = "pg18"))]
+    data: PgBox<pg_sys::HeapTupleData>,
 }
 
 // Loop over the Tuple attributes and serialize them
@@ -159,14 +166,14 @@ impl Serialize for Tuple {
             }
             .to_str()
             .unwrap();
-            let mut tuple = self.data.tuple;
+
+            #[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15", feature = "pg16"))]
+            let tuple = unsafe { &raw mut (*self.data.as_ptr()).tuple };
+            #[cfg(any(feature = "pg17", feature = "pg18"))]
+            let tuple = self.data.as_ptr();
+
             let datum = unsafe {
-                pg_sys::heap_getattr(
-                    &mut tuple,
-                    attribute.attnum.into(),
-                    desc.as_ptr(),
-                    &mut isnull,
-                )
+                pg_sys::heap_getattr(tuple, attribute.attnum.into(), desc.as_ptr(), &mut isnull)
             };
             if isnull {
                 continue;
@@ -189,7 +196,7 @@ impl Serialize for Tuple {
 
 // Initialize the output plugin
 #[allow(non_snake_case)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[pg_guard]
 pub unsafe extern "C-unwind" fn _PG_output_plugin_init(cb_ptr: *mut pg_sys::OutputPluginCallbacks) {
     let mut callbacks = unsafe { PgBox::from_pg(cb_ptr) };

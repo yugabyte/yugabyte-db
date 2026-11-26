@@ -268,6 +268,25 @@ rm -f "${OUT_FILE}"
 
 export PATH=/usr/bin:$PATH
 
+# go.mod pins an exact Go release. A pre-1.21 toolchain can neither parse that directive nor
+# auto-download the pinned release, so fetch it here, the same way Node.js is handled above.
+REQUIRED_GO_VERSION=$( sed -n 's/^go \([0-9.]*\)$/\1/p' "${BASEDIR}/apiserver/go.mod" )
+if ! go version 2>/dev/null | grep -q "go${REQUIRED_GO_VERSION} "; then
+  GO_INSTALL_DIR="${BUILD_ROOT:-/tmp}/golang/go${REQUIRED_GO_VERSION}"
+  if [[ ! -x ${GO_INSTALL_DIR}/go/bin/go ]]; then
+    GO_OS=linux
+    GO_ARCH=amd64
+    if is_mac; then GO_OS=darwin; fi
+    if [[ $(uname -m) != "x86_64" ]]; then GO_ARCH=arm64; fi
+    log "Downloading Go ${REQUIRED_GO_VERSION} to ${GO_INSTALL_DIR}"
+    mkdir -p "${GO_INSTALL_DIR}"
+    curl -fsSL "https://go.dev/dl/go${REQUIRED_GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz" \
+      | tar -xz -C "${GO_INSTALL_DIR}" || fatal "Failed to download Go ${REQUIRED_GO_VERSION}"
+  fi
+  export PATH="${GO_INSTALL_DIR}/go/bin:${PATH}"
+  log "Using Go toolchain at ${GO_INSTALL_DIR}"
+fi
+
 log "Building Go binary..."
 go build -o "${OUT_FILE}" || fatal "Go build failed"
 

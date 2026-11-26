@@ -1,0 +1,31 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "pgrx-bench"
+version = "0.18.1"
+authors.workspace = true
+license.workspace = true
+description = "Benchmark runtime support for pgrx extensions"
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/pgrx-bench"
+edition.workspace = true
+include = ["src/**/*", "README.md"]
+
+[dependencies]
+criterion = { version = "0.8.2", default-features = false }
+oorandom = "11.1.5"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3.27.0"
+
+[lints.rust]
+unsafe-op-in-unsafe-fn = "allow"

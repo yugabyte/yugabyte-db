@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <optional>
+#include <string>
+
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
@@ -48,21 +51,6 @@
     } \
   } while (0)
 
-#define GET_OID_FROM_PG_CLASS_RECORD(record) \
-  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
-
-#define GET_RELFILENODE_FROM_PG_CLASS_RECORD(record) \
-  record->row_message().new_tuple().Get(7).pg_catalog_value().uint32_value()
-
-#define GET_RELKIND_FROM_PG_CLASS_RECORD(record) \
-  record->row_message().new_tuple().Get(16).pg_catalog_value().int8_value()
-
-#define GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record) \
-  record->row_message().new_tuple().Get(1).pg_catalog_value().uint32_value()
-
-#define GET_OID_FROM_PG_PUBLICATION_RECORD(record) \
-  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
-
 DEFINE_RUNTIME_uint32(cdcsdk_vwal_tablets_to_poll_batch_size, 200,
     "The maximum number of tablets to poll in a single GetConsistentChanges call. If there are "
     "more tablets to be polled, then an empty response is sent in current call.");
@@ -88,6 +76,12 @@ DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_micros, 300000
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
+DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_ht_delta, 0,
+    "When non-zero, the publication refresh interval is this raw HybridTime delta and the interval "
+    "flags above are ignored. Unlike a microseconds based interval, this lets tests place the "
+    "publication refresh record exactly at a transaction's commit time, including its logical "
+    "component.");
+
 DEFINE_RUNTIME_bool(cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
@@ -111,13 +105,47 @@ TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
     "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
+DEFINE_test_flag(uint64, cdcsdk_vwal_round_up_commit_time_usec, 0,
+    "When positive, the virtual WAL rounds the commit time of every transaction record (BEGIN, "
+    "COMMIT, DML) from a user tablet up to a multiple of this many microseconds, so that "
+    "transactions committing within one such window are streamed as one transaction, as "
+    "transactions committing at the same hybrid time are.");
+
+DEFINE_RUNTIME_bool(cdc_skip_unqualified_tables_for_polling, false,
+    "When enabled, VWAL will skip adding expired / not-of-interest tables to the polling list.");
+
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
+
+namespace {
+
+// Look up a pg_catalog column by name.
+#define DEFINE_GET_PG_CATALOG_COLUMN(Type, type_name, capitalize_type_name) \
+  std::optional<Type> GetPgCatalog##capitalize_type_name##Column( \
+      const RowMessage& row_message, const std::string& col_name, bool use_new_tuple) { \
+    const auto& tuple = use_new_tuple ? row_message.new_tuple() : row_message.old_tuple(); \
+    for (const auto& col : tuple) { \
+      if (col.has_column_name() && col.column_name() == col_name && col.has_pg_catalog_value() && \
+          col.pg_catalog_value().has_##type_name##_value()) { \
+        return col.pg_catalog_value().type_name##_value(); \
+      } \
+    } \
+    return std::nullopt; \
+  }
+
+DEFINE_GET_PG_CATALOG_COLUMN(uint32_t, uint32, Uint32)
+// Protobuf represents int8 as int32.
+DEFINE_GET_PG_CATALOG_COLUMN(int32_t, int8, Int8)
+
+#undef DEFINE_GET_PG_CATALOG_COLUMN
+
+}  // namespace
 
 using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
@@ -142,6 +170,7 @@ std::string CDCSDKVirtualWAL::GetChangesRequestInfo::ToString() const {
   result += Format(", write_id: $0", write_id);
   result += Format(", safe_hybrid_time: $0", safe_hybrid_time);
   result += Format(", wal_segment_index: $0", wal_segment_index);
+  result += Format(", max_index_in_sort_window: $0", max_index_in_sort_window);
 
   return result;
 }
@@ -228,9 +257,31 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
   }
   auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
+  const auto slot_name = stream->GetReplicationSlotName();
+  RSTATUS_DCHECK(
+      slot_name, IllegalState, Format("Stream $0 has no replication slot name", stream_id_));
+  SCHECK_FORMAT(
+      !stream->IsPausedForUpgrade(), IllegalState,
+      "Replication slot $0 is paused for conversion to an implicit slot. Run 'yb-admin "
+      "prepare_replication_slots_for_transactional_ddl' after finalizing the upgrade to convert "
+      "it, or 'yb-admin release_replication_slot $0' to stream it without converting it",
+      *slot_name);
+  SCHECK_FORMAT(
+      !stream->IsUnusableWithTransactionalDdl(), IllegalState,
+      "Replication slot $0 is unusable with transactional DDL replication, as it wasn't paused "
+      "for conversion to an implicit slot. Create a new replication slot",
+      *slot_name);
 
   detect_publication_changes_implicitly_ =
       stream->GetDetectPublicationChangesImplicitly().value_or(false);
+  if (!detect_publication_changes_implicitly_) {
+    if (auto stop_time = stream->GetImplicitConversionBarrierTime()) {
+      implicit_conversion_stop_time_ = *stop_time;
+      LOG_WITH_PREFIX(INFO) << "Replication slot " << *slot_name << " has a catalog barrier, so "
+                            << "no change committed after " << implicit_conversion_stop_time_
+                            << " is shipped";
+    }
+  }
   if (detect_publication_changes_implicitly_ &&
       !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     return STATUS_FORMAT(
@@ -239,23 +290,51 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
         "while the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled.");
   }
 
+  if (detect_publication_changes_implicitly_ && !stream->IsNotificationSlot() &&
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
+    const auto stream_table_ids = stream->GetTableIds();
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      SCHECK_FORMAT(
+          std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
+              stream_table_ids.end(),
+          IllegalState,
+          "Replication slot $0 lacks the catalog tables used to decode transactional DDL. Stop "
+          "its consumer and run 'yb-admin prepare_replication_slots_for_transactional_ddl $0'",
+          *slot_name);
+    }
+  }
+
   if (detect_publication_changes_implicitly_) {
     pub_all_tables_ = pub_all_tables;
     publications_list_ = std::move(publications_list);
 
     // Add the PG catalog tables to the table_list.
     auto namespace_id = stream->GetNamespaceId();
-    auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-    pg_class_table_id_ = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
-    pg_publication_rel_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid);
+    pg_database_oid_ = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    pg_class_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgClassTableOid);
+    pg_publication_rel_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgPublicationRelOid);
     pg_replication_origin_table_id_ = GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid);
-    pg_publication_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationOid);
+    pg_publication_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgPublicationOid);
     table_list.emplace(pg_class_table_id_);
     table_list.emplace(pg_publication_rel_table_id_);
     table_list.emplace(pg_replication_origin_table_id_);
     table_list.emplace(pg_publication_table_id_);
-    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class, pg_publication_rel, "
-                           "pg_replication_origin and pg_publication to the polling list.";
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+      pg_attribute_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgAttributeTableOid);
+      table_list.emplace(pg_attribute_table_id_);
+      pg_namespace_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgNamespaceTableOid);
+      table_list.emplace(pg_namespace_table_id_);
+      pg_publication_rel_prpubid_index_table_id_ =
+          GetPgsqlTableId(pg_database_oid_, kPgPublicationRelPrpubidIndexOid);
+      table_list.emplace(pg_publication_rel_prpubid_index_table_id_);
+    }
+    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class"
+                        << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
+                                ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
+                                : "")
+                        << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
+                           "polling list.";
   }
 
   if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
@@ -310,6 +389,51 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
   return Status::OK();
 }
 
+Status CDCSDKVirtualWAL::ValidateTabletListCoverage(
+    const TableId& table_id, const GetTabletListToPollForCDCResponsePB& resp) const {
+  // Uncovered key range is [gap_start_key, gap_end_key) where an empty key denotes the start / end
+  // of the hash range. Error unless it lies entirely outside the slot's hash range.
+  auto check_gap = [&](const std::string& gap_start_key, const std::string& gap_end_key) -> Status {
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
+      constexpr uint32_t kHashRangeEnd = std::numeric_limits<uint16_t>::max() + 1;
+      const uint32_t gap_start_hash =
+          gap_start_key.empty() ? 0
+                                : dockv::PartitionSchema::DecodeMultiColumnHashValue(gap_start_key);
+      const uint32_t gap_end_hash =
+          gap_end_key.empty() ? kHashRangeEnd
+                              : dockv::PartitionSchema::DecodeMultiColumnHashValue(gap_end_key);
+      if (gap_start_hash >= slot_hash_range_->end_range ||
+          gap_end_hash <= slot_hash_range_->start_range) {
+        return Status::OK();
+      }
+    }
+    return STATUS_FORMAT(
+        TryAgain, "Tablets of table $0 covering the key range [0x$1, 0x$2) are not pollable yet",
+        table_id, Slice(gap_start_key).ToDebugHexString(), Slice(gap_end_key).ToDebugHexString());
+  };
+
+  std::vector<std::pair<std::string, std::string>> ranges;
+  ranges.reserve(resp.tablet_checkpoint_pairs_size());
+  for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
+    const auto& partition = tablet_checkpoint_pair.tablet_locations().partition();
+    ranges.emplace_back(partition.partition_key_start(), partition.partition_key_end());
+  }
+  std::sort(ranges.begin(), ranges.end());
+
+  std::string uncovered_key_start = "";
+  // Each range is [start_key, end_key).
+  for (const auto& [start_key, end_key] : ranges) {
+    if (start_key > uncovered_key_start) {
+      RETURN_NOT_OK(check_gap(uncovered_key_start, start_key));
+    }
+    if (end_key.empty()) {
+      return Status::OK();
+    }
+    uncovered_key_start = std::max(uncovered_key_start, end_key);
+  }
+  return check_gap(uncovered_key_start, "");
+}
+
 Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     const TableId table_id, const HostPort hostport, const CoarseTimePoint deadline,
     const TabletId& parent_tablet_id) {
@@ -359,6 +483,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       children_tablet_to_next_req_info.emplace_back(tablet_id, info);
     }
 
@@ -381,14 +506,44 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     return Status::OK();
   }
 
+  RETURN_NOT_OK(ValidateTabletListCoverage(table_id, resp));
+
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+    TabletStreamInfo tablet_info = {.stream_id = stream_id_, .tablet_id = tablet_id};
+    auto entry_opt = VERIFY_RESULT(cdc_service_->cdc_state_table_->TryFetchEntry(
+        {tablet_id, stream_id_}, CDCStateTableEntrySelector().IncludeActiveTime()));
+    RSTATUS_DCHECK(
+        entry_opt && entry_opt->active_time.has_value(), NotFound,
+        Format(
+            "Unexpectedly could not find active time in the state table entry for tablet: $0, "
+            "stream: $1",
+            tablet_id, stream_id_));
+
     if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
       DCHECK(tablet_checkpoint_pair.has_tablet_locations());
       DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
       if (!IsTabletEligibleForVWAL(
-              tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
+        tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
+          continue;
+        }
+    }
+
+    // Skip adding the tablet to the polling list if it is expired / not-of-interest, as this will
+    // render the slot useless.
+    if (cdc_service_->CheckTabletExpiredOrNotOfInterest(tablet_info, *entry_opt->active_time)) {
+      if (FLAGS_cdc_skip_unqualified_tables_for_polling) {
+        LOG(WARNING) << "Tablet: " << tablet_id
+                     << " is expired / not of interest for stream: " << stream_id_
+                     << ". Will not add it to the VWAL's polling list.";
         continue;
+      } else {
+        return STATUS_FORMAT(
+            IllegalState, Format(
+                              "Cannot add tablet: $0 to the polling list as it has been "
+                              "unqualified for stream: $1. To skip adding this tablet and proceed "
+                              "enable the flag cdc_skip_unqualified_tables_for_polling.",
+                              tablet_id, stream_id_));
       }
     }
 
@@ -400,6 +555,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       tablet_next_req_map_[tablet_id] = info;
       VLOG_WITH_PREFIX(1) << "Adding entry in tablet_next_req map for tablet_id: " << tablet_id
                           << " table_id: " << table_id
@@ -631,6 +787,17 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   // response.
   while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
          !sorted_records.empty() && empty_tablet_queues.empty()) {
+    if (implicit_conversion_stop_time_.is_valid() &&
+        !(is_txn_in_progress && curr_active_txn_commit_record) &&
+        sorted_records.top().second.first->GetCommitTime() >
+            implicit_conversion_stop_time_.ToUint64()) {
+      // Every tablet queue has its next record in the priority queue, so every record committed up
+      // to the stop time has been shipped, and the restart time can move to the stop time.
+      virtual_wal_safe_time_ = std::max(virtual_wal_safe_time_, implicit_conversion_stop_time_);
+      VLOG_WITH_PREFIX(2) << "Holding back records committed after the stop time "
+                          << implicit_conversion_stop_time_;
+      break;
+    }
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;
@@ -638,12 +805,33 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     auto record = tablet_record_info_pair.second.second;
 
     if (tablet_id == master::kSysCatalogTabletId) {
-      bool explicit_alter_pub_detected;
-      auto pub_refresh_required = DeterminePubRefreshFromMasterRecord(
-          tablet_record_info_pair.second, &explicit_alter_pub_detected);
-      if (pub_refresh_required) {
+      const auto pub_refresh_trigger =
+          DeterminePubRefreshFromMasterRecord(tablet_record_info_pair.second);
+      if (pub_refresh_trigger != PubRefreshTrigger::kNone) {
+        const bool explicit_alter_pub_detected =
+            pub_refresh_trigger == PubRefreshTrigger::kPublicationTableChanged ||
+            pub_refresh_trigger == PubRefreshTrigger::kPublicationUpdated;
+        bool needs_table_list_refresh = true;
         last_pub_refresh_time = unique_id->GetCommitTime();
-        resp->set_needs_publication_table_list_refresh(true);
+        if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+          DCHECK(record->row_message().has_record_time());
+          DCHECK(record->row_message().has_transaction_id());
+          // We don't advance last_seen_unique_record_id_ for a table rewrite, since the rewritten
+          // rows into the new DocDB table are written before the pg_class entry.
+          if (pub_refresh_trigger != PubRefreshTrigger::kTableRewritten) {
+            last_seen_unique_record_id_ = unique_id;
+          }
+
+          if (pub_refresh_trigger == PubRefreshTrigger::kPublicationUpdated) {
+            // If the publication properties are updated, we don't need to refresh the table list.
+            // For example: ALTER PUBLICATION SET (publish = 'insert');
+            needs_table_list_refresh = false;
+          } else if (pub_refresh_trigger != PubRefreshTrigger::kTableCreated) {
+            resp->set_publication_refresh_record_time(record->row_message().record_time());
+            resp->set_publication_refresh_txn_id(record->row_message().transaction_id());
+          }
+        }
+        resp->set_needs_publication_table_list_refresh(needs_table_list_refresh);
         resp->set_publication_refresh_time(last_pub_refresh_time);
         resp->set_explicit_alter_publication_detected(explicit_alter_pub_detected);
         metadata.contains_publication_refresh_record = true;
@@ -651,10 +839,26 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
             << "Notifying walsender to refresh publication list in the GetConsistentChanges "
                "response at commit_time: "
             << last_pub_refresh_time
+            << ", record_time: " << record->row_message().record_time()
+            << ", needs_publication_table_list_refresh: " << needs_table_list_refresh
             << ", explicit_alter_publication_detected: " << explicit_alter_pub_detected;
         break;
       }
-      continue;
+      // When detecting DDL from catalog DML, eligible pg_class/pg_attribute/pg_namespace records
+      // fall through so they can be converted into synthetic DDL records below. A pg_namespace
+      // record has no published table to check. We also allow BEGIN/COMMIT
+      // from sys-catalog tables to fall through too otherwise in some cases, the synthetic DDL
+      // record won't have a BEGIN/COMMIT if the txn didn't involve any user tablets.
+      // For example: auto commit ALTER TABLE ADD COLUMN needs an enclosing BEGIN/COMMIT to be
+      // sent to the walsender.
+      if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
+          !(record->row_message().op() == RowMessage_Op_BEGIN ||
+            record->row_message().op() == RowMessage_Op_COMMIT ||
+            (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
+             (record->row_message().table_id() == pg_namespace_table_id_ ||
+              VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record)))))) {
+        continue;
+      }
     }
 
     // We never ship safepoint record to the walsender.
@@ -665,6 +869,13 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
 
     // Skip generating LSN & txnID for a DDL record and directly add it to the response.
     if (record->row_message().op() == RowMessage_Op_DDL) {
+      // When detecting DDL from catalog DML, discard the legacy CHANGE_METADATA_OP DDL records.
+      // TODO(#30813): Skip sending the legacy DDL records from GetChanges.
+      if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+        VLOG_WITH_PREFIX(4) << "Discarding legacy DDL record: " << record->ShortDebugString();
+        continue;
+      }
+
       auto records = resp->add_cdc_sdk_proto_records();
       VLOG_WITH_PREFIX(1) << "Shipping DDL record: " << record->ShortDebugString();
       last_seen_ddl_commit_time_ = HybridTime(record->row_message().commit_time());
@@ -679,7 +890,13 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // the commit record for this pg_txn_id once we are sure that we have fully shipped all DMLs
     // with the same commit_time.
     if (record->row_message().op() == RowMessage_Op_COMMIT && !should_ship_commit) {
-      if (is_txn_in_progress && !curr_active_txn_commit_record) {
+      // With transactional DDL, a publication refresh inside a DDL transaction can add a table
+      // whose tablets return older transactions. Don't hold a COMMIT that can't get an LSN: it
+      // would be picked to ship on every iteration and block the queue. It's rejected below with
+      // the rest of its old transaction instead.
+      if (is_txn_in_progress && !curr_active_txn_commit_record &&
+          (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
+           unique_id->GreaterThanDistributedLSN(last_seen_unique_record_id_))) {
         VLOG_WITH_PREFIX(2) << "Encountered 1st commit record for txn_id: " << last_seen_txn_id_
                             << "with commit_time " << record->row_message().commit_time()
                             << ". Will store it for shipping later";
@@ -739,6 +956,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                           << ", Last_shipped_record's tablet_id: " << last_shipped_record_tablet_id;
     }
 
+    // Done before last_seen_unique_record_id_ moves to this record, and for the BEGIN records that
+    // are not shipped because their transaction is merged with another one at the same commit time.
+    MoveAbortedSubtxnsToResponse(row_message, resp);
+
     if (lsn_result.ok() && txn_id_result.ok()) {
       row_message->set_pg_lsn(*lsn_result);
       row_message->set_pg_transaction_id(*txn_id_result);
@@ -751,22 +972,23 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       metadata.min_lsn = std::min(metadata.min_lsn, row_message->pg_lsn());
       metadata.max_lsn = std::max(metadata.max_lsn, row_message->pg_lsn());
 
+      bool is_dml_on_pg_catalog_table = IsDmlOnPgCatalogTableForDetectingDDL(record);
       auto& record_entry = metadata.txn_id_to_ct_records_map_[*txn_id_result];
       switch (record->row_message().op()) {
         case RowMessage_Op_INSERT: {
-          metadata.insert_records++;
+          metadata.insert_records += is_dml_on_pg_catalog_table ? 0 : 1;
           record_entry.second += 1;
           record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_UPDATE: {
-          metadata.update_records++;
+          metadata.update_records += is_dml_on_pg_catalog_table ? 0 : 1;
           record_entry.second += 1;
           record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_DELETE: {
-          metadata.delete_records++;
+          metadata.delete_records += is_dml_on_pg_catalog_table ? 0 : 1;
           record_entry.second += 1;
           record_entry.first = *lsn_result;
           break;
@@ -801,6 +1023,12 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         case RowMessage_Op_SAFEPOINT: FALLTHROUGH_INTENDED;
         case RowMessage_Op_UNKNOWN:
           break;
+      }
+
+      if (is_dml_on_pg_catalog_table) {
+        RETURN_NOT_OK(AddSyntheticDDLRecordFromCatalogDML(
+            record, resp, &metadata, &resp_records_size));
+        continue;
       }
 
       VLOG_WITH_PREFIX(4) << "shipping record: " << record->ShortDebugString();
@@ -988,6 +1216,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_safe_hybrid_time(
       std::max(next_req_info.safe_hybrid_time, last_persisted_record_id_commit_time_.ToUint64()));
   req->set_wal_segment_index(next_req_info.wal_segment_index);
+  req->set_max_index_in_sort_window(next_req_info.max_index_in_sort_window);
 
   // We dont set the snapshot_time in from_cdc_sdk_checkpoint object of GetChanges request since it
   // is not used by the GetChanges RPC.
@@ -1055,7 +1284,22 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
       // not correspond to an actual WAL entry. Hence, it is safe to skip them from adding into the
       // tablet queue.
       if (record.row_message().has_commit_time()) {
-        tablet_queue.push(std::make_shared<CDCSDKProtoRecordPB>(record));
+        auto queued_record = std::make_shared<CDCSDKProtoRecordPB>(record);
+        const auto op = record.row_message().op();
+        if (PREDICT_FALSE(FLAGS_TEST_cdcsdk_vwal_round_up_commit_time_usec > 0) &&
+            tablet_id != master::kSysCatalogTabletId &&
+            (op == RowMessage_Op_BEGIN || op == RowMessage_Op_COMMIT ||
+             op == RowMessage_Op_INSERT || op == RowMessage_Op_UPDATE ||
+             op == RowMessage_Op_DELETE)) {
+          // Rounding up, not down, keeps a commit time at or above the virtual WAL safe
+          // time already reached, below which records are dropped.
+          const uint64_t unit = HybridTime::FromMicros(
+              FLAGS_TEST_cdcsdk_vwal_round_up_commit_time_usec).ToUint64();
+          const uint64_t commit_time = record.row_message().commit_time();
+          queued_record->mutable_row_message()->set_commit_time(
+              (commit_time + unit - 1) / unit * unit);
+        }
+        tablet_queue.push(std::move(queued_record));
       } else {
         DCHECK_EQ(record.row_message().op(), RowMessage_Op_DDL);
         VLOG_WITH_PREFIX(3) << "Filtered record due to lack of commit_time: "
@@ -1097,6 +1341,7 @@ Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
   tablet_checkpoint_info.write_id = resp->cdc_sdk_checkpoint().write_id();
   tablet_checkpoint_info.safe_hybrid_time = resp->safe_hybrid_time();
   tablet_checkpoint_info.wal_segment_index = resp->wal_segment_index();
+  tablet_checkpoint_info.max_index_in_sort_window = resp->max_index_in_sort_window();
 
   return Status::OK();
 }
@@ -1111,7 +1356,9 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
     }
     auto record = tablet_queue->front();
     bool is_publication_refresh_record =
-        (tablet_id == kPublicationRefreshTabletID || tablet_id == master::kSysCatalogTabletId);
+        tablet_id == kPublicationRefreshTabletID ||
+        (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
+         tablet_id == master::kSysCatalogTabletId);
     bool result =
         CDCSDKUniqueRecordID::CanFormUniqueRecordId(is_publication_refresh_record, record);
     if (result) {
@@ -1281,6 +1528,21 @@ Result<uint32_t> CDCSDKVirtualWAL::GetRecordTxnID(
   }
 
   return STATUS_FORMAT(InternalError, "Record's commit_time is lesser than last seen record.");
+}
+
+void CDCSDKVirtualWAL::MoveAbortedSubtxnsToResponse(
+    RowMessage* row_message, GetConsistentChangesResponsePB* resp) {
+  // A BEGIN at an earlier commit time is a duplicate of one already handled.
+  if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
+      row_message->op() != RowMessage_Op_BEGIN || !row_message->has_aborted_subtxns() ||
+      row_message->commit_time() < last_seen_unique_record_id_->GetCommitTime()) {
+    return;
+  }
+
+  auto& entry = (*resp->mutable_aborted_subtxns())[row_message->transaction_id()];
+  entry.set_commit_time(row_message->commit_time());
+  *entry.mutable_aborted_subtxns() = std::move(*row_message->mutable_aborted_subtxns());
+  row_message->clear_aborted_subtxns();
 }
 
 Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
@@ -1505,7 +1767,11 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
 
   auto last_decided_pub_refresh_time_hybrid = HybridTime(last_decided_pub_refresh_time.first);
   HybridTime hybrid_sum;
-  if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
+  if (FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta > 0) {
+    hybrid_sum = HybridTime(
+        last_decided_pub_refresh_time.first +
+        FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta);
+  } else if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
         FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros);
   } else {
@@ -1795,108 +2061,264 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
 
 bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
-         table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_;
+         table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
+          std::ranges::any_of(kTxnDdlCatalogTableOids, [&](uint32_t table_oid) {
+            return table_id == GetPgsqlTableId(pg_database_oid_, table_oid);
+          }));
 }
 
-bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
-    const RecordInfo& record_info, bool* explicit_alter_publication_detected) {
+bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
+    const std::shared_ptr<CDCSDKProtoRecordPB>& record) const {
+  if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    return false;
+  }
+
+  const auto& row_message = record->row_message();
+  const auto& table_id = row_message.table_id();
+  if (table_id == pg_class_table_id_) {
+    if (row_message.op() == RowMessage_Op_UPDATE) {
+      return true;
+    }
+
+    // With packed-row, an UPDATE is reported as an INSERT.
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      auto oid = GetPgCatalogUint32Column(row_message, "oid", /* use_new_tuple */ true);
+      return oid && GetPublishedTableIdForOid(*oid).has_value();
+    }
+    return false;
+  }
+
+  // ALTER SCHEMA ... RENAME TO writes only pg_namespace. With packed-row, its UPDATE is reported
+  // as an INSERT.
+  if (table_id == pg_namespace_table_id_) {
+    return row_message.op() == RowMessage_Op_UPDATE || row_message.op() == RowMessage_Op_INSERT;
+  }
+  return table_id == pg_attribute_table_id_;
+}
+
+CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
+    const RecordInfo& record_info) {
   auto const& record = record_info.second;
   auto table_id = record->row_message().table_id();
-  *explicit_alter_publication_detected = false;
 
   // The record is a BEGIN / COMMIT.
   if (table_id.empty()) {
-    return false;
+    return PubRefreshTrigger::kNone;
   } else if (table_id == pg_class_table_id_) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
-      LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
-      return true;
+      // CheckForTableRewriteOrDrop() reports a drop as a DELETE, a rewrite as an INSERT / UPDATE.
+      const bool is_drop = record->row_message().op() == RowMessage_Op_DELETE;
+      LOG_WITH_PREFIX(INFO) << "Table " << (is_drop ? "drop" : "rewrite")
+                            << " detected, will trigger a publication refresh";
+      return is_drop ? PubRefreshTrigger::kTableDropped : PubRefreshTrigger::kTableRewritten;
     }
 
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
     // interested in tables (relations) but pg_class can get entries for indexes, views etc. We only
     // signal for a pub refresh when an entry is INSERTED into pg_class table for a relation.
-    if (!pub_all_tables_ || record->row_message().op() != RowMessage_Op_INSERT ||
-        GET_RELKIND_FROM_PG_CLASS_RECORD(record) != 'r') {
-      return false;
+    auto relkind = GetPgCatalogInt8Column(
+        record->row_message(), "relkind", true /* use_new_tuple */);
+    if (!pub_all_tables_ || record->row_message().op() != RowMessage_Op_INSERT || !relkind ||
+        *relkind != 'r') {
+      return PubRefreshTrigger::kNone;
     }
 
-    return true;
-  } else if (table_id == pg_publication_rel_table_id_) {
+    return PubRefreshTrigger::kTableCreated;
+  } else if (table_id == pg_publication_rel_table_id_ ||
+             (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
+              table_id == pg_publication_rel_prpubid_index_table_id_)) {
+    // With transactional DDL only the prpubid index entry triggers the refresh. It is written after
+    // its pg_publication_rel row (for both insert and delete), so a read at its record_time sees
+    // the row and the index entry together..
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
+        table_id == pg_publication_rel_table_id_) {
+      return PubRefreshTrigger::kNone;
+    }
+
     if (record->row_message().op() != RowMessage_Op_INSERT &&
         record->row_message().op() != RowMessage_Op_DELETE) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
-
-    *explicit_alter_publication_detected = true;
 
     if (record->row_message().op() == RowMessage_Op_DELETE) {
-      return true;
+      return PubRefreshTrigger::kPublicationTableChanged;
     }
 
-    auto pub_oid = GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record);
-    if (!publications_list_.contains(pub_oid)) {
-      return false;
+    auto pub_oid = GetPgCatalogUint32Column(
+        record->row_message(), "prpubid", true /* use_new_tuple */);
+    if (!pub_oid || !publications_list_.contains(*pub_oid)) {
+      return PubRefreshTrigger::kNone;
     }
 
-    return true;
+    return PubRefreshTrigger::kPublicationTableChanged;
   } else if (table_id == pg_replication_origin_table_id_) {
     if (record->row_message().op() != RowMessage_Op_INSERT &&
         record->row_message().op() != RowMessage_Op_DELETE) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
-    return true;
+    return PubRefreshTrigger::kReplicationOriginChanged;
   } else if (table_id == pg_publication_table_id_) {
     if (record->row_message().op() != RowMessage_Op_UPDATE) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
 
-    auto pub_oid = GET_OID_FROM_PG_PUBLICATION_RECORD(record);
-    if (!publications_list_.contains(pub_oid)) {
-      return false;
+    auto pub_oid =
+        GetPgCatalogUint32Column(record->row_message(), "oid", true /* use_new_tuple */);
+    if (!pub_oid || !publications_list_.contains(*pub_oid)) {
+      return PubRefreshTrigger::kNone;
     }
 
-    *explicit_alter_publication_detected = true;
-    return true;
+    return PubRefreshTrigger::kPublicationUpdated;
   }
 
-  // We should only receive records corresponding to pg_class, pg_publication_rel,
-  // pg_replication_origin and pg_publication tables. Only possibility of reaching here is when a
-  // DDL record is sent from sys catalog tablet, for ex: when a new slot is created, the existing
-  // slot sees the CHANGE_METADATA_OP used for setting retention barriers and sends a DDL record.
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
+    (table_id == pg_attribute_table_id_ || table_id == pg_namespace_table_id_)) {
+    return PubRefreshTrigger::kNone;
+  }
+
+  // We should only receive records corresponding to pg_class, pg_attribute and pg_namespace (when
+  // detecting DDL from catalog DML), pg_publication_rel, pg_replication_origin and pg_publication
+  // tables. Only possibility of reaching here is when a DDL record is sent from sys catalog tablet,
+  // for ex: when a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for
+  // setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
+      << " pg_attribute_table_id_ = " << pg_attribute_table_id_
+      << " pg_namespace_table_id_ = " << pg_namespace_table_id_
       << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
+      << " pg_publication_rel_prpubid_index_table_id_ = "
+      << pg_publication_rel_prpubid_index_table_id_
       << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_
       << " pg_publication_table_id_ = " << pg_publication_table_id_;
-  return false;
+  return PubRefreshTrigger::kNone;
+}
+
+Status CDCSDKVirtualWAL::AddSyntheticDDLRecordFromCatalogDML(
+    const std::shared_ptr<CDCSDKProtoRecordPB>& record, GetConsistentChangesResponsePB* resp,
+    GetConsistentChangesRespMetadata* metadata, uint64_t* resp_records_size) {
+  const auto& row_message = record->row_message();
+
+  // A pg_namespace change doesn't name the tables in the schema, so its DDL record has no table
+  // ID. The walsender then invalidates its cache entries for all tables.
+  std::optional<TableId> affected_table_id;
+  if (row_message.table_id() != pg_namespace_table_id_) {
+    affected_table_id = VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record));
+
+    // Caller must ensure that the code never reaches here if this is not a catalog DML record.
+    // The check is performed earlier in GetConsistentChangesInternal.
+    RSTATUS_DCHECK(
+        affected_table_id, InternalError, "Table id is not found for catalog DML record");
+  }
+
+  auto* ddl_record = resp->add_cdc_sdk_proto_records();
+  auto* ddl_row_message = ddl_record->mutable_row_message();
+  ddl_row_message->set_op(RowMessage_Op_DDL);
+  if (affected_table_id) {
+    ddl_row_message->set_table_id(*affected_table_id);
+  }
+  ddl_row_message->set_commit_time(row_message.commit_time());
+  if (row_message.has_record_time()) {
+    ddl_row_message->set_record_time(row_message.record_time());
+  }
+  if (row_message.has_transaction_id()) {
+    ddl_row_message->set_transaction_id(row_message.transaction_id());
+  }
+  ddl_row_message->set_pg_lsn(row_message.pg_lsn());
+  ddl_row_message->set_pg_transaction_id(row_message.pg_transaction_id());
+  last_seen_ddl_commit_time_ = HybridTime(row_message.commit_time());
+  metadata->ddl_records++;
+  *resp_records_size += ddl_record->ByteSizeLong();
+
+  VLOG_WITH_PREFIX(1) << "Shipping synthetic DDL record from catalog DML: "
+                      << ddl_record->ShortDebugString();
+  return Status::OK();
+}
+
+std::optional<TableId> CDCSDKVirtualWAL::GetPublishedTableIdForOid(uint32_t oid) const {
+  auto it = oid_to_relfilenode_.find(oid);
+  const auto relfilenode = it != oid_to_relfilenode_.end() ? it->second : oid;
+  auto table_id = GetPgsqlTableId(pg_database_oid_, relfilenode);
+  if (!publication_table_list_.contains(table_id)) {
+    return std::nullopt;
+  }
+  return table_id;
+}
+
+Result<std::optional<TableId>> CDCSDKVirtualWAL::GetPublishedTableIdFromPgCatalogRecord(
+    const std::shared_ptr<CDCSDKProtoRecordPB>& record) const {
+  const auto& row_message = record->row_message();
+  const auto& table_id = row_message.table_id();
+
+  if (table_id == pg_attribute_table_id_) {
+    if (row_message.op() != RowMessage_Op_INSERT && row_message.op() != RowMessage_Op_UPDATE &&
+        row_message.op() != RowMessage_Op_DELETE) {
+      return std::nullopt;
+    }
+
+    const bool use_new_tuple = row_message.op() != RowMessage_Op_DELETE;
+    auto attrelid = GetPgCatalogUint32Column(row_message, "attrelid", use_new_tuple);
+    RSTATUS_DCHECK(attrelid, IllegalState, "attrelid not found in pg_attribute record");
+
+    auto affected_table_id = GetPublishedTableIdForOid(*attrelid);
+    if (!affected_table_id) {
+      VLOG_WITH_PREFIX(2) << "Ignoring pg_attribute change for unpublished table oid " << *attrelid;
+    }
+    return affected_table_id;
+  }
+
+  if (table_id == pg_class_table_id_) {
+    if (row_message.op() != RowMessage_Op_INSERT && row_message.op() != RowMessage_Op_UPDATE) {
+      return std::nullopt;
+    }
+
+    auto oid = GetPgCatalogUint32Column(row_message, "oid", /* use_new_tuple */ true);
+    if (!oid) {
+      VLOG_WITH_PREFIX(2) << "oid not found in pg_class entry";
+      return std::nullopt;
+    }
+
+    auto affected_table_id = GetPublishedTableIdForOid(*oid);
+    if (!affected_table_id) {
+      VLOG_WITH_PREFIX(2) << "Ignoring pg_class change for unpublished table oid " << *oid;
+    }
+    return affected_table_id;
+  }
+
+  return std::nullopt;
 }
 
 bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
   auto row_message = record->row_message();
-  auto oid = GET_OID_FROM_PG_CLASS_RECORD(record);
-
-  if (!oid_to_relfilenode_.contains(oid)) {
+  // A DELETE record carries the row's key only in the old tuple.
+  auto oid = GetPgCatalogUint32Column(
+      row_message, "oid", row_message.op() != RowMessage_Op_DELETE /* use_new_tuple */);
+  if (!oid || !oid_to_relfilenode_.contains(*oid)) {
     return false;
   }
 
   // Drop table case.
   if (row_message.op() == RowMessage_Op_DELETE) {
-    VLOG_WITH_PREFIX(1) << "Dropping of table with OID: " << oid << " has been detected";
+    VLOG_WITH_PREFIX(1) << "Dropping of table with OID: " << *oid << " has been detected";
     return true;
   }
 
   if (row_message.op() == RowMessage_Op_INSERT || row_message.op() == RowMessage_Op_UPDATE) {
-    DCHECK_GT(row_message.new_tuple().size(), 7);
-    auto new_rel_file_node = GET_RELFILENODE_FROM_PG_CLASS_RECORD(record);
+    auto new_rel_file_node =
+        GetPgCatalogUint32Column(row_message, "relfilenode", true /* use_new_tuple */);
+    if (!new_rel_file_node) {
+      LOG_WITH_PREFIX(DFATAL) << "relfilenode column not found in pg_class record for OID: "
+                              << *oid;
+      return false;
+    }
 
     // Table re-write case.
-    if (new_rel_file_node != oid_to_relfilenode_[oid]) {
-      VLOG_WITH_PREFIX(1) << "Rewrite of table with OID " << oid
-                          << " has been detected. Old relfilenode: " << oid_to_relfilenode_[oid]
-                          << " new relfilenode: " << new_rel_file_node;
+    if (*new_rel_file_node != oid_to_relfilenode_[*oid]) {
+      VLOG_WITH_PREFIX(1) << "Rewrite of table with OID " << *oid
+                          << " has been detected. Old relfilenode: " << oid_to_relfilenode_[*oid]
+                          << " new relfilenode: " << *new_rel_file_node;
       return true;
     }
   }

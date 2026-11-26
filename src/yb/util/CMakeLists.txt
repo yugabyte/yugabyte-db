@@ -110,8 +110,8 @@ set(UTIL_SRCS
   background_task.cc
   backoff_waiter.cc
   bitmap.cc
-  bitmap.cc
   bloom_filter.cc
+  byte_buffer.cc
   bytes_formatter.cc
   cache_metrics.cc
   cgroups.cc
@@ -121,12 +121,15 @@ set(UTIL_SRCS
   countdown_latch.cc
   crash_point.cc
   crc.cc
+  crc32c/crc32c_abseil.cc
+  crc32c/cpu_detect.cc
   cross_thread_mutex.cc
   crypt.cc
   csv_util.cc
   curl_util.cc
   date_time.cc
   debug-util.cc
+  dynamic_bitset.cc
   symbolize.cc
   libbacktrace_util.cc
   source_location.cc
@@ -137,7 +140,9 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  disk_space_checker.cc
   dist_trace.cc
+  drive_io_stats.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -154,6 +159,7 @@ set(UTIL_SRCS
   flags/flag_tags.cc
   flags/flags.cc
   flags/flags_callback.cc
+  format.cc
   hdr_histogram.cc
   hexdump.cc
   html_print_helper.cc
@@ -220,6 +226,7 @@ set(UTIL_SRCS
   status.cc
   status_callback.cc
   stol_utils.cc
+  storage_tier.cc
   strand.cc
   string_case.cc
   string_trim.cc
@@ -338,7 +345,7 @@ ADD_YB_LIBRARY(yb_util_shmem
 ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc
-       multi_drive_test_env.cc
+       multi_drive_test_env.cc power_loss_env.cc
   DEPS gflags glog gmock gtest yb_util yb_util_shmem)
 
 if(APPLE AND "${YB_TCMALLOC_ENABLED}" STREQUAL "1")
@@ -359,6 +366,14 @@ ADD_YB_TEST_LIBRARY(yb_test_main
 if(NOT APPLE)
   target_link_libraries(yb_test_main rt)
 endif()
+
+#######################################
+# yb_benchmark_main
+#######################################
+
+ADD_YB_TEST_LIBRARY(yb_benchmark_main
+                    SRCS benchmark_main.cc
+                    DEPS gbenchmark gflags glog yb_util)
 
 #######################################
 # Unit tests
@@ -382,12 +397,15 @@ endif()
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)
-ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
-YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc rocksdb yb_ash)
+ADD_YB_TEST(crc-test)
+YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc yb_ash)
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(disk_space_checker-test)
+ADD_YB_TEST(drive_io_stats-test)
+ADD_YB_TEST(dynamic_bitset-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
@@ -453,6 +471,7 @@ ADD_YB_TEST(shmem/annotations-test)
 ADD_YB_TEST(shmem/reserved_address_segment-test)
 ADD_YB_TEST(shmem/robust_hash_map-test)
 ADD_YB_TEST(shmem/robust_intrusive_list-test)
+ADD_YB_TEST(shmem/robust_lent_object-test)
 ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(shmem/shared_mem_allocator-test)
 ADD_YB_TEST(slice-test)
@@ -530,3 +549,10 @@ YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
+
+#######################################
+# Microbenchmarks
+#######################################
+
+ADD_YB_BENCHMARK(crc-benchmark)
+ADD_YB_BENCHMARK(mutex-benchmark DEPS absl)

@@ -15,6 +15,98 @@ CREATE EXTENSION IF NOT EXISTS pg_dist_rag;
 
 This creates the `dist_rag` schema with all tables, types, functions, and views.
 
+## Upgrading a running cluster
+
+`ALTER EXTENSION pg_dist_rag UPDATE` runs its upgrade script in one transaction, so any `CREATE INDEX` in it is not an online build. While RAG workers are writing to `dist_rag.work_queue`, such a build fails with `40001 Restart read required`. Upgrade one version at a time.
+
+### To 0.0.3
+
+**Production: build the indexes online first.** Run each statement on its own, outside a transaction block, so YugabyteDB builds the index online while workers keep running. Then run the upgrade; its `CREATE INDEX IF NOT EXISTS` statements skip the indexes that already exist.
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_work_queue_status_type_doctype_created_at
+    ON dist_rag.work_queue (task_status HASH, task_type ASC,
+                            (task_details->>'document_type') ASC, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_documents_unfinished
+    ON dist_rag.documents (status, source_id)
+    WHERE status IN ('QUEUED', 'PROCESSING');
+
+CREATE INDEX IF NOT EXISTS idx_work_queue_preprocess_document
+    ON dist_rag.work_queue ((task_details->>'document_id'))
+    WHERE task_type = 'PREPROCESS';
+
+ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.3';
+```
+
+Each DDL statement makes concurrent writes fail once with `40001 schema version mismatch`. Workers retry a failed claim on their next poll, but an api-server write, including `create_source`, fails, so an upload during the build returns an error. If that's unacceptable, scale the api-server to zero for the builds, or make sure clients retry a failed upload.
+
+**Development and small deployments: stop the workers first.** Scale the RAG workers to zero, run `ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.3';`, then scale them back up.
+
+### To 0.0.4
+
+0.0.4 adds two unique indexes: one document row per file in a source (`uq_documents_source_uri`), and at most one live PREPROCESS task per document and index (`uq_live_preprocess`). Existing duplicates must be removed first, and the upgrade fails with their counts if any remain. It deletes nothing itself.
+
+Before you start:
+
+- Every RAG agent must run a version that inserts documents with `ON CONFLICT DO NOTHING` (the agent built for 0.0.3 or later). An older agent's plain insert fails once `uq_documents_source_uri` exists.
+- Then roll out the agent built for 0.0.4 while the extension is still on 0.0.3. It checks for the 0.0.4 objects and picks them up within `CAPABILITY_RECHECK_SECONDS` (default 60) after the upgrade, without a restart.
+
+The cleanup helpers live in `upgrade/dedupe_before_0.0.4.sql`, outside the extension. Install them:
+
+```bash
+ysqlsh -d <database> -f upgrade/dedupe_before_0.0.4.sql
+```
+
+`dist_rag_upgrade.dedupe_documents(batch_size, quiet)` cleans duplicate `(source_id, document_uri)` groups within one source, so never across datapacks. In each group it keeps a COMPLETED row first, then the api-server's row (the one with `document_details->'meko'->>'user_id'`), then the lowest `document_id`. It copies the api-server's uploader keys into the kept row, deletes the other rows with their tasks, pipeline rows and chunks, and queues the kept row again if no copy was COMPLETED. `dist_rag_upgrade.dedupe_live_tasks(batch_size, quiet)` removes duplicate live tasks, keeping a running one. Each call is one transaction and returns what it did, including `groups_remaining`.
+
+**Production: clean up online, then finish in a short maintenance window.**
+
+1. With everything running, clean up duplicate documents until `groups_remaining` stops falling. Groups with a running task are skipped and reported in `groups_skipped`.
+
+   ```sql
+   SELECT dist_rag_upgrade.find_duplicate_documents();
+   SELECT * FROM dist_rag_upgrade.dedupe_documents(100);   -- repeat
+   ```
+
+   Each call is one transaction, so a call that fails under write load (seen once: `XX000 cannot commit while a portal is pinned`) has changed nothing and can be run again.
+
+   `groups_remaining` counts only the groups `find_duplicate_documents()` recorded. Every new first upload adds a duplicate, so online cleanup can't reach zero while uploads continue; the fresh `find_duplicate_documents()` in step 4 catches those. The point of this step is to shrink step 4.
+
+   Leave duplicate tasks to step 4. Under claim load, an online `dedupe_live_tasks` call can fail with `40001 Restart read required` after exhausting its retries, and duplicate tasks only cost repeated work, not data.
+
+   `tables_without_document_index` lists chunk tables with no index led by `document_id` or `(tenant_id, document_id)`. Each batch scans those tables once, so time one batch before choosing `batch_size`.
+
+2. Scale the api-server and the RAG workers to zero. Row locks can't stop a new duplicate from being inserted before the unique indexes exist, so nothing may write documents or tasks during the rest of the procedure.
+3. Wait until every lease has expired, at most `TASK_LEASE_DURATION` (600 seconds) after the last worker stopped. The quiet helpers refuse to run while any lease is live.
+4. Finish the cleanup with `quiet => true`, which also removes tasks left `IN_PROGRESS` by the stopped workers, until both report `groups_remaining = 0`:
+
+   ```sql
+   SELECT dist_rag_upgrade.find_duplicate_documents();
+   SELECT * FROM dist_rag_upgrade.dedupe_documents(100, quiet => true);   -- repeat
+   SELECT * FROM dist_rag_upgrade.dedupe_live_tasks(1000, quiet => true); -- repeat
+   ```
+
+5. Build the unique indexes, each on its own outside a transaction block, then upgrade and drop the helpers:
+
+   ```sql
+   CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_source_uri
+       ON dist_rag.documents (source_id, document_uri);
+
+   CREATE UNIQUE INDEX IF NOT EXISTS uq_live_preprocess
+       ON dist_rag.work_queue ((task_details->>'document_id'), (task_details->>'index_id'))
+       WHERE task_type = 'PREPROCESS' AND task_status IN ('QUEUED', 'IN_PROGRESS');
+
+   ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.4';
+   DROP SCHEMA dist_rag_upgrade CASCADE;
+   ```
+
+   A build that meets a duplicate fails and leaves the index behind, invalid; `IF NOT EXISTS` would then skip it. Drop it (`DROP INDEX dist_rag.uq_documents_source_uri;` or `DROP INDEX dist_rag.uq_live_preprocess;`), rerun step 4, and build again. The upgrade refuses to run while either index is invalid.
+
+6. Scale the api-server back up first, then the RAG workers.
+
+**Development and small deployments: stop everything first.** Scale the api-server and the RAG workers to zero, wait for leases to expire, install the helpers, run steps 4 and 5, then scale the api-server and the workers back up.
+
 ## Core Concepts
 
 | Concept | Description |
@@ -24,6 +116,8 @@ This creates the `dist_rag` schema with all tables, types, functions, and views.
 | **Document** | An individual file tracked under a source, processed through the pipeline. |
 | **Pipeline** | The processing workflow that chunks documents and generates embeddings. |
 | **Work Queue** | Internal task queue that coordinates source creation and document preprocessing. |
+| **Column Embedding Registration** | A one-time mapping from a source `table.column` to a destination `table.column`. Once activated, matching destination rows (`embedding_column IS NULL`) are discovered and embedded automatically -- no per-row enqueue call, ever. Independent of `dist_rag.sources`/`dist_rag.documents`. |
+| **Column Embedding Progress** | Internal lease/retry tracking for in-flight column-embedding rows, keyed by `(registration, row)` -- never lives on the destination table itself. |
 
 ## Usage
 
@@ -171,6 +265,132 @@ WHERE index_name = 'my_knowledge_base';
 
 Columns include: `index_id`, `index_name`, `document_name`, `calls`, `total_chunks_processed`, `total_embeddings_persisted`, `total_exec_time_seconds`, `successful_completions`, `completion_rate_percent`, and more.
 
+## Column Embedding
+
+A separate, generic capability from the KB-ingestion workflow above: instead of embedding chunks of a crawled document, this embeds a text column of an arbitrary existing table into a vector column of an arbitrary existing (possibly different) table -- registered once, then fully automatic. Mirrors the `create_source` -> `init_vector_index` two-step shape.
+
+### 1. Declare a Mapping
+
+Declares the source -> destination mapping. Not yet discoverable/pollable at this point -- returns a `mapping_id`, but the worker won't touch anything until step 2 activates it.
+
+```sql
+SELECT dist_rag.create_column_embedding_mapping(
+  r_registration_name := 'my_mapping',
+  r_destination_schema := 'public',
+  r_destination_table := 'my_table',
+  r_destination_embedding_column := 'embeddings',
+  r_source_schema := 'public',
+  r_source_table := 'my_table',
+  r_source_text_columns := ARRAY['content'],
+  r_source_filter_by_columns := '[{"source_filter_on_column": "id", "target_value_from_column": "id"}]'::jsonb
+) AS mapping_id;
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `r_registration_name` | `TEXT` | *(required)* | Unique name for this mapping |
+| `r_destination_schema` / `r_destination_table` | `TEXT` | *(required)* | Where the embedding gets written |
+| `r_destination_embedding_column` | `TEXT` | *(required)* | The nullable vector column to fill in -- the **only** thing the destination table needs to opt in; `embedding_column IS NULL` is the entire discovery signal |
+| `r_source_schema` / `r_source_table` | `TEXT` | *(required)* | Where the text to embed is read from -- same table as the destination for a same-table mapping, a different table otherwise |
+| `r_source_text_columns` | `TEXT[]` | *(required)* | Column(s) to read and join (with a blank line) into the text that gets embedded |
+| `r_source_filter_by_columns` | `JSONB` | *(required)* | How to find the exact source row for a given claimed destination row -- see **Filter entry shapes** below. Must narrow to exactly one row; a mismatch here is the most common source of "wrong text got embedded" bugs |
+| `r_destination_pk_column` | `TEXT` | `'id'` | Primary key column on the destination table |
+| `r_destination_tenant_column` | `TEXT` | `NULL` | Optional -- per-tenant fairness bucketing during a flush |
+| `r_destination_priority_column` | `TEXT` | `NULL` | Optional -- distinguishes live traffic (`0`/`NULL`) from backlog (any other value) for claim ordering; omit entirely if the table has no such column |
+| `r_destination_stale_claim_seconds` | `INTEGER` | `900` | How long a claimed-but-unfinished row stays claimed before another worker can reclaim it |
+| `r_destination_claim_batch_size` | `INTEGER` | `25` | Rows claimed per registration per poll cycle |
+| `r_destination_reserved_backfill_slots` | `INTEGER` | `5` | Rows reserved for the backlog tier every cycle, so live traffic can never fully starve it |
+| `r_source_connection` | `TEXT` | `'generic'` | `SOURCE_READERS` registry key -- `'generic'` covers every source today |
+| `r_source_order_by` | `JSONB` | `NULL` | `{"column": ..., "direction": "ASC"\|"DESC"}` -- only needed if a filter can match more than one source row |
+| `r_created_by` | `TEXT` | `NULL` | Free-text attribution |
+
+**Returns:** `UUID` -- the mapping ID.
+
+**Idempotent:** calling again with the same `r_registration_name` updates that mapping's config (`ON CONFLICT DO UPDATE`) instead of duplicating it -- e.g. to bump `r_destination_claim_batch_size` later. It never touches `vector_index_id`/`status`, so re-declaring can't accidentally un-initialize an already-active mapping.
+
+#### Filter entry shapes
+
+`r_source_filter_by_columns` is a JSON array, ANDed together. Each entry needs a `source_filter_on_column` (which column, *in the source table*, to filter on) plus **exactly one** of the following to supply the comparison value:
+
+| Key | Meaning |
+|-----|---------|
+| `value` | A literal, fixed at registration time |
+| `target_value_from_column` | Take the value from *this column on the claimed destination row* -- what makes one mapping apply correctly to every row it discovers, not just one specific row |
+| `resolve` | An indirect lookup first (see below) -- for when the value itself has to be resolved through another table |
+
+```jsonc
+// same-table mapping: match the source row by the claimed row's own id
+{"source_filter_on_column": "id", "target_value_from_column": "id"}
+
+// cross-table mapping: source column name differs from the destination's
+{"source_filter_on_column": "trace_id", "target_value_from_column": "conversation_id"}
+
+// JSONB path: metadata->>'message_id' = <value>
+{"source_filter_on_column": "metadata", "json_key": "message_id", "target_value_from_column": "message_id"}
+
+// indirect resolver: value comes from a lookup, itself keyed by the row
+{"source_filter_on_column": "project_id", "resolve": {
+  "schema": "meko_system", "table": "some_mapping_table",
+  "select_column": "external_project_id", "where_column": "internal_id",
+  "where_value_from_row_column": "tenant_id"
+}}
+```
+
+> **Note:** `source_filter_on_column` and `target_value_from_column` name columns on two *different* tables (source vs. the claimed destination row) and are independent -- they only happen to match in the first example because source and destination are the same table there. Getting this wrong (e.g. swapping them, or pointing `target_value_from_column` at a column the destination table doesn't actually have) is caught immediately: `create_column_embedding_mapping` validates the shape at registration time (`RAISE EXCEPTION` on a malformed entry), and a genuinely missing row column raises loudly at read time rather than silently embedding the wrong text.
+
+### 2. Activate the Mapping
+
+Supplies the embedding-model config, creates the `dist_rag.vector_indexes` row for it (reusing that table purely as model-config storage), and activates the mapping. **Unlike `init_vector_index`, this never creates a physical table** -- the destination table already exists.
+
+```sql
+SELECT dist_rag.init_column_embedding(
+  r_mapping_id := '<mapping_id from step 1>'::uuid,
+  r_ai_provider := 'OPENAI',
+  r_embedding_model_params := '{"model": "text-embedding-3-large", "dimensions": 1536}'::jsonb
+) AS vector_index_id;
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `r_mapping_id` | `UUID` | *(required)* | The mapping returned by step 1 |
+| `r_ai_provider` | `ai_provider_enum` | *(required)* | One of: `OPENAI`, `LOCAL`, `AWS_BEDROCK` |
+| `r_embedding_model_params` | `JSONB` | *(required)* | Must contain `"dimensions"` (same requirement as `init_vector_index`) |
+
+**Returns:** `UUID` -- the new `vector_indexes` row's ID.
+
+> **Note:** Raises if the mapping is unknown, or if it's already initialized (has a `vector_index_id`) -- use `set_column_embedding_registration_status` to pause/resume an already-active mapping instead of re-initializing it.
+
+Once activated, there is **no `build_index`-equivalent step** -- the worker's continuous poll loop *is* the perpetual build. From here on, any row already in the destination table with `embeddings IS NULL`, and any new row inserted going forward, is discovered and embedded automatically.
+
+### 3. Monitor a Mapping
+
+```sql
+-- In-flight/failed progress-table counts (cheap; can't show a "done" count -- see below)
+SELECT * FROM dist_rag.column_embedding_registration_stats
+WHERE registration_name = 'my_mapping';
+
+-- Total/embedded/pending-or-failed counts against the real destination table
+-- (a real COUNT(*) query -- fine every few minutes, not something to poll every few seconds)
+SELECT * FROM dist_rag.column_embedding_registration_progress('my_mapping');
+```
+
+`column_embedding_registration_stats` can't show a "done" count -- a successfully embedded row's progress entry is deleted by design (its `embedding_column` no longer being `NULL` is itself the completion signal). Use `column_embedding_registration_progress(name)` for that.
+
+### 4. Pause / Resume a Mapping
+
+```sql
+SELECT dist_rag.set_column_embedding_registration_status('my_mapping', 'PAUSED');
+SELECT dist_rag.set_column_embedding_registration_status('my_mapping', 'ACTIVE');
+```
+
+Pauses/resumes without deleting the mapping's configuration.
+
+> **Note:** A registration this size and its worker (`WORKER_TYPE=AUTO_COLUMN_EMBEDDING`) also require the destination table to have a partial index matching the discovery predicate (`WHERE {embedding_column} IS NULL`) before registering against a table with a non-trivial row count -- otherwise every poll cycle is a full table scan. See the `rag-worker-conversation-embedding` design doc for the large-table backfill considerations.
+
 ## Complete Example
 
 ```sql
@@ -225,6 +445,9 @@ WHERE index_name = 'engineering_kb';
 | `dist_rag.documents` | Individual documents belonging to sources |
 | `dist_rag.pipeline_details` | Per-document pipeline execution records |
 | `dist_rag.work_queue` | Internal task queue with lease-based locking |
+| `dist_rag.maintenance_runs` | Last run time of each agent job that runs once per interval for the whole cluster, such as the orphan sweep |
+| `dist_rag.column_embedding_registrations` | One row per declared/activated column-embedding mapping |
+| `dist_rag.column_embedding_progress` | In-flight/failed lease-retry state for column embedding, keyed by `(registration_id, dest_row_pk_in_text)` -- `dest_row_pk_in_text` is the destination row's own PK value, as text. This tracking lives in its own table; it never adds columns to the user's destination table |
 
 ### Enum Types
 
@@ -238,6 +461,7 @@ WHERE index_name = 'engineering_kb';
 | `pipeline_status_enum` | `PROCESSING`, `COMPLETED`, `FAILED` |
 | `task_type_enum` | `CREATE_SOURCE`, `PREPROCESS` |
 | `task_queue_status_enum` | `QUEUED`, `IN_PROGRESS`, `COMPLETED`, `FAILED` |
+| `column_embedding_registration_status_enum` | `ACTIVE`, `PAUSED` |
 
 ### Views
 
@@ -245,6 +469,7 @@ WHERE index_name = 'engineering_kb';
 |------|-------------|
 | `dist_rag.vector_index_pipeline_details` | Detailed per-document pipeline execution info across all indexes |
 | `dist_rag.pipeline_stats` | Aggregated pipeline statistics per document per index |
+| `dist_rag.column_embedding_registration_stats` | In-flight/failed progress-table counts per column-embedding registration |
 
 ## Running Tests
 

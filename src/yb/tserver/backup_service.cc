@@ -22,19 +22,21 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/service_util.h"
+#include "yb/tserver/snapshot_preflush.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 
-DEFINE_test_flag(int32, tablet_delay_restore_ms, 0, "Delay restore on tablet");
 DEFINE_test_flag(bool, fail_tserver_snapshot_op, false, "Fail to delete snapshot");
+
+DECLARE_bool(snapshot_create_flush_before_submit);
 
 namespace yb {
 namespace tserver {
@@ -46,7 +48,15 @@ using tablet::OperationCompletionCallback;
 TabletServiceBackupImpl::TabletServiceBackupImpl(TSTabletManager* tablet_manager,
                                                  const scoped_refptr<MetricEntity>& metric_entity)
     : TabletServerBackupServiceIf(metric_entity),
-      tablet_manager_(tablet_manager) {
+      tablet_manager_(tablet_manager),
+      preflush_(std::make_unique<SnapshotPreflush>(tablet_manager->server())) {
+}
+
+TabletServiceBackupImpl::~TabletServiceBackupImpl() = default;
+
+void TabletServiceBackupImpl::Shutdown() {
+  preflush_->StartShutdown();
+  preflush_->CompleteShutdown();
 }
 
 void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* req,
@@ -106,8 +116,10 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     if (temp_read_operation_result.ok()) {
       read_operation = std::move(*temp_read_operation_result);
       if (tablet.tablet->transaction_participant()) {
+        TEST_SYNC_POINT("TabletServiceBackupImpl::TabletSnapshotOp:ResolveIntents");
+        // Restore drops intents, so committed intents must be written to regular DB.
         status = tablet.tablet->transaction_participant()->ResolveIntents(
-            snapshot_hybrid_time, context.GetClientDeadline());
+            snapshot_hybrid_time, context.GetClientDeadline(), tablet::WaitForApply::kTrue);
       }
     } else {
       status = temp_read_operation_result.status();
@@ -117,6 +129,9 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     }
   }
 
+  const auto deadline = context.GetClientDeadline();
+  const bool preflush = FLAGS_snapshot_create_flush_before_submit &&
+      req->operation() == TabletSnapshotOpRequestPB::CREATE_ON_TABLET;
   auto operation = std::make_unique<SnapshotOperation>(tablet.tablet);
   operation->AllocateRequest()->CopyFrom(*req);
 
@@ -124,17 +139,15 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
-  if (operation->request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
-    AtomicFlagRandomSleepMs(&FLAGS_TEST_tablet_delay_restore_ms);
-  }
-
   if (!operation->CheckOperationRequirements()) {
     return;
   }
 
-  // TODO(txn_snapshot) Avoid duplicate snapshots.
-  // Submit the create snapshot op. The RPC will be responded to asynchronously.
-  tablet.peer->Submit(std::move(operation), tablet.leader_term);
+  if (preflush) {
+    preflush_->Submit(std::move(tablet), std::move(operation), std::move(read_operation), deadline);
+  } else {
+    tablet.peer->Submit(std::move(operation), tablet.leader_term);
+  }
 }
 
 }  // namespace tserver

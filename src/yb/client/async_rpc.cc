@@ -34,12 +34,15 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
+#include "yb/master/master_error.h"
+
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -133,12 +136,6 @@ bool LocalTabletServerOnly(const InFlightOps& ops) {
           !FLAGS_forward_redis_requests);
 }
 
-void FillRequestIds(const RetryableRequestId request_id, InFlightOps* ops) {
-  for (auto& op : *ops) {
-    op.yb_op->set_request_id(request_id);
-  }
-}
-
 void DoCheckResponseCount(
     const char* op, const char* name, size_t found, size_t expected, Status* status) {
   if (found == expected) {
@@ -228,8 +225,26 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
   return ops_[0].yb_op->table();
 }
 
+bool AsyncRpc::HasResponse() const {
+  return retrier().controller().status().ok();
+}
+
+rpc::RpcController* AsyncRpc::PrepareController() {
+  auto* controller = Rpc::PrepareController();
+  if (const auto& buffers_holder = batcher_->buffers_holder()) {
+    // The rpc keeps alive the request, the response and the batcher. The batcher drops
+    // buffers_holder once its rpcs are done, so the call needs its own reference.
+    controller->set_local_call_buffers_holder(
+        std::make_shared<std::pair<std::shared_ptr<void>, std::shared_ptr<void>>>(
+            shared_from_this(), buffers_holder));
+  }
+  return controller;
+}
+
 void AsyncRpc::Finished(const Status& status) {
-  VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
+  VLOG_WITH_FUNC(4)
+      << "status: " << status << ", error: "
+      << (HasResponse() ? AsString(response_error()) : "<no response>");
   Status new_status = status;
   RefCntBuffer data_holder;
   if (status.ok()) {
@@ -335,6 +350,47 @@ bool AsyncRpc::IsLocalCall() const {
 
 namespace {
 
+// One "name(id)" entry per distinct table in the batch, mirroring pggate's Perform attribute.
+void PublishPendingRpcTableNames(const InFlightOps& ops) {
+  if (!dist_trace::HasActiveContext()) {
+    return;
+  }
+  std::string joined_names;
+  std::unordered_set<std::string_view> seen;
+  auto append = [&](std::string_view name, std::string_view id) {
+    if (!seen.insert(id).second) {
+      return;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    joined_names += name;
+    joined_names += '(';
+    joined_names += id;
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    const auto& table = op.yb_op->table();
+    append(table->name().table_name(), table->id());
+    if (op.yb_op->type() != YBOperation::PGSQL_READ) {
+      continue;
+    }
+    const auto& read_op = down_cast<const YBPgsqlReadOp&>(*op.yb_op);
+    if (!read_op.request().has_index_request()) {
+      continue;
+    }
+    // The index may be missing from the tserver table cache; keep the id so the span is still
+    // attributable.
+    const auto& index_table = read_op.index_table();
+    append(
+        index_table ? std::string_view(index_table->name().table_name()) : "?",
+        read_op.request().index_request().table_id());
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
+  }
+}
+
 template<class T>
 void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
                  bool need_full_metadata,
@@ -380,6 +436,55 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   }
 }
 
+template <class Req>
+void SetReadTimeTo(HybridTime ht, Req* req) {
+  auto* read_time = req->mutable_read_time();
+  read_time->set_read_ht(ht.ToUint64());
+  read_time->set_local_limit_ht(ht.ToUint64());
+  read_time->set_global_limit_ht(ht.ToUint64());
+}
+
+// Points the request's read time at in_txn_limit. Used for reading relations that
+// were created in the current transaction. This is done since there might be 2 kinds of rows for
+// such relations:
+//
+// (1) written with the skip_intents optimization and hence they sit in regular db at the hybrid
+// time picked when the write is applied, which is always above the in_txn_limit of the statement
+// (except in a corner case where the write occurs before the first read of the statement, refer
+// src/yb/yql/pggate/README), and
+//
+// (2) written to intents db i.e., with the optimization disabled (e.g., due to a savepoint in the
+// transaction).
+//
+// Sending the statement's in_txn_limit as the read time gives rows of type (1) the same visibility
+// as rows of type (2). This is because:
+//
+// (a) All rows written before the in_txn_limit would be visible and those written afterwards
+// won't be visible.
+//
+// (b) No concurrent backend can write to the same table because the skip_intents optimization
+// only applies to tables created in the current active transaction which is not committed yet.
+//
+// (c) The corner case implementation quirk that is seen in the normal unoptimized case remains
+// in the optimized path of skip_intents.
+//
+// The statement's in_txn_limit is taken from the read point, where PgClientSession stores it
+// via YBSession::SetInTxnLimit. kMax is not a statement limit: it is the backward-compatible
+// "no cutoff, see all own intents" default that ReadHybridTime's constructors and FromPB
+// assign when no limit was chosen (e.g. on autonomous DDL sessions, which never set one).
+// Returns false and leaves the request untouched in that case; waiting for safe time to reach
+// kMax would block forever.
+template <class Req>
+bool SetReadTimeToInTxnLimit(const ConsistentReadPoint* read_point, Req* req) {
+  const auto in_txn_limit =
+      read_point ? read_point->GetReadTime().in_txn_limit : HybridTime::kInvalid;
+  if (!in_txn_limit || in_txn_limit == HybridTime::kMax) {
+    return false;
+  }
+  SetReadTimeTo(in_txn_limit, req);
+  return true;
+}
+
 void SetFastPathObjectLockingTxnMetadata(
     const InFlightOpsTransactionMetadata& metadata, tserver::LWWriteRequestPB* req) {
   if (metadata.object_locking_txn_meta) {
@@ -420,6 +525,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   req_.ref_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const ConsistentReadPoint* read_point = batcher_->read_point();
+  const auto& metadata = batcher_->in_flight_ops().metadata;
+  const bool serializable =
+      !metadata.transaction.transaction_id.IsNil() &&
+      metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
   bool has_read_time = false;
   if (read_point) {
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
@@ -429,7 +538,15 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
         (data.need_consistent_read &&
          table()->InternalSchema().table_properties().is_transactional())) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
-      if (read_time) {
+      // A SERIALIZABLE transaction's read point carries a read time only while it reads the
+      // catalog snapshot, and those reads are performed in the forced snapshot mode. All other
+      // operations in serializable isolation must stay without a read time.
+      if (serializable && !data.force_snapshot_read) {
+        LOG_IF(DFATAL,
+               read_time && !table()->InternalSchema().table_properties().is_ysql_catalog_table())
+            << "Read time should NOT be specified for serializable isolation: "
+            << read_time.ToString();
+      } else if (read_time) {
         has_read_time = true;
         read_time.AddToPB(&req_);
       }
@@ -442,19 +559,49 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   if (start_time_micros > 0) {
     req_.set_start_time_micros(start_time_micros);
   }
-  const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
     DCHECK(!data.skip_intents);
     SetMetadata(metadata, data.need_metadata, &req_);
-    bool serializable = metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
-    LOG_IF(DFATAL, has_read_time && serializable)
-        << "Read time should NOT be specified for serializable isolation: "
-        << read_point->GetReadTime().ToString();
+    LOG_IF(DFATAL, data.force_snapshot_read && !has_read_time)
+        << "Forced snapshot read without a read time";
+
+    // Use in_txn_limit to be able to read writes that happened with skip_intents i.e., they bypass
+    // the intents db and land in the regular db. Only this op's read time moves; the transaction
+    // and its metadata are untouched.
+    //
+    // A SERIALIZABLE RPC has a read time only for a forced snapshot read of a catalog table, and
+    // skip_intents doesn't apply to catalog tables. Other SERIALIZABLE reads read at the latest
+    // time, which is already above those rows.
+    LOG_IF(DFATAL, serializable && data.read_at_in_txn_limit && has_read_time)
+        << "in_txn_limit read time for a serializable read";
+    if (data.read_at_in_txn_limit && has_read_time) {
+      if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
+        // Some sessions never pick a statement in_txn_limit -- PgClientSession::UpdateReadTime
+        // skips SetInTxnLimit for autonomous DDL ones (see the TODO there) -- but the relation
+        // still needs a read time above the rows an earlier skip_intents write left in the
+        // regular db. The transaction's own read time is not one: it is picked at its first
+        // transactional operation, which for a DDL is the catalog writes it starts with, before
+        // any user data row is written.
+        //
+        // The current time is above every write this transaction has already completed, since
+        // their responses advanced this clock, and no other transaction can write to a relation
+        // created by an uncommitted one. Clearing the read time would read above those rows too,
+        // but the tserver would then pick one and report it back through used_read_time, which
+        // YBTransaction::Impl::Flushed DFATALs on before applying it over the read point of the
+        // whole transaction.
+        SetReadTimeTo(read_point->Now(), &req_);
+      }
+    }
   } else if (data.skip_intents) {
     if constexpr (std::is_same_v<Req, tserver::LWWriteRequestPB>) {
       IncrementCounter(async_rpc_metrics_->skip_intents_writes);
     }
-    if (req_.read_time().read_ht() > 0) {
+
+    // Use in_txn_limit to be able to read writes that happened with skip_intents i.e., they bypass
+    // the intents db and land in the regular db.
+    if (!SetReadTimeToInTxnLimit(read_point, &req_) && req_.read_time().read_ht() > 0) {
+      // Without a usable in_txn_limit, clearing the read time lets the remote tserver pick the
+      // latest time for reading.
       req_.clear_read_time();
     }
   }
@@ -529,7 +676,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
     RefCntBuffer data_holder, const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
+  if (HasResponse() && resp_.has_trace_buffer()) {
     TRACE_TO(
         trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc",
         resp_.trace_buffer().ToBuffer());
@@ -569,6 +716,9 @@ void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) 
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
+  if (!HasResponse()) {
+    return {};
+  }
   return {GetPropagatedHybridTime(resp_),
           resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
                                      : ReadHybridTime()};
@@ -589,8 +739,15 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
     ReadHybridTime::SingleTime(op->write_time()).ToPB(req->mutable_read_time());
   }
-  if (op->XreplOriginId()) {
-    req->set_xrepl_origin_id(op->XreplOriginId());
+  const auto& cdr_metadata = op->cdr_metadata();
+  if (cdr_metadata.source_origin) {
+    req->set_xrepl_origin_id(cdr_metadata.source_origin);
+  }
+  if (cdr_metadata.source_write_ht.is_valid()) {
+    req->set_xrepl_source_write_ht(cdr_metadata.source_write_ht.ToUint64());
+  }
+  if (op->origination_info().IsSet()) {
+    op->origination_info().ToPB(req->mutable_origination_info());
   }
 }
 
@@ -687,25 +844,23 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     req_.set_leader_term(batcher_->GetLeaderTerm());
   }
 
-  const auto& client_id = batcher_->client_id();
-  if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
-    auto temp = client_id.ToUInt64Pair();
-    req_.set_client_id1(temp.first);
-    req_.set_client_id2(temp.second);
-    const auto& first_yb_op = ops_.begin()->yb_op;
-    // That means we are trying to resend all ops from this RPC and need to reuse retryable
-    // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
-    if (first_yb_op->request_id()) {
-      const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
-      req_.set_request_id(*first_yb_op->request_id());
-      req_.set_min_running_request_id(request_detail.min_running_request_id);
-    } else {
-      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      req_.set_request_id(request_pair.first);
-      req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second);
+  if (FLAGS_detect_duplicates_for_retryable_requests) {
+    // The ops carry the request when we are trying to resend all ops from this RPC, and then it
+    // is reused (see https://github.com/yugabyte/yugabyte-db/issues/14005).
+    auto request = ops_.begin()->yb_op->retryable_request();
+    if (!request) {
+      request = batcher_->NextRequestIdAndMinRunningRequestId();
+      batcher_->RegisterRequest(request);
+      for (auto& op : ops_) {
+        op.yb_op->set_retryable_request(request);
+      }
     }
-    FillRequestIds(req_.request_id(), &ops_);
+    req_.set_request_id(request.id);
+    req_.set_min_running_request_id(request.min_running);
+    // The client id of the request, since a sharded allocator has one per shard.
+    auto client_id = request.client_id->ToUInt64Pair();
+    req_.set_client_id1(client_id.first);
+    req_.set_client_id2(client_id.second);
   }
 
   if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {
@@ -726,6 +881,7 @@ WriteRpc::~WriteRpc() {
 
 void WriteRpc::CallRemoteMethod() {
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
@@ -837,8 +993,16 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
-  if (data.pending_async_write_op_id.valid()) {
-    data.pending_async_write_op_id.ToPB(req_.mutable_pending_async_write_op_id());
+  if (data.force_snapshot_read) {
+    req_.set_force_snapshot_read(true);
+  }
+  if (!data.pending_async_write_op_ids.empty()) {
+    // Old servers only read this field, and reject the gaps the later fences would cover.
+    data.pending_async_write_op_ids.front().ToPB(
+        req_.mutable_deprecated_pending_async_write_op_id());
+    for (const auto& op_id : data.pending_async_write_op_ids) {
+      op_id.ToPB(req_.add_pending_async_write_op_ids());
+    }
   }
 
   switch (table()->table_type()) {
@@ -876,9 +1040,21 @@ ReadRpc::~ReadRpc() {
   }
 }
 
+bool ReadRpc::AppliedBeforeReplication() const {
+  if (!req_.use_async_write()) {
+    return false;
+  }
+  // The tserver writes intents for a read, and so may apply it early, only when the read takes row
+  // locks or runs in serializable isolation.
+  const auto isolation = batcher_->in_flight_ops().metadata.transaction.isolation;
+  return std::ranges::any_of(
+      ops_, [isolation](const auto& op) { return op.yb_op->should_apply_intents(isolation); });
+}
+
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
@@ -1003,7 +1179,13 @@ void WaitForAsyncWriteRpc::SendRpc() {
 
 void WaitForAsyncWriteRpc::OnKeyLookup(const Result<internal::RemoteTabletPtr>& result) {
   if (!result.ok()) {
-    FinishOrRetry(Status(result.status()));
+    const auto& status = result.status();
+    // OBJECT_NOT_FOUND from the master means the table itself is gone (dropped, or rewritten by
+    // TRUNCATE). Refreshing partitions can never resolve that, so fail instead of retrying until
+    // the deadline. Other NotFound flavors, e.g. a tablet split in flight, stay retryable.
+    const auto table_gone = status.IsNotFound() &&
+                            master::MasterError(status) == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    FinishOrRetry(Status(status), /*allow_retry=*/!table_gone);
     return;
   }
   const TabletId& tablet_id = (*result)->tablet_id();
@@ -1033,12 +1215,12 @@ void WaitForAsyncWriteRpc::Finished(const Status& status) {
   }
 }
 
-void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status) {
+void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status, bool allow_retry) {
   DCHECK(table_);
   // NotFound (parent GC'd) and TryAgain (TABLET_SPLIT or stale partitions) both mean the key has
   // moved. Refresh partitions and DelayedRetry (this is bounded by the retrier's deadline).
   // Other errors (network, etc.) are already handled by TabletInvoker's internal retries.
-  if (!status.ok() && (status.IsNotFound() || status.IsTryAgain())) {
+  if (allow_retry && !status.ok() && (status.IsNotFound() || status.IsTryAgain())) {
     const_cast<YBTable&>(*table_).MarkPartitionsAsStale();
     status = mutable_retrier()->DelayedRetry(this, status);
     if (status.ok()) {

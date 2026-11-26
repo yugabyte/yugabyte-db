@@ -97,6 +97,10 @@ class StackTrace {
   // resolved (only the hex addresses are given).
   std::string ToLogFormatHexString() const;
 
+  // Like ToLogFormatHexString(), but each frame also carries "(module+0xoffset)" so it can be
+  // symbolized offline with llvm-symbolizer / asan_symbolize.py without the process load map.
+  std::string ToLogFormatModuleOffsetString() const;
+
   uint64_t HashCode() const;
 
   explicit operator bool() const {
@@ -146,6 +150,16 @@ class StackTrace {
     return lhs.compare(rhs) < 0;
   }
 };
+
+// Messages of the statuses ThreadStacks returns when a thread's stack could not be collected.
+inline constexpr std::string_view kThreadStackInAllocDeallocMsg =
+    "Thread did not respond: it was inside tcmalloc alloc/dealloc";
+inline constexpr std::string_view kThreadStackCollectingMsg =
+    "Thread did not respond: it was in the middle of a stack trace collection";
+inline constexpr std::string_view kThreadStackUnknownReasonMsg =
+    "Thread did not respond: empty stack for unknown reason";
+inline constexpr std::string_view kThreadStackTimedOutMsg =
+    "Thread did not respond: maybe it is blocking signals";
 
 Result<StackTrace> ThreadStack(ThreadIdForStack tid);
 // tids should be ordered

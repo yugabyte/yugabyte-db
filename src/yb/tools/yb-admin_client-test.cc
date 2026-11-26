@@ -13,6 +13,7 @@
 #include <gmock/gmock.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/catalog_manager_util.h"
@@ -27,9 +28,23 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_hang_on_namespace_transition);
+DECLARE_bool(yb_admin_force_use_private_ip);
 
 namespace yb {
 namespace tools {
+
+namespace {
+
+// Sum the server-level block_cache_usage gauge (bytes) across all tablet servers.
+Result<int64_t> GetClusterBlockCacheUsageBytes(ExternalMiniCluster* cluster) {
+  int64_t total = 0;
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    total += VERIFY_RESULT(cluster->tablet_server(i)->GetMetric<int64_t>(
+        "server", "yb.tabletserver", "block_cache_usage", "value"));
+  }
+  return total;
+}
+}  // namespace
 
 // Tests for the client. Used to verify behaviour that cannot be verified by using yb-admin as an
 // external process.
@@ -294,6 +309,13 @@ master::ListTabletServersResponsePB::Entry MakeTabletServerEntry(
   return entry;
 }
 
+void AddBroadcastAddress(
+    master::ListTabletServersResponsePB::Entry* entry, const std::string& host, uint16_t port) {
+  HostPortToPB(
+      HostPort(host, port),
+      entry->mutable_registration()->mutable_common()->add_broadcast_addresses());
+}
+
 }  // namespace
 
 TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
@@ -312,6 +334,196 @@ TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
   EXPECT_EQ("uuid-alive-30-b", servers.Get(2).instance_id().permanent_uuid());
   EXPECT_EQ("uuid-dead-10", servers.Get(3).instance_id().permanent_uuid());
   EXPECT_EQ("uuid-dead-20", servers.Get(4).instance_id().permanent_uuid());
+}
+
+TEST(SelectTabletServerAddressTest, PrefersBroadcastAddress) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, FallsBackToPrivateAddress) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, SkipsDeadServers) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead", "192.0.2.1", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive", "192.0.2.2", 9100, true);
+
+  EXPECT_EQ("192.0.2.2", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, UsesDeadServerWhenNoServerIsAlive) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-1", "192.0.2.1", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-2", "192.0.2.2", 9100, false);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, TreatsUnreportedLivenessAsAlive) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-unknown", "192.0.2.1", 9100, true);
+  server->clear_alive();
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, ReturnsEmptyWhenNoAddressIsRegistered) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  master::ListTabletServersResponsePB::Entry entry;
+  entry.mutable_instance_id()->set_permanent_uuid("uuid-no-address");
+  entry.set_alive(true);
+  *servers.Add() = entry;
+
+  EXPECT_TRUE(SelectTabletServerAddress(servers).host().empty());
+}
+
+TEST(SelectTabletServerAddressTest, ReturnsEmptyWhenRegistrationHasNoAddresses) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  server->mutable_instance_id()->set_permanent_uuid("uuid-empty-registration");
+  server->set_alive(true);
+  server->mutable_registration()->mutable_common();
+
+  EXPECT_TRUE(SelectTabletServerAddress(servers).host().empty());
+}
+
+TEST(SelectTabletServerAddressTest, ForceUsePrivateIpPrefersPrivateAddress) {
+  google::FlagSaver flag_saver;
+  FLAGS_yb_admin_force_use_private_ip = true;
+
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, ForceUsePrivateIpFallsBackToBroadcastAddress) {
+  google::FlagSaver flag_saver;
+  FLAGS_yb_admin_force_use_private_ip = true;
+
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  server->mutable_instance_id()->set_permanent_uuid("uuid-broadcast-only");
+  server->set_alive(true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
+}
+
+TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
+  auto make_placement = [](int32_t num_replicas, int32_t first_max, int32_t second_max) {
+    PlacementInfoPB placement_info;
+    placement_info.set_num_replicas(num_replicas);
+    for (const auto& [zone, max_num_replicas] :
+         {std::pair("z1", first_max), std::pair("z2", second_max)}) {
+      auto* block = placement_info.add_placement_blocks();
+      block->set_min_num_replicas(1);
+      if (max_num_replicas >= 0) {
+        block->set_max_num_replicas(max_num_replicas);
+      }
+      auto* cloud_info = block->mutable_cloud_info();
+      cloud_info->set_placement_cloud("c");
+      cloud_info->set_placement_region("r");
+      cloud_info->set_placement_zone(zone);
+    }
+    return placement_info;
+  };
+
+  ASSERT_NOK_STR_CONTAINS(
+      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 0, 2)),
+      "max_num_replicas (0) must be greater than or equal to 1");
+  ASSERT_NOK_STR_CONTAINS(
+      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
+      "total maximum replica count (2)");
+  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, -1)));
+  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 3, 3)));
+
+  // A placement with any explicit maximum must consist solely of fully-specified (non-wildcard)
+  // placement blocks: a wildcard block on the capped block itself is rejected.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->set_placement_region("r2");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::IsPlacementInfoValid(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+  }
+  // ... and so is an uncapped wildcard block alongside a capped fully-qualified block. If such a
+  // wildcard overlapped the capped block, tservers could be attributed to the wildcard block and
+  // bypass the cap.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->clear_placement_zone();
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+  }
+  // Duplicate blocks are also rejected when an explicit maximum is present, as a tserver could
+  // be attributed to either duplicate.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->set_placement_zone("z1");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with duplicate placement blocks");
+  }
+  // Without any explicit maximum, wildcard and duplicate blocks remain acceptable to this
+  // validator (legacy placements are not held to the stricter structural rules).
+  {
+    auto placement_info = make_placement(2, -1, -1);
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
+    ASSERT_OK(master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info));
+  }
+}
+
+// Test that ClearRocksDBCache gives a drop in block cache usage.
+TEST_F(ClusterAdminClientTest, ClearRocksDBCacheAfterTableScan) {
+  const std::string table_name = "clear_rocksdb_cache_test";
+  const std::string db_name = "yugabyte";
+  CreateTable(Format(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table_name));
+
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, repeat('x', 4096) FROM generate_series(1, 500) AS i",
+      table_name));
+
+  // Flush all tablets so the inserted rows live in SST files on disk.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(i, {}));
+  }
+
+  const int64_t usage_before_scan = ASSERT_RESULT(GetClusterBlockCacheUsageBytes(cluster_.get()));
+
+  // Full table scan reads the SST data blocks into the block cache on the serving tservers.
+  ASSERT_RESULT(conn.FetchFormat("SELECT k, v FROM $0", table_name));
+
+  const int64_t usage_after_scan = ASSERT_RESULT(GetClusterBlockCacheUsageBytes(cluster_.get()));
+  ASSERT_GT(usage_after_scan, usage_before_scan);
+
+  ASSERT_OK(cluster_admin_client_->ClearRocksDBCache());
+
+  // At least three quarters of what the scan loaded must be gone. Not exactly zero: background
+  // reads on system tablets can repopulate the shared cache before the metric is read.
+  const int64_t usage_after_clear = ASSERT_RESULT(GetClusterBlockCacheUsageBytes(cluster_.get()));
+  const int64_t loaded_by_scan = usage_after_scan - usage_before_scan;
+  ASSERT_LT(usage_after_clear, usage_before_scan + loaded_by_scan / 4)
+      << "before scan: " << usage_before_scan << ", after scan: " << usage_after_scan;
 }
 
 }  // namespace tools

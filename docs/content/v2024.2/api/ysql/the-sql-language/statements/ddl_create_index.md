@@ -29,7 +29,13 @@ In YugabyteDB, indexes are sharded - they are split into tablets and distributed
 
 Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).
 
-Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced.
+
+A nonconcurrent build reads the table at one read point. If it runs longer than the YB-TServer flag [timestamp_history_retention_interval_sec](../../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) (default 900 seconds), it fails with `Snapshot too old`. Before a nonconcurrent build on a large table, set the flag higher than the expected build time on all YB-TServers (it can be changed at runtime), and reset it after the build finishes. A higher value retains more history, which increases storage use.
+
+Under [READ COMMITTED](../../../../../architecture/transactions/read-committed/), don't run DDL or [ANALYZE](../cmd_analyze) in the same database during an online index build. A concurrent DDL statement or ANALYZE can fail the build with `relation "<index>" already exists` and leave an invalid index. Drop the invalid index with `DROP INDEX <index_name>;` before you retry the build. To find invalid indexes, query `pg_index` where `indisvalid` is false.
+
+The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :--------- | :------------ |
@@ -150,11 +156,13 @@ ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 
 {{< note title="Note" >}}
-Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Early Access and available in YugabyteDB {{<release "2025.2">}} and later:
+Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Early Access in YugabyteDB {{<release "2025.2">}} and later:
 
-- [Object locking](/stable/explore/transactions/explicit-locking/#enable-table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
-- [Transactional DDL](/stable/explore/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
+- [Object locking](/stable/architecture/transactions/concurrency-control/#table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
+- [Transactional DDL](/stable/architecture/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
   Object locking depends on this flag as well.
+
+Do not enable these flags on a cluster that uses CDC. Transactional DDL currently doesn't support CDC. See [Limitations](/stable/architecture/transactions/transactional-ddl/#limitations).
 
 It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
 If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
@@ -192,7 +200,7 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### TABLESPACE clause
 
-Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
+Specify the name of the [tablespace](../ddl_create_tablespace/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 

@@ -50,10 +50,10 @@
 #include "yb/gutil/callback.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
@@ -140,7 +140,6 @@ using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;
@@ -227,7 +226,7 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd, int 
     case Env::OPEN_EXISTING:
       break;
     default:
-      return STATUS(NotSupported, Substitute("Unknown create mode $0", mode));
+      return STATUS(NotSupported, Format("Unknown create mode $0", mode));
   }
 
   const int f = open(filename.c_str(), flags | extra_flags, 0644);
@@ -254,38 +253,38 @@ Result<struct statvfs> GetFilesystemStats(const std::string& path) {
   auto ret = statvfs(path.c_str(), &stat);
   if (ret != 0) {
     if (errno == EACCES) {
-      return STATUS_SUBSTITUTE(NotAuthorized,
+      return STATUS_FORMAT(NotAuthorized,
           "Caller doesn't have the required permission on a component of the path $0",
           path);
     } else if (errno == EIO) {
-      return STATUS_SUBSTITUTE(IOError,
+      return STATUS_FORMAT(IOError,
           "I/O error occurred while reading from '$0' filesystem",
           path);
     } else if (errno == ELOOP) {
-      return STATUS_SUBSTITUTE(InternalError,
+      return STATUS_FORMAT(InternalError,
           "Too many symbolic links while translating '$0' path",
           path);
     } else if (errno == ENAMETOOLONG) {
-      return STATUS_SUBSTITUTE(NotSupported,
+      return STATUS_FORMAT(NotSupported,
           "Path '$0' is too long",
           path);
     } else if (errno == ENOENT) {
-      return STATUS_SUBSTITUTE(NotFound,
+      return STATUS_FORMAT(NotFound,
           "File specified by path '$0' doesn't exist",
           path);
     } else if (errno == ENOMEM) {
       return STATUS(InternalError, "Insufficient memory");
     } else if (errno == ENOSYS) {
-      return STATUS_SUBSTITUTE(NotSupported,
+      return STATUS_FORMAT(NotSupported,
           "Filesystem for path '$0' doesn't support statvfs",
           path);
     } else if (errno == ENOTDIR) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
+      return STATUS_FORMAT(InvalidArgument,
           "A component of the path '$0' is not a directory",
           path);
     } else {
-      return STATUS_SUBSTITUTE(InternalError,
-          "Failed to read information about filesystem for path '%s': errno=$0: $1",
+      return STATUS_FORMAT(InternalError,
+          "Failed to read information about filesystem for path '$0': errno=$1: $2",
           path,
           errno,
           ErrnoToString(errno));
@@ -464,6 +463,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     struct iovec* remaining_iov = iov;
     int remaining_blocks = narrow_cast<int>(blocks_to_write);
     ssize_t total_written = 0;
+    const auto start = MonoTime::Now();
 
     while (remaining_blocks > 0) {
       ssize_t written = pwritev(
@@ -481,10 +481,23 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
       total_written += written;
     }
 
+    if (drive_stats_) {
+      // RecordDirectWrite, not the buffered variant: this class overrides Sync() to be exactly
+      // this write and never reaches PosixWritableFile::Sync(), so nothing would ever come along
+      // to settle an unsynced-bytes debt. There is also nothing to settle - with O_DIRECT the
+      // bytes are on the device when pwritev returns.
+      //
+      // This is likewise the whole device cost on such a drive: no page cache in between and no
+      // fsync afterwards, so drive_write_time carries what drive_sync_time carries elsewhere.
+      // Bytes are block-padded, which is genuinely what reached the device.
+      drive_stats_->RecordDirectWrite(
+          static_cast<uint64_t>(total_written), MonoTime::Now() - start);
+    }
+
     if (PREDICT_FALSE(total_written != bytes_to_write)) {
       return STATUS(IOError,
-                    Substitute("pwritev error: expected to write $0 bytes, wrote $1 bytes instead",
-                               bytes_to_write, total_written));
+                    Format("pwritev error: expected to write $0 bytes, wrote $1 bytes instead",
+                           bytes_to_write, total_written));
     }
 
     filesize_ = next_write_offset_;
@@ -597,8 +610,8 @@ class PosixRWFile final : public RWFile {
 
     if (PREDICT_FALSE(written != implicit_cast<ssize_t>(data.size()))) {
       return STATUS(IOError,
-          Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
-                     data.size(), written));
+          Format("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
+                 data.size(), written));
     }
 
     pending_sync_ = true;
@@ -658,7 +671,7 @@ class PosixRWFile final : public RWFile {
   Status Sync() override {
     TRACE_EVENT1("io", "PosixRWFile::Sync", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
-    LOG_SLOW_EXECUTION(WARNING, 1000, Substitute("sync call for $0", filename())) {
+    LOG_SLOW_EXECUTION(WARNING, 1000, Format("sync call for $0", filename())) {
       if (pending_sync_) {
         pending_sync_ = false;
         RETURN_NOT_OK(DoSync(fd_, filename_));
@@ -1308,7 +1321,7 @@ class PosixEnv : public Env {
   }
 
   Status SetUlimit(int resource, ResourceLimit value) override {
-    return SetUlimit(resource, value, strings::Substitute("resource no. $0", resource));
+    return SetUlimit(resource, value, Format("resource no. $0", resource));
   }
 
   Status SetUlimit(

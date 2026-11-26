@@ -37,6 +37,7 @@ yba telemetry-provider gcpcloudmonitoring [flags]
 ### SEE ALSO
 
 * [yba telemetry-provider](yba_telemetry-provider.md)	 - Manage YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider gcpcloudmonitoring create](yba_telemetry-provider_gcpcloudmonitoring_create.md)	 - Create a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
 * [yba telemetry-provider gcpcloudmonitoring delete](yba_telemetry-provider_gcpcloudmonitoring_delete.md)	 - Delete a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
 * [yba telemetry-provider gcpcloudmonitoring describe](yba_telemetry-provider_gcpcloudmonitoring_describe.md)	 - Describe a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
 * [yba telemetry-provider gcpcloudmonitoring list](yba_telemetry-provider_gcpcloudmonitoring_list.md)	 - List GCP Cloud Monitoring YugabyteDB Anywhere telemetry providers

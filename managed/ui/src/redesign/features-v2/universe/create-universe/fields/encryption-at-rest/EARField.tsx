@@ -1,7 +1,8 @@
 import { FC } from 'react';
 import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
-import { useTranslation } from 'react-i18next';
+import { useUpdateEffect } from 'react-use';
+import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBLabel, YBAutoComplete } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
@@ -13,7 +14,14 @@ import { KmsConfig } from '../../../../../features/universe/universe-form/utils/
 import NextLineIcon from '../../../../../assets/next-line.svg';
 // import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
-const { Box } = mui;
+const { Box, styled, Link } = mui;
+
+const StyledLinkText = styled(Link)({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: '#6D7C88'
+});
 
 //TODO : Disable option for customCertPathOption
 interface EARProps {
@@ -40,8 +48,14 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
   const { data, isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
   const kmsConfigs: KmsConfig[] = data ? sortBy(data, 'metadata.provider', 'metadata.name') : [];
 
+  useUpdateEffect(() => {
+    if (!encryptionEnabled) {
+      setValue(KMS_FIELD, undefined, { shouldValidate: true });
+    }
+  }, [encryptionEnabled, setValue]);
+
   const handleChange = (e: any, option: any) => {
-    setValue(KMS_FIELD, option?.metadata?.configUUID ?? null, {
+    setValue(KMS_FIELD, option?.metadata?.configUUID ?? undefined, {
       shouldValidate: true
     });
   };
@@ -106,7 +120,25 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
                             'createUniverseV2.securitySettings.earField.kmsConfigPlaceHolder'
                           ),
                           error: !!fieldState.error,
-                          helperText: fieldState.error?.message,
+                          helperText: fieldState.error ? (
+                            fieldState.error?.message
+                          ) : (
+                            <Trans
+                              t={t}
+                              i18nKey={'createUniverseV2.securitySettings.earField.helpText'}
+                              components={{
+                                b: <strong />,
+                                br: <br />,
+                                a: (
+                                  <StyledLinkText
+                                    href="https://docs.yugabyte.com/stable/yugabyte-platform/security/enable-encryption-at-rest/"
+                                    target="_blank"
+                                    underline="always"
+                                  />
+                                )
+                              }}
+                            />
+                          ),
                           InputProps: { autoFocus: true },
                           dataTestId: 'kms-config-field'
                         }}

@@ -407,6 +407,8 @@ struct PlannerInfo
 	Relids		yb_cur_batched_relids;	/* valid if we are processing a
 										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
+	List	   *yb_cur_batched_groups;	/* yb_ppi_batched_groups for the
+										 * path being built */
 
 	/*
 	 * YB: List of Relids. Each element is a Bitmapset that encodes the batched
@@ -452,6 +454,13 @@ struct PlannerInfo
 	 * NULL when the query has no federated foreign tables.
 	 */
 	const char **yb_tserver_uuids;
+
+	/*
+	 * YB: LIMIT count + OFFSET when both fold to constants, else -1.
+	 * Unlike limit_tuples it is not cleared for grouping or DISTINCT;
+	 * yb_first_fetch_limit applies the executor's own pass-through rules.
+	 */
+	Cardinality yb_limit_tuples;
 };
 
 
@@ -1005,6 +1014,7 @@ struct IndexOptInfo
 	int32_t		yb_cached_ybctid_size;
 	char	   *ybIndexName;
 	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
+	List	   *yb_options;
 };
 
 /*
@@ -1252,6 +1262,28 @@ typedef struct PathTarget
  * in join cases it's NIL because the set of relevant clauses varies depending
  * on how the join is formed.  The relevant clauses will appear in each
  * parameterized join path's joinrestrictinfo list, instead.
+ *
+ * YB: yb_ppi_relegated_clauses lists the clauses that are movable into a base
+ * relation path but were withheld from ppi_clauses because they reference a
+ * batched outer relation without having a batched form.  Pushing such a clause
+ * into the scan would reference that relation with a scalar parameter while
+ * the same relation is referenced with a batched array elsewhere in the scan.
+ * The join directly above the path applies them instead (see
+ * get_joinrel_parampathinfo).  Like ppi_clauses, it is NIL in join cases.
+ *
+ * YB: yb_ppi_batched_groups lists the sets of batched outer relations that a
+ * single batched clause of this path references together.  Such a clause
+ * becomes one YbBatchedExpr, which createplan.c expands into an array using
+ * one batch index for every batched Var inside it, so element i is only
+ * meaningful when all of them come from the same outer tuple -- that is, when
+ * one batched nested loop join fills them.  A join that batches part of a set
+ * probes the diagonal of two independently advancing batches instead of their
+ * cross product and loses rows, so yb_batched_clause_final_check rejects it.
+ * Unlike ppi_clauses this list is carried up through join cases, because the
+ * clause it came from is not reachable from there.  Only sets of two or more
+ * are recorded: one batched relation constrains nothing, and an unbatched
+ * relation in the same expression supplies a scalar parameter that holds
+ * still for a whole rescan of this path.
  */
 typedef struct ParamPathInfo
 {
@@ -1263,6 +1295,8 @@ typedef struct ParamPathInfo
 
 	/* Yugabyte attributes */
 	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
+	List	   *yb_ppi_relegated_clauses;	/* clauses withheld from ppi_clauses */
+	List	   *yb_ppi_batched_groups;	/* outer rels to batch together */
 } ParamPathInfo;
 
 
@@ -1289,44 +1323,93 @@ typedef struct YbPathInfo
 	List	   *yb_uniqkeys;	/* list keys that are distinct */
 } YbPathInfo;
 
+/*
+ * Info propagated for YugabyteDB, for scans: what costing assumed about the
+ * scan's DocDB work, carried to the plan node for EXPLAIN (DEBUG) to help
+ * diagnose cost estimates.
+ *
+ * 'first_fetch_limit' is the row bound the LIMIT clause puts on the scan's
+ * first fetch (LIMIT count + OFFSET); 0 if none.  Unlike the other fields it
+ * is not an estimate but derived from the query and plan shape.
+ */
 typedef struct YbPlanInfo
 {
-	double		estimated_num_nexts_prevs;
+	double		estimated_num_nexts;
+	double		estimated_num_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
 	int			estimated_ybctid_width;
 	double		estimated_num_table_result_pages;
 	double		estimated_num_index_result_pages;
-	double		estimated_num_bmscan_nexts_prevs;
+	double		estimated_num_bmscan_nexts;
+	double		estimated_num_bmscan_prevs;
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
+	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */
 } YbPlanInfo;
 
 /*
- * YB: info used by YbIndexPathInfo.
+ * YB: info used by YbMergeScanInfo.
  *
- * Holds info used for merge scans.
+ * Holds info used for merge scans.  'clause' is the column's SAOP or equality
+ * index condition, or NULL for a hash column with neither, which
+ * ybValidateMergeScanBinds reports.
  */
-typedef struct YbMergeScanSaopColInfo
+typedef struct YbMergeScanStreamColInfo
 {
 	NodeTag		type;
-	ScalarArrayOpExpr *saop;
+	Expr	   *clause;			/* SAOP, equality index cond, or NULL */
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
-} YbMergeScanSaopColInfo;
+} YbMergeScanStreamColInfo;
+
+/*
+ * YB: info used by YbMergeScanInfo.
+ */
+typedef struct
+{
+	NodeTag		type;
+	int			numCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+} YbSortInfo;
+
+/*
+ * YB: info used by index paths (YbIndexPathInfo) and the IndexScan and
+ * IndexOnlyScan nodes.
+ *
+ * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
+ * in index column order (see yb_finalize_merge_scan_info).  The
+ * executor must bind each of them per stream, and ybValidateMergeScanBinds
+ * checks that it does.  pggate treats every key column before the last merge
+ * sort column that is not itself a merge sort column as a stream key
+ * (PgDmlRead::IsMergeSortColumn), including the columns this list leaves out.
+ */
+typedef struct
+{
+	NodeTag		type;
+	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
+	YbSortInfo *sort_cols;
+} YbMergeScanInfo;
 
 /*
  * Info propagated for YugabyteDB, for index scans.
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
+ *
+ * 'merge_scan_info' holds the merge stream keys and merge sort columns of a
+ * merge scan path (see yb_finalize_merge_scan_info).  It is NULL for a path
+ * that is not a merge scan.
  */
 typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	List	   *merge_scan_saop_cols;	/* List of YbMergeScanSaopColInfo */
+	YbMergeScanInfo *merge_scan_info;
 } YbIndexPathInfo;
 
 
@@ -1402,6 +1485,9 @@ typedef struct Path
 
 #define YB_PATH_NEEDS_BATCHED_RELS(path) \
 	!bms_is_empty(YB_PATH_REQ_OUTER_BATCHED(path))
+
+#define YB_PATH_BATCHED_GROUPS(path)  \
+	((path)->param_info ? ((path)->param_info->yb_ppi_batched_groups) : NIL)
 
 #define YB_PATH_REQ_OUTER_UNBATCHED(path)  \
 	(bms_difference(PATH_REQ_OUTER(path), YB_PATH_REQ_OUTER_BATCHED(path)))
@@ -1854,11 +1940,18 @@ typedef struct JoinPath
 
 /*
  * A nested-loop path needs no special fields.
+ *
+ * YB: yb_first_batch_size is the number of outer rows the BNL pulls for
+ * its first batch: yb_bnl_batch_size unless the LIMIT-driven first-batch
+ * trimming shrinks it.
  */
 
 typedef struct NestPath
 {
 	JoinPath	jpath;
+
+	/* YB fields */
+	int			yb_first_batch_size;	/* BNL first-batch outer rows */
 } NestPath;
 
 /*
@@ -2457,11 +2550,20 @@ typedef struct PlaceHolderVar
  * outer relation Var and Var_i is an inner relation Var, might be turned into
  * (Var_i IN (BVar_o(0),BVar_o(1),BVar_o(0)...)) where BVar_o(i) represents the
  * ith batched variable of Var_o.
+ *
+ * share is the number of outer values the expression is estimated with when
+ * it shares a batch with other batched clauses of the same scan, and
+ * rows_scale its part of the factor that raises the estimate of those clauses
+ * to one row per probe tuple.  Both are set only on the copies
+ * yb_batched_clauses makes for estimation; 0 stands for the whole batch
+ * (yb_batch_expr_size) and for no scaling.
  */
 typedef struct YbBatchedExpr
 {
 	Expr		xpr;
 	Expr	   *orig_expr;		/* Original Var this is a batched version of. */
+	double		share;			/* outer values estimated with, or 0 */
+	double		rows_scale;		/* part of the one-row factor, or 0 */
 } YbBatchedExpr;
 
 /*
@@ -2908,6 +3010,14 @@ typedef struct
  *
  * (Ideally we'd declare this in cost.h, but it's also needed in pathnode.h,
  * so seems best to put it here.)
+ *
+ * YB: the yb_ fields at the end are BNL-specific, populated by
+ * yb_init_bnl_workspace ahead of initial_cost_nestloop.
+ * yb_first_batch_size is the LIMIT-driven first-batch sizing, copied onto
+ * the NestPath (see there); yb_outer_skip_rows is the estimated count of
+ * leading outer rows with no inner match, and yb_sorted_batches whether the
+ * BNL sorts each batch's output, both consumed by initial_cost_nestloop's
+ * startup adjustment.
  */
 typedef struct JoinCostWorkspace
 {
@@ -2932,6 +3042,11 @@ typedef struct JoinCostWorkspace
 	int			numbuckets;
 	int			numbatches;
 	Cardinality inner_rows_total;
+
+	/* YB fields (see the header comment) */
+	int			yb_first_batch_size; /* LIMIT-trimmed first-batch size */
+	double		yb_outer_skip_rows; /* leading outer rows with no match */
+	bool		yb_sorted_batches;	/* BNL sorts each batch's output */
 } JoinCostWorkspace;
 
 /*

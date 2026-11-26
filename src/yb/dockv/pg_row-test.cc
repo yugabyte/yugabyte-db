@@ -11,27 +11,23 @@
 // under the License.
 //
 
+#include <limits>
+
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_type.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/packed_row.h"
-#include "yb/dockv/packed_value.h"
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-#include "yb/dockv/value_packing.h"
 
-#include "yb/util/decimal.h"
-#include "yb/util/fast_varint.h"
 #include "yb/util/format.h"
-#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
+
+#include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb::dockv {
 
@@ -150,6 +146,112 @@ TEST(PgRowTest, PackedRowDecoderPerformanceV1) {
 
 TEST(PgRowTest, PackedRowDecoderPerformanceV2) {
   TestPackedRowDecode<RowPackerV2>(std::vector<DataType>(10, DataType::INT32));
+}
+
+TEST(PgRowTest, ColumnWireSize) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddColumn("value", DataType::STRING));
+  const auto schema = builder.Build();
+  ReaderProjection projection(schema);
+  PgTableRow row(projection);
+
+  QLValuePB value;
+  value.set_string_value("test value");
+  ASSERT_OK(row.SetValue(schema.column_id(0), value));
+
+  ASSERT_EQ(ASSERT_RESULT(row.ColumnWireSize(0)), ASSERT_RESULT(pggate::ColumnWireSize(value)));
+
+  row.SetNull(0);
+  ASSERT_EQ(
+      ASSERT_RESULT(row.ColumnWireSize(0)), ASSERT_RESULT(pggate::ColumnWireSize(QLValuePB())));
+}
+
+// Covers the null-safe, allocation-free compare used by grouped aggregate pushdown
+// (GroupKeyChanged) to detect group boundaries without building temporary QLValuePBs.
+TEST(PgRowTest, EqualsQLValuePB) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddColumn("i", DataType::INT32));
+  ASSERT_OK(builder.AddColumn("s", DataType::STRING));
+  const auto schema = builder.Build();
+  ReaderProjection projection(schema);
+  PgTableRow row(projection);
+
+  const size_t i_idx = 0;
+  const size_t s_idx = 1;
+
+  QLValuePB i_val;
+  i_val.set_int32_value(42);
+  QLValuePB s_val;
+  s_val.set_string_value("abc");
+  ASSERT_OK(row.SetValue(schema.column_id(i_idx), i_val));
+  ASSERT_OK(row.SetValue(schema.column_id(s_idx), s_val));
+
+  // Equal non-null values.
+  ASSERT_TRUE(row.EqualsQLValuePB(i_idx, i_val));
+  ASSERT_TRUE(row.EqualsQLValuePB(s_idx, s_val));
+  ASSERT_TRUE(row.EqualsQLValuePB(i_idx, row.GetQLValuePB(schema.column_id(i_idx).rep())));
+  ASSERT_TRUE(row.EqualsQLValuePB(s_idx, row.GetQLValuePB(schema.column_id(s_idx).rep())));
+
+  // Unequal non-null values.
+  QLValuePB other_i;
+  other_i.set_int32_value(7);
+  QLValuePB other_s;
+  other_s.set_string_value("xyz");
+  ASSERT_FALSE(row.EqualsQLValuePB(i_idx, other_i));
+  ASSERT_FALSE(row.EqualsQLValuePB(s_idx, other_s));
+
+  // Null vs non-null (either side).
+  QLValuePB null_pb;
+  ASSERT_FALSE(row.EqualsQLValuePB(i_idx, null_pb));
+  row.SetNull(i_idx);
+  row.SetNull(s_idx);
+  ASSERT_TRUE(row.IsNull(i_idx));
+  ASSERT_TRUE(row.IsNull(s_idx));
+  ASSERT_TRUE(row.EqualsQLValuePB(i_idx, null_pb));
+  ASSERT_TRUE(row.EqualsQLValuePB(s_idx, null_pb));
+  ASSERT_FALSE(row.EqualsQLValuePB(i_idx, i_val));
+  ASSERT_FALSE(row.EqualsQLValuePB(s_idx, s_val));
+}
+
+TEST(PgRowTest, EqualsQLValuePBNaNAndSignedZero) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddColumn("f", DataType::FLOAT));
+  ASSERT_OK(builder.AddColumn("d", DataType::DOUBLE));
+  const auto schema = builder.Build();
+  ReaderProjection projection(schema);
+  PgTableRow row(projection);
+
+  const size_t f_idx = 0;
+  const size_t d_idx = 1;
+  auto float_pb = [](float value) {
+    QLValuePB pb;
+    pb.set_float_value(value);
+    return pb;
+  };
+  auto double_pb = [](double value) {
+    QLValuePB pb;
+    pb.set_double_value(value);
+    return pb;
+  };
+  const auto float_nan = std::numeric_limits<float>::quiet_NaN();
+  const auto double_nan = std::numeric_limits<double>::quiet_NaN();
+
+  ASSERT_OK(row.SetValue(schema.column_id(f_idx), float_pb(float_nan)));
+  ASSERT_OK(row.SetValue(schema.column_id(d_idx), double_pb(double_nan)));
+  ASSERT_TRUE(row.EqualsQLValuePB(f_idx, float_pb(float_nan)));
+  ASSERT_TRUE(row.EqualsQLValuePB(d_idx, double_pb(double_nan)));
+  ASSERT_FALSE(row.EqualsQLValuePB(f_idx, float_pb(1.0f)));
+  ASSERT_FALSE(row.EqualsQLValuePB(d_idx, double_pb(1.0)));
+
+  ASSERT_OK(row.SetValue(schema.column_id(f_idx), float_pb(1.0f)));
+  ASSERT_OK(row.SetValue(schema.column_id(d_idx), double_pb(1.0)));
+  ASSERT_FALSE(row.EqualsQLValuePB(f_idx, float_pb(float_nan)));
+  ASSERT_FALSE(row.EqualsQLValuePB(d_idx, double_pb(double_nan)));
+
+  ASSERT_OK(row.SetValue(schema.column_id(f_idx), float_pb(-0.0f)));
+  ASSERT_OK(row.SetValue(schema.column_id(d_idx), double_pb(-0.0)));
+  ASSERT_TRUE(row.EqualsQLValuePB(f_idx, float_pb(0.0f)));
+  ASSERT_TRUE(row.EqualsQLValuePB(d_idx, double_pb(0.0)));
 }
 
 }  // namespace yb::dockv

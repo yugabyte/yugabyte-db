@@ -83,6 +83,7 @@ void DoToPB(const TransactionMetadata& source, PB* dest) {
     dest->set_locality_tablespace_oid(source.locality.tablespace_oid);
   }
   dest->set_skip_prefix_locks(source.skip_prefix_locks);
+  dest->set_is_read_only_historical_committed_txn(source.is_read_only_historical_committed_txn);
 }
 
 } // namespace
@@ -105,7 +106,8 @@ std::string TransactionMetadata::ToString() const {
       using_table_locks,
       locality,
       old_status_tablet,
-      skip_prefix_locks);
+      skip_prefix_locks,
+      is_read_only_historical_committed_txn);
 }
 
 template <class PB>
@@ -133,6 +135,7 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
   } else {
     result.locality = TransactionFullLocality::Global();
   }
+  result.is_read_only_historical_committed_txn = source.is_read_only_historical_committed_txn();
   return result;
 }
 

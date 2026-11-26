@@ -30,6 +30,43 @@ Notice that the `WITH` clause is legal in the `SELECT` statement and in each of 
 
 The recursive CTE is explained in a [dedicated section](../recursive-cte/).
 
+### Control CTE materialization
+
+You can add the `MATERIALIZED` or `NOT MATERIALIZED` keyword after `AS` in a CTE
+definition to control whether the CTE is treated as an optimization fence.
+
+By default, if a side-effect-free CTE is used only once, the planner may inline it into
+the outer statement. This can allow outer query restrictions to be pushed down into the
+CTE. Use `NOT MATERIALIZED` to allow the planner to inline a side-effect-free CTE even
+when it is used more than once.
+
+Use `MATERIALIZED` to force the CTE to be evaluated once and stored before the outer
+statement uses it. This can be useful when the CTE contains an expensive computation and
+is used in more than one place in the query.
+
+CTEs that contain data-changing statements (`INSERT`, `UPDATE`, or `DELETE`) are always
+executed exactly once and run to completion.
+
+For example, this query forces the CTE result to be materialized before the outer query applies its predicate:
+
+```sql
+WITH regional_sales(region, total_sales) AS MATERIALIZED (
+  VALUES ('west', 12000), ('east', 9000))
+SELECT region, total_sales
+FROM regional_sales
+WHERE total_sales > 10000;
+```
+
+And this query allows the planner to inline the CTE:
+
+```sql
+WITH regional_sales(region, total_sales) AS NOT MATERIALIZED (
+  VALUES ('west', 12000), ('east', 9000))
+SELECT region, total_sales
+FROM regional_sales
+WHERE total_sales > 10000;
+```
+
 ### Example that uses three data-changing CTEs and a SELECT CTE in the WITH clause
 
 First, create some test tables and inspect the contents.

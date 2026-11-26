@@ -48,24 +48,6 @@ struct TabletServerErrorTag : IntegralErrorTag<TabletServerErrorPB::Code> {
 
 using TabletServerError = StatusErrorCodeImpl<TabletServerErrorTag>;
 
-class MonoDeltaTraits {
- public:
-  using ValueType = MonoDelta;
-  using  RepresentationType = int64_t;
-
-  static MonoDelta FromRepresentation(RepresentationType source) {
-    return MonoDelta::FromNanoseconds(source);
-  }
-
-  static RepresentationType ToRepresentation(MonoDelta value) {
-    return value.ToNanoseconds();
-  }
-
-  static std::string ToString(MonoDelta value) {
-    return value.ToString();
-  }
-};
-
 struct TabletServerDelayTag : IntegralBackedErrorTag<MonoDeltaTraits> {
   // This category id is part of the wire protocol and should not be changed once released.
   static constexpr CategoryDescriptor kCategory{8, "tablet server delay"sv};

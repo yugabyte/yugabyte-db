@@ -1,9 +1,9 @@
 ---
-title: Transactional DDL
+title: Explore Transactional DDL
 headerTitle: Transactional DDL
 linkTitle: Transactional DDL
-description: Learn how YugabyteDB handles DDLs in a transaction
-headcontent: Learn how YugabyteDB handles DDLs in a transaction
+description: Learn how to roll back DDL statements in a YugabyteDB transaction using transactional DDL.
+headcontent: Learn how to roll back DDL statements in a transaction
 tags:
    feature: tech-preview
 menu:
@@ -14,23 +14,19 @@ menu:
 type: docs
 ---
 
-Data Definition Language (DDL) statements modify the structure of your data. PostgreSQL allows executing such statements within a transactional block and supports rolling them back as part of a transaction rollback. For two transactions undergoing conflicting DDLs, it also provides isolation guarantees by taking appropriate object locks during DDL processing.
+YugabyteDB can roll back DDL statements that run inside a transaction block. All DDLs supported in YugabyteDB provide the same rollback capabilities as PostgreSQL. These include DDLs on tables, indexes, roles, and materialized views.
 
-YugabyteDB's transactional DDL provides similar guarantees for rolling back DDL operations done inside a transaction block. However, because object locks are still under active development, isolation guarantees are weaker than in PostgreSQL. See [Limitations](#limitations) for more information.
+For more information and current limitations, see [Transactional DDL](../../../architecture/transactions/transactional-ddl/).
 
-## Enable transactional DDL
+## Roll back a DDL statement
 
-{{<tags/feature/tp idea="1677">}} Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true.
+{{< note title="Before you start" >}}
 
-Because `ysql_yb_ddl_transaction_block_enabled` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled`).
+{{<tags/feature/tp idea="1677">}}This example requires transactional DDL (disabled by default). Create and connect to a YugabyteDB universe, then enable `ysql_yb_ddl_transaction_block_enabled` as described in [Enable transactional DDL](../../../architecture/transactions/transactional-ddl/#enable-transactional-ddl).
 
-## Rollback capabilities
+{{< /note >}}
 
-All DDLs supported in YugabyteDB provide the same rollback capabilities as PostgreSQL. These include DDLs on tables, indexes, roles, and materialized views.
-
-Note that some DDL statements such as DDLs on database or tablespaces are disallowed in a transaction block in PostgreSQL, and are also disallowed in YugabyteDB.
-
-The following example demonstrates how DDL statements, such as ALTER TABLE, behave in a PostgreSQL-compatible transaction in YugabyteDB. It highlights the atomicity of transactions, where all changes (both DML and DDL) are either committed together or entirely rolled back.
+The following example shows an `ALTER TABLE` inside a transaction. The insert and the schema change commit together, or they both roll back.
 
 ```sql
 yugabyte=# CREATE TABLE foo (bar int);
@@ -62,11 +58,3 @@ yugabyte=# SELECT * FROM foo;
    1
 (1 row)
 ```
-
-## Limitations
-
-- [Concurrent DDLs](../../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation) on the same database are unsupported and will lead to conflict and read restart required errors. Your applications must handle these by retrying the statements.
-
-- [Savepoints](/stable/develop/learn/transactions/transactions-retries-ysql/#savepoints) are unsupported for DDL statements. As a result, you cannot create a savepoint in a transaction block that has executed a DDL statement. Similarly, you cannot execute a DDL statement in a transaction block in which a savepoint has been created.
-
-For an overview of common concepts used in YugabyteDB's implementation of distributed transactions, see [Distributed transactions](../distributed-transactions-ysql/).

@@ -103,13 +103,18 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
     "Where sequence values are cached for both existing and new sequences. Valid values are "
     "\"connection\" and \"server\"");
 
-DEFINE_RUNTIME_string(ysql_conn_mgr_sequence_support_mode, "pooled_without_curval_lastval",
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_sequence_support_mode, "pooled_without_curval_lastval",
     "Sequence support mode when connection manager is enabled. When set to "
     "'pooled_without_curval_lastval', currval() and lastval() functions are not supported. "
     "When set to 'pooled_with_curval_lastval', currval() and lastval() functions are supported. "
     "In these both settings, the monotonic order of sequence is not guaranteed if the "
     "'ysql_sequence_cache_method' is set to 'connection'. To support monotonic order also set "
     "this flag to 'session'");
+// pooled_with_currval_lastval is accepted as a synonym of pooled_with_curval_lastval because
+// clusters may already be configured with it. YBCGetGFlags() maps it to the documented value.
+DEFINE_validator(ysql_conn_mgr_sequence_support_mode,
+    FLAG_IN_SET_VALIDATOR("session", "pooled_with_curval_lastval",
+                          "pooled_without_curval_lastval", "pooled_with_currval_lastval"));
 
 // Top-level flag to enable all YSQL beta features.
 DEFINE_UNKNOWN_bool(ysql_beta_features, false,
@@ -158,9 +163,9 @@ DEFINE_NON_RUNTIME_uint32(yb_max_recursion_depth, 2000,
     "for regex functions. ");
 
 #ifdef NDEBUG
-constexpr bool kEnableReadCommitted = true;
-#else
 constexpr bool kEnableReadCommitted = false;
+#else
+constexpr bool kEnableReadCommitted = true;
 #endif
 DEFINE_NON_RUNTIME_bool(yb_enable_read_committed_isolation, kEnableReadCommitted,
     "Defines how READ COMMITTED (which is our default SQL-layer isolation) and READ UNCOMMITTED "

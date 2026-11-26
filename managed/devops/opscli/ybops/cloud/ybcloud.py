@@ -18,6 +18,7 @@ from ybops.cloud.gcp.cloud import GcpCloud
 from ybops.cloud.onprem.cloud import OnPremCloud
 from ybops.cloud.azure.cloud import AzureCloud
 from ybops.cloud.oci.cloud import OciCloud
+from ybops.cloud.oci.errors import format_oci_error
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import init_env, init_logging
 from ybops.common.exceptions import YBOpsExitCodeException
@@ -60,7 +61,8 @@ class YbCloud(AbstractCommandParser):
             line_no = cause_tb.tb_lineno
             output = {
                 "type": "{}.{}".format(except_type.__module__, except_type.__name__),
-                "message": str(except_value),
+                # The full exception still reaches stderr through sys.__excepthook__ below.
+                "message": format_oci_error(except_value) or str(except_value),
                 "file": filename,
                 "name": name,
                 "line": line_no
