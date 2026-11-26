@@ -184,6 +184,61 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     runEditUniverseV2(universeEditSpec);
   }
 
+  @Test
+  public void testEditUniverseV2RemovesZoneWithZeroNodes() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    PlacementCloud placementCloud = primaryClusterSpec.getPlacementSpec().getCloudList().get(0);
+    List<PlacementAZ> azs = placementCloud.getRegionList().get(0).getAzList();
+    assertThat(azs, hasSize(3));
+    // Move all nodes and replicas of the last zone to the first one, keeping the zone in the
+    // payload with 0 nodes.
+    PlacementAZ keptAz = azs.get(0);
+    PlacementAZ emptiedAz = azs.get(2);
+    keptAz.setNumNodesInAz(keptAz.getNumNodesInAz() + emptiedAz.getNumNodesInAz());
+    keptAz.setReplicationFactor(keptAz.getReplicationFactor() + emptiedAz.getReplicationFactor());
+    emptiedAz.setNumNodesInAz(0);
+    emptiedAz.setReplicationFactor(0);
+    UUID emptiedAzUuid = emptiedAz.getUuid();
+
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes())
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), captor.capture());
+    UniverseConfigureTaskParams params = captor.getValue();
+    Cluster primary = params.getPrimaryCluster();
+
+    Set<UUID> placementAzs =
+        primary.placementInfo.azStream().map(az -> az.uuid).collect(Collectors.toSet());
+    assertThat(placementAzs, hasSize(2));
+    assertFalse(placementAzs.contains(emptiedAzUuid));
+    assertThat(primary.userIntent.numNodes, is(primaryClusterSpec.getNumNodes()));
+    for (NodeDetails node : params.getNodesInCluster(primary.uuid)) {
+      if (node.azUuid.equals(emptiedAzUuid)) {
+        assertThat(node.getNodeName(), node.state, is(NodeState.ToBeRemoved));
+      }
+    }
+  }
+
   // The tests below place the universe in two providers that are copies of each other, so that the
   // placement has the same cloud:region:zone twice. The master would reject that. Unlike v1, the
   // v2 edit submits the task itself, so it must validate this on its own.

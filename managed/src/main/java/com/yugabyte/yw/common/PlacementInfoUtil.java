@@ -418,6 +418,13 @@ public class PlacementInfoUtil {
                 }
               }
             });
+    if (cluster.getPartitions() != null) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        PlacementInfoUtil.removeUnusedPlacementAZs(partition.getPlacement());
+      }
+    } else {
+      PlacementInfoUtil.removeUnusedPlacementAZs(cluster.placementInfo);
+    }
     verifyPlacement(cluster, taskParams.clusters, taskParams.nodeDetailsSet);
     cluster.placementInfo = cluster.getOverallPlacement();
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
@@ -2180,6 +2187,9 @@ public class PlacementInfoUtil {
    * @param placementInfo The cluster placement info.
    */
   static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
+    if (placementInfo == null) {
+      return Collections.emptySet();
+    }
     Set<UUID> result = new HashSet<>();
     for (PlacementCloud cloud : placementInfo.cloudList) {
       Iterator<PlacementRegion> regionIterator = cloud.regionList.iterator();
