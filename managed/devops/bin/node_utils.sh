@@ -48,7 +48,7 @@ create_tar_file() {
   echo "Starting tar process: Adding files to archive."
   printf '%s\n' "${filtered_files_list[@]}" > "$file_list_text_path"
   # Archive all existing files paths into bundle.
-  # tar still exits 1 if a live log changes mid-read; callers check that the tar exists instead.
+  # Best effort: tar's exit status is ignored, even 2; callers only check that the tar exists.
   tar --warning=no-file-changed -czvf "$tar_file_name" \
     -h -C "$change_to_dir" -T "$file_list_text_path"
   echo "Successfully added files to tar:  ${filtered_files_list[@]}"
