@@ -58,6 +58,10 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
       uint64_t offset, size_t n, Slice* result, char* scratch,
       const ReadValidator& validator) override;
 
+  void Readahead(size_t offset, size_t length) override {
+    RandomAccessFileWrapper::Readahead(offset + header_size_, length);
+  }
+
   int64_t TEST_GetNumOverflowWorkarounds() {
     return num_overflow_workarounds_.load(std::memory_order_relaxed);
   }

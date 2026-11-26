@@ -416,6 +416,8 @@ class RandomAccessFileWrapper : public RandomAccessFile {
 
   Status InvalidateCache(size_t offset, size_t length) override;
 
+  void Readahead(size_t offset, size_t length) override { target_->Readahead(offset, length); }
+
  private:
   std::unique_ptr<RandomAccessFile> target_;
 };
