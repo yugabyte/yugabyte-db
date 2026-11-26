@@ -2109,6 +2109,50 @@ SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
                       INTERSECT ALL SELECT k1 FROM bnl_uniq) d
   JOIN bnl_uniq t ON t.k1 = d.k1;
 RESET yb_bnl_enable_hashing;
+
+-- The two tables of the #36711 and #36889 tests. rk1 has a one-column range
+-- key and rk2 a two-column range key.
+CREATE TABLE rk1 (a int, PRIMARY KEY (a ASC));
+INSERT INTO rk1 SELECT i FROM generate_series(1, 40) i;
+CREATE TABLE rk2 (a int, b int, v int, PRIMARY KEY (a ASC, b ASC));
+INSERT INTO rk2 SELECT i, j, i * j FROM generate_series(1, 10) i, generate_series(1, 5) j;
+ANALYZE rk1, rk2;
+
+-- #36711: a sorted BNL under the LIMIT of a correlated subquery returns the
+-- smallest matching key on each of the three executions of the subquery.
+-- With enable_sort off the BNL takes the bound of the LIMIT, not a Sort
+-- above the BNL.
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+EXPLAIN (COSTS OFF)
+SELECT o.a, (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+             WHERE ss1.a = ss2.a AND ss1.a > o.a ORDER BY ss1.a LIMIT 1)
+  FROM (VALUES (0), (1), (2)) o(a);
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+SELECT o.a, (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+             WHERE ss1.a = ss2.a AND ss1.a > o.a ORDER BY ss1.a LIMIT 1)
+  FROM (VALUES (0), (1), (2)) o(a);
+
+-- #36889: the LIMIT of the lateral subquery changes from one execution to
+-- the next. It is 5, then 3 on an execution that finds no rows, then 10.
+-- The three executions must return 5, 0 and 10 rows.
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+EXPLAIN (COSTS OFF)
+SELECT o.n, o.lo, s.a
+  FROM (VALUES (5, 0), (3, 10), (10, 0)) o(n, lo),
+       LATERAL (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+                WHERE ss1.a = ss2.a AND ss1.a > o.lo
+                ORDER BY ss1.a LIMIT o.n) s;
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+SELECT o.n, o.lo, s.a
+  FROM (VALUES (5, 0), (3, 10), (10, 0)) o(n, lo),
+       LATERAL (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+                WHERE ss1.a = ss2.a AND ss1.a > o.lo
+                ORDER BY ss1.a LIMIT o.n) s;
 RESET yb_prefer_bnl;
 RESET yb_enable_cbo;
 DROP TABLE bnl_uniq;
+DROP TABLE rk1, rk2;
