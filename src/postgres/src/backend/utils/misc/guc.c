@@ -3012,6 +3012,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_notify_catalog_version_read", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, a LISTEN backend fails to read the "
+						 "catalog version it waits for before delivering a "
+						 "notification from a transaction that changed the "
+						 "catalog."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_notify_catalog_version_read,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_xcluster_invalid_index_ddl_check", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("On an xCluster automatic mode source, reject DDLs "
 						 "whose outcome depends on an invalid index."),

@@ -2499,6 +2499,7 @@ int			yb_test_sleep_before_executor_start_ms = 0;
 
 int			yb_test_fail_next_ddl = 0;
 bool		yb_test_fail_stale_catalog_message_check = false;
+bool		yb_test_fail_notify_catalog_version_read = false;
 bool		yb_enable_stale_catalog_prefetch = true;
 
 bool		yb_test_fail_drop_after_heap_drop = false;

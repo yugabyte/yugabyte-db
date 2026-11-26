@@ -826,6 +826,12 @@ extern int yb_test_sleep_before_executor_start_ms;
  */
 extern int yb_test_fail_next_ddl;
 extern bool yb_test_fail_stale_catalog_message_check;
+
+/*
+ * If set, a LISTEN backend fails its catalog version read before delivering a
+ * notification from a transaction that changed the catalog.
+ */
+extern bool yb_test_fail_notify_catalog_version_read;
 extern bool yb_enable_stale_catalog_prefetch;
 
 /* Test fault injection: fail drop after heap_drop_with_catalog. */

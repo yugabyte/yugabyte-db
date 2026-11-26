@@ -166,6 +166,7 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/jsonb.h"
 #include "utils/numeric.h"
+#include "utils/resowner.h"
 #include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
@@ -601,7 +602,9 @@ static FormData_pg_attribute *YbNotificationsAtts[] = {
  * Key in extra_options set when the sending transaction holds DDL state, so it
  * changes the catalog at commit. A listener delivers such a transaction's
  * notifications only once its tserver has the catalog version (see
- * asyncQueueProcessPageEntries).
+ * asyncQueueProcessPageEntries). Only DDL run in the transaction's own block
+ * (transactional DDL) sets the state; DDL committed in a separate transaction
+ * doesn't, so its transaction isn't marked.
  */
 #define YB_NOTIF_CATALOG_CHANGED_KEY "catalog_changed"
 
@@ -617,7 +620,12 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
-/* Whether the buffered transaction has a YB_NOTIF_CATALOG_CHANGED_KEY row */
+/*
+ * Whether the buffered transaction has a YB_NOTIF_CATALOG_CHANGED_KEY row. This
+ * is per streamed transaction, not per sender: DocDB transactions that commit
+ * at the same hybrid time stream as one, so a sender without DDL grouped with
+ * one that changed the catalog is held too.
+ */
 static bool ybNotifsPollerPendingCatalogChanged = false;
 
 /*
@@ -670,8 +678,9 @@ static TimestampTz ybNotifsPollerId = 0;
  * registers under a different poller (see Exec_ListenPreCommit).
  *
  * catalog_changed is set when the BEGIN marker says the transaction changed
- * the catalog; catalog_caught_up once this node's tserver has been seen to
- * have the catalog version that was current when its notifications were read.
+ * the catalog. catalog_wait_done is set once the listener has waited for the
+ * catalog version (see ybWaitForNotifyingTxnCatalogVersion), whether this
+ * node's tserver reached it, the wait gave up, or the read failed.
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
@@ -680,7 +689,7 @@ typedef struct YbListenerQueueScanCurrentXactState
 	int			notifs_to_skip;
 	TimestampTz poller_id;		/* poller whose entries this state describes */
 	bool		catalog_changed;
-	bool		catalog_caught_up;
+	bool		catalog_wait_done;
 } YbListenerQueueScanCurrentXactState;
 
 static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
@@ -690,7 +699,7 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 	.notifs_to_skip = 0,
 	.poller_id = 0,
 	.catalog_changed = false,
-	.catalog_caught_up = false
+	.catalog_wait_done = false
 };
 
 /*
@@ -3925,7 +3934,7 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
 	ybListenerQueueScanCurrentXactState.catalog_changed =
 		(strcmp(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_CATALOG_MARKER) == 0);
-	ybListenerQueueScanCurrentXactState.catalog_caught_up = false;
+	ybListenerQueueScanCurrentXactState.catalog_wait_done = false;
 }
 
 /*
@@ -3934,17 +3943,57 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
  * catalog only after its commit (lock release or heartbeat), so wait for it
  * before delivering the transaction's first notification; the next statement
  * then refreshes the caches.
+ *
+ * The caller has already advanced the queue position past this entry, and an
+ * error here would also end the idle listener's connection. So a failed read
+ * is logged and the notification delivered, as when the wait times out.
+ * errfinish zeroes the holdoff counts, and this can run inside the client read
+ * that holds off cancel interrupts (SocketBackend), so restore them.
  */
 static void
 ybWaitForNotifyingTxnCatalogVersion(void)
 {
 	YbListenerQueueScanCurrentXactState *state =
 		&ybListenerQueueScanCurrentXactState;
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+	uint32		save_interrupt_holdoff = InterruptHoldoffCount;
+	uint32		save_cancel_holdoff = QueryCancelHoldoffCount;
 
-	if (!state->catalog_changed || state->catalog_caught_up)
+	if (!state->catalog_changed || state->catalog_wait_done)
 		return;
-	YbWaitForSharedCatalogVersionToCatchup(YbGetMasterCatalogVersion());
-	state->catalog_caught_up = true;
+	state->catalog_wait_done = true;
+
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldcontext);
+	PG_TRY();
+	{
+		if (yb_test_fail_notify_catalog_version_read)
+			ereport(ERROR,
+					(errmsg("TEST: failed to read the catalog version")));
+		YbWaitForSharedCatalogVersionToCatchup(YbGetMasterCatalogVersion());
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		InterruptHoldoffCount = save_interrupt_holdoff;
+		QueryCancelHoldoffCount = save_cancel_holdoff;
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+		ereport(LOG,
+				(errmsg("delivering notification without waiting for the "
+						"catalog version: %s", edata->message)));
+		FreeErrorData(edata);
+	}
+	PG_END_TRY();
 }
 
 /*

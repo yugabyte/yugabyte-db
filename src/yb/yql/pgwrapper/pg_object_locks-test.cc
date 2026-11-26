@@ -5703,9 +5703,22 @@ class PgObjectLocksNotifyTest : public PgObjectLocksTest {
   // As in PG, where a committing transaction sends its invalidations before it signals listeners,
   // a listener must see the catalog changes of the transaction that notified it. A listener on ts2
   // gets notifications while ts2 learns the writer's catalog version only from the global lock
-  // release, which fails on ts2 until the test unblocks it 10 s after the marker row is visible on
-  // ts2.
+  // release, which fails on ts2 until the listener is seen waiting for that version or the
+  // notification arrives.
   void TestNotifyAfterCatalogChange(const NotifyAfterCatalogChangeOptions& options);
+
+  // The first NOTIFY in the cluster fails while LISTEN/NOTIFY creates its internal objects.
+  static Status WaitForNotifyReady(PGConn& conn) {
+    return WaitFor(
+        [&conn]() -> Result<bool> { return conn.Execute("NOTIFY ch").ok(); },
+        60s * kTimeMultiplier, "LISTEN/NOTIFY ready");
+  }
+
+  static Status WaitForNotification(ListenerConn& listener) {
+    return WaitFor(
+        [&listener]() -> Result<bool> { return listener.HasNotification(); },
+        90s * kTimeMultiplier, "notification");
+  }
 };
 
 void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
@@ -5714,20 +5727,22 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
   auto* ts2 = cluster_->tablet_server(1);
   auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
-  // The first NOTIFY in the cluster fails while LISTEN/NOTIFY creates its internal objects.
-  ASSERT_OK(WaitFor(
-      [&writer]() -> Result<bool> { return writer.Execute("NOTIFY ch").ok(); }, 60s,
-      "LISTEN/NOTIFY ready"));
+  ASSERT_OK(WaitForNotifyReady(writer));
 
   // Connections are opened before ts2 goes stale: a new connection waits at startup for its
   // tserver to reach the latest catalog version.
   auto notifier = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   auto listener = ASSERT_RESULT(ListenerConn::Connect(*ts2));
   auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  const auto listener_pid = ASSERT_RESULT(listener.FetchCount("SELECT pg_backend_pid()"));
   ASSERT_OK(listener.Execute("LISTEN ch"));
   if (options.lookup_before_create) {
     ASSERT_NOK(listener.Execute("SELECT * FROM t2"));
   }
+  // Logged by YbWaitForSharedCatalogVersionToCatchup when the listener finds ts2's catalog version
+  // behind the one it waits for.
+  LogWaiter listener_waiting(
+      ts2, Format("[$0] LOG:  waiting for shared catalog version to reach", listener_pid));
 
   ASSERT_OK(cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
   ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks_on_tserver_uuid", ts2->uuid()));
@@ -5743,45 +5758,53 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
   const auto marker_count_query =
       Format("SELECT COUNT(*) FROM deployments WHERE name = '$0'", options.marker_name);
   std::atomic<bool> release_unblocked{false};
+  std::atomic<bool> arrived{false};
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&writer, &options] {
     ASSERT_OK(writer.Execute(options.writer_sql));
   });
   thread_holder.AddThreadFunctor(
-      [this, ts2, &observer, &notifier, &options, &marker_count_query, &release_unblocked] {
+      [this, ts2, &observer, &notifier, &options, &marker_count_query, &release_unblocked,
+       &arrived, &listener_waiting] {
         // observer reads only deployments: a lock on the new table would wait for the release.
         ASSERT_OK(WaitFor(
             [&observer, &marker_count_query]() -> Result<bool> {
               return VERIFY_RESULT(observer.FetchRow<PGUint64>(marker_count_query)) == 1;
             },
-            60s, "marker row visible on ts2"));
+            60s * kTimeMultiplier, "marker row visible on ts2"));
         if (options.notify_after_marker) {
           ASSERT_OK(notifier.Execute("NOTIFY ch"));
         }
-        SleepFor(10s);
+        // Until the release is unblocked ts2 can't reach the writer's catalog version, so a
+        // listener that waits for it can deliver only after this point.
+        ASSERT_OK(WaitFor(
+            [&arrived, &listener_waiting]() -> Result<bool> {
+              return arrived || listener_waiting.IsEventOccurred();
+            },
+            90s * kTimeMultiplier, "listener waiting or notification arrived"));
         release_unblocked = true;
         ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"));
       });
 
   // No statement goes to the listener before the notification: the listener's backend sends it
   // while idle.
-  ASSERT_OK(WaitFor(
-      [&listener]() -> Result<bool> {
-        return listener.HasNotification();
-      },
-      90s, "notification"));
+  ASSERT_OK(WaitForNotification(listener));
   const auto held = release_unblocked.load();
+  arrived = true;
   const auto t2_status =
       options.read_t2 ? listener.Execute("SELECT * FROM t2") : Status::OK();
   auto marker_count = listener.FetchCount(marker_count_query);
   thread_holder.JoinAll();
+  const auto waited = listener_waiting.IsEventOccurred();
   LOG(INFO) << "notification held until release unblocked: " << held
+            << ", listener waited for catalog version: " << waited
             << ", listener reading t2: " << t2_status
             << ", marker rows: " << AsString(marker_count);
 
   ASSERT_OK(t2_status);
   ASSERT_EQ(ASSERT_RESULT(std::move(marker_count)), 1);
   ASSERT_EQ(held, options.expect_held);
+  ASSERT_EQ(waited, options.expect_held);
   if (options.read_t2) {
     auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     ASSERT_OK(new_conn.Fetch("SELECT * FROM t2"));
@@ -5827,6 +5850,31 @@ TEST_F(PgObjectLocksNotifyTest, ListenerSeesRelationCreatedBeforeNotify) {
       .marker_name = "t2",
       .expect_held = true,
   });
+}
+
+// If the listener can't read the catalog version to wait for, it still delivers the notification,
+// as it does when that wait times out.
+TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFails) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
+  ASSERT_OK(WaitForNotifyReady(writer));
+
+  auto listener = ASSERT_RESULT(ListenerConn::Connect(*ts2));
+  ASSERT_OK(listener.Execute("SET yb_test_fail_notify_catalog_version_read = true"));
+  ASSERT_OK(listener.Execute("LISTEN ch"));
+
+  for (const auto* table : {"t2", "t3"}) {
+    LogWaiter read_failed(ts2, "TEST: failed to read the catalog version");
+    ASSERT_OK(writer.ExecuteFormat(
+        "BEGIN; CREATE TABLE $0 (k INT); INSERT INTO deployments VALUES ('$0'); NOTIFY ch; COMMIT",
+        table));
+    ASSERT_OK(WaitForNotification(listener));
+    ASSERT_OK(read_failed.WaitFor(30s * kTimeMultiplier));
+    ASSERT_EQ(ASSERT_RESULT(listener.FetchCount(
+        Format("SELECT COUNT(*) FROM deployments WHERE name = '$0'", table))), 1);
+  }
 }
 
 }  // namespace yb::pgwrapper
