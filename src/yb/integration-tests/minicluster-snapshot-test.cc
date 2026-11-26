@@ -121,6 +121,9 @@ DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
+DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb {
 namespace tserver {
@@ -2126,6 +2129,33 @@ TEST_F(PgCloneTest, CloneAfterSuccessiveRenames) {
       timestamp.ToInt64());
   // The renamed name no longer exists, so this should fail.
   ASSERT_NOK(status);
+}
+
+// With ysql_enable_concurrent_ddl off (#34673), CREATE DATABASE ... TEMPLATE <db> runs in a session
+// that holds its database's DDL lock while it waits for the master to clone. The clone replays the
+// schema through ysqlsh, which connects to the same database and runs CREATE DATABASE, a DDL that
+// asks for the same lock. Before the fix the clone hung until ysql_clone_pg_schema_rpc_timeout_ms
+// and failed with "Timed out waiting for Create Database".
+class PgCloneTestConcurrentDdlDisabled : public PgCloneTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    // A hung clone fails in one minute instead of ten.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 60 * 1000;
+    PgCloneTest::SetUp();
+  }
+};
+
+TEST_F(PgCloneTestConcurrentDdlDisabled, Clone) {
+  ASSERT_OK(source_conn_->Execute("INSERT INTO t1 VALUES (1, 10)"));
+  auto default_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(row, (std::tuple<int32_t, int32_t>{1, 10}));
 }
 
 TEST_F(PgCloneTest, DisallowCloneIntoForwardRestoreGap) {
