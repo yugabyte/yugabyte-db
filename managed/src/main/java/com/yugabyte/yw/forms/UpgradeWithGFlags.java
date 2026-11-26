@@ -34,6 +34,10 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       "No changes in gflags (modify specificGflags in cluster)";
   public static final String EMPTY_SPECIFIC_GFLAGS =
       "Primary cluster should have non-empty specificGFlags";
+  public static final String PARTIAL_TOP_LEVEL_GFLAGS_ERROR =
+      "Set both masterGFlags and tserverGFlags, or omit both";
+  public static final String MISSING_PRIMARY_CLUSTER_GFLAGS_ERROR =
+      "Include the primary cluster in clusters, or set both masterGFlags and tserverGFlags";
 
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
