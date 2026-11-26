@@ -1758,11 +1758,14 @@ run_remote_cmd() {
   # remote_cmd.sh reads YB_ENCODED_REMOTE_CMD_LINE on the worker, so ssh needs it in its
   # environment.  Export it to ssh alone, because a value longer than the kernel allows for one
   # environment variable keeps any program that inherits it from starting.
-  if debugging_remote_compilation; then
-    ( export YB_ENCODED_REMOTE_CMD_LINE; set -x; ssh "${ssh_args[@]}" ) 2>&1
-  else
-    ( export YB_ENCODED_REMOTE_CMD_LINE; ssh "${ssh_args[@]}" )
-  fi
+  (
+    export YB_ENCODED_REMOTE_CMD_LINE
+    if debugging_remote_compilation; then
+      exec 2>&1
+      set -x
+    fi
+    ssh "${ssh_args[@]}"
+  )
 }
 
 # Switches YB_SRC_ROOT and the build parent directories to the /net/<host>/... name of the source

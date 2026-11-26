@@ -58,5 +58,12 @@ readarray -d '' args < <(
     }
   }'
 )
+if [[ ${#args[@]} -eq 0 ]]; then
+  echo "Could not split YB_ENCODED_REMOTE_CMD_LINE into arguments" >&2
+  exit 1
+fi
+
+# The command gets its arguments from the exec, so it does not need this copy in its environment.
+unset YB_ENCODED_REMOTE_CMD_LINE
 
 exec "$@" "${args[@]}"
