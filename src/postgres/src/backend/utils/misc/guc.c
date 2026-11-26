@@ -4836,14 +4836,14 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_notifications_poller_failure_window_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+		{"yb_notifications_poller_no_progress_timeout_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Time in milliseconds without progress after which a"
 						 " notifications poller error terminates the node's"
 						 " listening sessions instead of restarting the poller."),
 			gettext_noop("0 terminates them on the first error."),
 			GUC_UNIT_MS
 		},
-		&yb_notifications_poller_failure_window_ms,
+		&yb_notifications_poller_no_progress_timeout_ms,
 		300000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},

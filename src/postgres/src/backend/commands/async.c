@@ -359,7 +359,7 @@ int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
 int			yb_notifications_poll_sleep_duration_empty_ms = 100;
-int			yb_notifications_poller_failure_window_ms = 300000;
+int			yb_notifications_poller_no_progress_timeout_ms = 300000;
 
 /*
  * listenChannels identifies the channels we are actually listening to
@@ -3580,7 +3580,7 @@ ybNotifsPollerRecordProgress(void)
 /*
  * Exit to be restarted from the slot's restart LSN. Terminate the listeners
  * instead on a permanent error, or if the poller has made no progress for
- * yb_notifications_poller_failure_window_ms.
+ * yb_notifications_poller_no_progress_timeout_ms.
  *
  * Caller holds NotifyQueueLock exclusively and has checked that the poller
  * isn't stale; this releases the lock.
@@ -3603,7 +3603,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 
 	terminate = ybNotifsPollerCannotRun ||
 		TimestampDifferenceExceeds(poller_data->last_progress_time, now,
-								   yb_notifications_poller_failure_window_ms);
+								   yb_notifications_poller_no_progress_timeout_ms);
 	if (!terminate)
 	{
 		LWLockRelease(NotifyQueueLock);
@@ -3616,8 +3616,8 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	if (!ybNotifsPollerCannotRun && len < sizeof(message))
 		snprintf(message + len, sizeof(message) - len,
 				 " (no progress for "
-				 "yb_notifications_poller_failure_window_ms = %d ms)",
-				 yb_notifications_poller_failure_window_ms);
+				 "yb_notifications_poller_no_progress_timeout_ms = %d ms)",
+				 yb_notifications_poller_no_progress_timeout_ms);
 	strlcpy(poller_data->error_message, message,
 			sizeof(poller_data->error_message));
 	poller_data->has_runtime_error = true;

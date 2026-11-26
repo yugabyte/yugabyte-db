@@ -84,7 +84,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Arrays.fill(chars, 'x');
     LARGE_PAYLOAD = new String(chars);
   }
-  private static final String SHORT_POLLER_FAILURE_WINDOW_MS = "5000";
+  private static final String SHORT_POLLER_NO_PROGRESS_TIMEOUT_MS = "5000";
   private static final String POLLER_RESTART_LOG = "notifications poller restarting after an error";
   // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
   private static final String RETRIED_UPDATE =
@@ -2135,13 +2135,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   /**
    * An ERROR the poller raises while holding NotifyQueueLock must not leave it waiting on that
    * lock in its error handler. The error repeats on every restart, as each one replays the same
-   * transaction, so once yb_notifications_poller_failure_window_ms passes the poller must terminate
-   * the listeners and exit.
+   * transaction, so once yb_notifications_poller_no_progress_timeout_ms passes the poller must
+   * terminate the listeners and exit.
    */
   @Test
   public void testPollerErrorHoldingQueueLock() throws Exception {
     Map<HostAndPort, String> originalPgConf = new HashMap<>();
-    Map<HostAndPort, String> windowConf = setPollerFailureWindowMs(SHORT_POLLER_FAILURE_WINDOW_MS);
+    Map<HostAndPort, String> timeoutConf =
+        setPollerNoProgressTimeoutMs(SHORT_POLLER_NO_PROGRESS_TIMEOUT_MS);
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2157,7 +2158,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertConnectionDead(listener, "listener");
     } finally {
       restorePgConfOnAllTServers(originalPgConf);
-      restorePgConfOnAllTServers(windowConf);
+      restorePgConfOnAllTServers(timeoutConf);
     }
 
     verifyListenNotifyWorks();
@@ -2212,14 +2213,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * The failure window counts from the poller's last progress, not from its first error: an idle
-   * poller that keeps reading still restarts on an error long after an earlier one.
+   * The no-progress timeout counts from the poller's last progress, not from its first error: an
+   * idle poller that keeps reading still restarts on an error long after an earlier one.
    */
   @Test
   public void testLaterErrorAfterProgressRestartsPoller() throws Exception {
     final String channel = "later_error";
-    final long windowMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
-    Map<HostAndPort, String> windowConf = setPollerFailureWindowMs(String.valueOf(windowMs));
+    final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
+    Map<HostAndPort, String> timeoutConf = setPollerNoProgressTimeoutMs(String.valueOf(timeoutMs));
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2228,7 +2229,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       notifyWhilePollerFails(stmt, channel, "a");
       waitForNotification(listener, channel, "a");
 
-      Thread.sleep(windowMs + Timeouts.adjustTimeoutSecForBuildType(2000));
+      Thread.sleep(timeoutMs + Timeouts.adjustTimeoutSecForBuildType(2000));
       int pollerPid = getPollerPid(stmt);
       notifyWhilePollerFails(stmt, channel, "b");
 
@@ -2236,7 +2237,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertEquals("Expected the notification exactly once", 1, received.size());
       assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
     } finally {
-      restorePgConfOnAllTServers(windowConf);
+      restorePgConfOnAllTServers(timeoutConf);
     }
   }
 
@@ -2246,7 +2247,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    */
   @Test
   public void testRestartedPollerInitFailureTerminatesListeners() throws Exception {
-    Map<HostAndPort, String> windowConf = setPollerFailureWindowMs(SHORT_POLLER_FAILURE_WINDOW_MS);
+    Map<HostAndPort, String> timeoutConf =
+        setPollerNoProgressTimeoutMs(SHORT_POLLER_NO_PROGRESS_TIMEOUT_MS);
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2260,7 +2262,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertConnectionDead(listener, "listener");
     } finally {
       setVirtualWalLimit("5");
-      restorePgConfOnAllTServers(windowConf);
+      restorePgConfOnAllTServers(timeoutConf);
     }
 
     verifyListenNotifyWorks();
@@ -2334,9 +2336,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /** Returns the ysql_pg_conf_csv values to restore with restorePgConfOnAllTServers. */
-  private Map<HostAndPort, String> setPollerFailureWindowMs(String value) throws Exception {
+  private Map<HostAndPort, String> setPollerNoProgressTimeoutMs(String value) throws Exception {
     Map<HostAndPort, String> original = new HashMap<>();
-    appendToPgConfAndWait("yb_notifications_poller_failure_window_ms", value, value, original);
+    appendToPgConfAndWait("yb_notifications_poller_no_progress_timeout_ms", value, value, original);
     return original;
   }
 
