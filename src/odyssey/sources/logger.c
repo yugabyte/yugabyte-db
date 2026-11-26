@@ -51,6 +51,7 @@ od_retcode_t od_logger_init(od_logger_t *logger, od_pid_t *pid)
 	logger->current_log_size = 0;
 	logger->rotate_interval = 0;
 	logger->yb_dropped_lines = 0;
+	logger->yb_queue_size = 0;
 	/* set temporary format */
 	od_logger_set_format(logger, "%p %t %l (%c) %h %m\n");
 
@@ -529,6 +530,7 @@ static inline void od_logger(void *arg)
 		msg = machine_channel_read(logger->task_channel, UINT32_MAX);
 		if (msg == NULL)
 			break;
+		od_atomic_u64_dec(&logger->yb_queue_size);
 
 		od_msg_t msg_type;
 		msg_type = machine_msg_type(msg);
@@ -592,8 +594,11 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 		strncpy(le->msg, output, len);
 		le->msg[len] = '\0';
 
-		if (machine_channel_write(logger->task_channel, msg) != 0)
+		od_atomic_u64_inc(&logger->yb_queue_size);
+		if (machine_channel_write(logger->task_channel, msg) != 0) {
+			od_atomic_u64_dec(&logger->yb_queue_size);
 			od_atomic_u64_inc(&logger->yb_dropped_lines);
+		}
 	} else {
 		_od_logger_write(logger, output, len, level);
 	}
@@ -650,8 +655,11 @@ extern void od_logger_write_plain(od_logger_t *logger, od_logger_level_t level,
 		strncpy(le->msg, output, len);
 		le->msg[len] = '\0';
 
-		if (machine_channel_write(logger->task_channel, msg) != 0)
+		od_atomic_u64_inc(&logger->yb_queue_size);
+		if (machine_channel_write(logger->task_channel, msg) != 0) {
+			od_atomic_u64_dec(&logger->yb_queue_size);
 			od_atomic_u64_inc(&logger->yb_dropped_lines);
+		}
 	} else {
 		_od_logger_write(logger, output, len, level);
 	}

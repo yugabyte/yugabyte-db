@@ -213,10 +213,8 @@ static inline void od_cron_stat(od_cron_t *cron)
 						     instance->config.yb_max_pools);
 		yb_instance_stats->logger_dropped_lines =
 			od_atomic_u64_of(&instance->logger.yb_dropped_lines);
-		if (instance->logger.loaded)
-			yb_instance_stats->logger_queue_size =
-				machine_channel_get_size(
-					instance->logger.task_channel);
+		yb_instance_stats->logger_queue_size =
+			od_atomic_u64_of(&instance->logger.yb_queue_size);
 	}
 
 	if (instance->config.log_stats) {
