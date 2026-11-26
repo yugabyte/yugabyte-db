@@ -67,8 +67,7 @@ using tablet::TransactionParticipant;
 namespace {
 
 Result<bool> ShouldReplicateKey(
-    const dockv::SubDocKey& decoded_key, const StreamMetadata& stream_metadata) {
-  auto db_oid_to_get_sequences_for = stream_metadata.GetDbOidToGetSequencesFor();
+    const dockv::SubDocKey& decoded_key, std::optional<uint32_t> db_oid_to_get_sequences_for) {
   if (!db_oid_to_get_sequences_for) {
     return true;
   }
@@ -85,10 +84,10 @@ Result<bool> ShouldReplicateKey(
 }
 
 Status PopulateWriteRecord(
-    const XClusterGetChangesContext& context,
-    const consensus::LWReplicateMsg& msg) {
+    const XClusterRecordsContext& context, const consensus::LWReplicateMsg& msg,
+    google::protobuf::RepeatedPtrField<CDCRecordPB>* records) {
   const auto& batch = msg.write().write_batch();
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
+  auto tablet = VERIFY_RESULT(context.tablet_peer.shared_tablet());
   // Write batch may contain records from different rows.
   // For xCluster, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -119,13 +118,13 @@ Status PopulateWriteRecord(
       Slice sub_doc_key = key;
       dockv::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
-      if (!VERIFY_RESULT(ShouldReplicateKey(decoded_key, *context.stream_metadata))) {
+      if (!VERIFY_RESULT(ShouldReplicateKey(decoded_key, context.db_oid_to_get_sequences_for))) {
         skipping_prev_key = true;
         continue;
       }
 
       // Write pair contains record for different row. Create a new CDCRecord in this case.
-      record = context.resp->add_records();
+      record = records->Add();
 
       // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
       // producer and re-serializing on consumer.
@@ -154,9 +153,8 @@ Status PopulateWriteRecord(
       if (batch.has_transaction()) {
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());
-        transaction_state->add_tablets(context.tablet_peer->tablet_id());
-        if (FLAGS_xcluster_enable_subtxn_abort_propagation &&
-            batch.subtransaction().has_subtransaction_id()) {
+        transaction_state->add_tablets(context.tablet_peer.tablet_id());
+        if (context.include_subtransactions && batch.subtransaction().has_subtransaction_id()) {
           record->set_subtransaction_id(batch.subtransaction().subtransaction_id());
         }
       }
@@ -177,8 +175,8 @@ Status PopulateWriteRecord(
 }
 
 Status PopulateTransactionRecord(
-    const XClusterGetChangesContext& context,
-    const consensus::LWReplicateMsg& msg) {
+    const XClusterRecordsContext& context, const consensus::LWReplicateMsg& msg,
+    google::protobuf::RepeatedPtrField<CDCRecordPB>* records) {
   SCHECK(
       msg.has_transaction_state(), InvalidArgument,
       Format("Update transaction message requires transaction_state: $0", msg.ShortDebugString()));
@@ -189,20 +187,20 @@ Status PopulateTransactionRecord(
     return Status::OK();
   }
 
-  auto* record = context.resp->add_records();
+  auto* record = records->Add();
   record->set_time(msg.hybrid_time());
   auto* txn_state = record->mutable_transaction_state();
   txn_state->set_transaction_id(transaction_state.transaction_id().ToBuffer());
 
   record->set_operation(CDCRecordPB::APPLY);
   txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
-  if (FLAGS_xcluster_enable_subtxn_abort_propagation) {
+  if (context.include_subtransactions) {
     auto aborted_subtransactions =
         VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
 
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
+  auto tablet = VERIFY_RESULT(context.tablet_peer.shared_tablet());
   tablet->metadata()->partition()->ToPB(record->mutable_partition());
 
   // The partition keys for a hash partitioned table are not encoded, whereas for a range
@@ -220,26 +218,22 @@ Status PopulateTransactionRecord(
 
 // Populate a CDCRecordPB for a tablet split operation.
 Status PopulateSplitOpRecord(
-    const XClusterGetChangesContext& context,
-    const consensus::LWReplicateMsg& msg) {
+    const XClusterRecordsContext& context, const consensus::LWReplicateMsg& msg,
+    google::protobuf::RepeatedPtrField<CDCRecordPB>* records) {
   SCHECK(
       msg.has_split_request(), InvalidArgument,
       Format("Split op message requires split_request: $0", msg.ShortDebugString()));
-  if (msg.split_request().tablet_id() != context.tablet_id) {
+  if (msg.split_request().tablet_id() != context.tablet_peer.tablet_id() ||
+      !context.update_on_split_op_func) {
     return Status::OK();
   }
 
   // Only send split if it is our split, and if we can update the children tablet entries
   // in cdc_state table correctly (the reason for this check is that it is possible to
   // read our parent tablet splits).
-  auto s = context.update_on_split_op_func(msg.ToGoogleProtobuf());
-  if (!s.ok()) {
-    LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << context.tablet_id
-              << ", stream: " << context.stream_id << " : " << s;
-    return s;
-  }
+  RETURN_NOT_OK(context.update_on_split_op_func(msg.ToGoogleProtobuf()));
 
-  CDCRecordPB* record = context.resp->add_records();
+  CDCRecordPB* record = records->Add();
   record->set_operation(CDCRecordPB::SPLIT_OP);
   record->set_time(msg.hybrid_time());
   msg.split_request().ToGoogleProtobuf(record->mutable_split_tablet_request());
@@ -251,8 +245,8 @@ Status PopulateSplitOpRecord(
 // false if it can be skipped. If a record was added then further batch processing should not be
 // done.
 Result<bool> PopulateChangeMetadataRecord(
-    const XClusterGetChangesContext& context,
-    const consensus::LWReplicateMsg& msg) {
+    const XClusterRecordsContext& context, const consensus::LWReplicateMsg& msg,
+    google::protobuf::RepeatedPtrField<CDCRecordPB>* records) {
   if (FLAGS_TEST_xcluster_skip_meta_ops) {
     return false;
   }
@@ -261,7 +255,7 @@ Result<bool> PopulateChangeMetadataRecord(
       msg.has_change_metadata_request(), InvalidArgument,
       Format("Change Meta op message requires payload $0", msg.ShortDebugString()));
 
-  if (msg.change_metadata_request().tablet_id() != context.tablet_id) {
+  if (msg.change_metadata_request().tablet_id() != context.tablet_peer.tablet_id()) {
     return false;
   }
 
@@ -270,18 +264,18 @@ Result<bool> PopulateChangeMetadataRecord(
     // assuming they are for a vector index (XClusterOutputClient::ProcessChangeMetadataOp).
     const auto& colocated_table_id =
         msg.change_metadata_request().schema().colocated_table_id();
-    auto metadata = context.tablet_peer->tablet_metadata();
+    auto metadata = context.tablet_peer.tablet_metadata();
     if (colocated_table_id.has_colocation_id() &&
         colocated_table_id.colocation_id() != kColocationIdNotSet && !metadata->colocated()) {
       auto table_info = metadata->GetTableInfo(colocated_table_id.colocation_id());
       DCHECK(!table_info.ok() || (*table_info)->IsVectorIndex())
           << "Table with colocation id " << colocated_table_id.colocation_id()
-          << " in non-colocated tablet " << context.tablet_id
+          << " in non-colocated tablet " << context.tablet_peer.tablet_id()
           << " is not a vector index, but the xCluster target would skip its schema changes";
     }
   }
 
-  auto* record = context.resp->add_records();
+  auto* record = records->Add();
   record->set_operation(CDCRecordPB::CHANGE_METADATA);
   record->set_time(msg.hybrid_time());
   msg.change_metadata_request().ToGoogleProtobuf(record->mutable_change_metadata_request());
@@ -305,6 +299,39 @@ HybridTime GetSafeTimeForTarget(
   return leader_safe_time;
 }
 }  // namespace
+
+Result<XClusterRecordsResult> PopulateXClusterRecords(
+    const XClusterRecordsContext& context, const consensus::ReplicateMsgs& messages,
+    google::protobuf::RepeatedPtrField<CDCRecordPB>* records) {
+  XClusterRecordsResult result;
+  for (const auto& msg_ptr : messages) {
+    const auto& msg = *msg_ptr;
+    switch (msg.op_type()) {
+      case consensus::OperationType::UPDATE_TRANSACTION_OP:
+        RETURN_NOT_OK(PopulateTransactionRecord(context, msg, records));
+        break;
+      case consensus::OperationType::WRITE_OP:
+        RETURN_NOT_OK(PopulateWriteRecord(context, msg, records));
+        break;
+      case consensus::OperationType::SPLIT_OP:
+        RETURN_NOT_OK(PopulateSplitOpRecord(context, msg, records));
+        break;
+      case consensus::OperationType::CHANGE_METADATA_OP:
+        result.stopped_at_change_metadata =
+            VERIFY_RESULT(PopulateChangeMetadataRecord(context, msg, records));
+        break;
+      default:
+        // Nothing to do for other operation types.
+        break;
+    }
+    result.last_op_id = OpId::FromPB(msg.id());
+    result.last_hybrid_time = HybridTime(msg.hybrid_time());
+    if (result.stopped_at_change_metadata) {
+      break;
+    }
+  }
+  return result;
+}
 
 Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   SCHECK(context.tablet_peer, NotFound, Format("Tablet id $0 not found", context.tablet_id));
@@ -407,46 +434,29 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   *context.have_more_messages =
       PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ? HaveMoreMessages::kTrue
                                                                     : read_ops.have_more_messages;
-  auto ht_of_last_returned_message = HybridTime::kInvalid;
-  OpId checkpoint = context.from_op_id;
-  // value of checkpoint from previous loop iteration.
-  OpId previous_checkpoint = context.from_op_id;
+  XClusterRecordsContext records_context = {
+      .tablet_peer = *context.tablet_peer,
+      .db_oid_to_get_sequences_for = context.stream_metadata->GetDbOidToGetSequencesFor(),
+      .include_subtransactions = FLAGS_xcluster_enable_subtxn_abort_propagation,
+      .update_on_split_op_func =
+          [&context](const consensus::ReplicateMsg& msg) {
+            auto s = context.update_on_split_op_func(msg);
+            if (!s.ok()) {
+              LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << context.tablet_id
+                        << ", stream: " << context.stream_id << " : " << s;
+            }
+            return s;
+          },
+  };
+  auto records_result = VERIFY_RESULT(
+      PopulateXClusterRecords(records_context, messages, context.resp->mutable_records()));
+  auto ht_of_last_returned_message = records_result.last_hybrid_time;
 
-  bool exit_early = false;
-  for (const auto& msg_ptr : messages) {
-    const auto& msg = *msg_ptr;
-    checkpoint = OpId::FromPB(msg.id());
-    switch (msg.op_type()) {
-      case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        RETURN_NOT_OK(PopulateTransactionRecord(context, msg));
-        break;
-      case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(context, msg));
-        break;
-      case consensus::OperationType::SPLIT_OP:
-        RETURN_NOT_OK(PopulateSplitOpRecord(context, msg));
-        break;
-      case consensus::OperationType::CHANGE_METADATA_OP:
-        if (VERIFY_RESULT(PopulateChangeMetadataRecord(context, msg))) {
-          // Change metadata should be the last record in the batch.
-          exit_early = true;
-        }
-        break;
-      default:
-        // Nothing to do for other operation types.
-        break;
-    }
-    ht_of_last_returned_message = HybridTime(msg.hybrid_time());
-
-    if (exit_early) {
-      *context.have_more_messages = HaveMoreMessages::kTrue;
-      break;
-    }
-
-    previous_checkpoint = checkpoint;
-  }
-
-  if (!exit_early) {
+  OpId checkpoint;
+  if (records_result.stopped_at_change_metadata) {
+    *context.have_more_messages = HaveMoreMessages::kTrue;
+    checkpoint = records_result.last_op_id;
+  } else {
     // Processed the entire batch of messages we read, so set checkpoint to last opid of those
     // records. This also ensures we don't try to reread external records again on future calls.
     checkpoint = last_checkpoint;

@@ -13,6 +13,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include <boost/functional/hash.hpp>
 #include <boost/unordered_map.hpp>
@@ -69,6 +70,31 @@ struct XClusterGetChangesContext {
   HaveMoreMessages* have_more_messages;
   int64_t* last_readable_opid_index;
 };
+
+struct XClusterRecordsContext {
+  const tablet::TabletPeer& tablet_peer;
+  // When set, only sequences_data rows of this database are converted.
+  std::optional<uint32_t> db_oid_to_get_sequences_for;
+  // Row records carry their subtransaction id and apply records the aborted subtransactions, so
+  // the target can drop rows of rolled-back savepoints.
+  bool include_subtransactions = false;
+  // Called for a split of this tablet before its record is added; an error fails the conversion.
+  // When unset, split operations produce no record.
+  UpdateOnSplitOpFunc update_on_split_op_func;
+};
+
+struct XClusterRecordsResult {
+  // Id and hybrid time of the last message converted.
+  OpId last_op_id;
+  HybridTime last_hybrid_time;
+  // A change metadata record ends a batch: conversion stops right after it.
+  bool stopped_at_change_metadata = false;
+};
+
+// Converts a tablet's replicated WAL messages into xCluster change records, appended to records.
+Result<XClusterRecordsResult> PopulateXClusterRecords(
+    const XClusterRecordsContext& context, const consensus::ReplicateMsgs& messages,
+    google::protobuf::RepeatedPtrField<CDCRecordPB>* records);
 
 Status GetChangesForCDCSDK(
     const xrepl::StreamId& stream_id,
