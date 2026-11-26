@@ -375,9 +375,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         }
 
         if (table->IsPreparing()) {
-          auto it =
-              state_->preparing_table_tablets.try_emplace(table_id, table, TabletInfos()).first;
-          it->second.second.push_back(tablet);
+          state_->preparing_colocated_tables.emplace(table_id, table);
         }
       }
     }

@@ -27,7 +27,7 @@ void SysCatalogLoadingState::AddPostLoadTask(std::function<void()>&& func, std::
 void SysCatalogLoadingState::Reset() {
   parent_to_child_tables.clear();
   post_load_tasks.clear();
-  preparing_table_tablets.clear();
+  preparing_colocated_tables.clear();
   write_to_disk_tables.clear();
   validate_backfill_status_index_tables.clear();
 }

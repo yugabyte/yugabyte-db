@@ -24,11 +24,9 @@ struct SysCatalogLoadingState {
   std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
 
-  // The tablets of each PREPARING table that joins existing tablets, e.g. a colocated table or a
-  // vector index. A vector index has all tablets of its indexed table, and the table must become
-  // RUNNING only after all of them have added it, so the AddTableToTablet tasks are scheduled
-  // with one shared counter once all tablets are loaded.
-  std::unordered_map<TableId, std::pair<TableInfoPtr, TabletInfos>> preparing_table_tablets;
+  // The PREPARING colocated tables, including vector indexes, for which AddTableToTablet is sent
+  // after the load. A table becomes RUNNING only after all of its active tablets have added it.
+  std::unordered_map<TableId, TableInfoPtr> preparing_colocated_tables;
 
   // The tables which require their memory state to write to disk.
   TableIdSet write_to_disk_tables;

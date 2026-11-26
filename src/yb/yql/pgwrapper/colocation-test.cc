@@ -450,8 +450,8 @@ TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
   ASSERT_OK(conn.Execute("CREATE TABLE t_first (key INT PRIMARY KEY)"));
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "true"));
-  TestThreadHolder thread_holder;
   std::array<std::atomic<int32_t>, 2> create_table_pids{};
+  TestThreadHolder thread_holder;
   for (size_t i = 0; i != create_table_pids.size(); ++i) {
     thread_holder.AddThreadFunctor([this, &db_name, i, &pid = create_table_pids[i]] {
       auto conn = ASSERT_RESULT(ConnectToDB(db_name));

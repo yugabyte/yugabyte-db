@@ -904,8 +904,8 @@ TEST_P(PgDistributedVectorIndexTest, CreateIndexWithLateTabletAcrossMasterRestar
   const auto late_tablet_id = peers.front()->tablet_id();
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stuck_add_table_to_tablet_id) = late_tablet_id;
-  TestThreadHolder thread_holder;
   std::atomic<int32_t> create_index_pid{0};
+  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this, &create_index_pid] {
     auto conn = ASSERT_RESULT(Connect());
     create_index_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
@@ -946,6 +946,66 @@ TEST_P(PgDistributedVectorIndexTest, CreateIndexWithLateTabletAcrossMasterRestar
   thread_holder.JoinAll();
 
   ASSERT_EQ(ASSERT_RESULT(TabletsWithVectorIndex(*cluster_, index_id)).size(), kNumTablets);
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows, AddFilter::kFalse));
+}
+
+// The tablets of the indexed table include a split parent which a snapshot schedule retains as
+// hidden. A master which loads the vector index as PREPARING must promote it once the active
+// tablets have added it, as at creation. See issue #38982.
+TEST_P(PgDistributedVectorIndexTest, CreateIndexWithHiddenSplitParentAcrossMasterRestart) {
+  constexpr size_t kNumRows = 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  num_pre_split_tablets_ = 1;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_id = peers.front()->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_id));
+  ASSERT_OK(WaitFor([this, &parent_id]() -> Result<bool> {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    return VERIFY_RESULT(catalog_manager.GetTabletInfo(parent_id))->LockForRead()->is_hidden();
+  }, 30s * kTimeMultiplier, "Split parent hidden"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled) = true;
+  std::atomic<int32_t> create_index_pid{0};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &create_index_pid] {
+    auto conn = ASSERT_RESULT(Connect());
+    create_index_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    ASSERT_OK(CreateIndex(conn));
+  });
+  // CREATE INDEX does not return while the index is PREPARING, and it does not check for
+  // interrupts. Kill it on failure, so the thread can be joined.
+  auto kill_create_index = ScopeExit([&create_index_pid] {
+    if (HasFailure() && create_index_pid) {
+      kill(create_index_pid, SIGKILL);
+    }
+  });
+
+  auto index_id = ASSERT_RESULT(WaitForPreparingVectorIndex(*cluster_))->id();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled) = false;
+  ASSERT_OK(RestartMaster());
+
+  ASSERT_OK(WaitFor([this] {
+    auto index = FindVectorIndexOnMaster(*cluster_);
+    return index.ok() && !(*index)->IsPreparing();
+  }, 30s * kTimeMultiplier, "Vector index RUNNING"));
+  thread_holder.JoinAll();
+
+  ASSERT_EQ(ASSERT_RESULT(TabletsWithVectorIndex(*cluster_, index_id)).size(), 2);
   ASSERT_NO_FATALS(VerifyRead(conn, kNumRows, AddFilter::kFalse));
 }
 

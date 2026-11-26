@@ -1741,12 +1741,20 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
   RETURN_NOT_OK(Load<TableLoader>("tables", state));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", state));
-  if (!state->preparing_table_tablets.empty()) {
+  if (!state->preparing_colocated_tables.empty()) {
     state->AddPostLoadTask(
-        [this, preparing_table_tablets = std::move(state->preparing_table_tablets),
+        [this, preparing_tables = std::move(state->preparing_colocated_tables),
          epoch = state->epoch] {
-          for (const auto& [table_id, table_and_tablets] : preparing_table_tablets) {
-            ScheduleAddTableToTablet(table_and_tablets.first, table_and_tablets.second, epoch);
+          for (const auto& [table_id, table] : preparing_tables) {
+            // Only the active tablets, as at creation: inactive ones, e.g. hidden or deleted split
+            // parents, also list a vector index, but never add it.
+            auto tablets = table->GetTablets();
+            if (!tablets.ok()) {
+              LOG(WARNING) << "Failed to get tablets of " << table->ToString() << ": "
+                           << tablets.status();
+              continue;
+            }
+            ScheduleAddTableToTablet(table, *tablets, epoch);
           }
         },
         "Send AddTableToTablet for PREPARING tables");
@@ -1779,14 +1787,31 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
 void CatalogManager::ScheduleAddTableToTablet(
     const TableInfoPtr& table, const TabletInfos& tablets, const LeaderEpoch& epoch) {
-  DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
   // The last task to finish promotes the table to RUNNING, so the counter must cover all of the
   // table's tablets.
   auto counter = std::make_shared<std::atomic<size_t>>(tablets.size());
+  std::vector<std::shared_ptr<AsyncAddTableToTablet>> calls;
+  calls.reserve(tablets.size());
   for (const auto& tablet : tablets) {
-    auto call = std::make_shared<AsyncAddTableToTablet>(
-        master_, AsyncTaskPool(), tablet, table, epoch, counter);
-    table->AddTask(call);
+    calls.push_back(std::make_shared<AsyncAddTableToTablet>(
+        master_, AsyncTaskPool(), tablet, table, epoch, counter));
+  }
+  {
+    // DeleteTable aborts the tasks of the table after it commits DELETING, which waits for this
+    // lock. So the table is either no longer PREPARING here, or the tasks are added in time to be
+    // aborted.
+    auto l = table->LockForRead();
+    if (!l->IsPreparing()) {
+      LOG(INFO) << "Not sending AddTableToTablet for " << table->ToString()
+                << ", which is no longer PREPARING";
+      return;
+    }
+    DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
+    for (const auto& call : calls) {
+      table->AddTask(call);
+    }
+  }
+  for (const auto& call : calls) {
     WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
   }
 }
@@ -5458,15 +5483,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (joining_colocation_group) {
-    auto counter = std::make_shared<std::atomic<size_t>>(tablets.size());
-    auto duplicate_counter = FLAGS_TEST_duplicate_addtabletotablet_request
-        ? std::make_shared<std::atomic<size_t>>(tablets.size()) : nullptr;
-    for (auto& tablet : tablets) {
-      auto call = std::make_shared<AsyncAddTableToTablet>(
-          master_, AsyncTaskPool(), tablet, table, epoch, counter);
-      table->AddTask(call);
-      WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
-      if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+    ScheduleAddTableToTablet(table, tablets, epoch);
+    if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+      auto duplicate_counter = std::make_shared<std::atomic<size_t>>(tablets.size());
+      for (auto& tablet : tablets) {
         auto duplicate_call = std::make_shared<AsyncAddTableToTablet>(
             master_, AsyncTaskPool(), tablet, table, epoch, duplicate_counter);
         table->AddTask(duplicate_call);
