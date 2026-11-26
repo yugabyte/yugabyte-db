@@ -55,6 +55,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -415,10 +416,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             }
           } else {
             if (nodeSpec.getK8sTserverResourceSpec() == null) {
-              cluster.userIntent.tserverK8SNodeResourceSpec = null;
+              KubernetesUtil.clearK8sNodeResourceSpec(cluster.userIntent, ServerType.TSERVER);
             }
             if (nodeSpec.getK8sMasterResourceSpec() == null) {
-              cluster.userIntent.masterK8SNodeResourceSpec = null;
+              KubernetesUtil.clearK8sNodeResourceSpec(cluster.userIntent, ServerType.MASTER);
             }
           }
         }
@@ -637,8 +638,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     // The mapper keeps specs that node_spec omits; the replica must not inherit the primary's.
-    newReadReplica.userIntent.masterK8SNodeResourceSpec = null;
-    newReadReplica.userIntent.tserverK8SNodeResourceSpec = null;
+    KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.MASTER);
+    KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.TSERVER);
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
     // The UI fills the read replica's gflags from the primary's GET response, which redacts the
     // sensitive ones, so restore them from the primary the way a gflags upgrade does.

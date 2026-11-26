@@ -2049,6 +2049,11 @@ public class KubernetesUtil {
     }
   }
 
+  public static void clearK8sNodeResourceSpec(UserIntent userIntent, ServerType serverType) {
+    Util.providerInitializerForExistingIntent(userIntent, Util.getSingleProviderUUID(userIntent))
+        .setNodeResourceSpec(null, serverType);
+  }
+
   public static UserIntent.K8SNodeResourceSpec initK8sResourceSpec(UserIntent userIntent) {
     UUID providerUUID = Util.getSingleProviderUUID(userIntent);
 

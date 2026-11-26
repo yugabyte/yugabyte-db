@@ -358,13 +358,17 @@ public class UniverseCRUDHandler {
   }
 
   public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
-    return currentCluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)
-        && (!(Objects.equals(
-                currentCluster.userIntent.tserverK8SNodeResourceSpec,
-                cluster.userIntent.tserverK8SNodeResourceSpec)
-            && Objects.equals(
-                currentCluster.userIntent.masterK8SNodeResourceSpec,
-                cluster.userIntent.masterK8SNodeResourceSpec)));
+    if (!Util.isKubernetesBased(currentCluster)) {
+      return false;
+    }
+    // Provider should not be changed for k8s.
+    UUID providerUUID = Util.getSingleProviderUUID(currentCluster);
+    return (!(Objects.equals(
+            currentCluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID),
+            cluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID))
+        && Objects.equals(
+            currentCluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID),
+            cluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID))));
   }
 
   private static boolean isSameInstanceTypes(

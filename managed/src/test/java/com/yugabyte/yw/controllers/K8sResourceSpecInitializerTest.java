@@ -140,6 +140,40 @@ public class K8sResourceSpecInitializerTest {
         .thenReturn(instanceType);
   }
 
+  @Test
+  public void testClearK8sNodeResourceSpecInProviderSpecification() {
+    UUID providerUUID = UUID.randomUUID();
+    UserIntent ui = new UserIntent();
+    ui.dedicatedNodes = true;
+    TestUtils.specificationProviderInitializer(ui, providerUUID)
+        .setProviderType(CloudType.kubernetes)
+        .setInstanceType("small")
+        .setNodeResourceSpec(resourceSpec(1.0, 2.0), UniverseTaskBase.ServerType.TSERVER)
+        .setNodeResourceSpec(resourceSpec(3.0, 4.0), UniverseTaskBase.ServerType.MASTER);
+
+    KubernetesUtil.clearK8sNodeResourceSpec(ui, UniverseTaskBase.ServerType.TSERVER);
+
+    assertNull(ui.getTserverK8SNodeResourceSpec(providerUUID));
+    assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 3.0, 4.0);
+  }
+
+  @Test
+  public void testClearK8sNodeResourceSpecInLegacyFields() {
+    UUID providerUUID = UUID.randomUUID();
+    UserIntent ui = new UserIntent();
+    ui.dedicatedNodes = true;
+    TestUtils.intentProviderInitializer(ui, providerUUID)
+        .setProviderType(CloudType.kubernetes)
+        .setInstanceType("small")
+        .setNodeResourceSpec(resourceSpec(1.0, 2.0), UniverseTaskBase.ServerType.TSERVER)
+        .setNodeResourceSpec(resourceSpec(3.0, 4.0), UniverseTaskBase.ServerType.MASTER);
+
+    KubernetesUtil.clearK8sNodeResourceSpec(ui, UniverseTaskBase.ServerType.MASTER);
+
+    assertNull(ui.getMasterK8SNodeResourceSpec(providerUUID));
+    assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
+  }
+
   private static UserIntent k8sIntent(
       UUID providerUUID,
       String instanceType,

@@ -612,11 +612,13 @@ public interface UserIntentMapper {
     if (clusterNodeSpec == null) {
       return userIntent;
     }
-    userIntent.instanceType = clusterNodeSpec.getInstanceType();
+    // An omitted instance type or k8s resource spec keeps the stored one, so a partial node_spec
+    // edit doesn't reset it.
+    if (clusterNodeSpec.getInstanceType() != null) {
+      userIntent.instanceType = clusterNodeSpec.getInstanceType();
+    }
     userIntent.deviceInfo = storageSpecToDeviceInfo(clusterNodeSpec.getStorageSpec());
     userIntent.setCgroupSize(clusterNodeSpec.getCgroupSize());
-    // An omitted k8s resource spec keeps the stored one, so a partial node_spec edit doesn't reset
-    // it.
     if (clusterNodeSpec.getK8sMasterResourceSpec() != null) {
       userIntent.masterK8SNodeResourceSpec =
           toV1K8SNodeResourceSpec(clusterNodeSpec.getK8sMasterResourceSpec());

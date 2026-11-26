@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
@@ -1140,42 +1141,45 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         masterLimit.put("memory", "1Gi");
       }
     } else {
+      ProviderInitializer initializer =
+          Util.providerInitializerForExistingIntent(userIntent, provider.getUuid());
+      UserIntent.K8SNodeResourceSpec masterK8SNodeResourceSpec =
+          userIntent.getMasterK8SNodeResourceSpec(provider.getUuid());
+      UserIntent.K8SNodeResourceSpec tserverK8SNodeResourceSpec =
+          userIntent.getTserverK8SNodeResourceSpec(provider.getUuid());
       // Use defaults in case we don't find anythihng,
-      if (userIntent.masterK8SNodeResourceSpec == null) {
+      if (masterK8SNodeResourceSpec == null) {
         log.warn(
             "master k8s node resources (cpu/memory) passed as null for universe: "
                 + taskUniverseDetails.getUniverseUUID()
                 + " readcluster: "
                 + taskParams().isReadOnlyCluster
                 + " Using default values.");
-        userIntent.masterK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+        masterK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+        initializer.setNodeResourceSpec(masterK8SNodeResourceSpec, ServerType.MASTER);
       }
-      if (userIntent.tserverK8SNodeResourceSpec == null) {
+      if (tserverK8SNodeResourceSpec == null) {
         log.warn(
             "tserver k8s node resources (cpu/memory) passed as null for universe: "
                 + taskUniverseDetails.getUniverseUUID()
                 + " readcluster: "
                 + taskParams().isReadOnlyCluster
                 + " Using default values.");
-        userIntent.tserverK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+        tserverK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+        initializer.setNodeResourceSpec(tserverK8SNodeResourceSpec, ServerType.TSERVER);
       }
       masterResource.put(
-          "memory", String.format("%.2f%s", userIntent.masterK8SNodeResourceSpec.memoryGib, "Gi"));
-      masterResource.put(
-          "cpu", String.format("%.2f", userIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+          "memory", String.format("%.2f%s", masterK8SNodeResourceSpec.memoryGib, "Gi"));
+      masterResource.put("cpu", String.format("%.2f", masterK8SNodeResourceSpec.cpuCoreCount));
       tserverResource.put(
-          "memory", String.format("%.2f%s", userIntent.tserverK8SNodeResourceSpec.memoryGib, "Gi"));
-      tserverResource.put(
-          "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
+          "memory", String.format("%.2f%s", tserverK8SNodeResourceSpec.memoryGib, "Gi"));
+      tserverResource.put("cpu", String.format("%.2f", tserverK8SNodeResourceSpec.cpuCoreCount));
       // We are keeping requests and limits same.
-      masterLimit.put(
-          "memory", String.format("%.2f%s", userIntent.masterK8SNodeResourceSpec.memoryGib, "Gi"));
-      masterLimit.put(
-          "cpu", String.format("%.2f", userIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+      masterLimit.put("memory", String.format("%.2f%s", masterK8SNodeResourceSpec.memoryGib, "Gi"));
+      masterLimit.put("cpu", String.format("%.2f", masterK8SNodeResourceSpec.cpuCoreCount));
       tserverLimit.put(
-          "memory", String.format("%.2f%s", userIntent.tserverK8SNodeResourceSpec.memoryGib, "Gi"));
-      tserverLimit.put(
-          "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
+          "memory", String.format("%.2f%s", tserverK8SNodeResourceSpec.memoryGib, "Gi"));
+      tserverLimit.put("cpu", String.format("%.2f", tserverK8SNodeResourceSpec.cpuCoreCount));
     }
 
     Map<String, Object> resourceOverrides = new HashMap();

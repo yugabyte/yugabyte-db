@@ -1762,6 +1762,45 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertEquals(5.0, masterSpec.memoryGib, 0.001);
   }
 
+  // A node_spec without instance_type keeps the stored one, so changing only the tserver spec
+  // is not treated as an instance type change that requires both specs.
+  @Test
+  public void testEditUniverseV2TserverK8sSpecOnlyKeepsInstanceType() throws ApiException {
+    UUID k8sUuid = setupK8sUniverseForResourceSpecEdit();
+    UUID primaryUuid =
+        Universe.getOrBadRequest(k8sUuid).getUniverseDetails().getPrimaryCluster().uuid;
+    ClusterNodeSpec nodeSpec =
+        new ClusterNodeSpec()
+            .k8sTserverResourceSpec(
+                new com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec()
+                    .cpuCoreCount(2.0)
+                    .memoryGib(4.0));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(new ClusterEditSpec().uuid(primaryUuid).nodeSpec(nodeSpec)))
+            .universeSettings(new UniverseSettings().expertMode(true));
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    new UniverseApi().editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UserIntent edited = v1EditParamsCapture.getValue().getPrimaryCluster().userIntent;
+    UUID providerUuid = Util.getSingleProviderUUID(edited);
+    assertEquals("old.type", edited.getBaseInstanceType(providerUuid));
+    UserIntent.K8SNodeResourceSpec tserverSpec = edited.getTserverK8SNodeResourceSpec(providerUuid);
+    assertEquals(2.0, tserverSpec.cpuCoreCount, 0.001);
+    assertEquals(4.0, tserverSpec.memoryGib, 0.001);
+    UserIntent.K8SNodeResourceSpec masterSpec = edited.getMasterK8SNodeResourceSpec(providerUuid);
+    assertEquals(2.5, masterSpec.cpuCoreCount, 0.001);
+    assertEquals(5.0, masterSpec.memoryGib, 0.001);
+  }
+
   // The read replica starts from a clone of the primary's intent, but must not inherit its k8s
   // resource specs: the omitted tserver spec is derived from the replica's instance type.
   @Test
