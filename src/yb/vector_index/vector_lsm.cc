@@ -169,6 +169,12 @@ namespace {
 YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
 YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
+// kCancelled stops allocations as kStopping does.
+YB_DEFINE_ENUM(InsertRegistryState, (kRunning)(kStopping)(kCancelled));
+
+Status DestroyedStatus() {
+  return STATUS(ShutdownInProgress, "Vector LSM is destroyed");
+}
 
 // Resolves the max memstore size for a Vector LSM compaction output chunk from gflags.
 // --vector_index_compaction_chunk_max_memstore_size_mb takes priority when non-zero.
@@ -492,6 +498,10 @@ class VectorLSMInsertTask :
   Status DoInsert() {
     DCHECK(index_);
     for (const auto& [vector_id, vector] : vectors_) {
+      if (registry_->IsCancelled()) {
+        return STATUS(Aborted, "Vector insertion cancelled");
+      }
+      TEST_SYNC_POINT("VectorLSMInsertTask::DoInsert:Entry");
       RETURN_NOT_OK(index_->Insert(vector_id, vector));
     }
     return Status::OK();
@@ -522,7 +532,9 @@ class VectorLSMInsertRegistryBase
     for (;;) {
       {
         std::lock_guard lock(mutex_);
-        stopping_ = true;
+        auto expected = InsertRegistryState::kRunning;
+        state_.compare_exchange_strong(
+            expected, InsertRegistryState::kStopping, std::memory_order_acq_rel);
         TEST_SYNC_POINT("VectorLSMInsertRegistryBase::Shutdown:Stopping");
         if (allocated_tasks_ == 0) {
           break;
@@ -595,6 +607,17 @@ class VectorLSMInsertRegistryBase
     return !active_tasks_.empty();
   }
 
+  // Stops allocations as Shutdown does, and makes running and queued tasks skip the vectors they
+  // have not inserted yet. Shutdown still waits for the pool to dequeue the queued ones.
+  void Cancel() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    state_.store(InsertRegistryState::kCancelled, std::memory_order_release);
+  }
+
+  bool IsCancelled() const {
+    return state_.load(std::memory_order_acquire) == InsertRegistryState::kCancelled;
+  }
+
  protected:
   VectorLSMInsertRegistryBase(std::string log_prefix, rpc::ThreadPool& thread_pool)
       : log_prefix_(std::move(log_prefix)), thread_pool_(thread_pool) {}
@@ -606,7 +629,7 @@ class VectorLSMInsertRegistryBase
   // Allocated tasks must be bound with BindTasks before ExecuteTasks or returned with
   // ReleaseTasks.
   Result<InsertTaskList> DoAllocateTasks(size_t num_tasks) REQUIRES(mutex_) {
-    if (stopping_) {
+    if (state_.load(std::memory_order_acquire) != InsertRegistryState::kRunning) {
       return STATUS_FORMAT(ShutdownInProgress, "VectorLSM registry is shutting down");
     }
     InsertTaskList result;
@@ -645,7 +668,9 @@ class VectorLSMInsertRegistryBase
   const std::string log_prefix_;
   rpc::ThreadPool& thread_pool_;
   std::shared_mutex mutex_;
-  bool stopping_ GUARDED_BY(mutex_) = false;
+  // Changed under mutex_, so no allocation passes the check after Shutdown found no tasks
+  // allocated. Tasks read it without the lock.
+  std::atomic<InsertRegistryState> state_{InsertRegistryState::kRunning};
   size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
@@ -1317,7 +1342,8 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
       "VectorLSM::CompleteShutdown:RegistriesStopped",
       const_cast<std::string*>(&options_.storage_dir));
 
-  // Wait for all chunks to be saved.
+  // Wait for all chunks to be saved. A destroyed LSM waits only for the saves already scheduled,
+  // since it leaves the chunks it does not save in the queue.
   auto start_time = CoarseMonoClock::now();
   auto last_warning_time = start_time;
   MonoDelta report_interval = 1s;
@@ -1328,7 +1354,7 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
       chunks_left = updates_queue_.size();
     }
     auto saves_left = num_pending_saves_.load();
-    if (chunks_left == 0 && saves_left == 0) {
+    if ((chunks_left == 0 || IsDestroyed()) && saves_left == 0) {
       break;
     }
     auto now = CoarseMonoClock::now();
@@ -1390,6 +1416,14 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
       << "Vector LSM already in failed state: " << existing_status
       << ", while trying to set new failed state: " << status;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::ReleaseFlushWaitersUnlocked(const Status& status) {
+  for (auto& [_, chunk] : updates_queue_) {
+    chunk->Flushed(status);
+  }
+  updates_queue_empty_cv_.notify_all();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1491,9 +1525,29 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::StartDestroy() {
+  StartShutdown();
+  // Do not wait for a running backfill to insert the rest of its vectors, nor for chunks to be
+  // saved just to be deleted, see IsDestroyed. Only a save already in progress is waited for.
+  // Not the failed state: flushes that listed the index before its removal still read it.
+  if (insert_registry_) {
+    insert_registry_->Cancel();
+  }
+  if (merge_registry_) {
+    merge_registry_->Cancel();
+  }
+  {
+    std::lock_guard lock(mutex_);
+    ReleaseFlushWaitersUnlocked(DestroyedStatus());
+  }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Destroy() {
   LOG_WITH_PREFIX(INFO) << __func__;
-  StartShutdown();
+  StartDestroy();
+  // Cancelled tasks still wait for the shared insert pool to dequeue them, so this can take as long
+  // as the inserts queued before them, of every LSM of the tserver.
   CompleteShutdown();
   return env_->DeleteRecursively(options_.storage_dir);
 }
@@ -1601,8 +1655,11 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
         // later frontiers, so bootstrap would not replay the failed one. Crashing before the save
         // leaves it in the WAL. Skipping the save instead is not an option, an unsaved chunk would
         // block the updates queue and CompleteShutdown.
-        LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "VectorLSM insertion failed: " << status;
-        if (frontiers_to_apply) {
+        // Only StartDestroy cancels insertion, and a destroyed LSM saves no chunks.
+        if (!status.ok()) {
+          LOG_IF_WITH_PREFIX(FATAL, !insert_registry_->IsCancelled())
+              << "VectorLSM insertion failed: " << status;
+        } else if (frontiers_to_apply) {
           std::lock_guard lock(mutex_);
           chunk->ApplyFrontiers(*frontiers_to_apply);
         }
@@ -2073,7 +2130,14 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
     SleepFor(TEST_sleep_during_flush);
   }
 
-  auto status = DoSaveChunk(chunk);
+  Status status;
+  if (IsDestroyed()) {
+    // Also covers a chunk that a flush queued after StartDestroy released the queued ones.
+    std::lock_guard lock(mutex_);
+    chunk->Flushed(DestroyedStatus());
+  } else {
+    status = DoSaveChunk(chunk);
+  }
   if (!status.ok()) {
     chunk->Flushed(status);
     LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
@@ -2496,9 +2560,15 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::IsDestroyed() const {
+  return insert_registry_ && insert_registry_->IsCancelled();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::WaitForUpdatesQueueEmpty() {
   UniqueLock lock(mutex_);
-  while (!updates_queue_.empty()) {
+  // A destroyed LSM leaves the chunks it does not save in the queue.
+  while (!updates_queue_.empty() && !IsDestroyed()) {
     if (updates_queue_empty_cv_.wait_for(lock, 1s) == std::cv_status::timeout) {
       LOG_WITH_PREFIX(WARNING)
           << "Long wait for vector LSM flush queue, chunks left: " << updates_queue_.size();

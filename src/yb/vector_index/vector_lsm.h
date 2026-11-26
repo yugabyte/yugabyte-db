@@ -128,6 +128,9 @@ class VectorLSM {
   ~VectorLSM();
 
   Status Open(Options options);
+  // Stops the LSM without waiting: its inserts skip the vectors they have not inserted yet, and it
+  // saves no more chunks. Destroy waits for the tasks still using it and deletes its storage.
+  void StartDestroy();
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
@@ -254,12 +257,17 @@ class VectorLSM {
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
 
+  // StartDestroy cancels the registries. A destroyed LSM saves no chunks.
+  bool IsDestroyed() const;
+
   // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
   void ReleaseChunkHold(MutableChunk& chunk);
 
   // The caller increments num_pending_saves_ when it schedules the save.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
+  // Completes the flush waiters of the chunks in updates_queue_ with status.
+  void ReleaseFlushWaitersUnlocked(const Status& status) REQUIRES(mutex_);
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
