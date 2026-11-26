@@ -11033,7 +11033,8 @@ ReportGUCOption(struct config_generic *record)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
 
 			if (record->extra == NULL &&
-				!(record->flags & GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK))
+				!(record->flags & (GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK |
+								   GUC_CUSTOM_PLACEHOLDER)))
 				flags |= YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY;
 
 			if (record->status & YB_GUC_VALUE_RESET)
@@ -19022,6 +19023,7 @@ static bool
 yb_conn_mgr_skip_check_hook(struct config_generic *gconf)
 {
 	return yb_conn_mgr_skip_check_name != NULL &&
+		!(gconf->flags & GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK) &&
 		guc_name_compare(gconf->name, yb_conn_mgr_skip_check_name) == 0;
 }
 

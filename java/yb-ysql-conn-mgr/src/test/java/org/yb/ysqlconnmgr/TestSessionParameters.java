@@ -1290,6 +1290,29 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // Client B sets plpgsql GUCs before the only backend has loaded plpgsql. Client A then runs a
+  // DO block, which loads plpgsql there. B's next query replays the values on that backend and
+  // must get them back.
+  @Test
+  public void testPlaceholderReplayAfterExtensionLoad() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection connB = builder.connect();
+         Statement stmtB = connB.createStatement();
+         Connection connA = builder.connect();
+         Statement stmtA = connA.createStatement()) {
+      stmtB.execute("SET plpgsql.extra_warnings = 'all'");
+      stmtB.execute("SET plpgsql.extra_errors = 'shadowed_variables'");
+
+      stmtA.execute("DO $$ BEGIN END $$");
+
+      assertSettingValues(stmtB,
+          new String[] {"plpgsql.extra_warnings", "all"},
+          new String[] {"plpgsql.extra_errors", "shadowed_variables"});
+    }
+  }
+
   // The client sets values that SQL would need to quote or escape. A second client takes the only
   // backend, then the client's next query replays them on it. They must come back unchanged.
   @Test
