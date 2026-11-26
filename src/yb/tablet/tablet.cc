@@ -3143,6 +3143,13 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     index_info.emplace(table_info.index_info(), ht);
   }
 
+  // A restore can add back a vector index whose storage is still being destroyed, or was left by a
+  // crash during its removal. The metadata must not list the index before the storage is gone, see
+  // RemoveTable. Blocks the apply, but only in that case.
+  if (index_info && index_info->is_vector_index()) {
+    RETURN_NOT_OK(vector_indexes_->PrepareAddIndex(table_info.table_id(), *index_info));
+  }
+
   // Decided before the table is added, so that the mark goes into the superblock together with the
   // table: a flush in between would record this operation as applied without the mark.
   const bool repair_pending =
@@ -3383,9 +3390,11 @@ Status Tablet::AddMultipleTables(
 }
 
 Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
-  RETURN_NOT_OK(vector_indexes_->Remove(table_id));
+  auto complete_remove_vector_index = VERIFY_RESULT(vector_indexes_->Remove(table_id));
   metadata_->RemoveTable(table_id, op_id);
   RETURN_NOT_OK(metadata_->Flush());
+  // Not before the flush: bootstrap fails to open a listed index from partly deleted storage.
+  complete_remove_vector_index();
   return Status::OK();
 }
 

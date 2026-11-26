@@ -57,6 +57,16 @@ const std::string kIntentsDirName = "intents";
 const std::string kSnapshotsDirName = "snapshots";
 const std::string kVectorIndexDirPrefix = "vi-";
 
+namespace {
+
+const std::string kRemovedVectorIndexMarkSuffix = ".removed";
+
+std::string RemovedVectorIndexMarkDir(const std::string& storage_dir) {
+  return storage_dir + kRemovedVectorIndexMarkSuffix;
+}
+
+} // namespace
+
 Status SetValueFromQLBinaryWrapper(
     const QLValuePB& ql_value, int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
@@ -613,6 +623,35 @@ std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
   return kVectorIndexDirPrefix + options.id();
 }
 
+Status MarkRemovedVectorIndexStorage(Env& env, const std::string& storage_dir) {
+  RETURN_NOT_OK(env.CreateDirs(RemovedVectorIndexMarkDir(storage_dir)));
+  return env.SyncDir(DirName(storage_dir));
+}
+
+bool IsVectorIndexStorageMarkedRemoved(Env& env, const std::string& storage_dir) {
+  return env.DirExists(RemovedVectorIndexMarkDir(storage_dir));
+}
+
+std::optional<std::string> StorageOfRemovedVectorIndexMark(const std::string& dir) {
+  if (!dir.ends_with(kRemovedVectorIndexMarkSuffix)) {
+    return std::nullopt;
+  }
+  return dir.substr(0, dir.size() - kRemovedVectorIndexMarkSuffix.size());
+}
+
+Status DeleteVectorIndexStorage(Env& env, const std::string& storage_dir) {
+  if (env.DirExists(storage_dir)) {
+    RETURN_NOT_OK(env.DeleteRecursively(storage_dir));
+  }
+  auto mark_dir = RemovedVectorIndexMarkDir(storage_dir);
+  if (!env.DirExists(mark_dir)) {
+    return Status::OK();
+  }
+  // Makes the deletion of the storage durable first.
+  RETURN_NOT_OK(env.SyncDir(DirName(storage_dir)));
+  return env.DeleteDir(mark_dir);
+}
+
 std::string HnswBackendExtension(HnswBackend backend) {
   switch (backend) {
     case YB_HNSW_USEARCH: [[fallthrough]];
@@ -648,7 +687,10 @@ Status MoveChild(Env& env, const std::string& data_dir, const std::string& child
   }
   auto dest_dir = GetStorageDir(data_dir, child);
   LOG(INFO) << "Moving " << source_dir << " => " << dest_dir;
-  if (env.FileExists(dest_dir)) {
+  if (child.starts_with(kVectorIndexDirPrefix)) {
+    // With the removal mark, which would make the next add of the index delete this storage.
+    RETURN_NOT_OK(DeleteVectorIndexStorage(env, dest_dir));
+  } else if (env.FileExists(dest_dir)) {
     RETURN_NOT_OK(env.DeleteRecursively(dest_dir));
   }
   return env.RenameFile(source_dir, dest_dir);
