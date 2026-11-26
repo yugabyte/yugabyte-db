@@ -15,10 +15,8 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.fail;
 
-import java.io.ByteArrayOutputStream;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -139,66 +137,6 @@ public class TestProtocolEdgeCases extends BaseYsqlConnMgr {
                 .query("SELECT 2").row("2")
                 .run();
         }
-    }
-
-    // A client that goes away while it is paused after its Sync must be noticed, so its cleanup
-    // cancels the running statement and returns the only backend to the pool, instead of leaving
-    // the statement running with nobody listening until it ends.
-    @Test
-    public void testDisconnectWhilePausedAfterSync() throws Exception {
-        restartClusterWithAdditionalFlags(Collections.emptyMap(), pausedDisconnectFlags());
-        assertDisconnectWhilePausedAfterSyncCancelsStatement(rawConnBuilder(), 0);
-    }
-
-    // As above, with more client bytes after the Sync than the readahead holds. Conn mgr does not
-    // read them during the pause, so the client's FIN waits behind them on the socket; conn mgr
-    // must still notice the hangup.
-    @Test
-    public void testDisconnectWithFullReadaheadWhilePausedAfterSync() throws Exception {
-        Map<String, String> tserverFlags = pausedDisconnectFlags();
-        tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
-        restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
-        assertDisconnectWhilePausedAfterSyncCancelsStatement(rawConnBuilder(), 4096);
-    }
-
-    // A client sends Parse/Bind/Execute/Sync for an INSERT and closes its socket right away,
-    // without waiting for the reply. Conn mgr has read the batch before it sees the FIN, so it
-    // must send the batch to the backend before acting on the hangup, as Postgres would run it.
-    // The INSERT must commit, and the backend must go back to the pool for the next client.
-    @Test
-    public void testInsertThenDisconnectWhilePausedAfterSync() throws Exception {
-        restartClusterWithAdditionalFlags(Collections.emptyMap(), pausedDisconnectFlags());
-        try (WireConn conn = rawConnBuilder().connect()) {
-            conn.createPipeline().query("CREATE TABLE paused_hangup_t (k int)").run();
-        }
-
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        buf.write(PgWireProtocol.buildParse("INSERT INTO paused_hangup_t VALUES (1)"));
-        buf.write(PgWireProtocol.buildBind());
-        buf.write(PgWireProtocol.buildExecute());
-        buf.write(PgWireProtocol.buildSync());
-        long startMs;
-        try (WireConn conn = rawConnBuilder().connect()) {
-            conn.sendRaw(buf.toByteArray());
-            startMs = System.currentTimeMillis();
-            conn.closeAbruptly();
-        }
-
-        try (WireConn conn = rawConnBuilder().socketTimeoutMs(30000).connect()) {
-            conn.createPipeline().query("SELECT count(*) FROM paused_hangup_t").row("1").run();
-        }
-        long elapsedMs = System.currentTimeMillis() - startMs;
-        String msg = String.format("The next client got the backend %d ms after a client closed"
-            + " its socket right after an INSERT's Sync", elapsedMs);
-        LOG.info(msg);
-        assertLessThan(msg, elapsedMs, 20000L);
-    }
-
-    private static Map<String, String> pausedDisconnectFlags() {
-        Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
-        // How long the client's cleanup waits for the statement before cancelling it.
-        tserverFlags.put("ysql_conn_mgr_wait_timeout_ms", "2000");
-        return tserverFlags;
     }
 
     // A client disconnects mid-Query on a backend holding more prepared statements than

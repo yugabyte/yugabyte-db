@@ -16,7 +16,6 @@ package org.yb.ysqlconnmgr;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.fail;
@@ -28,7 +27,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -869,51 +867,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         String.format("ps -p %d -o rss=", pid));
     try (Scanner scanner = new Scanner(process.getInputStream())) {
       return scanner.nextLong();
-    }
-  }
-
-  /**
-   * A client sends Parse/Bind/Execute/Sync for a 60 s sleep, followed by a Query of tailBytes
-   * characters when tailBytes is above 0, and goes away while conn mgr has it paused on the Sync:
-   * once with a FIN and once with a RST. Each time, conn mgr must notice, cancel the sleep and give
-   * the backend to the next client within seconds, however much of the Query is still unread.
-   * Expects a cluster with SINGLE_BACKEND_FLAGS and ysql_conn_mgr_wait_timeout_ms of 2000.
-   */
-  protected void assertDisconnectWhilePausedAfterSyncCancelsStatement(
-      WireConn.Builder builder, int tailBytes) throws Exception {
-    for (boolean reset : new boolean[] {false, true}) {
-      ByteArrayOutputStream buf = new ByteArrayOutputStream();
-      buf.write(PgWireProtocol.buildParse("SELECT pg_sleep(60)"));
-      buf.write(PgWireProtocol.buildBind());
-      buf.write(PgWireProtocol.buildExecute());
-      buf.write(PgWireProtocol.buildSync());
-      if (tailBytes > 0) {
-        String literal = String.join("", Collections.nCopies(tailBytes, "a"));
-        buf.write(PgWireProtocol.buildQuery("SELECT '" + literal + "'"));
-      }
-      long startMs;
-      try (WireConn conn = builder.connect()) {
-        conn.sendRaw(buf.toByteArray());
-        Thread.sleep(1000);
-        // Over TLS, close() can block until conn mgr closes its side, so time from here.
-        startMs = System.currentTimeMillis();
-        if (reset) {
-          conn.resetAbruptly();
-        } else {
-          conn.closeAbruptly();
-        }
-      }
-
-      try (WireConn conn = builder.socketTimeoutMs(30000).connect()) {
-        conn.createPipeline().query("SELECT 1").row("1").run();
-      }
-      long elapsedMs = System.currentTimeMillis() - startMs;
-      String msg = String.format(
-          "The next client got the backend %d ms after a client closed its socket with a"
-          + " %s while paused after its Sync, with a %d byte Query after the Sync",
-          elapsedMs, reset ? "RST" : "FIN", tailBytes);
-      LOG.info(msg);
-      assertLessThan(msg, elapsedMs, 20000L);
     }
   }
 

@@ -356,6 +356,21 @@ public class Pipeline {
 
   // ---- Running --------------------------------------------------------------
 
+  /**
+   * Sends the pipeline in one write and reads nothing, for a client that goes away before the
+   * backend answers. Expectations are not checked, and the connection cannot run another pipeline.
+   */
+  public void sendWithoutReading() throws IOException {
+    for (Step step : steps) {
+      if (step.kind == Kind.PAUSE) {
+        throw new IllegalStateException("sendWithoutReading() does not support pause()");
+      }
+    }
+    LOG.info("sent   {} (not reading the responses)", sentNotation());
+    writeSegment(0, steps.size());
+    conn.markTailUnread();
+  }
+
   public PipelineResult run() throws Exception {
     LOG.info("sent   {}", sentNotation());
     LOG.info("expect {}", expectedNotation());

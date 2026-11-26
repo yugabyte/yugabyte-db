@@ -2286,11 +2286,15 @@ od_frontend_remote_process_server(od_server_t *server, od_client_t *client)
  * YB: A client paused after a Sync is not read until ReadyForQuery, so its
  * EOF can wait behind unread bytes. Instead, poll its socket for a hangup on
  * each wakeup and at least this often, as Postgres does with
- * client_connection_check_interval. A half-closed client is treated as gone.
+ * client_connection_check_interval.
  */
 #define YB_PAUSED_CLIENT_POLL_MS 1000
 
-static bool yb_paused_client_hung_up(od_client_t *client)
+/*
+ * YB: Polls the client socket and reports whether the client hung up. A
+ * half-closed client is treated as gone.
+ */
+static bool yb_client_hung_up(od_client_t *client)
 {
 	od_io_t *io = client->relay.src;
 	if (od_io_poll(io) != 0) {
@@ -2363,19 +2367,19 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			}
 #endif
 #endif
-			/* one minute */
+			/* one minute, or the hangup poll interval while paused */
 			bool yb_paused = yb_is_relay_paused(&client->relay);
-			int yb_wait_rc = machine_cond_wait(
+			int rc = machine_cond_wait(
 				client->cond,
 				yb_paused ? YB_PAUSED_CLIENT_POLL_MS : 60000);
-			if (yb_paused && yb_paused_client_hung_up(client)) {
-				od_log(&instance->logger, "wait sync", client,
-				       server,
-				       "client disconnected while paused after Sync");
+			if (yb_paused && yb_client_hung_up(client)) {
+				od_debug(&instance->logger, "wait sync", client,
+					 server,
+					 "client disconnected while paused after Sync");
 				status = OD_ECLIENT_READ;
 				break;
 			}
-			if (yb_wait_rc == 0) {
+			if (rc == 0) {
 				client->time_last_active = machine_time_us();
 #ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
@@ -2526,8 +2530,7 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			/*
 			 * YB: Park the client read by removing its FD from epoll
 			 * so co-routine doesn't get woken up for any bytes the client
-			 * pipelines after the Sync. The wait above polls the client
-			 * for a hangup while it is paused.
+			 * pipelines after the Sync.
 			 */
 			int rc = od_io_read_stop(client->relay.src);
 			if (rc != 0) {
