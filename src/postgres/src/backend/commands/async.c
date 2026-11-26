@@ -3563,6 +3563,11 @@ ybCheckNotifsStreamNotExpired(void)
 	}
 }
 
+/*
+ * Counting an empty read as progress assumes that a restarted poller reads the
+ * transaction it failed on before any empty read; otherwise it would never
+ * terminate. testPollerErrorHoldingQueueLock checks this.
+ */
 static void
 ybNotifsPollerRecordProgress(void)
 {
@@ -3757,7 +3762,7 @@ ybNotifsPollerLoop()
 			record = YBCReadRecord(publications);
 			if (record)
 				ybNotifsPollerProcessRecord(record);
-			else
+			else if (ybNotifsPollerProcessingXid == InvalidTransactionId)
 				ybNotifsPollerRecordProgress();
 		}
 		PG_CATCH();
