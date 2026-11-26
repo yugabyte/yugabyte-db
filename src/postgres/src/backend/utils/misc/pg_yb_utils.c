@@ -3018,16 +3018,23 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * This is the first DDL statement in the transaction block. We need to set
 	 * the DDL state in the PGGate and also initialize ddl_transaction_state.
 	 *
+	 * Set the PGGate state first: it flushes the writes still buffered or in
+	 * flight, and a conflict of one of them must surface before any DDL
+	 * state is set here, so that nothing is left half set and
+	 * yb_is_retry_possible can still retry the statement. After, it refuses
+	 * the retry unless the statement runs in a READ COMMITTED transaction
+	 * block (#39047).
+	 *
 	 * Restart counting the number of committed PG transactions during
 	 * this YB DDL transaction.
 	 */
+	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.num_committed_pg_txns = 0;
 	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(TopTransactionContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
-	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 	YbMaybeLockMasterCatalogVersion();
