@@ -183,7 +183,8 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
 }
 
 static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
-                                uint64_t *last_updated_timestamp) {
+                                uint64_t *last_updated_timestamp,
+                                YsqlConnMgrInstanceStats *instance_stats) {
   char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if(stats_shm_key == NULL)
     return;
@@ -217,6 +218,10 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
     *last_updated_timestamp = shmp[0].last_updated_timestamp;
   }
 
+  if (instance_stats != NULL) {
+    *instance_stats = *YSQL_CONN_MGR_INSTANCE_STATS(shmp, num_pools);
+  }
+
   shmdt(shmp);
 }
 
@@ -231,8 +236,9 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector<YsqlConnMgrMetric> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
   uint64_t num_pools = 0, last_updated_timestamp = 0;
+  YsqlConnMgrInstanceStats instance_stats = {};
 
-  GetYsqlConnMgrStats(&stats_list, &last_updated_timestamp);
+  GetYsqlConnMgrStats(&stats_list, &last_updated_timestamp, &instance_stats);
   num_pools = stats_list.size();
 
   ysql_conn_mgr_prometheus_attr.erase(DATABASE);
@@ -261,6 +267,22 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
           FLAGS_ysql_conn_mgr_max_client_connections, AggregationFunction::kSum, kServerLevel,
           METRIC_TYPE_SERVER, "gauge", "Maximum number of clients that can connect to YSQL "
           "Connection Manager"),
+      "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_logger_dropped_lines",
+          instance_stats.logger_dropped_lines, AggregationFunction::kSum, kServerLevel,
+          METRIC_TYPE_SERVER, "counter",
+          "Number of log lines YSQL Connection Manager dropped because its logger queue was full"),
+      "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_logger_queue_size",
+          instance_stats.logger_queue_size, AggregationFunction::kSum, kServerLevel,
+          METRIC_TYPE_SERVER, "gauge",
+          "Number of log lines waiting in the YSQL Connection Manager logger queue"),
       "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
@@ -511,7 +533,7 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list, NULL);
+  GetYsqlConnMgrStats(&stats_list, NULL, NULL);
 
   writer.StartObject();
   writer.String("pools");

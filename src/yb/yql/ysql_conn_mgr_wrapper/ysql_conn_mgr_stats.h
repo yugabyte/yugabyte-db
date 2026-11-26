@@ -47,3 +47,12 @@ struct ConnectionStats {
   int user_oid;
   bool logical_rep;
 };
+
+// Stored in the stats shared memory right after the max_pools ConnectionStats slots.
+struct YsqlConnMgrInstanceStats {
+  uint64_t logger_dropped_lines;
+  uint64_t logger_queue_size;
+};
+
+#define YSQL_CONN_MGR_INSTANCE_STATS(pool_stats, max_pools) \
+  ((struct YsqlConnMgrInstanceStats *)((struct ConnectionStats *)(pool_stats) + (max_pools)))

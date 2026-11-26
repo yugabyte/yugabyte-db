@@ -207,6 +207,16 @@ static inline void od_cron_stat(od_cron_t *cron)
 		clock_gettime(CLOCK_REALTIME, &t);
 		uint64_t time_ns = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
 		instance->yb_stats[0].last_updated_timestamp = time_ns/1000000;
+
+		struct YsqlConnMgrInstanceStats *yb_instance_stats =
+			YSQL_CONN_MGR_INSTANCE_STATS(instance->yb_stats,
+						     instance->config.yb_max_pools);
+		yb_instance_stats->logger_dropped_lines =
+			od_atomic_u64_of(&instance->logger.yb_dropped_lines);
+		if (instance->logger.loaded)
+			yb_instance_stats->logger_queue_size =
+				machine_channel_get_size(
+					instance->logger.task_channel);
 	}
 
 	if (instance->config.log_stats) {

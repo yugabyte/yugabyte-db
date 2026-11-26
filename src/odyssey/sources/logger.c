@@ -50,6 +50,7 @@ od_retcode_t od_logger_init(od_logger_t *logger, od_pid_t *pid)
 	logger->max_log_size = 0;
 	logger->current_log_size = 0;
 	logger->rotate_interval = 0;
+	logger->yb_dropped_lines = 0;
 	/* set temporary format */
 	od_logger_set_format(logger, "%p %t %l (%c) %h %m\n");
 
@@ -591,7 +592,8 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 		strncpy(le->msg, output, len);
 		le->msg[len] = '\0';
 
-		machine_channel_write(logger->task_channel, msg);
+		if (machine_channel_write(logger->task_channel, msg) != 0)
+			od_atomic_u64_inc(&logger->yb_dropped_lines);
 	} else {
 		_od_logger_write(logger, output, len, level);
 	}
@@ -648,7 +650,8 @@ extern void od_logger_write_plain(od_logger_t *logger, od_logger_level_t level,
 		strncpy(le->msg, output, len);
 		le->msg[len] = '\0';
 
-		machine_channel_write(logger->task_channel, msg);
+		if (machine_channel_write(logger->task_channel, msg) != 0)
+			od_atomic_u64_inc(&logger->yb_dropped_lines);
 	} else {
 		_od_logger_write(logger, output, len, level);
 	}
