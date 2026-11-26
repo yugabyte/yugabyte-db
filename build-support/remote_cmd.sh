@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # Run the given command in the given directory and with the given PATH. This is invoked on a remote
-# host using ssh during the distributed C++ build. The command's remaining arguments come on stdin,
-# each followed by NUL.
+# host using ssh during the distributed C++ build. stdin holds the number of remaining arguments and
+# then the arguments, each followed by NUL.
 
 #
 # The following only applies to changes made to this file as part of YugabyteDB development.
@@ -34,7 +34,20 @@ fi
 export PATH=$2
 shift 2
 
-# No argument can contain NUL, because each one becomes a C string in the exec below.
-readarray -d '' args
+# The count comes first, so that a stream that ends early fails here instead of running the command
+# with only some of its arguments.  No argument can contain NUL, because each one becomes a C string
+# in the exec below.
+args=()
+arg=
+if IFS= read -r -d '' expected_count; then
+  while IFS= read -r -d '' arg; do
+    args+=( "$arg" )
+  done
+fi
+if [[ -n ${arg:-} || ${#args[@]} != "${expected_count:-}" ]]; then
+  echo "Expected ${expected_count:-an argument count and that many} arguments on stdin, got" \
+       "${#args[@]} complete ones" >&2
+  exit 1
+fi
 
 exec "$@" "${args[@]}"

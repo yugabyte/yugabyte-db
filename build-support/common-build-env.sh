@@ -1749,10 +1749,8 @@ run_remote_cmd() {
       exec 2>&1
       set -x
     fi
-    # remote_cmd.sh reads the remaining arguments from stdin, each followed by NUL.
-    if [[ $# -gt 0 ]]; then
-      printf '%s\0' "$@"
-    fi | ssh "${ssh_args[@]}"
+    # remote_cmd.sh reads the argument count and the arguments from stdin, each followed by NUL.
+    printf '%s\0' "$#" "$@" | ssh -T "${ssh_args[@]}"
   )
 }
 
