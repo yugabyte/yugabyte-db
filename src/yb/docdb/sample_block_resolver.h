@@ -87,8 +87,8 @@ class SampleBlockResolver {
 
   static Status EntryExpected(const rocksdb::DataBlockAwareIndexInternalIterator& iter);
 
-  // Updates `lower`, the largest predecessor cut key so far. Returns false if the predecessor's
-  // cut key is `upper`, so the item is dropped.
+  // Updates `lower`, the largest predecessor block bound so far. Returns false if the
+  // predecessor's block bound is `upper`, so the item is dropped.
   static bool AddPredecessor(Slice internal_key, Slice upper, std::optional<KeyBuffer>* lower);
 
   // The file and position in it of an item other than the tail block's.
@@ -111,7 +111,6 @@ class SampleBlockResolver {
   // item_ends_[i] is the number of items in files_[0..i].
   std::vector<uint64_t> item_ends_;
   uint64_t num_boundary_items_ = 0;
-  // Largest cut key of all items, where the tail block starts.
   std::optional<KeyBuffer> tail_lower_;
 };
 

@@ -36,13 +36,15 @@ static_assert(std::is_same_v<SampleBlock, YQLStorageIf::SampleBlocksReservoir::v
 
 namespace {
 
-Slice CutKey(Slice internal_key) {
+// The sample block bound an index entry gives, as in the walk: the DocKey of its user key, or the
+// whole user key if it holds no full DocKey.
+Slice BlockBound(Slice internal_key) {
   return TryExtractDocKey(rocksdb::ExtractUserKey(internal_key));
 }
 
-void KeepLargest(Slice cut_key, std::optional<KeyBuffer>* largest) {
-  if (!*largest || cut_key.compare((*largest)->AsSlice()) > 0) {
-    *largest = KeyBuffer(cut_key);
+void KeepLargest(Slice bound, std::optional<KeyBuffer>* largest) {
+  if (!*largest || bound.compare((*largest)->AsSlice()) > 0) {
+    *largest = KeyBuffer(bound);
   }
 }
 
@@ -125,7 +127,7 @@ Status SampleBlockResolver::Init() {
       // GetSampleBlocks() stops on the DocKey, which can be below upper_bound_key for an index key
       // above it.
       while (file.end < last_item_end && iter->Valid() &&
-             CutKey(iter->key()).compare(upper_bound_key) < 0) {
+             BlockBound(iter->key()).compare(upper_bound_key) < 0) {
         ++file.end;
         iter->Next();
       }
@@ -174,7 +176,7 @@ Status SampleBlockResolver::Init() {
       }
       file.first_key.Assign(entry.key);
     }
-    KeepLargest(CutKey(file.last_key.AsSlice()), &tail_lower_);
+    KeepLargest(BlockBound(file.last_key.AsSlice()), &tail_lower_);
     num_boundary_items_ += file.end - file.begin;
     item_ends_.push_back(num_boundary_items_);
     files_.push_back(std::move(file));
@@ -198,13 +200,13 @@ Status SampleBlockResolver::EntryExpected(
 
 bool SampleBlockResolver::AddPredecessor(
     Slice internal_key, Slice upper, std::optional<KeyBuffer>* lower) {
-  const auto cut_key = CutKey(internal_key);
-  if (cut_key == upper) {
+  const auto bound = BlockBound(internal_key);
+  if (bound == upper) {
     return false;
   }
-  DCHECK_LT(cut_key.compare(upper), 0) << "Cut keys out of order: " << cut_key.ToDebugHexString()
-                                       << " >= " << upper.ToDebugHexString();
-  KeepLargest(cut_key, lower);
+  DCHECK_LT(bound.compare(upper), 0) << "Block bounds out of order: " << bound.ToDebugHexString()
+                                     << " >= " << upper.ToDebugHexString();
+  KeepLargest(bound, lower);
   return true;
 }
 
@@ -275,7 +277,7 @@ Result<std::optional<SampleBlock>> SampleBlockResolver::ResolveBoundary(
     return EntryExpected(*iter);
   }
   const KeyBuffer target(entry.key);
-  const auto upper = CutKey(target.AsSlice());
+  const auto upper = BlockBound(target.AsSlice());
   std::optional<KeyBuffer> lower;
   if (position > file.begin) {
     const auto& prev = iter->Prev();

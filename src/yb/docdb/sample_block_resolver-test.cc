@@ -32,6 +32,8 @@
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
@@ -82,7 +84,7 @@ std::string BlockToString(const std::optional<SampleBlock>& block) {
 }
 
 DocKeyHash HashOfRow(int row) {
-  return static_cast<DocKeyHash>(row * 100);
+  return narrow_cast<DocKeyHash>(row * 100);
 }
 
 DocKey HashDocKey(int row) {
@@ -265,9 +267,14 @@ class SampleBlockResolverTest : public DocDBTestBase {
 
     QLRocksDBStorage storage("", doc_db(), partition_bounds);
     YQLStorageIf::BlocksSamplingState state{.num_blocks_processed = 0, .num_blocks_collected = 0};
-    auto reservoir = ASSERT_RESULT(storage.GetSampleBlocks(
+    // Without counts in play, GetSampleBlocks() walks the index, which is what to compare against.
+    const bool write_counts = FLAGS_db_write_cumulative_index_entry_counts;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = false;
+    auto reservoir_result = storage.GetSampleBlocks(
         doc_read_context, DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
-        kNumBlocksForSample, &state));
+        kNumBlocksForSample, &state);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = write_counts;
+    auto reservoir = ASSERT_RESULT(std::move(reservoir_result));
     ASSERT_LT(state.num_blocks_collected, kNumBlocksForSample);
     reservoir.resize(state.num_blocks_collected);
 
@@ -346,6 +353,25 @@ class SampleBlockResolverTest : public DocDBTestBase {
     return resolver.Init();
   }
 
+  // GetSampleBlocks() for the whole tablet, with its blocks as sorted strings.
+  Result<std::pair<std::vector<std::string>, YQLStorageIf::BlocksSamplingState>> SampleBlocks(
+      size_t num_blocks_for_sample) {
+    const auto doc_read_context = DocReadContext::TEST_Create(HashSchema());
+    QLRocksDBStorage storage("", doc_db(), EncodedPartitionBounds{});
+    YQLStorageIf::BlocksSamplingState state{.num_blocks_processed = 0, .num_blocks_collected = 0};
+    auto reservoir = VERIFY_RESULT(storage.GetSampleBlocks(
+        doc_read_context, DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
+        num_blocks_for_sample, &state));
+    SCHECK_LE(state.num_blocks_collected, reservoir.size(), IllegalState, "Too many blocks");
+    reservoir.resize(state.num_blocks_collected);
+    std::vector<std::string> blocks;
+    for (const auto& block : reservoir) {
+      blocks.push_back(BlockToString(block));
+    }
+    std::sort(blocks.begin(), blocks.end());
+    return std::make_pair(std::move(blocks), state);
+  }
+
   void WriteFilesWithoutCounts(int num_files) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = false;
     ASSERT_OK(ReinitDBOptions(tablet_id()));
@@ -419,8 +445,8 @@ TEST_F(SampleBlockResolverTest, HashPartitioned) {
   ASSERT_EQ(inside_wide_row.num_inverted, 1);
 
   // Bounds with no index entry between them.
-  const auto empty_lower = EncodedHashPartitionKey(static_cast<DocKeyHash>(HashOfRow(200) + 50));
-  const auto empty_upper = EncodedHashPartitionKey(static_cast<DocKeyHash>(HashOfRow(200) + 60));
+  const auto empty_lower = EncodedHashPartitionKey(narrow_cast<DocKeyHash>(HashOfRow(200) + 50));
+  const auto empty_upper = EncodedHashPartitionKey(narrow_cast<DocKeyHash>(HashOfRow(200) + 60));
   CheckStats empty;
   ASSERT_NO_FATALS(CheckItems(
       doc_read_context, EncodedPartitionBounds{.start_key = empty_lower, .end_key = empty_upper},
@@ -523,6 +549,76 @@ TEST_F(SampleBlockResolverTest, NumDataBlocksMismatch) {
     const auto status = resolver.Init();
     ASSERT_TRUE(status.IsCorruption()) << status;
   }
+}
+
+// Picking blocks by position gives a uniform subset of the walk's blocks, or all of them when the
+// sample is as large as the tablet. A file without counts makes GetSampleBlocks() walk the index.
+// Changing db_write_cumulative_index_entry_counts without ReinitDBOptions() only switches
+// GetSampleBlocks() between the two.
+TEST_F(SampleBlockResolverTest, GetSampleBlocksByPosition) {
+  ASSERT_NO_FATALS(WriteHashFiles(4));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = false;
+  const auto [walk, walk_state] = ASSERT_RESULT(SampleBlocks(kNumBlocksForSample));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = true;
+
+  // The whole tablet has no inverted first block, so every block the walk gives is resolved.
+  const auto [all, all_state] = ASSERT_RESULT(SampleBlocks(kNumBlocksForSample));
+  ASSERT_EQ(all, walk);
+  ASSERT_EQ(all_state.num_blocks_collected, walk_state.num_blocks_collected);
+  ASSERT_EQ(all_state.num_blocks_processed, walk_state.num_blocks_processed);
+
+  constexpr size_t kNumBlocks = 20;
+  ASSERT_GT(walk.size(), kNumBlocks);
+  const auto [some, some_state] = ASSERT_RESULT(SampleBlocks(kNumBlocks));
+  ASSERT_GT(some.size(), 0);
+  ASSERT_LE(some.size(), kNumBlocks);
+  ASSERT_EQ(std::adjacent_find(some.begin(), some.end()), some.end());
+  ASSERT_TRUE(std::includes(walk.begin(), walk.end(), some.begin(), some.end()));
+  ASSERT_EQ(some_state.num_blocks_collected, some.size());
+  ASSERT_GE(some_state.num_blocks_processed, some.size());
+
+  // Continuing pggate's reservoir after earlier tablets: free slots fill first, the rest replace
+  // earlier blocks, and the counts add to the earlier ones.
+  for (const auto& earlier : {
+           YQLStorageIf::BlocksSamplingState{.num_blocks_processed = 5, .num_blocks_collected = 5},
+           YQLStorageIf::BlocksSamplingState{
+               .num_blocks_processed = 1000, .num_blocks_collected = kNumBlocks}}) {
+    SCOPED_TRACE(earlier.ToString());
+    const auto doc_read_context = DocReadContext::TEST_Create(HashSchema());
+    QLRocksDBStorage storage("", doc_db(), EncodedPartitionBounds{});
+    auto state = earlier;
+    const auto reservoir = ASSERT_RESULT(storage.GetSampleBlocks(
+        doc_read_context, DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3, kNumBlocks,
+        &state));
+    ASSERT_EQ(reservoir.size(), kNumBlocks);
+    ASSERT_GE(state.num_blocks_collected, earlier.num_blocks_collected);
+    ASSERT_LE(state.num_blocks_collected, kNumBlocks);
+    ASSERT_GT(state.num_blocks_processed, earlier.num_blocks_processed);
+    for (size_t slot = 0; slot != reservoir.size(); ++slot) {
+      const auto& block = reservoir[slot];
+      const auto is_empty = block.first.empty() && block.second.empty();
+      if (slot < earlier.num_blocks_collected) {
+        // Earlier tablets' blocks, or this tablet's replacements of them.
+        ASSERT_TRUE(is_empty || std::binary_search(walk.begin(), walk.end(), BlockToString(block)));
+      } else {
+        // Free slots: filled in order, up to the new count.
+        ASSERT_EQ(is_empty, slot >= state.num_blocks_collected) << "slot: " << slot;
+        if (!is_empty) {
+          ASSERT_TRUE(std::binary_search(walk.begin(), walk.end(), BlockToString(block)));
+        }
+      }
+    }
+  }
+
+  ASSERT_NO_FATALS(WriteFilesWithoutCounts(1));
+  ASSERT_NO_FATALS(CheckIndexLevels(5));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = true;
+  const auto [fallback, fallback_state] = ASSERT_RESULT(SampleBlocks(kNumBlocksForSample));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_cumulative_index_entry_counts) = false;
+  const auto [walk_without_counts, walk_without_counts_state] =
+      ASSERT_RESULT(SampleBlocks(kNumBlocksForSample));
+  ASSERT_EQ(fallback, walk_without_counts);
+  ASSERT_EQ(fallback_state.num_blocks_processed, walk_without_counts_state.num_blocks_processed);
 }
 
 } // namespace yb::docdb
