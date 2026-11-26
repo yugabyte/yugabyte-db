@@ -44,6 +44,33 @@ On a provider with SSH keys and **Manually Provision Nodes** off, YugabyteDB Any
 
 You create the VMs. On each VM, run `node-agent-provision.sh` (also known as YNP, the YugabyteDB Node Provisioner) to prepare the node. The script can also create the on-premises provider and add the VM to the provider free pool.
 
+## Overview
+
+Provisioning turns a Linux VM into a database node.
+
+On-premises [legacy manual provisioning](../software-on-prem-manual/) requires either YugabyteDB Anywhere or a DBA to run a long list of host commands (on the order of 40 per node). That list changes as node requirements change. If you are using your own automation to manage nodes, your configuration may drift over time.
+
+Using the provisioning script, you can apply current node requirements without giving YugabyteDB Anywhere root SSH. The script is updated in sync with each release of YugabyteDB Anywhere, making it easier to stay current.
+
+### What you get
+
+- YugabyteDB Anywhere does not need SSH keys or sudo on the node.
+- Root work and YugabyteDB Anywhere registration can be split across two teams. See [Split root and user privileges](#split-root-and-user-privileges-separation-of-duties).
+- The same four steps replace the old per-node command list, including after a YugabyteDB Anywhere upgrade. See [Four steps at a glance](#four-steps-at-a-glance) and [Keep provisioning current](#keep-provisioning-current).
+- The package you download matches the YugabyteDB Anywhere version, so the node gets the requirements for that release. See [What the script configures](#what-the-script-configures).
+- The script checks that it can reach YugabyteDB Anywhere, then creates or updates the provider and adds the node. See [Modify the configuration file](#modify-the-configuration-file).
+- A preflight check runs as part of provisioning, and you can run it on its own. See [Preflight check](#preflight-check).
+- A dry run prints the shell it would execute, which you can review or hand to another team. See [Dry run](#dry-run).
+- A failed or partial run can be re-run. See [Run the provisioning script](#run-the-provisioning-script).
+- Database services are user-level systemd units (`systemctl --user`), owned by `yugabyte`. See [What the script configures](#what-the-script-configures).
+
+### Four steps at a glance
+
+1. [Download the package](#download-the-package) that matches your YugabyteDB Anywhere version.
+1. [Edit `node-agent-provision.yaml`](#modify-the-configuration-file).
+1. [Run `node-agent-provision.sh`](#run-the-provisioning-script) as root, or split the run with `--root` and `--noroot`.
+1. Create the universe. The node is already in the provider free pool. If the script did not create the provider, follow [Next steps](#next-steps).
+
 ## Prerequisites
 
 - Provide one, three, five, or more VM(s) with the following installed:
@@ -448,35 +475,9 @@ Both keys are global, and default to `false`. A global key applies to every prov
 | `yb.node_agent.enable_ynp_version_check` | When `true`, adding a node requires the node's YNP major version to match YugabyteDB Anywhere, and health checks raise **YNP Version Skew** alert on a mismatch or a missing version file. There is no provider or universe override. |
 | `yb.node_agent.disable_ynp_node_preflight_check` | When `true`, YugabyteDB Anywhere runs the legacy `preflight_checks.sh` instead of the YNP preflight checks while it adds or validates a manual on-premises node. A preflight still runs. The checks inside `node-agent-provision.sh` are unchanged. |
 
-## sudo whitelist
-
-You need a sudo whitelist only when sudo is how you run the script. A root shell (`su` to root, then `./node-agent-provision.sh` with no sudo prefix) does not use the whitelist.
-
-If security restrictions require you to explicitly list the commands that you'll be running as root under sudo, you can add the following commands to the sudo whitelist:
-
-```sh
-sudo ./node-agent-provision.sh --preflight_check
-sudo ./node-agent-provision.sh
-```
-
-The underlying fine-grained commands that the script runs during provisioning depend on the version of YugabyteDB Anywhere, and are updated as newer capabilities are incorporated.
-
-On packages that still log rendered templates during `--preflight_check`, the same files show up in the log:
-
-```sh
-sudo ./node-agent-provision.sh --preflight_check 2>&1 | grep "INFO - /tmp/tmp.*$"
-```
-
-```output
-2025-02-20 23:01:37,290 - commands.provision_command - INFO - /tmp/tmp0ey61a1c
-2025-02-20 23:01:37,290 - commands.provision_command - INFO - /tmp/tmppri1g4r_
-```
-
-The first path is the precheck script. The second is the install script. On current packages, prefer the labeled `Install Script:` and `Precheck Script:` lines from `--dry_run`. Each path may be printed twice. See [Dry run](#dry-run).
-
 ## Script details
 
-### Versioning
+### What the script configures
 
 The package you download matches the YugabyteDB Anywhere version you are running. Re-running it is how a node picks up requirements that were added after the node was first prepared. See [Keep provisioning current](#keep-provisioning-current).
 
@@ -549,6 +550,32 @@ If the provider does not exist, the script creates it and turns **Manually Provi
 | `level` | Default `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `directory` | Default `./logs` | Directory for the provisioning log. |
 | `file` | Default `app.log` | Provisioning log file name. |
+
+## sudo whitelist
+
+You need a sudo whitelist only when sudo is how you run the script. A root shell (`su` to root, then `./node-agent-provision.sh` with no sudo prefix) does not use the whitelist.
+
+If security restrictions require you to explicitly list the commands that you'll be running as root under sudo, you can add the following commands to the sudo whitelist:
+
+```sh
+sudo ./node-agent-provision.sh --preflight_check
+sudo ./node-agent-provision.sh
+```
+
+The underlying fine-grained commands that the script runs during provisioning depend on the version of YugabyteDB Anywhere, and are updated as newer capabilities are incorporated.
+
+On packages that still log rendered templates during `--preflight_check`, the same files show up in the log:
+
+```sh
+sudo ./node-agent-provision.sh --preflight_check 2>&1 | grep "INFO - /tmp/tmp.*$"
+```
+
+```output
+2025-02-20 23:01:37,290 - commands.provision_command - INFO - /tmp/tmp0ey61a1c
+2025-02-20 23:01:37,290 - commands.provision_command - INFO - /tmp/tmppri1g4r_
+```
+
+The first path is the precheck script. The second is the install script. On current packages, prefer the labeled `Install Script:` and `Precheck Script:` lines from `--dry_run`. Each path may be printed twice. See [Dry run](#dry-run).
 
 ## Next steps
 
