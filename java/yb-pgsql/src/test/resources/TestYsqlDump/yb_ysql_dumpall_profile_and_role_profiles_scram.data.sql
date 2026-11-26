@@ -325,14 +325,6 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \restrict test
 
 
--- YB: re-enable auto analyze after all catalog changes
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
-  END IF;
-END $$;
-
 -- YB: increment the catalog version once for the restored statistics
 DO $$
 BEGIN
@@ -340,6 +332,14 @@ BEGIN
     PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
       (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
       false, NULL, 2147483647);
+  END IF;
+END $$;
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
   END IF;
 END $$;
 
@@ -459,14 +459,6 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \restrict test
 
 
--- YB: re-enable auto analyze after all catalog changes
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
-  END IF;
-END $$;
-
 -- YB: increment the catalog version once for the restored statistics
 DO $$
 BEGIN
@@ -474,6 +466,14 @@ BEGIN
     PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
       (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
       false, NULL, 2147483647);
+  END IF;
+END $$;
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
   END IF;
 END $$;
 

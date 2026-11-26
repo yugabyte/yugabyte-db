@@ -818,16 +818,16 @@ RestoreArchive(Archive *AHX)
 		}
 	}
 
+	/* YB: see ybEmitStatsRestoreCatalogVersionIncrement */
+	if (AH->public.dopt->include_yb_metadata && ropt->dumpStatistics)
+		ybEmitStatsRestoreCatalogVersionIncrement(AH);
+
 	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
 	{
 		ahprintf(AH, "-- YB: re-enable auto analyze after all catalog changes\n");
 		YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "off", true);
 		ahprintf(AH, "\n");
 	}
-
-	/* YB: see ybEmitStatsRestoreCatalogVersionIncrement */
-	if (AH->public.dopt->include_yb_metadata && ropt->dumpStatistics)
-		ybEmitStatsRestoreCatalogVersionIncrement(AH);
 
 	if (ropt->single_txn)
 	{
@@ -5402,6 +5402,10 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
  *
  * The increment only runs when the parameter is on: a server that does not
  * have the parameter already incremented the catalog version for each call.
+ *
+ * It is emitted before auto analyze is re-enabled on the database, so that
+ * an auto ANALYZE, which also increments the catalog version, cannot run
+ * concurrently with it.
  *
  * The last argument, expiration_sec, only makes the call delete the
  * database's invalidation messages older than that many seconds.  INT_MAX
