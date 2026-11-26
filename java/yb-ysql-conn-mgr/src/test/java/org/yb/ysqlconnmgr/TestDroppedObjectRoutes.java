@@ -260,4 +260,60 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
         conn.close();
     }
   }
+
+  // A role is made NOLOGIN and its pooled backends are terminated. Spawning a
+  // new backend fails with 28000 "not permitted to log in", which invalidates
+  // the role's routes, but the role still exists, so the remaining session
+  // must not be told that it does not exist.
+  @Test
+  public void testNologinRoleIsNotReportedDropped() throws Exception {
+    final int numTriggers = 4;
+    runDirect("CREATE ROLE ycm_nologin_role LOGIN");
+    waitForCatalogChange();
+
+    List<Connection> triggers = new ArrayList<>();
+    try (Connection target = connMgrConn("yugabyte", "ycm_nologin_role")) {
+      for (int i = 0; i < numTriggers; i++)
+        triggers.add(connMgrConn("yugabyte", "ycm_nologin_role"));
+      execute(target, "SELECT 1");
+      for (Connection conn : triggers)
+        execute(conn, "SELECT 1");
+
+      runDirect("ALTER ROLE ycm_nologin_role NOLOGIN");
+      waitForCatalogChange();
+      try (Connection conn = directConn(SESSION_TSERVER_IDX)) {
+        execute(conn, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            + "WHERE usename = 'ycm_nologin_role'");
+      }
+
+      boolean invalidated = false;
+      for (Connection conn : triggers) {
+        try {
+          execute(conn, "SELECT 1");
+          fail("Expected the session to fail after ALTER ROLE NOLOGIN");
+        } catch (SQLException e) {
+          LOG.info("Trigger session got error", e);
+          if ("28000".equals(e.getSQLState())) {
+            invalidated = true;
+            break;
+          }
+        }
+      }
+      assertTrue("No trigger session got 28000", invalidated);
+
+      try {
+        execute(target, "SELECT 1");
+        fail("Expected the session to be disconnected");
+      } catch (SQLException e) {
+        LOG.info("Target session got error", e);
+        assertTrue("Unexpected error: " + e.getSQLState() + " " + e.getMessage(),
+            e.getSQLState() != null && e.getSQLState().startsWith("08"));
+        assertTrue("Unexpected error: " + e.getMessage(),
+            !e.getMessage().contains("does not exist"));
+      }
+    } finally {
+      for (Connection conn : triggers)
+        conn.close();
+    }
+  }
 }
