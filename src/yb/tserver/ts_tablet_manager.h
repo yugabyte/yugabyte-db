@@ -538,6 +538,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
 
+  rpc::ThreadPool* TEST_VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type) {
+    return VectorIndexThreadPool(type);
+  }
+
   uint64_t TEST_BootstrapWallClockTimeUs() const {
     return ts_bootstrap_wall_clock_time_us_->value();
   }
