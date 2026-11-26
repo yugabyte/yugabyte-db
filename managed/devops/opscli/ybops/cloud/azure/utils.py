@@ -523,6 +523,24 @@ class AzureCloudAdmin():
                              .format(pending, retry_interval_sec, attempt, max_attempts))
                 time.sleep(retry_interval_sec)
 
+    def delete_failed_vm(self, vm_name):
+        """Best effort removal of the VM resource a failed creation left behind."""
+        try:
+            vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
+        except Exception as e:
+            logging.info("[app] No VM {} to clean up: {}".format(vm_name, e))
+            return
+        if vm.provisioning_state == "Succeeded":
+            return
+        try:
+            logging.info("[app] Deleting failed vm {} in state {}"
+                         .format(vm_name, vm.provisioning_state))
+            self.compute_client.virtual_machines.begin_delete(RESOURCE_GROUP, vm_name).wait()
+            logging.info("[app] Deleted failed vm {}".format(vm_name))
+        except Exception as e:
+            logging.warning("[app] Could not delete failed vm {}. Failed with error {}."
+                            .format(vm_name, e))
+
     def update_disk(self, vm_name, disk_size):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         if not vm:
@@ -1122,9 +1140,10 @@ class AzureCloudAdmin():
                                                     cloud_instance_types)
             creation_result.result()
         except Exception:
-            # AnsibleCreateServer.onFailure only cleans up when the VM exists, so a failed VM
-            # creation would otherwise leak the data disks. Azure can hold them for the failed VM
-            # for a few minutes (e.g. after ZonalAllocationFailed), so keep retrying.
+            # A failed creation (e.g. ZonalAllocationFailed) can leave a failed VM behind that keeps
+            # the data disks locked ("is being attached to VM") until a few minutes after the VM
+            # is deleted. Delete that VM first, then keep retrying the disks so they don't leak.
+            self.delete_failed_vm(vm_name)
             self.delete_data_disks(created_disk_names, max_attempts=10)
             raise
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)

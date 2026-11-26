@@ -198,6 +198,25 @@ class TestAzureCreateVm(TestCase):
         self.assertEqual({name: 3 for name in self.DISK_NAMES}, attempts)
         self.assertEqual(2, sleep.call_count)
 
+    @patch.object(azure_utils.time, "sleep")
+    def test_failed_vm_is_deleted_before_its_disks(self, sleep):
+        # Azure keeps the disks locked while the failed VM exists, so it must go first.
+        self.compute.virtual_machines.begin_create_or_update.side_effect = \
+            YBOpsRuntimeError("ZonalAllocationFailed")
+        failed_vm = MagicMock()
+        failed_vm.provisioning_state = "Failed"
+        self.compute.virtual_machines.get.side_effect = lambda *args: failed_vm
+        order = []
+        self.compute.virtual_machines.begin_delete.side_effect = \
+            lambda resource_group, vm_name: order.append(vm_name) or MagicMock()
+        self.compute.disks.begin_delete.side_effect = \
+            lambda resource_group, disk_name: order.append(disk_name) or MagicMock()
+
+        with self.assertRaises(YBOpsRuntimeError):
+            self.create_or_update_vm()
+
+        self.assertEqual([self.VM_NAME] + self.DISK_NAMES, order)
+
     def test_failed_disk_creation_leaves_no_disks_behind(self):
         calls = []
 
