@@ -15,6 +15,7 @@
 
 #include <array>
 #include <atomic>
+#include <memory>
 #include <span>
 #include <string>
 #include <utility>
@@ -30,6 +31,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -45,11 +47,33 @@ struct VectorLSMDeletion {
 
 using VectorLSMDeletionList = std::vector<VectorLSMDeletion>;
 
+// The deletions kept with a vector index chunk, see VectorIndexWriterIf::InsertDeletions.
+class VectorDeletionsReaderIf {
+ public:
+  virtual ~VectorDeletionsReaderIf() = default;
+
+  virtual size_t NumDeletions() const {
+    return 0;
+  }
+
+  // Returns the hybrid time vector_id was deleted at, invalid when it was not deleted.
+  virtual Result<HybridTime> FindDeletion(const VectorId& vector_id) const {
+    return HybridTime::kInvalid;
+  }
+};
+
+using VectorDeletionsReaderPtr = std::shared_ptr<const VectorDeletionsReaderIf>;
+
 // Vector deletions kept in memory. The vector id picks one of kNumShards shards, each a flat hash
 // map behind its own lock, so concurrent lookups and inserts rarely contend.
 class VectorLSMDeletionMap {
  public:
   static constexpr size_t kNumShards = 256;
+
+  // The average memory of a deletion: an entry and its metadata byte, in tables that grow when 7/8
+  // full, so are 7/16 to 7/8 full, about 5/8 on average.
+  static constexpr size_t kAverageEntryBytes =
+      (sizeof(VectorId) + sizeof(HybridTime) + 1) * 8 / 5;
 
   // mem_tracker, when set, tracks the memory of the map.
   explicit VectorLSMDeletionMap(MemTrackerPtr mem_tracker);
@@ -108,6 +132,25 @@ class VectorLSMDeletionMap {
   std::atomic<int64_t> allocated_bytes_{0};
   // The memory of the map and the shards. The map never shrinks.
   MonotonicThreadSafeScopedTrackedConsumption consumption_;
+};
+
+// Finds the deletions of vectors in a set of chunks.
+class VectorLSMDeletionsLookup {
+ public:
+  void Reserve(size_t num_chunks) {
+    chunks_.reserve(num_chunks);
+  }
+
+  void Add(VectorDeletionsReaderPtr chunk) {
+    chunks_.push_back(std::move(chunk));
+  }
+
+  // Returns the hybrid time vector_id was deleted at, invalid when it was not deleted. A vector is
+  // deleted only once, so at most one chunk has its deletion.
+  Result<HybridTime> Find(const VectorId& vector_id) const;
+
+ private:
+  std::vector<VectorDeletionsReaderPtr> chunks_;
 };
 
 }  // namespace yb::vector_index

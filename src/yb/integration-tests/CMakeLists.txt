@@ -183,6 +183,7 @@ ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(cdcsdk_gflag-test)
 ADD_YB_TEST(stateful_services/stateful_service-itest)
 ADD_YB_TEST(master_heartbeat-itest)
+ADD_YB_TEST(tier_migration-itest)
 
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
@@ -311,6 +312,7 @@ ADD_YB_TEST(upgrade-tests/auto_flag_upgrade-test)
 ADD_YB_TEST(upgrade-tests/backup_upgrade-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/index_birth_time_upgrade-test)
+ADD_YB_TEST(upgrade-tests/logical_client_version_upgrade-test)
 ADD_YB_TEST(upgrade-tests/object_locking_promotion_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg_advisory_locks_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg_locks_v76_upgrade-test)

@@ -227,6 +227,7 @@ TransactionApplyData PendingApplyData(
     .transaction_id = id,
     .op_id = apply.apply_op_id,
     .commit_ht = apply.commit_ht,
+    .log_ht = apply.log_ht,
   };
 }
 
@@ -1099,7 +1100,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (lock_and_iterator.found()) {
-      lock_and_iterator.transaction().SetApplyOpId(data.op_id);
+      lock_and_iterator.transaction().SetApplyInfo(data.op_id, data.log_ht);
       if (!apply_state.active()) {
         lock_and_iterator.transaction().SetProcessingApply(false);
         RemoveUnlocked(
@@ -1117,6 +1118,7 @@ class TransactionParticipant::Impl
           .state = apply_state,
           .commit_ht = data.commit_ht,
           .apply_op_id = data.op_id,
+          .log_ht = data.log_ht,
         });
       }
     } else if (applying_txn) {
@@ -1198,7 +1200,7 @@ class TransactionParticipant::Impl
         UpdateHistoricalMaxOpId(&historical_max_op_id, data.op_id);
       }
       CHECK(transactions_.modify(it, [&data](auto& txn) {
-        txn->SetApplyOpId(data.op_id);
+        txn->SetApplyInfo(data.op_id, data.log_ht);
       }));
 
       if ((**it).ProcessingApply()) {
@@ -1373,6 +1375,8 @@ class TransactionParticipant::Impl
 
   Status ResolveIntents(
       HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply) {
+    // Transactions not loaded yet are missing from transactions_, which the loop below scans.
+    RETURN_NOT_OK(loader_.WaitAllLoaded(deadline));
     RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
 
     if (FLAGS_max_transactions_in_status_request == 0) {
@@ -2212,7 +2216,7 @@ class TransactionParticipant::Impl
       post_apply_metadata_entry = PostApplyTransactionMetadata{
           .transaction_id = txn_id,
           .apply_op_id = op_id,
-          .commit_ht = (**it).GetCommitHybridTime(),
+          .commit_ht = (**it).local_commit_time(),
           .log_ht = (**it).GetApplyHybridTime(),
       };
     }

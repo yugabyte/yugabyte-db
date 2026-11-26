@@ -36,7 +36,7 @@ To create a Kafka Connect image with the YugabyteDB connector, start with the [C
     ```
 
     <!-- TODO Vaibhav: Step 2 and 3 can be combined, see why is not working -->
-1. Download the YugabyteDB connector jar.
+1. Download the [gRPC connector JAR](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2024.2.2) (`dz.1.9.5.yb.grpc.2024.2.2`).
 
     ```sh
     curl -so debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.2.jar https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/vdz.1.9.5.yb.grpc.2024.2.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.2.jar

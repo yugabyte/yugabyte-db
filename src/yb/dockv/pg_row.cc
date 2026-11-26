@@ -13,13 +13,12 @@
 
 #include "yb/dockv/pg_row.h"
 
-#include "yb/common/constants.h"
+#include <cmath>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/types.h"
 
 #include "yb/dockv/doc_bson.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
@@ -27,10 +26,9 @@
 #include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include "yb/util/status_log.h"  // IWYU pragma: keep (CHECK_OK for debug RSTATUS_DCHECK_OK)
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -896,6 +894,31 @@ std::optional<PgValue> PgTableRow::GetValueByColumnId(ColumnIdRep column_id) con
   return GetValueByIndex(idx);
 }
 
+Result<size_t> PgTableRow::ColumnWireSize(size_t index) const {
+  const auto type = projection_->columns[index].data_type;
+  if (IsNull(index)) {
+    return pggate::ColumnWireSize(type, /* is_null= */ true, /* payload_size= */ 0);
+  }
+
+  const auto value = GetValueByIndex(index);
+  DCHECK(value);
+  size_t payload_size = 0;
+  switch (type) {
+    case DataType::STRING: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL:
+      payload_size = value->string_value().size();
+      break;
+    case DataType::VECTOR: FALLTHROUGH_INTENDED;
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::BSON:
+      payload_size = value->binary_value().size();
+      break;
+    default:
+      break;
+  }
+  return pggate::ColumnWireSize(type, /* is_null= */ false, payload_size);
+}
+
 QLValuePB PgTableRow::GetQLValuePB(ColumnIdRep column_id) const {
   size_t idx = projection_->ColumnIdxById(ColumnId(column_id));
   auto value = GetValueByIndex(idx);
@@ -903,6 +926,51 @@ QLValuePB PgTableRow::GetQLValuePB(ColumnIdRep column_id) const {
     return QLValuePB();
   }
   return value->ToQLValuePB(projection_->columns[idx].data_type);
+}
+
+bool PgTableRow::EqualsQLValuePB(size_t index, const QLValuePB& other) const {
+  const bool row_null = IsNull(index);
+  if (row_null || yb::IsNull(other)) {
+    return row_null == yb::IsNull(other);
+  }
+  const PgValue value(GetDatum(index));
+  switch (other.value_case()) {
+    case QLValuePB::kBoolValue:
+      return value.bool_value() == other.bool_value();
+    case QLValuePB::kInt8Value:
+      return value.int8_value() == other.int8_value();
+    case QLValuePB::kInt16Value:
+      return value.int16_value() == other.int16_value();
+    case QLValuePB::kInt32Value:
+      return value.int32_value() == other.int32_value();
+    case QLValuePB::kInt64Value:
+      return value.int64_value() == other.int64_value();
+    case QLValuePB::kUint32Value:
+      return value.uint32_value() == other.uint32_value();
+    case QLValuePB::kUint64Value:
+      return value.uint64_value() == other.uint64_value();
+    // Postgres groups NaN with NaN, so IEEE == is not enough here.
+    case QLValuePB::kFloatValue: {
+      const auto lhs = value.float_value();
+      const auto rhs = other.float_value();
+      return lhs == rhs || (std::isnan(lhs) && std::isnan(rhs));
+    }
+    case QLValuePB::kDoubleValue: {
+      const auto lhs = value.double_value();
+      const auto rhs = other.double_value();
+      return lhs == rhs || (std::isnan(lhs) && std::isnan(rhs));
+    }
+    case QLValuePB::kStringValue:
+      return value.string_value() == Slice(other.string_value());
+    case QLValuePB::kDecimalValue:
+      return value.decimal_value() == Slice(other.decimal_value());
+    case QLValuePB::kBinaryValue:
+      return value.binary_value() == Slice(other.binary_value());
+    case QLValuePB::kBsonValue:
+      return value.binary_value() == Slice(other.bson_value());
+    default:
+      return false;
+  }
 }
 
 void PgTableRow::Reset() {

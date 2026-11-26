@@ -118,4 +118,14 @@ VectorLSMDeletionList VectorLSMDeletionMap::SortedList() const {
   return result;
 }
 
+Result<HybridTime> VectorLSMDeletionsLookup::Find(const VectorId& vector_id) const {
+  for (const auto& chunk : chunks_) {
+    auto result = VERIFY_RESULT(chunk->FindDeletion(vector_id));
+    if (result) {
+      return result;
+    }
+  }
+  return HybridTime::kInvalid;
+}
+
 }  // namespace yb::vector_index

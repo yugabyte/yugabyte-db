@@ -88,6 +88,14 @@ void DocExprExecutor::PrepareAggregateResults(size_t size) {
   }
 }
 
+void DocExprExecutor::ResetAggregateResults() {
+  // Reuse existing slots: null each value in place. Bare ForceNewValue() is not enough - after a
+  // fold, value_ is set and ForceNewValue() returns that same object without clearing it.
+  for (auto& result : aggr_result_) {
+    result.Writer().SetNull();
+  }
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,

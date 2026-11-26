@@ -563,6 +563,7 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
   auto* env = Env::Default();
   std::vector<std::string> unlisted_dirs;
   std::vector<std::string> listed_dirs;
+  std::vector<std::string> marked_dirs;
   for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
     const auto& meta = *peer->tablet_metadata();
     auto dirs = meta.vector_index_dirs();
@@ -571,6 +572,9 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
     auto dir = docdb::GetStorageDir(meta.rocksdb_dir(), docdb::kVectorIndexDirPrefix + "99999");
     ASSERT_OK(env->CreateDir(dir));
     ASSERT_OK(WriteStringToFile(env, "chunk", JoinPathSegments(dir, "1.yb_hnsw")));
+    // As a crash during the destroy of a removed index leaves it, see TabletVectorIndexes::Remove.
+    ASSERT_OK(docdb::MarkRemovedVectorIndexStorage(*env, dir));
+    marked_dirs.push_back(dir);
     unlisted_dirs.push_back(std::move(dir));
   }
   ASSERT_FALSE(unlisted_dirs.empty());
@@ -582,6 +586,9 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
 
   for (const auto& dir : unlisted_dirs) {
     ASSERT_FALSE(env->DirExists(dir)) << dir;
+  }
+  for (const auto& dir : marked_dirs) {
+    ASSERT_FALSE(docdb::IsVectorIndexStorageMarkedRemoved(*env, dir)) << dir;
   }
   for (const auto& dir : listed_dirs) {
     ASSERT_TRUE(env->DirExists(dir)) << dir;

@@ -19,6 +19,8 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
 
+#include "yb/client/snapshot_test_util.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
@@ -37,6 +39,8 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
+
+#include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet_peer.h"
 
@@ -63,6 +67,7 @@ DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
+DECLARE_bool(enable_cdc_state_table_caching);
 DECLARE_bool(ysql_yb_enable_listen_notify);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
@@ -15307,6 +15312,41 @@ TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStream) {
       "Backfilled gRPC stream should have a cdc_state slot entry");
 }
 
+// The first sys catalog load after the AutoFlag is promoted backfills legacy gRPC streams. When
+// that load is the one a PITR restore triggers, the master leader rejects RPCs until it clears
+// restoring_sys_catalog_, so the backfill must run after that.
+TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStreamDuringPitrRestore) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Without the cache, every cdc_state write sends IsCreateTableDone, as the first one after a
+  // master restart does.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdc_state_table_caching) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&test_client()->proxy_cache());
+  snapshot_util.SetCluster(test_cluster());
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr /* table */, YQL_DATABASE_PGSQL, test_namespace_name, client::WaitSnapshot::kTrue));
+
+  // Promote the flag without a sys catalog reload, as finalize_upgrade does, so that the restore's
+  // reload is the first one to backfill the stream.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = true;
+  ASSERT_OK(
+      snapshot_util.RestoreSnapshotSchedule(schedule_id, test_cluster()->mini_master()->Now()));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetCDCStream(stream_id));
+        return !resp.stream().cdcsdk_ysql_replication_slot_name().empty();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Backfill to populate the slot name on the legacy gRPC stream"));
+}
+
 TEST_F(CDCSDKYsqlTest, TestRecordTypeOptionPresenceForStreams) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = true;
@@ -15672,6 +15712,44 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsNotRetainedAfterDropin
       },
       MonoDelta::FromSeconds(60),
       "Timed out waiting for intent SST file cleanup after dropping the CDC stream"));
+}
+
+// An intents SST file that holds only the post-apply metadata of a transaction applied in a single
+// batch takes its hybrid times from that metadata. They must be valid for cleanup to delete it.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupIntentFileOfPostApplyMetadata)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_time_based_intent_retention) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_sec_to_retain_intent) = 0;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.Get(0).tablet_id()));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  auto* intents_db = tablet->intents_db();
+  auto flush_intents = [&tablet] {
+    return tablet->Flush(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly);
+  };
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(flush_intents());
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(flush_intents());
+  LOG(INFO) << "Intent SST files: " << AsString(intents_db->GetLiveFilesMetaData());
+
+  ASSERT_OK(WaitFor(
+      [&tablet, intents_db] {
+        tablet->CleanupIntentFiles();
+        return intents_db->GetCurrentVersionNumSSTFiles() == 0;
+      },
+      10s * kTimeMultiplier, "Wait for intent SST files cleanup"));
 }
 
 // Verifies that GetChanges streams rows written after the master has persisted a schema change but

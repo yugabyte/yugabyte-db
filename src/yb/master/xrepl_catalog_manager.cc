@@ -669,8 +669,7 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_oid == kPgAttributeTableOid ||
-           table_oid == kPgPublicationRelPrpubidIndexOid));
+          std::ranges::find(kTxnDdlCatalogTableOids, table_oid) != kTxnDdlCatalogTableOids.end());
 }
 
 const char* SkipReason(PrepareSlotForTxnDdlResult result) {
@@ -699,8 +698,9 @@ Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
   std::vector<TableId> table_ids;
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
+    }
   }
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
@@ -1315,17 +1315,13 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class, pg_attribute (when detecting DDL from catalog DML), pg_publication_rel,
-  // pg_replication_origin and pg_publication catalog tables to the stream metadata as we will
-  // poll them to figure out changes to the publications, replication origins and table schemas.
-  // This will not be done for gRPC streams or notifications slots.
   if (detect_publication_changes_implicitly) {
     auto catalog_table_ids =
         VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
     table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
                       << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
-                              ? ", pg_attribute, pg_publication_rel_prpubid_index"
+                              ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                       << "stream metadata tables list.";
@@ -6409,10 +6405,10 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
   return stream_ids;
 }
 
-Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
+Result<bool> CatalogManager::AreCdcLogicalReplicationStreams(
     const std::unordered_set<xrepl::StreamId>& stream_ids) {
   if (stream_ids.empty()) {
-    return HybridTime::kInvalid;
+    return false;
   }
 
   // stream_ids are CDCSDK-only (from GetCDCSDKStreamsForTable), so no xCluster check is needed. A
@@ -6420,13 +6416,15 @@ Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
   // whole DB is gRPC.
   for (const auto stream_id : stream_ids) {
     if (cdc_stream_map_.contains(stream_id)) {
-      if (!IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id])) {
-        return HybridTime::kInvalid;
-      }
-      break;
+      return IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id]);
     }
   }
+  return STATUS_FORMAT(NotFound, "None of the streams $0 found in cdc_stream_map_", stream_ids);
+}
 
+Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  TEST_SYNC_POINT("GetMinRestartTimeAcrossSlots::BeforeSlotEntryRead");
   HybridTime min_restart_time_across_all_slots;
   for (const auto& stream_id : stream_ids) {
     auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
@@ -6673,6 +6671,13 @@ Status CatalogManager::ClearFailedUniverse(const LeaderEpoch& epoch) {
 
   xcluster::ReplicationGroupId replication_group_id;
   {
+    // Check under the shared lock first, so the bg task takes mutex_ for write only with work.
+    SharedLock lock(mutex_);
+    if (universes_to_clear_.empty()) {
+      return Status::OK();
+    }
+  }
+  {
     LockGuard lock(mutex_);
 
     if (universes_to_clear_.empty()) {
@@ -6782,6 +6787,13 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
 
 Status CatalogManager::ClearFailedReplicationBootstrap() {
   xcluster::ReplicationGroupId replication_id;
+  {
+    // Check under the shared lock first, so the bg task takes mutex_ for write only with work.
+    SharedLock lock(mutex_);
+    if (replication_bootstraps_to_clear_.empty()) {
+      return Status::OK();
+    }
+  }
   {
     LockGuard lock(mutex_);
 
@@ -6950,15 +6962,21 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
 
     // For each hidden tablet, get all the streams on it and related info about the streams.
     std::unordered_set<xrepl::StreamId> stream_ids;
-    HybridTime min_restart_time_across_slots;
+    bool are_cdc_logical_replication_streams;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
-      if (min_restart_time_across_slots.is_valid()) {
+      are_cdc_logical_replication_streams =
+          VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
+      if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
+    }
+    // Read cdc_state outside mutex_: a stalled read must not block catalog operations.
+    HybridTime min_restart_time_across_slots = HybridTime::kInvalid;
+    if (are_cdc_logical_replication_streams) {
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
     size_t count_tablet_streams_to_delete = 0;
@@ -7087,15 +7105,21 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
   for (const auto& [table_id, tablet_hide_pair] : hidden_colocated_tables) {
     const auto& [tablet_id, hide_time] = tablet_hide_pair;
     std::unordered_set<xrepl::StreamId> stream_ids;
-    HybridTime min_restart_time_across_slots;
+    bool are_cdc_logical_replication_streams;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
-      if (min_restart_time_across_slots.is_valid()) {
+      are_cdc_logical_replication_streams =
+          VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
+      if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
+    }
+    // Read cdc_state outside mutex_: a stalled read must not block catalog operations.
+    HybridTime min_restart_time_across_slots = HybridTime::kInvalid;
+    if (are_cdc_logical_replication_streams) {
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
     if (min_restart_time_across_slots.is_valid() && (hide_time < min_restart_time_across_slots)) {

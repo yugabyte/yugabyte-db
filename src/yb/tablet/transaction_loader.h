@@ -24,6 +24,7 @@
 
 #include "yb/docdb/docdb.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
@@ -95,9 +96,10 @@ class TransactionLoader {
     FATAL_INVALID_ENUM_VALUE(TransactionLoaderState, state_.load());
   }
 
-  Status WaitLoaded(const TransactionId& id);
+  // Fail with TimedOut once the deadline passes.
+  Status WaitLoaded(const TransactionId& id, CoarseTimePoint deadline = CoarseTimePoint::max());
   Status WaitLoaded(const TransactionIdApplyOpIdMap& txns);
-  Status WaitAllLoaded();
+  Status WaitAllLoaded(CoarseTimePoint deadline = CoarseTimePoint::max());
 
   std::optional<docdb::ApplyStateWithCommitInfo> GetPendingApply(const TransactionId& id) const
       EXCLUDES(pending_applies_mtx_);
@@ -127,7 +129,8 @@ class TransactionLoader {
 
   // Removes and returns the waiters that 'last_loaded_' has reached. The caller releases them
   // after unlocking 'mutex_'.
-  [[nodiscard]] std::vector<Synchronizer*> ExtractReachedWaiters() REQUIRES(mutex_);
+  [[nodiscard]] std::vector<std::shared_ptr<Synchronizer>> ExtractReachedWaiters()
+      REQUIRES(mutex_);
 
   void SetFinalStateAndReleaseWaiters(TransactionLoaderState state, const Status& status)
       EXCLUDES(mutex_);
@@ -139,10 +142,9 @@ class TransactionLoader {
 
   std::mutex mutex_;
   TransactionId last_loaded_ GUARDED_BY(mutex_) = TransactionId::Nil();
-  // Points at Synchronizers owned by the stack frames blocked in WaitLoaded. The loader thread
-  // releases every entry before it exits, and a waiter does not leave WaitLoaded until it is
-  // released, so an entry never outlives its Synchronizer.
-  std::multimap<TransactionId, Synchronizer*> waiters_ GUARDED_BY(mutex_);
+  // Shared with the waiter, so that a waiter that times out can leave its entry here. The loader
+  // thread releases every entry before it exits.
+  std::multimap<TransactionId, std::shared_ptr<Synchronizer>> waiters_ GUARDED_BY(mutex_);
   Status load_status_ GUARDED_BY(mutex_);
   std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kNotStarted};
   std::atomic<bool> shutdown_requested_{false};

@@ -322,7 +322,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.20" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.21" % Test,
   // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
   // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test,
@@ -776,7 +776,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.7",
+    version := "1.0.8",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
@@ -793,7 +793,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.20",
+    version := "1.8.21",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1074,10 +1074,6 @@ Universal / javaOptions += "-Debean.registerShutdownHook=false"
 // write out of bounds on malformed input (CVE-2026-114938). Base64 then runs the bounds-checked
 // Java code, with the same results.
 Universal / javaOptions += "-J-XX:-UseBASE64Intrinsics"
-
-// Keep BouncyCastle on its Java code. Its native entropy source reads RDSEED, which often fails
-// to return entropy on K8s nodes, and SecureRandom then fails; the Java code seeds from the kernel.
-Universal / javaOptions += "-Dorg.bouncycastle.native.cpu_variant=java"
 
 Universal / mappings ++= {
   compileYbaCliBinary.value.flatMap { folderPath =>

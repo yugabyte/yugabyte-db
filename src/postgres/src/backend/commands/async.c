@@ -156,6 +156,7 @@
 
 /* YB includes */
 #include "catalog/pg_namespace_d.h"
+#include "commands/yb_cmds.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "postmaster/bgworker_internals.h"
@@ -353,10 +354,12 @@ static SlruCtlData NotifyCtlData;
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
 bool		yb_test_notifs_poller_error_holding_queue_lock = false;
+bool		yb_test_notifs_poller_error_before_init = false;
 int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
 int			yb_notifications_poll_sleep_duration_empty_ms = 100;
+int			yb_notifications_poller_no_progress_timeout_ms = 300000;
 
 /*
  * listenChannels identifies the channels we are actually listening to
@@ -619,6 +622,9 @@ typedef struct YbNotifsPollerPendingEntry
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
 static TimestampTz ybNotifsPollerId = 0;
 
+/* Set by ybNotifsPollerInit on an error that a restart cannot fix. */
+static bool ybNotifsPollerPermanentError = false;
+
 /*
  * The 'notifications poller' process batches the notifications of a transaction
  * in-memory. On receiving the corresponding COMMIT record from virtual wal, it
@@ -668,10 +674,9 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 
 /*
  * Shared memory state reporting how the node's 'notifications poller' bg
- * worker last initialized; a poller restarted after a crash initializes
- * again. Every LISTEN waits on it. The poller sets SUCCESS or FAILED, and
- * ybCleanupListenState sets FAILED if the LISTEN that started the poller
- * ends before the poller reports.
+ * worker first initialized. Every LISTEN waits on it. The poller sets SUCCESS
+ * or FAILED, and ybCleanupListenState sets FAILED if the LISTEN that started
+ * the poller ends before the poller reports. Restarts leave SUCCESS alone.
  */
 typedef enum
 {
@@ -712,6 +717,13 @@ typedef struct
 	 * reset to NOT_STARTED only together with this field.
 	 */
 	BackendId	starter;
+
+	/*
+	 * When the poller last acked a transaction or found nothing to read. The
+	 * poller writes it without NotifyQueueLock, as it does so on every empty
+	 * read; a stale poller's write can only delay a termination.
+	 */
+	TimestampTz last_progress_time;
 } YbNotifsPollerShmemData;
 
 /* local function prototypes */
@@ -761,6 +773,9 @@ static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 /* YB: helper functions for 'notifications poller' bg worker */
 static bool ybIsStaleNotifsPoller(void);
 static void ybExitStaleNotifsPoller(const char *detail) pg_attribute_noreturn();
+static void ybNotifsPollerExitOnError(const ErrorData *edata) pg_attribute_noreturn();
+static void ybCheckNotifsStreamNotExpired(void);
+static void ybNotifsPollerRecordProgress(void);
 static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
@@ -1473,8 +1488,8 @@ Exec_ListenPreCommit(void)
 			LWLockRelease(NotifyQueueLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("notifications poller encountered a non-retryable "
-							"error, LISTEN is unavailable until existing "
+					 errmsg("notifications poller stopped after an error, "
+							"LISTEN is unavailable until existing "
 							"listeners terminate. Please re-try in some time"),
 					 errdetail("%s", poller_data->error_message)));
 		}
@@ -1494,6 +1509,7 @@ Exec_ListenPreCommit(void)
 		poller_data->error_message[0] = '\0';
 		poller_data->has_runtime_error = false;
 		poller_data->poller_id = GetCurrentTimestamp();
+		poller_data->last_progress_time = poller_data->poller_id;
 		poller_data->starter = MyBackendId;
 	}
 
@@ -3268,8 +3284,6 @@ ybStartNotifsPollerBgWorker(void)
 	BackgroundWorker worker;
 	BackgroundWorkerHandle *local_handle;
 	BackgroundWorkerHandle *shm_handle;
-	BgwHandleStatus status;
-	pid_t		pid;
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
 
@@ -3303,30 +3317,71 @@ ybStartNotifsPollerBgWorker(void)
 	poller_data->has_bgw_handle = true;
 	LWLockRelease(NotifyQueueLock);
 
-	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
-	if (status != BGWH_STARTED)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("could not start background process"),
-				 errhint("More details may be available in the server log.")));
-
+	/*
+	 * Don't wait for the worker to start here: ybWaitForNotifsPollerInit,
+	 * called next, already waits for that, and also reports a worker that
+	 * exits before it initializes with a clearer error.
+	 */
 	pfree(local_handle);
 }
 
 /*
- * Wait for the node's notifications poller to initialize, and fail if it does
- * not. The poller reports how its initialization went in init_status, and so
- * does ybCleanupListenState if the listener that started the poller
- * unregisters before the poller reports. A poller that fails to initialize is
- * restarted until ybCleanupListenState terminates it as the last listener
- * unregisters. On a first startup that is right away, as every listener is
- * waiting here and fails with it.
+ * Has the node's notifications poller exited since this backend last saw it
+ * running? *seen_pid is the pid it was last seen running with, or 0. An
+ * exited worker shows as stopped until it is restarted, and with a new pid
+ * after that.
+ */
+static bool
+ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
+{
+	static BackgroundWorkerHandle *shm_handle = NULL;
+	BgwHandleStatus status = BGWH_NOT_YET_STARTED;
+	pid_t		pid = 0;
+
+	if (shm_handle == NULL)
+	{
+		bool		found;
+
+		shm_handle = ybShmemNotifsPollerBgwHandle(&found);
+	}
+
+	/*
+	 * No handle: the LISTEN starting the poller has not registered it yet,
+	 * or the poller was stopped, which happens only after init_status is set
+	 * to FAILED or once no listeners remain.
+	 */
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	if (poller_data->has_bgw_handle)
+		status = GetBackgroundWorkerPid(shm_handle, &pid);
+	LWLockRelease(NotifyQueueLock);
+
+	switch (status)
+	{
+		case BGWH_NOT_YET_STARTED:
+			return false;
+		case BGWH_STARTED:
+			if (*seen_pid == 0)
+				*seen_pid = pid;
+			return pid != *seen_pid;
+		default:
+			return true;
+	}
+}
+
+/*
+ * Wait for the node's notifications poller to initialize. Fail if init_status
+ * is set to FAILED, by the poller or by ybCleanupListenState when the LISTEN
+ * that started the poller unregisters, or if the poller exits with init_status
+ * still unset. A failed poller is restarted until the last listener
+ * unregisters, which on a first startup is right away, as every listener fails
+ * here. Later failures go through ybNotifsPollerExitOnError instead.
  */
 static void
 ybWaitForNotifsPollerInit(void)
 {
 	static YbNotifsPollerShmemData *poller_data = NULL;
 	char		error_message[sizeof(poller_data->error_message)];
+	pid_t		poller_pid = 0;
 
 	if (poller_data == NULL)
 	{
@@ -3337,6 +3392,11 @@ ybWaitForNotifsPollerInit(void)
 
 	for (;;)
 	{
+		/*
+		 * Check for an exit before reading init_status, so that a status the
+		 * poller set just before exiting is not missed.
+		 */
+		bool		exited = ybNotifsPollerExited(poller_data, &poller_pid);
 		YbNotifsPollerInitStatus init_status = poller_data->init_status;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
@@ -3349,13 +3409,15 @@ ybWaitForNotifsPollerInit(void)
 			strlcpy(error_message, poller_data->error_message,
 					sizeof(error_message));
 			LWLockRelease(NotifyQueueLock);
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("notifications poller background worker "
-							"failed to initialize"),
-					 (error_message[0] ? errdetail("%s", error_message) : 0),
-					 errhint("Retry the LISTEN. If it keeps failing, check the "
-							 "server log.")));
+			break;
+		}
+
+		if (exited)
+		{
+			strlcpy(error_message,
+					"The notifications poller exited before it initialized.",
+					sizeof(error_message));
+			break;
 		}
 
 		/*
@@ -3368,6 +3430,14 @@ ybWaitForNotifsPollerInit(void)
 		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
 	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("notifications poller background worker "
+					"failed to initialize"),
+			 (error_message[0] ? errdetail("%s", error_message) : 0),
+			 errhint("Retry the LISTEN. If it keeps failing, check the "
+					 "server log.")));
 }
 
 static BackgroundWorkerHandle *
@@ -3409,6 +3479,13 @@ YbNotifsPollerMain(Datum main_arg)
 	if (ybIsStaleNotifsPoller())
 		ybExitStaleNotifsPoller(NULL);
 	LWLockRelease(NotifyQueueLock);
+
+	/*
+	 * Test-only: exit before reporting an init status. The postmaster restarts
+	 * the poller.
+	 */
+	if (yb_test_notifs_poller_error_before_init)
+		elog(ERROR, "notifications poller failing before it initializes, for testing");
 
 	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
@@ -3464,6 +3541,112 @@ ybExitStaleNotifsPoller(const char *detail)
 	proc_exit(0);
 }
 
+/*
+ * The read that hits stream expiry fails with only a message, so it is
+ * retried; this check on the restart makes it permanent.
+ */
+static void
+ybCheckNotifsStreamNotExpired(void)
+{
+	YbcReplicationSlotDescriptor *slot;
+
+	YBCGetReplicationSlot(ybNotifsReplicationSlotName(), &slot,
+						  /* if_exists */ false);
+	if (slot->expired)
+	{
+		ybNotifsPollerPermanentError = true;
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("replication slot \"%s\" for notifications has expired",
+						ybNotifsReplicationSlotName()),
+				 errdetail("It was not read for cdc_intent_retention_ms.")));
+	}
+}
+
+/*
+ * Counting an empty read as progress assumes that a restarted poller reads the
+ * transaction it failed on before any empty read; otherwise it would never
+ * terminate. testPollerErrorHoldingQueueLock checks this.
+ */
+static void
+ybNotifsPollerRecordProgress(void)
+{
+	static YbNotifsPollerShmemData *poller_data = NULL;
+
+	if (poller_data == NULL)
+	{
+		bool		found;
+
+		poller_data = ybShmemNotifsPollerData(&found);
+	}
+	poller_data->last_progress_time = GetCurrentTimestamp();
+}
+
+/*
+ * Exit to be restarted from the slot's restart LSN. Terminate the listeners
+ * instead on a permanent error, or if the poller has made no progress for
+ * yb_notifications_poller_no_progress_timeout_ms.
+ *
+ * Caller holds NotifyQueueLock exclusively and has checked that the poller
+ * isn't stale; this releases the lock.
+ */
+static void
+ybNotifsPollerExitOnError(const ErrorData *edata)
+{
+	bool		found;
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+	TimestampTz now = GetCurrentTimestamp();
+	char		message[sizeof(poller_data->error_message)];
+	int			len;
+	bool		timed_out;
+	bool		permanently_terminate;
+
+	if (edata->detail)
+		len = snprintf(message, sizeof(message), "%s: %s", edata->message,
+					   edata->detail);
+	else
+		len = strlcpy(message, edata->message, sizeof(message));
+
+	timed_out = TimestampDifferenceExceeds(poller_data->last_progress_time, now,
+										   yb_notifications_poller_no_progress_timeout_ms);
+	permanently_terminate = ybNotifsPollerPermanentError || timed_out;
+	if (!permanently_terminate)
+	{
+		LWLockRelease(NotifyQueueLock);
+		ereport(WARNING,
+				(errmsg("notifications poller restarting after an error"),
+				 errdetail("%s", message)));
+		proc_exit(1);
+	}
+
+	if (timed_out)
+	{
+		char		suffix[128];
+		int			suffix_len;
+
+		suffix_len = snprintf(suffix, sizeof(suffix),
+							  " (no progress for "
+							  "yb_notifications_poller_no_progress_timeout_ms"
+							  " = %d ms)",
+							  yb_notifications_poller_no_progress_timeout_ms);
+		/* If both don't fit, cut the error rather than the reason. */
+		len = Min(len, (int) sizeof(message) - 1 - suffix_len);
+		strlcpy(message + len, suffix, sizeof(message) - len);
+	}
+	strlcpy(poller_data->error_message, message,
+			sizeof(poller_data->error_message));
+	poller_data->has_runtime_error = true;
+	LWLockRelease(NotifyQueueLock);
+
+	ereport(WARNING,
+			(errmsg("notifications poller stopped after an error, "
+					"terminating all listening backends in this node"),
+			 errdetail("%s", message)));
+
+	ybSignalAllListeners();
+	proc_exit(0);
+}
+
 static void
 ybNotifsPollerInit(void)
 {
@@ -3483,12 +3666,15 @@ ybNotifsPollerInit(void)
 	{
 		if (!yb_enable_replication_commands ||
 			!yb_enable_replication_slot_consumption)
+		{
+			ybNotifsPollerPermanentError = true;
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("unable to poll notifications"),
 					 errdetail("For LISTEN/NOTIFY, yb_enable_replication_commands "
 							   "and yb_enable_replication_slot_consumption must be "
 							   "true.")));
+		}
 
 		CheckSlotRequirements();
 		Assert(!MyReplicationSlot);
@@ -3499,6 +3685,7 @@ ybNotifsPollerInit(void)
 		 * that by setting nowait arg as false.
 		 */
 		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ false);
+		ybCheckNotifsStreamNotExpired();
 		publications = ybNotifsPublications();
 
 		YBCInitVirtualWal(publications);
@@ -3508,6 +3695,7 @@ ybNotifsPollerInit(void)
 	{
 		MemoryContext error_context = MemoryContextSwitchTo(caller_context);
 		ErrorData  *edata = CopyErrorData();
+		bool		is_restart;
 
 		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 		if (ybIsStaleNotifsPoller())
@@ -3515,6 +3703,20 @@ ybNotifsPollerInit(void)
 			FlushErrorState();
 			ybExitStaleNotifsPoller(edata->message);
 		}
+
+		is_restart = poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS;
+
+		/*
+		 * On a restart, don't set init_status to FAILED: new LISTENs would
+		 * fail, but existing listeners would stay connected and get no
+		 * notifications or error. Retry like a runtime error.
+		 */
+		if (is_restart)
+		{
+			FlushErrorState();
+			ybNotifsPollerExitOnError(edata);
+		}
+
 		strlcpy(poller_data->error_message, edata->message,
 				sizeof(poller_data->error_message));
 		poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
@@ -3544,8 +3746,6 @@ ybNotifsPollerLoop()
 {
 	YbVirtualWalRecord *record;
 	List	   *publications = ybNotifsPublications();
-	bool		shmem_found;
-	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&shmem_found);
 
 	for (;;)
 	{
@@ -3570,13 +3770,23 @@ ybNotifsPollerLoop()
 		PG_TRY();
 		{
 			record = YBCReadRecord(publications);
+			/*
+			 * Count an empty read as progress only between transactions. If a
+			 * transaction fails on every replay, empty reads in its middle
+			 * would keep resetting the no-progress timeout.
+			 */
 			if (record)
 				ybNotifsPollerProcessRecord(record);
+			else if (ybNotifsPollerProcessingXid == InvalidTransactionId)
+				ybNotifsPollerRecordProgress();
 		}
 		PG_CATCH();
 		{
-			MemoryContext error_cxt = MemoryContextSwitchTo(TopMemoryContext);
-			ErrorData  *edata = CopyErrorData();
+			ErrorData  *edata;
+
+			MemoryContextSwitchTo(TopMemoryContext);
+			edata = CopyErrorData();
+			FlushErrorState();
 
 			/*
 			 * The error may have been raised with NotifyQueueLock (and
@@ -3594,30 +3804,8 @@ ybNotifsPollerLoop()
 			 */
 			LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 			if (ybIsStaleNotifsPoller())
-			{
-				FlushErrorState();
 				ybExitStaleNotifsPoller(edata->message);
-			}
-
-			ereport(WARNING,
-					(errmsg("notifications poller encountered a non-retryable "
-							"error, terminating all listening backends in "
-							"this node"),
-					 errdetail("%s", edata->message)));
-
-			strlcpy(poller_data->error_message, edata->message,
-					sizeof(poller_data->error_message));
-			poller_data->has_runtime_error = true;
-			LWLockRelease(NotifyQueueLock);
-
-			FreeErrorData(edata);
-			MemoryContextSwitchTo(error_cxt);
-			FlushErrorState();
-
-			ybSignalAllListeners();
-
-			/* Nothing else to do, exit. */
-			proc_exit(0);
+			ybNotifsPollerExitOnError(edata);
 		}
 		PG_END_TRY();
 	}
@@ -3667,6 +3855,7 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 						 errmsg("test-only: notifications poller simulated crash "
 								"before CDC ack")));
 			YBCCalculatePersistAndGetRestartLSN(record->lsn);
+			ybNotifsPollerRecordProgress();
 			ybNotifsPollerPendingEntries = NIL;
 			ybNotifsPollerProcessingXid = InvalidTransactionId;
 			AbortCurrentTransaction();

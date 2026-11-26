@@ -1361,9 +1361,7 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     // Start off with the flag disabled.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_global_object_locking_infra=false");
-    // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
-    // release builds. The flag validators require it with enable_object_locking_for_table_locks,
-    // so pin it on for every build type.
+    // These tests run DDLs with global object locks concurrently.
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
   }
 
@@ -2493,6 +2491,170 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   LOG(INFO) << "CREATE TABLE: " << create_future.get();
   ASSERT_OK(legacy_conn.Execute("SET test.slow = 'off'"));
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
+}
+
+// Tests for #34673 that need the C++ harness: with ysql_enable_concurrent_ddl off, the database DDL
+// lock can close a deadlock cycle, and the detector aborts either transaction; and a DDL in another
+// database does not wait for the lock. The other tests of the flag are in the isolation spec
+// yb.orig.concurrent_ddl_disabled.
+class PgObjectLocksTestConcurrentDdlDisabled : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    // The deadlock tests rely on the detector. Probe often, so that a cycle the first probe misses
+    // is still found well before the statement timeout.
+    opts->extra_tserver_flags.emplace_back(
+        "--transaction_deadlock_detection_interval_usec=5000000");
+  }
+};
+
+// With ysql_enable_concurrent_ddl off, transaction A writes t and then runs a DDL, which waits on
+// the database DDL lock that transaction B holds, while B's DDL on t waits for A's write. The
+// deadlock detector must end the cycle well before the statement timeout.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, WriterThenDdlDeadlockIsDetected) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other2(k INT PRIMARY KEY)"));
+  }
+
+  auto a_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(a_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(a_conn.Execute("BEGIN"));
+  ASSERT_OK(a_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  // B takes the database lock, then waits on t for A. B's ALTER runs in the background: it blocks
+  // until the cycle is broken, and A's DDL has to run meanwhile to close the cycle.
+  auto b_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(b_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(b_conn.Execute("BEGIN"));
+  ASSERT_OK(b_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
+  auto b_future = std::async(std::launch::async, [&b_conn]() {
+    return b_conn.Execute("ALTER TABLE t ADD COLUMN c INT");
+  });
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
+    auto waiting = observer.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_locks WHERE NOT granted AND mode = 'AccessExclusiveLock'"
+        " AND relation = 't'::regclass");
+    return waiting.ok() && *waiting > 0;
+  }, 30s * kTimeMultiplier, "B's ALTER to wait on t"));
+
+  // Any tserver can log the deadlock abort, so watch all of them.
+  std::vector<ExternalDaemon*> tservers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tservers.push_back(cluster_->tablet_server(i));
+  }
+  LogWaiter deadlock_log(tservers, "aborted due to a deadlock");
+  // A's DDL waits on the database lock that B holds.
+  const auto a_status = a_conn.Execute("ALTER TABLE other2 ADD COLUMN c INT");
+  ASSERT_OK(deadlock_log.WaitFor(30s * kTimeMultiplier));
+  // The detector aborts one of the two transactions, either one. The victim's connection is not
+  // used again: its backend can exit with a FATAL (#35856). The other transaction is ended here,
+  // so that neither the victim's lock request nor the cluster's shutdown waits on it.
+  if (a_status.ok()) {
+    ASSERT_OK(a_conn.Execute("ROLLBACK"));
+  }
+  const auto b_status = b_future.get();
+  if (b_status.ok()) {
+    ASSERT_OK(b_conn.Execute("ROLLBACK"));
+  }
+  LOG(INFO) << "A's ALTER: " << a_status << ", B's ALTER: " << b_status;
+  ASSERT_NE(a_status.ok(), b_status.ok());
+}
+
+// With ysql_enable_concurrent_ddl off, a DDL transaction holds the database DDL lock and then waits
+// on t, which a CREATE INDEX holds across its phases, while a later CREATE INDEX phase waits for
+// the database lock after its wait for lockers. The deadlock detector must end the cycle well
+// before the statement timeout.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlHolderDeadlockIsDetected) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 100), 0"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
+  }
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "true"));
+
+  LogWaiter pause_log(ts1, "Pausing due to flag TEST_pause_wait_for_lockers");
+  auto index_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(index_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  auto index_future = std::async(std::launch::async, [&index_conn]() {
+    return index_conn.Execute("CREATE INDEX t_v ON t(v)");
+  });
+  // Unpause on early failure, or index_future's destructor waits for the paused CREATE INDEX.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
+        "Failed to unpause CREATE INDEX");
+  });
+  ASSERT_OK(pause_log.WaitFor(30s * kTimeMultiplier));
+
+  // Takes the database lock, then waits on t for the CREATE INDEX.
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(ddl_conn.Execute("BEGIN"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
+  auto alter_future = std::async(std::launch::async, [&ddl_conn]() {
+    return ddl_conn.Execute("ALTER TABLE t ADD COLUMN c INT");
+  });
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
+    auto waiting = observer.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_locks WHERE NOT granted AND mode = 'AccessExclusiveLock'"
+        " AND relation = 't'::regclass");
+    return waiting.ok() && *waiting > 0;
+  }, 30s * kTimeMultiplier, "the ALTER to wait on t"));
+
+  // Any tserver can log the deadlock abort, so watch all of them.
+  std::vector<ExternalDaemon*> tservers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tservers.push_back(cluster_->tablet_server(i));
+  }
+  LogWaiter deadlock_log(tservers, "aborted due to a deadlock");
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
+  ASSERT_OK(deadlock_log.WaitFor(30s * kTimeMultiplier));
+  const auto index_status = index_future.get();
+  const auto alter_status = alter_future.get();
+  LOG(INFO) << "CREATE INDEX: " << index_status << ", ALTER TABLE t: " << alter_status;
+  // The detector aborts one of the two transactions, either one, and the other goes on. When it
+  // aborts the DDL transaction, its backend can exit with a FATAL (#35856), so the test does not
+  // use that connection again.
+  ASSERT_NE(index_status.ok(), alter_status.ok());
+  if (alter_status.ok()) {
+    ASSERT_OK(ddl_conn.Execute("COMMIT"));
+  }
+}
+
+// With ysql_enable_concurrent_ddl off, the DDL lock is per database: while a transaction holds it
+// in one database, a DDL in another database does not wait. The isolation spec cannot cover this,
+// since isolationtester connects every session to the same database.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlInOtherDatabaseDoesNotWait) {
+  auto* ts1 = cluster_->tablet_server(0);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE DATABASE other_db"));
+  }
+
+  auto holder_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(holder_conn.Execute("BEGIN"));
+  ASSERT_OK(holder_conn.Execute("ALTER TABLE a ADD COLUMN v INT"));
+
+  // A wait on the holder would end in this timeout, since the holder commits only afterwards.
+  auto other_db_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "other_db"));
+  ASSERT_OK(other_db_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(other_db_conn.Execute("CREATE TABLE y(k INT PRIMARY KEY)"));
+
+  ASSERT_OK(holder_conn.Execute("COMMIT"));
 }
 
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).

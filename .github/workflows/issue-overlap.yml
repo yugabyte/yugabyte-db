@@ -1,0 +1,64 @@
+name: "issue-overlap"
+
+# When an issue is filed, comment with open PRs and issues that look like the
+# same work, so two people don't investigate or fix it in parallel.
+#
+# The workflow never reads Jira. An issue filed in Jira reaches GitHub with
+# only its title, so it is checked on the title alone.
+#
+# Rollout: comments are posted only when the repository variable
+# ISSUE_OVERLAP_POST is "true". Until then each run writes what it would post
+# to the job summary, so precision can be checked first.
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+# No concurrency group: GitHub keeps one pending run per group and cancels it
+# when another queues, so a burst of new issues would lose checks. Parallel
+# runs only cost a duplicate fetch.
+
+env:
+  PR_OVERLAP_CACHE: ${{ github.workspace }}/../issue-overlap-cache
+  POST: ${{ vars.ISSUE_OVERLAP_POST }}
+
+jobs:
+  github-issue:
+    if: github.repository == 'yugabyte/yugabyte-db'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/issue_overlap
+      # One cache entry a day (40 MB): a key per run would save a new entry
+      # every run and push other caches out of the repository's 10 GB.
+      - id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.PR_OVERLAP_CACHE }}
+          key: issue-overlap-${{ steps.day.outputs.day }}
+          restore-keys: issue-overlap-
+      - name: Comment on the issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          # Prints nothing (exit 0) when nothing matches or the issue has no
+          # terms.
+          python3 .github/scripts/issue_overlap/issue_check.py \
+            --issue "$ISSUE" --format github > "$RUNNER_TEMP/comment.md"
+          if [[ ! -s "$RUNNER_TEMP/comment.md" ]]; then
+            echo "No related work found; not commenting."
+          elif [[ "$POST" == "true" ]]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+              --body-file "$RUNNER_TEMP/comment.md"
+          else
+            { echo "### Would comment on #$ISSUE"; echo
+              cat "$RUNNER_TEMP/comment.md"; } >> "$GITHUB_STEP_SUMMARY"
+          fi

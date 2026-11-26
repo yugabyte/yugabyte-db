@@ -422,6 +422,22 @@ FloatVectorLSM::InsertEntries RandomEntries(
   return result;
 }
 
+vector_index::VectorLSMDeletion Deletion(const VectorId& vector_id, HybridTime hybrid_time) {
+  return vector_index::VectorLSMDeletion {
+    .vector_id = vector_id,
+    .hybrid_time = hybrid_time,
+  };
+}
+
+vector_index::VectorLSMDeletionList RandomDeletions(size_t num_deletions) {
+  vector_index::VectorLSMDeletionList result;
+  result.reserve(num_deletions);
+  for (size_t i = 0; i != num_deletions; ++i) {
+    result.push_back(Deletion(VectorId::GenerateRandom(), HybridTime(10 + i)));
+  }
+  return result;
+}
+
 auto GenerateVectorIds(size_t num) {
   std::vector<VectorId> result;
   result.reserve(num);
@@ -1018,6 +1034,184 @@ TEST_F(VectorLSMHnswlibTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
   ASSERT_OK(open(lsm));
   ASSERT_EQ(2, lsm.NumImmutableChunks());
   ASSERT_EQ(flushed_vertex_id(lsm), expected);
+}
+
+// A lookup finds the deletions of the mutable chunk, and of the chunks not saved yet.
+TEST_F(VectorLSMHnswlibTest, DeletionsLookup) {
+  constexpr size_t kDimensions = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  auto entries = RandomEntries(kDimensions, 2, store_vector_payload());
+  TestFrontiers frontiers(entries);
+  const vector_index::VectorLSMDeletionList first_deletions = {
+    Deletion(entries[0].vector_id, HybridTime(20)),
+  };
+  // The hold keeps the flushed chunk from being saved.
+  vector_index::VectorLSMChunkHolds holds;
+  ASSERT_OK(lsm.Insert({entries[0]}, {
+    .frontiers = &frontiers,
+    .chunk_holds = &holds,
+    .deletions = first_deletions,
+  }));
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  const vector_index::VectorLSMDeletionList second_deletions = {
+    Deletion(entries[1].vector_id, HybridTime(30)),
+  };
+  ASSERT_OK(lsm.Insert({}, { .frontiers = &frontiers, .deletions = second_deletions }));
+  ASSERT_EQ(lsm.NumImmutableChunks(), 1);
+
+  auto lookup = lsm.DeletionsLookup();
+  ASSERT_EQ(ASSERT_RESULT(lookup.Find(entries[0].vector_id)), HybridTime(20));
+  ASSERT_EQ(ASSERT_RESULT(lookup.Find(entries[1].vector_id)), HybridTime(30));
+  ASSERT_EQ(ASSERT_RESULT(lookup.Find(VectorId::GenerateRandom())), HybridTime::kInvalid);
+
+  holds.clear();
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  // TODO(vector_index): the saved chunks keep their deletions, #37982.
+  lookup = lsm.DeletionsLookup();
+  ASSERT_EQ(ASSERT_RESULT(lookup.Find(entries[0].vector_id)), HybridTime::kInvalid);
+  ASSERT_EQ(ASSERT_RESULT(lookup.Find(entries[1].vector_id)), HybridTime::kInvalid);
+}
+
+// Deletions count toward the capacity of the mutable chunk, so a chunk which receives only
+// deletions rolls too, and the vectors that follow go to the next chunk.
+TEST_F(VectorLSMHnswlibTest, DeletionsRollChunk) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumDeletions = 4096;
+  constexpr size_t kBatchSize = 16;
+  constexpr size_t kNumVectors = 16;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  TestFrontiers frontiers(RandomEntries(kDimensions, 1, store_vector_payload()));
+  const auto deletions = RandomDeletions(kNumDeletions);
+  for (size_t i = 0; i < deletions.size(); i += kBatchSize) {
+    ASSERT_OK(lsm.Insert({}, {
+      .frontiers = &frontiers,
+      .deletions = std::span(deletions).subspan(i, kBatchSize),
+    }));
+  }
+  ASSERT_GT(lsm.NumImmutableChunks(), 1);
+  ASSERT_OK(lsm.WaitForFlush());
+  ASSERT_OK(lsm.Insert(RandomEntries(kDimensions, kNumVectors, store_vector_payload()), {
+    .frontiers = &frontiers,
+  }));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(ASSERT_RESULT(lsm.TotalEntries()), kNumVectors);
+}
+
+// The deletions of the mutable chunk also limit the vectors it takes.
+TEST_F(VectorLSMHnswlibTest, DeletionsLimitVectors) {
+  constexpr size_t kDimensions = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  TestFrontiers frontiers(RandomEntries(kDimensions, 1, store_vector_payload()));
+  auto insert_deletion = [&lsm, &frontiers] {
+    return lsm.Insert({}, { .frontiers = &frontiers, .deletions = RandomDeletions(1) });
+  };
+  size_t chunk_deletions = 0;
+  while (lsm.NumImmutableChunks() == 0) {
+    ASSERT_OK(insert_deletion());
+    ++chunk_deletions;
+  }
+  // The deletion that rolled the chunk is in the next one, fill half of that.
+  --chunk_deletions;
+  for (size_t i = 1; i < chunk_deletions / 2; ++i) {
+    ASSERT_OK(insert_deletion());
+  }
+  ASSERT_EQ(lsm.NumImmutableChunks(), 1);
+
+  ASSERT_OK(lsm.Insert(RandomEntries(kDimensions, kDefaultChunkSize, store_vector_payload()), {
+    .frontiers = &frontiers,
+  }));
+  ASSERT_EQ(lsm.NumImmutableChunks(), 2);
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+}
+
+// The deletions are tracked until their chunk is saved.
+TEST_F(VectorLSMHnswlibTest, DeletionsMemTracking) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumDeletions = 100;
+
+  auto mem_tracker = MemTracker::CreateTracker("vector_lsm_deletions_mem_tracking");
+  auto deletions_mem_tracker = MemTracker::FindOrCreateTracker("deletions", mem_tracker);
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared, mem_tracker));
+  TestFrontiers frontiers(RandomEntries(kDimensions, 1, store_vector_payload()));
+  ASSERT_OK(lsm.Insert({}, {
+    .frontiers = &frontiers,
+    .deletions = RandomDeletions(kNumDeletions),
+  }));
+  ASSERT_GE(
+      deletions_mem_tracker->consumption(),
+      kNumDeletions * sizeof(vector_index::VectorLSMDeletion));
+  // A chunk with only deletions is flushed too.
+  ASSERT_EQ(lsm.GetFlushAbility(), storage::FlushAbility::kHasNewData);
+  ASSERT_FALSE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_OK(LoggedWaitFor(
+      [&deletions_mem_tracker] { return deletions_mem_tracker->consumption() == 0; },
+      5s, "Saved deletions released"));
+}
+
+// A chunk is saved only after the deletions of the inserts registered on it are in its index.
+TEST_F(VectorLSMHnswlibTest, DeletionsBeforeSave) {
+  constexpr size_t kDimensions = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  TestFrontiers frontiers(RandomEntries(kDimensions, 1, store_vector_payload()));
+  const auto deletions = RandomDeletions(1);
+
+  CountDownLatch insert_paused(1);
+  CountDownLatch resume_insert(1);
+  std::atomic<bool> save_started{false};
+  // The deletion lookup when the save started.
+  Result<HybridTime> found_at_save = HybridTime::kInvalid;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::Insert:BeforeInsertDeletions", [&](void*) {
+    insert_paused.CountDown();
+    resume_insert.Wait();
+  });
+  sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [&](void*) {
+    found_at_save = lsm.DeletionsLookup().Find(deletions[0].vector_id);
+    save_started = true;
+  });
+  sync->EnableProcessing();
+  auto cleanup = ScopeExit([sync] {
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([&lsm, &frontiers, &deletions] {
+    ASSERT_OK(lsm.Insert({}, { .frontiers = &frontiers, .deletions = deletions }));
+  });
+  // Lets the insert finish before the join when an assertion below fails.
+  auto resume_on_failure = ScopeExit([&resume_insert] { resume_insert.CountDown(); });
+  ASSERT_TRUE(insert_paused.WaitFor(10s * kTimeMultiplier));
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  // Gives a save that does not wait for the insert the time to start.
+  SleepFor(200ms * kTimeMultiplier);
+  ASSERT_FALSE(save_started);
+
+  resume_insert.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(lsm.WaitForFlush());
+  ASSERT_TRUE(save_started);
+  ASSERT_EQ(ASSERT_RESULT(std::move(found_at_save)), deletions[0].hybrid_time);
 }
 
 // Reporting a failed chunk save must not clear it: the chunk stays in the updates queue, so the
@@ -2941,6 +3135,186 @@ TEST_F(VectorLSMHnswlibTest, MergeChunkResults) {
     sum.resize(std::min(i, sum.size()));
     ASSERT_EQ(a, sum);
   }
+}
+
+class VectorLSMDestroyTest : public VectorLSMHnswlibTest {
+ protected:
+  void SetUp() override {
+    VectorLSMHnswlibTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+    sync_point_ = SyncPoint::GetInstance();
+  }
+
+  void TearDown() override {
+    sync_point_->DisableProcessing();
+    sync_point_->ClearAllCallBacks();
+    VectorLSMHnswlibTest::TearDown();
+  }
+
+  // Runs `functor` on another thread, counting `done` down when it returns.
+  void RunInThread(std::function<void()> functor, CountDownLatch& done) {
+    threads_.AddThreadFunctor([functor = std::move(functor), &done] {
+      functor();
+      done.CountDown();
+    });
+  }
+
+  // Unparks the sync point callback and joins the threads before the test locals they use go away.
+  auto MakeCleanup(CountDownLatch& release) {
+    return ScopeExit([this, &release] {
+      release.CountDown();
+      threads_.JoinAll();
+    });
+  }
+
+  void CheckStorageDeleted(FloatVectorLSM& lsm) {
+    ASSERT_FALSE(lsm.TEST_GetEnv()->DirExists(lsm.StorageDir()));
+  }
+
+  SyncPoint* sync_point_ = nullptr;
+  TestThreadHolder threads_;
+};
+
+// A flush waiting for the inserts of its chunk returns once the destroy starts, without waiting for
+// them.
+TEST_F(VectorLSMDestroyTest, ReleasesFlushWaiter) {
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+
+  CountDownLatch insert_parked(1);
+  CountDownLatch release_insert(1);
+  CountDownLatch flush_queued(1);
+  CountDownLatch flushed(1);
+  Status flush_status;
+  sync_point_->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [&](void*) {
+    insert_parked.CountDown();
+    release_insert.Wait();
+  });
+  sync_point_->SetCallBack("VectorLSM::Flush:AfterDoFlush", [&](void*) {
+    flush_queued.CountDown();
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_insert);
+
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_TRUE(insert_parked.WaitFor(5s));
+  RunInThread([&lsm, &flush_status] { flush_status = lsm.Flush(/* wait = */ true); }, flushed);
+  ASSERT_TRUE(flush_queued.WaitFor(5s));
+  ASSERT_FALSE(flushed.WaitFor(20ms));
+
+  lsm.StartDestroy();
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  ASSERT_TRUE(flush_status.IsShutdownInProgress()) << flush_status;
+
+  release_insert.CountDown();
+  ASSERT_OK(lsm.Destroy());
+  CheckStorageDeleted(lsm);
+}
+
+// A flush that passed the running check before the destroy started queues its chunk after the
+// flush waiters were released. The chunk is not saved.
+TEST_F(VectorLSMDestroyTest, SkipsChunkFlushedAfterStart) {
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch flush_parked(1);
+  CountDownLatch release_flush(1);
+  CountDownLatch flushed(1);
+  Status flush_status;
+  std::atomic<size_t> num_saves{0};
+  sync_point_->SetCallBack("VectorLSM::Flush:Status", [&](void*) {
+    flush_parked.CountDown();
+    release_flush.Wait();
+  });
+  sync_point_->SetCallBack("VectorLSM::DoSaveChunk:Status", [&num_saves](void*) {
+    ++num_saves;
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_flush);
+
+  RunInThread([&lsm, &flush_status] { flush_status = lsm.Flush(/* wait = */ true); }, flushed);
+  ASSERT_TRUE(flush_parked.WaitFor(5s));
+
+  lsm.StartDestroy();
+  release_flush.CountDown();
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  ASSERT_TRUE(flush_status.IsShutdownInProgress()) << flush_status;
+
+  ASSERT_OK(lsm.Destroy());
+  ASSERT_EQ(num_saves, 0);
+  CheckStorageDeleted(lsm);
+}
+
+// A chunk save already in progress runs to the end: Destroy waits for it.
+TEST_F(VectorLSMDestroyTest, WaitsForSaveInProgress) {
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch save_parked(1);
+  CountDownLatch release_save(1);
+  CountDownLatch destroyed(1);
+  Status destroy_status;
+  sync_point_->SetCallBack("VectorLSM::DoSaveChunk:Status", [&](void*) {
+    save_parked.CountDown();
+    release_save.Wait();
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_save);
+
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(save_parked.WaitFor(5s));
+  RunInThread([&lsm, &destroy_status] { destroy_status = lsm.Destroy(); }, destroyed);
+  ASSERT_FALSE(destroyed.WaitFor(200ms));
+
+  release_save.CountDown();
+  ASSERT_TRUE(destroyed.WaitFor(5s));
+  ASSERT_OK(destroy_status);
+  CheckStorageDeleted(lsm);
+}
+
+// The merge tasks of a running compaction skip their vectors once the destroy starts, and Destroy
+// waits for the compaction.
+TEST_F(VectorLSMDestroyTest, CancelsMerge) {
+  constexpr size_t kNumChunks = 2;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, kDefaultChunkSize));
+  for (size_t i = 0; i != kNumChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, 4, kDefaultChunkSize));
+  }
+
+  CountDownLatch merge_parked(1);
+  CountDownLatch release_merge(1);
+  CountDownLatch destroyed(1);
+  Status destroy_status;
+  std::atomic<size_t> num_merged{0};
+  sync_point_->SetCallBack("VectorLSM::DoMergeWithThreadPool:AfterAllocate", [&](void*) {
+    merge_parked.CountDown();
+    release_merge.Wait();
+  });
+  sync_point_->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [&num_merged](void*) {
+    ++num_merged;
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_merge);
+
+  ASSERT_OK(lsm.Compact(/* wait= */ false));
+  ASSERT_TRUE(merge_parked.WaitFor(5s));
+  lsm.StartDestroy();
+  RunInThread([&lsm, &destroy_status] { destroy_status = lsm.Destroy(); }, destroyed);
+  ASSERT_FALSE(destroyed.WaitFor(200ms));
+
+  release_merge.CountDown();
+  ASSERT_TRUE(destroyed.WaitFor(5s));
+  ASSERT_OK(destroy_status);
+  ASSERT_EQ(num_merged, 0);
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+  CheckStorageDeleted(lsm);
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -326,6 +326,7 @@ static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 static void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra);
 static void yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra);
 static void yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra);
+static void yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -3254,8 +3255,10 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_allow_prehashed_passwords", PGC_SUSET, CONN_AUTH_AUTH,
 			gettext_noop("Allows a role to be given an already-hashed password."),
-			gettext_noop("A pre-hashed password cannot be inspected, so no password policy "
-						 "can be enforced while this is on.")
+			gettext_noop("Even when yb_allow_prehashed_passwords is on, a pre-hashed password "
+						 "is refused when a role with a password reuse policy changes its "
+						 "own password, because it cannot be compared with that role's "
+						 "previous passwords.")
 		},
 		&yb_allow_prehashed_passwords,
 		true,
@@ -4391,6 +4394,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_error_before_init", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When true, the notifications poller raises an ERROR "
+						 "before it initializes, so it exits and is restarted "
+						 "without reporting an init status."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_notifs_poller_error_before_init,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_skip_ensure_read_time_in_parallel_execution", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Skip forcing ENSURE_READ_TIME_IS_SET during parallel execution."),
 			gettext_noop("When true, parallel execution will not force read time to be "
@@ -4453,6 +4469,20 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_conn_mgr_listen_permanent_sticky,
 		false,
 		NULL, yb_assign_conn_mgr_listen_permanent_sticky, NULL
+	},
+
+	{
+		{"yb_conn_mgr_cursor_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that declares a "
+						 "WITH HOLD cursor sticky until disconnect instead of "
+						 "unsticking it once all such cursors are closed."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_cursor_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_cursor_permanent_sticky, NULL
 	},
 
 	{
@@ -4804,6 +4834,19 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_notifications_poll_sleep_duration_empty_ms,
 		100, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_notifications_poller_no_progress_timeout_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds without progress after which a"
+						 " notifications poller error terminates the node's"
+						 " listening sessions instead of restarting the poller."),
+			gettext_noop("0 terminates them on the first error."),
+			GUC_UNIT_MS
+		},
+		&yb_notifications_poller_no_progress_timeout_ms,
+		300000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -6370,8 +6413,8 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_update_num_cols_to_compare", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Maximum number of columns whose data is to be"
 						 " compared while seeking to optimize updates."
-						 " If set to 0, all applicable columns in the table"
-						 " will be compared."),
+						 " If set to 0, the update optimization is"
+						 " disabled."),
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,
@@ -18286,8 +18329,9 @@ check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
 	/*
 	 * ysql_pg_conf_csv is applied in file order, as PGC_S_FILE and the other
 	 * sources below PGC_S_CLIENT. Rejecting a conflicting pair there keeps the
-	 * postmaster from starting. CREATE and ALTER ROLE still refuse it, as do
-	 * SET and the ALTER ROLE validation pass.
+	 * postmaster from starting. SET and the ALTER ROLE validation pass still
+	 * refuse it; where both end up on anyway, ALTER ROLE refuses a role's own
+	 * pre-hashed password.
 	 */
 	if (*newVal &&
 		source >= PGC_S_CLIENT &&
@@ -18356,7 +18400,7 @@ yb_password_policy_source_allowed(GucSource source)
  * Mutual exclusion with yb_allow_prehashed_passwords is enforced on the
  * ALTER ROLE validation pass. A conflicting value in the configuration file
  * is not rejected here, so it cannot keep a backend from starting;
- * CREATE/ALTER ROLE still refuses the combination.
+ * ALTER ROLE then refuses a role's own pre-hashed password.
  */
 static bool
 check_yb_password_reuse(int *newVal, void **extra, GucSource source)
@@ -18628,6 +18672,13 @@ yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra)
 {
 	if (newval && YbIsListening())
 		yb_ysql_conn_mgr_sticky_listen = true;
+}
+
+static void
+yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasHoldablePortal())
+		yb_ysql_conn_mgr_sticky_cursor = true;
 }
 
 static bool

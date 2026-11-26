@@ -465,6 +465,7 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
+  Status DmlAppendAggregateTarget(PgStatement *handle, PgExpr *expr, int index);
 
   Status DmlAppendQual(
       PgStatement *handle, PgExpr *expr, uint32_t serialization_version,

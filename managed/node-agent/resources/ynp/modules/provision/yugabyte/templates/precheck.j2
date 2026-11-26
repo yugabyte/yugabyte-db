@@ -173,13 +173,14 @@ else
 fi
 
 if [ "{{ check_clean_dirs }}" == "True" ]; then
-  # Check whether yugabyte home directory is cleaned up.
+  # Check whether yugabyte home directory is cleaned up. An empty bin/ is clean: on SLES,
+  # useradd copies /etc/skel/bin into the new home.
   if [[ -e "{{ yb_home_dir }}" ]]; then
     files=""
     if [[ "$check_type" == "provision" ]]; then
-      files=$(sudo find "{{ yb_home_dir }}" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+      files=$(sudo find "{{ yb_home_dir }}" -maxdepth 1 -mindepth 1  -name "bin" ! -empty -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
     else
-      files=$(find "{{ yb_home_dir }}" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+      files=$(find "{{ yb_home_dir }}" -maxdepth 1 -mindepth 1  -name "bin" ! -empty -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
     fi
     if [[ -n "$files" ]]; then
         add_result "Yugabyte Home Directory Clean Check" "FAIL" "Directory {{ yb_home_dir }} is not clean"

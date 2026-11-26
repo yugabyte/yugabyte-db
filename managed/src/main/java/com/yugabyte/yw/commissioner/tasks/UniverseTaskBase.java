@@ -75,6 +75,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ScheduleUtil;
@@ -1311,8 +1312,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           universe.getUniverseUUID());
       before = existing.getBeforeUniverseDetails();
     }
+    // state_transition_details is saved without the redaction universe_details_json gets, so
+    // redact both sides here. Nothing reads the DB passwords back from it: CreateUniverse keeps
+    // them in memory, and a rollback restores them as REDACTED, as universe_details_json has them.
     JsonNode delta =
-        DeltaEvaluator.buildDeltaJsonTree(before, targetUDTP, new NodeDetailsArrayComparator());
+        DeltaEvaluator.buildDeltaJsonTree(
+            RedactingService.filterSecretFieldsForStorage(Json.toJson(before)),
+            RedactingService.filterSecretFieldsForStorage(Json.toJson(targetUDTP)),
+            new NodeDetailsArrayComparator());
     universe.setStateTransitionDetails(new StateTransitionDetails(rollbackSafe, delta));
     auditService.updateTaskDiff(getTaskUUID(), DeltaEvaluator.generateOnlyDelta(delta));
   }

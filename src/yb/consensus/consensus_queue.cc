@@ -271,6 +271,9 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
       << queue_state_.active_config->ShortDebugString();
   queue_state_.majority_size_ = MajoritySize(CountVoters(*queue_state_.active_config));
   queue_state_.mode = Mode::LEADER;
+  // As a follower only the local peer is tracked, so all_applied_op_id holds the local applied op
+  // id. Reset it until every remote peer has reported its applied op id.
+  queue_state_.all_applied_op_id = OpId::Min();
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Queue going to LEADER mode. State: "
       << queue_state_.ToString();
@@ -326,6 +329,7 @@ PeerMessageQueue::TrackedPeer* PeerMessageQueue::SetupNewTrackedPeerUnlocked(
   // We don't know how far back this peer is, so set the all replicated watermark to
   // MinimumOpId. We'll advance it when we know how far along the peer is.
   queue_state_.all_replicated_op_id = OpId::Min();
+  queue_state_.all_applied_op_id = OpId::Min();
   return tracked_peer_raw_ptr;
 }
 
@@ -1806,7 +1810,7 @@ OpId PeerMessageQueue::GetAllReplicatedOpId() const {
 
 OpId PeerMessageQueue::GetAllAppliedOpId() const {
   LockGuard lock(queue_lock_);
-  return queue_state_.all_applied_op_id;
+  return queue_state_.mode == Mode::LEADER ? queue_state_.all_applied_op_id : OpId::Min();
 }
 
 OpId PeerMessageQueue::TEST_GetCommittedIndex() const {

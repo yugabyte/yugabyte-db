@@ -172,6 +172,27 @@ TEST_F(YsqlMajorUpgradeTest, SimpleTableRollback) {
 #endif
 }
 
+// The catalog upgrade connects as yugabyte and replays each role's stored, pre-hashed password:
+// yugabyte's is its own change, app_user's is not. Binary upgrade must load both even when the
+// masters give that session a password reuse window, and both are recorded in the history.
+TEST_F(YsqlMajorUpgradeTest, PrehashedPasswordWithReuseWindow) {
+  ASSERT_OK(ExecuteStatements(
+      {"ALTER ROLE yugabyte PASSWORD 'yb_pw_one'",
+       "CREATE ROLE app_user LOGIN PASSWORD 'app_pw_one'"}));
+  for (auto* master : cluster_->master_daemons()) {
+    master->AddExtraFlag("ysql_pg_conf_csv", "yb_password_reuse_history=3");
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<std::string>(
+                "SELECT pwdhstrole::regrole::text FROM pg_yb_password_history "
+                "WHERE pwdhstrole IN ('yugabyte'::regrole, 'app_user'::regrole) ORDER BY 1")),
+            (std::vector<std::string>{"app_user", "yugabyte"}));
+}
+
 TEST_F(YsqlMajorUpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
   static const auto kBackslashD = "\\d";
