@@ -609,6 +609,129 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaInPendingConfigAfterRbsFromFo
       "TEST_follower_pause_update_consensus_requests", "false"));
 }
 
+// A replica is remote bootstrapped from a follower whose Raft log has a config change op that the
+// follower doesn't know is committed, while the leader has a newer pending ADD_SERVER for the
+// replica. The replica reports the follower's op as its pending config op, which hides the pending
+// ADD_SERVER the leader sent with the RBS request. Master must not delete the replica.
+TEST_F(TabletReplacementITest, DontDeleteNewReplicaAfterRbsFromFollowerWithUncommittedConfigOp) {
+  constexpr auto kInitialNumTservers = 5;
+  std::vector<std::string> ts_flags = {
+      "--enable_leader_failure_detection=false", "--committed_config_change_role_timeout_sec=1",
+      "--placement_zone=z${index}"};
+  std::vector<std::string> master_flags = {
+      "--replication_factor=5",
+      "--enable_load_balancing=false",
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false",
+      "--use_create_table_leader_hint=false",
+  };
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kInitialNumTservers));
+
+  ASSERT_OK(CreateTestTablet());
+
+  const int kLeaderIndex = 0;
+  auto* leader_ts = cluster_->tablet_server(kLeaderIndex);
+  auto* leader_ts_details = ts_map_[leader_ts->uuid()].get();
+
+  const auto tablet_id = ASSERT_RESULT(ElectAsLeaderAndGetSingleTabletId(leader_ts_details));
+
+  ASSERT_OK(cluster_->AddTabletServer(true, {"--placement_zone=z4"}));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(6, kTimeout));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  leader_ts_details = ts_map_[leader_ts->uuid()].get();
+
+  const auto kAddedTsIndex = cluster_->num_tablet_servers() - 1;
+  auto* added_ts = cluster_->tablet_server(kAddedTsIndex);
+  auto* added_ts_details = ts_map_[added_ts->uuid()].get();
+
+  LOG(INFO) << "Adding tablet " << tablet_id << " to tserver " << added_ts->uuid();
+  ASSERT_OK(itest::AddServer(
+      leader_ts_details, tablet_id, added_ts_details, PeerMemberType::PRE_VOTER, std::nullopt,
+      kTimeout));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kAddedTsIndex, tablet_id, tablet::TABLET_DATA_READY, kTimeout));
+  ASSERT_OK(itest::WaitForServersToAgree(
+      kTimeout, ts_map_, tablet_id, 1, /* actual_index = */ nullptr,
+      itest::MustBeCommitted::kTrue));
+
+  // The follower in the same zone as the added tserver is the RBS source.
+  const auto kRbsSourceFollowerTsIndex = 4;
+  auto* rbs_source_ts = cluster_->tablet_server(kRbsSourceFollowerTsIndex);
+  auto* rbs_source_ts_details = ts_map_[rbs_source_ts->uuid()].get();
+
+  // The RBS source follower holds the request with REMOVE_SERVER after appending the op and before
+  // marking ops committed. The request was sent before the op was committed, and later requests are
+  // paused, so the follower doesn't learn that REMOVE_SERVER is committed.
+  ASSERT_OK(cluster_->SetFlag(
+      rbs_source_ts, "TEST_delay_update_consensus_before_mark_committed_tablet_id", tablet_id));
+  ASSERT_OK(cluster_->SetFlag(
+      rbs_source_ts, "TEST_delay_update_consensus_before_mark_committed_ms",
+      ToString(10000 * kTimeMultiplier)));
+
+  LOG(INFO) << "Remove tablet " << tablet_id << " from tserver " << added_ts->uuid();
+  ASSERT_OK(itest::RemoveServer(
+      leader_ts_details, tablet_id, added_ts_details, std::nullopt, kTimeout));
+  ASSERT_OK(cluster_->SetFlag(
+      rbs_source_ts, "TEST_follower_pause_update_consensus_requests", "true"));
+  ASSERT_OK(cluster_->SetFlag(
+      rbs_source_ts, "TEST_delay_update_consensus_before_mark_committed_ms", "0"));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kAddedTsIndex, tablet_id, tablet::TABLET_DATA_TOMBSTONED, kTimeout));
+  LOG(INFO) << "Tablet replica has been removed from added node";
+
+  consensus::ConsensusStatePB leader_state;
+  ASSERT_OK(itest::GetConsensusState(
+      leader_ts_details, tablet_id, consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout,
+      &leader_state));
+  const auto remove_server_index = leader_state.config().committed_op_index();
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        const auto received = VERIFY_RESULT(itest::GetLastOpIdForReplica(
+            tablet_id, rbs_source_ts_details, consensus::RECEIVED_OPID, kTimeout));
+        return received.index >= remove_server_index;
+      },
+      kTimeout, "Waiting for the RBS source follower to receive REMOVE_SERVER"));
+  const auto rbs_source_committed = ASSERT_RESULT(itest::GetLastOpIdForReplica(
+      tablet_id, rbs_source_ts_details, consensus::COMMITTED_OPID, kTimeout));
+  LOG(INFO) << "REMOVE_SERVER index: " << remove_server_index
+            << ", committed op id on the RBS source follower: " << rbs_source_committed;
+  ASSERT_LT(rbs_source_committed.index, remove_server_index);
+
+  // Turn off part of followers so ADD_SERVER below remains pending.
+  for (int i = 1; i <= 3; i++) {
+    cluster_->tablet_server(i)->Shutdown();
+  }
+
+  // Ensure RBS is paused so we can reliably turn off next RBS attempts then.
+  ASSERT_OK(cluster_->SetFlag(added_ts, "TEST_pause_rbs_before_download_wal", "true"));
+  LogWaiter log_waiter(
+      added_ts, tablet_id + ": Pausing due to flag TEST_pause_rbs_before_download_wal");
+
+  LOG(INFO) << "Adding tablet " << tablet_id << " back to tserver " << added_ts->uuid();
+  // Timeout is expected because ADD_SERVER can't be committed without a majority.
+  ASSERT_NOK(itest::AddServer(
+      leader_ts_details, tablet_id, added_ts_details, PeerMemberType::PRE_VOTER, std::nullopt,
+      500ms));
+
+  ASSERT_OK(log_waiter.WaitFor(kTimeout));
+  ASSERT_OK(cluster_->SetFlag(leader_ts, "TEST_enable_remote_bootstrap", "false"));
+  ASSERT_OK(cluster_->SetFlag(added_ts, "TEST_pause_rbs_before_download_wal", "false"));
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kAddedTsIndex, tablet_id, tablet::TABLET_DATA_READY, kTimeout));
+  LOG(INFO) << "RBS has been completed on added node";
+
+  AllowTimeForSpuriousDelete();
+
+  LOG(INFO) << "Make sure new replica doesn't get deleted";
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kAddedTsIndex, tablet_id, TABLET_DATA_READY));
+
+  for (int i = 1; i <= 3; i++) {
+    ASSERT_OK(cluster_->tablet_server(i)->Restart());
+  }
+  ASSERT_OK(cluster_->SetFlag(
+      rbs_source_ts, "TEST_follower_pause_update_consensus_requests", "false"));
+}
+
 // Ensure that the Master will tombstone a replica if it reports in with an old
 // config. This tests a slightly different code path in the catalog manager
 // than TestMasterTombstoneEvictedReplica does.
