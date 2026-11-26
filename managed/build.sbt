@@ -162,6 +162,14 @@ lazy val root = (project in file("."))
 
 javacOptions ++= Seq("-source", "17", "-target", "17")
 
+// The packages whose classes the Ebean agent enhances after compiling, ebean.default from the
+// config by default. api.v2 has no entities, only @Transactional methods; it isn't added to
+// ebean.default, from which Play loads every class at startup. The agent then enhances
+// @Transactional only in the transactional-packages of src/main/resources/ebean.mf.
+// Prepended: enhancement silently stops at the first package that has no directory under
+// classDirectory, such as org.yb.perf_advisor, which comes from a jar.
+Compile / playEbeanModels := "api.v2.*" +: (Compile / playEbeanModels).value
+
 // This is for dev-mode server. In dev-mode, the play server is started before the files are compiled.
 // Hence, the application files are not available in the path. For prod, It is in reference.conf file.
 PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.before-service-unbind.timeout" -> "150s"

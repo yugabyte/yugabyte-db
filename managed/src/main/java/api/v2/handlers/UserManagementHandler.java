@@ -18,8 +18,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.Users;
-import io.ebean.DB;
-import io.ebean.Transaction;
+import io.ebean.annotation.Transactional;
 import java.util.UUID;
 import org.apache.commons.validator.routines.EmailValidator;
 
@@ -67,32 +66,38 @@ public class UserManagementHandler {
     }
     passwordPolicyService.checkPasswordPolicy(cUUID, password);
 
-    Users user;
-    String apiToken = null;
-    // Explicit, because ebean.mf enhances @Transactional only under com.yugabyte.yw. The user, its
-    // role bindings and its token are created together or not at all.
-    try (Transaction txn = DB.beginTransaction()) {
-      // Throws CONFLICT for an email that is taken.
-      user =
-          Users.create(
-              spec.getEmail(),
-              password,
-              Users.Role.valueOf(spec.getRole().toString()),
-              cUUID,
-              false /* isPrimary */);
-      if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
-        roleBindingUtil.createRoleBindingsForSystemRole(user);
-      }
-      if (Boolean.TRUE.equals(createSpec.getGenerateApiToken())) {
-        apiToken = user.upsertApiToken();
-      }
-      txn.commit();
-    }
+    CreatedUser created = createUserAndToken(cUUID, spec, password, createSpec);
+    Users user = created.user();
+    String apiToken = created.apiToken();
 
     UserCreation creation = new UserCreation().user(UserMapper.INSTANCE.toV2User(user));
     if (apiToken != null) {
       creation.apiToken(apiToken).apiTokenVersion(user.getApiTokenVersion());
     }
     return creation;
+  }
+
+  private record CreatedUser(Users user, String apiToken) {}
+
+  /** The user, its role bindings and its token are created together or not at all. */
+  @Transactional
+  private CreatedUser createUserAndToken(
+      UUID cUUID, UserSpec spec, String password, UserCreateSpec createSpec) {
+    // Throws CONFLICT for an email that is taken.
+    Users user =
+        Users.create(
+            spec.getEmail(),
+            password,
+            Users.Role.valueOf(spec.getRole().toString()),
+            cUUID,
+            false /* isPrimary */);
+    if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
+      roleBindingUtil.createRoleBindingsForSystemRole(user);
+    }
+    String apiToken = null;
+    if (Boolean.TRUE.equals(createSpec.getGenerateApiToken())) {
+      apiToken = user.upsertApiToken();
+    }
+    return new CreatedUser(user, apiToken);
   }
 }
