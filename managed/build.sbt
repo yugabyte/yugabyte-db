@@ -169,13 +169,13 @@ libraryDependencies ++= Seq(
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-lang3" % "3.17.0",
+  "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.27.1",
   "org.apache.commons" % "commons-csv" % "1.13.0",
-  "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
-  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
-  "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
+  "org.apache.httpcomponents.core5" % "httpcore5" % "5.4.3",
+  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.4.3",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.6.4",
   "org.apache.mina" % "mina-core" % "2.2.9",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
@@ -204,7 +204,7 @@ libraryDependencies ++= Seq(
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
   "com.github.seancfoley" % "ipaddress" % "2.0.1",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
-  "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
+  "org.eclipse.angus" % "jakarta.mail" % "2.0.5",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "prometheus-metrics-core" % "1.4.3",
   "io.prometheus" % "prometheus-metrics-exporter-httpserver" % "1.4.3",
@@ -1091,6 +1091,19 @@ excludeDependencies += "commons-collections" % "commons-collections"
 excludeDependencies += "org.bouncycastle" % "bcpkix-jdk15on"
 excludeDependencies += "org.bouncycastle" % "bcprov-jdk15on"
 excludeDependencies += "org.lz4" % "lz4-java"
+
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949,
+// CVE-2026-106451 and GHSA-48mj-8f7c-7qfm.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.12.1"
+
+// Google Cloud libraries pull Guava transitively.
+dependencyOverrides += "com.google.guava" % "guava" % "33.7.2-jre"
+
+// cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
+// The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
+// Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
+excludeDependencies += "org.glassfish" % "javax.el"
+libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
 
 Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 
