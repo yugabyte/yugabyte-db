@@ -4,7 +4,7 @@ Add an instance type to YugabyteDB Anywhere OCI provider
 
 ### Synopsis
 
-Add an instance type to YugabyteDB Anywhere OCI provider
+Add an instance type to YugabyteDB Anywhere OCI provider. If the instance type exists, it is updated and unset flags keep their current values.
 
 ```
 yba provider oci instance-type add [flags]

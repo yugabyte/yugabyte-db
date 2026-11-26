@@ -6,6 +6,9 @@
 od_retcode_t od_thread_global_init(od_thread_global **gl)
 {
 	*gl = malloc(sizeof(od_thread_global));
+	if (*gl == NULL) {
+		return NOT_OK_RESPONSE;
+	}
 
 	od_conn_eject_info_init(&(*gl)->info);
 

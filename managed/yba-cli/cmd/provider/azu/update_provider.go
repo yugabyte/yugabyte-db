@@ -230,6 +230,12 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := providerutil.ValidateUpdateAddZoneRegions(
+			addRegions, addZones, providerRegions,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		providerRegions = removeAzureRegions(removeRegions, providerRegions)
 
 		providerRegions = editAzureRegions(
@@ -265,7 +271,17 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerImageBundles = removeAzureImageBundles(removeImageBundles, providerImageBundles)
+		if err := providerutil.ValidateImageBundleEdits(
+			removeImageBundles, editImageBundles, nil, providerImageBundles,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles, err = providerutil.RemoveImageBundles(
+			removeImageBundles, providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		providerImageBundles = editAzureImageBundles(
 			editImageBundles,
@@ -623,26 +639,6 @@ func addAzureZones(
 	}
 
 	return zones
-}
-
-func removeAzureImageBundles(
-	removeImageBundles []string,
-	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
-	if len(removeImageBundles) == 0 {
-		return providerImageBundles
-	}
-
-	for _, ib := range removeImageBundles {
-		for i, pIb := range providerImageBundles {
-			if strings.Compare(pIb.GetUuid(), ib) == 0 {
-				providerImageBundles = util.RemoveComponentFromSlice(
-					providerImageBundles, i,
-				).([]ybaclient.ImageBundle)
-			}
-		}
-	}
-
-	return providerImageBundles
 }
 
 func editAzureImageBundles(

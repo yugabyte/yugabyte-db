@@ -103,4 +103,7 @@ private:
 	bool secrets_valid;
 };
 
+/* YB: remove spill folders left by backends of a previous postmaster */
+void YbRemoveStaleSpillFolders();
+
 } // namespace pgduckdb

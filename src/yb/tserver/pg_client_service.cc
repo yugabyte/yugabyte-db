@@ -969,8 +969,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
       const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) {
     // TODO(vector_index) Move method implementation to the place where actual polling could be
-    // implemented. So method could wait until deadline of index is ready.
-    LOG_WITH_FUNC(INFO) << "Table id: " << req.table_id();
+    // implemented.
+    VLOG_WITH_FUNC(1) << "Table id: " << req.table_id();
+    // Stops waiting for the index after kMaxPollTime, so the caller checks for postgres interrupts
+    // between calls instead of noticing a cancelled CREATE INDEX only at the RPC deadline. Only the
+    // wait between checks is capped, since a lookup that times out fails the CREATE INDEX.
+    constexpr auto kMaxPollTime = 1s;
+    const auto poll_deadline = std::min(deadline, CoarseMonoClock::Now() + kMaxPollTime);
     auto& client = this->client();
     bool ready = false;
     for (;;) {
@@ -1050,12 +1055,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         break;
       }
       auto wait_time = 100ms;
-      if (CoarseMonoClock::Now() + wait_time * 2 > deadline) {
+      if (CoarseMonoClock::Now() + wait_time * 2 > poll_deadline) {
         break;
       }
       std::this_thread::sleep_for(wait_time);
     }
-    LOG_WITH_FUNC(INFO) << "Table id: " << req.table_id() << " done, ready = " << ready;
+    LOG_IF_WITH_FUNC(INFO, ready) << "Table id: " << req.table_id() << " ready";
     PgPollVectorIndexReadyResponsePB result;
     result.set_ready(ready);
     return result;
@@ -2559,6 +2564,10 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     db_cache_.Clear();
   }
 
+  void BumpDatabaseSequenceCacheEpoch(PgOid db_oid) {
+    sequence_cache_.BumpDatabaseEpoch(db_oid);
+  }
+
   // Return the TabletServer hosting the specified status tablet.
   std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
       const TabletId& status_tablet_id, CoarseTimePoint deadline) {
@@ -3223,6 +3232,10 @@ void PgClientServiceImpl::Perform(
 void PgClientServiceImpl::InvalidateTableCache(
     const std::optional<PgTableCacheInvalidationFilter>& filter) {
   impl_->InvalidateTableCache(filter);
+}
+
+void PgClientServiceImpl::BumpDatabaseSequenceCacheEpoch(PgOid db_oid) {
+  impl_->BumpDatabaseSequenceCacheEpoch(db_oid);
 }
 
 Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(

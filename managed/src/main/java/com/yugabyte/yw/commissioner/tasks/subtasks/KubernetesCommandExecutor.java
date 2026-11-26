@@ -276,6 +276,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String command = null;
     public String azCode = null;
     public String pvcName = null;
+    // VOLUME_DELETE_SHELL_MODE_MASTER: pods of serverType that keep their PVCs.
     public int newPlacementAzMasterCount = 0;
     public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
     public boolean usePreviousGflagsChecksum = false;
@@ -500,10 +501,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .helmDelete(config, taskParams().helmReleaseName, taskParams().namespace);
         break;
       case VOLUME_DELETE_SHELL_MODE_MASTER:
-        // We are deleting only master volumes for now,
-        // perhaps tserver volumes should also be deleted ?
+        // Deletes the PVCs no pod of the server type uses; master unless serverType is TSERVER.
         Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        String appLabelValue = "yb-master";
+        String appLabelValue =
+            taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master";
         kubernetesManagerFactory
             .getManager()
             .deleteUnusedPVCs(
@@ -1782,12 +1783,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         HelmUtils.mergeYaml(overrides, azOverrides);
       }
     } catch (IOException e) {
-      log.error(
-          String.format(
-              "Error in writing overrides map to string or string to map: "
-                  + "universe overrides: %s, azOverrides: %s",
-              taskParams().universeOverrides, taskParams().azOverrides),
-          e);
+      // The overrides can hold secrets, so they are not logged.
+      log.error("Error in writing overrides map to string or string to map", e);
       throw new RuntimeException("Error in writing overrides map to string.");
     }
     // The provider, universe and AZ overrides were merged over the generated gflags, so they can
@@ -1811,10 +1808,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         serverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
         serverGFlags.remove(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
         serverGFlags.remove(GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
-      } else if (overrides.get("gflags") instanceof Map<?, ?> gflags
-          && gflags.get(server) instanceof Map<?, ?> serverGFlags
-          && serverGFlags.containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
-        ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+      } else {
+        // No instanceof patterns: pr-lint runs google-java-format on Java 11.
+        Object gflags = overrides.get("gflags");
+        Object serverGFlags = gflags instanceof Map ? ((Map<?, ?>) gflags).get(server) : null;
+        if (serverGFlags instanceof Map
+            && ((Map<?, ?>) serverGFlags).containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
+          ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+        }
       }
     }
     // Done after all overrides, so none can turn the sidecar or its TLS on or off or move its port.
@@ -2169,7 +2170,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> values = defaultValuesYaml.load(defaultValuesStr);
       // apply overrides on the helm chart default values
       HelmUtils.mergeYaml(values, overrides);
-      log.trace("Running validations on merged yaml: {}", values);
+      // The values hold the gflags, overrides and TLS keys, so they are not logged.
+      log.trace("Running validations on merged yaml");
       // run any validations against the final values for helm install/upgrade
       // allow K8SCertManager cert type only with override
       allowK8SCertManagerOnlyWithOverride(values);

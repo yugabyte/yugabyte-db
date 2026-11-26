@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -70,11 +71,23 @@ public class RedactSecretsFromAudit {
     log.info("Last redacted version is set to '{}'", LAST_REDACTED_VERSION.get());
   }
 
-  public void start() {
+  /**
+   * Schedules the job once {@code sensitiveGFlagPathsRegistered} completes. A run stamps each row
+   * with the current checksum and doesn't revisit it, so it must not start before the release
+   * sensitive gflag paths it redacts with are registered.
+   */
+  public void start(CompletionStage<?> sensitiveGFlagPathsRegistered) {
     initializeLastRedactedVersion();
     Duration interval = confGetter.getGlobalConf(GlobalConfKeys.bgRedactAuditInterval);
-    platformScheduler.schedule(
-        getClass().getSimpleName(), Duration.ZERO, interval, this::scheduleRunner);
+    sensitiveGFlagPathsRegistered.whenComplete(
+        (result, error) -> {
+          try {
+            platformScheduler.schedule(
+                getClass().getSimpleName(), Duration.ZERO, interval, this::scheduleRunner);
+          } catch (Exception e) {
+            log.error("Failed to schedule audit secrets redaction", e);
+          }
+        });
   }
 
   public static int getLastRedactedVersion() {

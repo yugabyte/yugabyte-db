@@ -13,8 +13,8 @@ import { DiffCardWrapper } from '../DiffCardWrapper';
 import DiffCard, { DiffCardRef } from '../DiffCard';
 import { Task } from '../../../dtos';
 import { BaseDiff } from './BaseDiff';
-import { getGFlagOperation } from '../DiffUtils';
-import { DiffComponentProps, DiffProps, GFlagsDiffProps } from '../dtos';
+import { getGFlagDiffs, getGFlagOperation } from '../DiffUtils';
+import { DiffComponentProps, DiffProps } from '../dtos';
 
 /**
  * Represents a component for displaying the differences the task made during the GFlag operation.
@@ -37,9 +37,11 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
   }
 
   getDiffComponent(): React.ReactElement {
-    const { beforeData }: { beforeData: GFlagsDiffProps } = this.diffProps as {
-      beforeData: GFlagsDiffProps;
-    };
+    const flags = getGFlagDiffs(
+      this.diffProps.beforeData,
+      this.diffProps.afterData,
+      this.diffProps.gflagsAudit
+    );
 
     const cards: Record<string, React.ReactElement<typeof DiffCard>[]> = {
       masterGFlags: [],
@@ -47,7 +49,7 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
     };
 
     // Create the diff cards for the master and tserver GFlags.
-    beforeData?.gflags?.master?.forEach((diff, index) => {
+    flags.master.forEach((diff, index) => {
       cards.masterGFlags.push(
         <DiffCard
           ref={(ref) => this.cardRefs?.push({ current: ref })}
@@ -66,7 +68,7 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
       );
     });
 
-    beforeData?.gflags?.tserver?.forEach((diff) => {
+    flags.tserver.forEach((diff) => {
       // tserverGFlagsDiffs[key].forEach((diff: GFlagDiff) => {
       cards.tserverGFlags.push(
         <DiffCard

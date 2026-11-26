@@ -251,10 +251,15 @@ InitGUC() {
 	    "The maximum memory DuckDB can use in MB (e.g., 4096 for 4GB), alias for duckdb.max_memory",
 	    &duckdb_maximum_memory, 0, INT_MAX, PGC_SUSET, GUC_UNIT_MB);
 
+	/*
+	 * YB: in lake_io mode, pin to the default <DataDir>/pg_duckdb/temp. Spill folders under it are
+	 * removed with remove_all (see YbBackendTemporaryDirectory), which is safe only on a node-local
+	 * folder that nothing else uses.
+	 */
 	DefineCustomDuckDBVariable(
 	    "duckdb.temporary_directory",
 	    "Set the directory to which DuckDB write temp files, alias for duckdb.temporary_directory",
-	    &duckdb_temporary_directory, PGC_SUSET);
+	    &duckdb_temporary_directory, YbIsLakeIoMode() ? PGC_INTERNAL : PGC_SUSET);
 
 	DefineCustomDuckDBVariable(
 	    "duckdb.max_temp_directory_size",

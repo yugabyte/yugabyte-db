@@ -55,6 +55,7 @@ from datetime import datetime, timedelta, timezone
 from collections import Counter, defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
+SCRIPT_FINGERPRINT = '{{SCRIPT_FINGERPRINT}}'
 
 MASTER = "yb-master"
 TSERVER = "yb-tserver"
@@ -558,6 +559,7 @@ class Report:
     def as_json(self):
         j = {
             "timestamp_iso": self.start_ts,
+            "script_fingerprint": SCRIPT_FINGERPRINT,
             "data": [entry.as_json() for entry in self.entries]
         }
         return json.dumps(j, indent=2)
@@ -1585,6 +1587,17 @@ class NodeChecker():
 
         return ysqlsh_cmd
 
+    def _run_ysqlsh_connect_query(self, e, metric, ysqlsh_cmd):
+        # Tuples only and no-alignment.
+        cmd = "{} -t -A -c \"SELECT 1\"".format(ysqlsh_cmd)
+        errors = []
+        output = self._check_output(cmd).strip()
+        if '1' not in [line.strip() for line in output.splitlines()]:
+            errors = [output]
+        is_error = len(errors) > 0
+        metric.add_value(0 if is_error else 1)
+        return e.fill_and_return_entry(errors, has_error=is_error, metrics=[metric])
+
     def check_ysqlsh_connect(self):
         logging.info("Checking ysqlsh works for node {} with port {}"
                     .format(self.node, self.ysql_port))
@@ -1597,15 +1610,7 @@ class NodeChecker():
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
 
-        cmd = "{} -c \"\\\\conninfo\"".format(ysqlsh_cmd)
-
-        errors = []
-        output = self._check_output(cmd).strip()
-        if 'You are connected to database' not in output:
-            errors = [output]
-        is_error = len(errors) > 0
-        metric.add_value(0 if is_error else 1)
-        return e.fill_and_return_entry(errors, has_error=is_error, metrics=[metric])
+        return self._run_ysqlsh_connect_query(e, metric, ysqlsh_cmd)
 
     def check_ysqlsh_conn_mgr_connect(self):
         logging.info("Checking ysqlsh works for node {} with internal port {}"
@@ -1620,15 +1625,7 @@ class NodeChecker():
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
 
-        cmd = "{} -c \"\\\\conninfo\"".format(ysqlsh_cmd)
-
-        errors = []
-        output = self._check_output(cmd).strip()
-        if 'You are connected to database' not in output:
-            errors = [output]
-        is_error = len(errors) > 0
-        metric.add_value(0 if is_error else 1)
-        return e.fill_and_return_entry(errors, has_error=is_error, metrics=[metric])
+        return self._run_ysqlsh_connect_query(e, metric, ysqlsh_cmd)
 
     def kill_spawned_postgres_workers(self):
         postmaster_pid = self.get_process_pid_by_name(POSTMASTER)

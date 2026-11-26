@@ -1216,6 +1216,44 @@ YbForEachPortal(void (*callback) (Portal portal))
 }
 
 /*
+ * Called at every idle ReadyForQuery under Connection Manager, so it must stay
+ * cheap. Portals are destroyed when the transaction ends unless they are WITH
+ * HOLD, so usually the table is empty or its first entry is a holdable cursor.
+ */
+bool
+YbHasHoldablePortal(void)
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+
+	if (PortalHashTable == NULL || hash_get_num_entries(PortalHashTable) == 0)
+		return false;
+
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		if (hentry->portal->cursorOptions & CURSOR_OPT_HOLD)
+		{
+			hash_seq_term(&status);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void
+YbConnMgrLatchIfCursorExcluded(Portal portal)
+{
+	if (!(portal->cursorOptions & CURSOR_OPT_HOLD))
+		return;
+
+	if (yb_conn_mgr_cursor_permanent_sticky)
+		yb_ysql_conn_mgr_sticky_cursor = true;
+}
+
+/*
  * Hold all pinned portals.
  *
  * When initiating a COMMIT or ROLLBACK inside a procedure, this must be

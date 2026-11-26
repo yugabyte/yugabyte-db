@@ -143,6 +143,7 @@ public class AWSUtil implements CloudUtil {
   @Inject WSClient wsClient;
   @Inject RuntimeConfGetter runtimeConfGetter;
   @Inject AWSCloudImpl awsCloudImpl;
+  @Inject HostCloudDetector hostCloudDetector;
 
   public static final String AWS_S3_LOCATION_PREFIX = "s3://";
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
@@ -1030,7 +1031,8 @@ public class AWSUtil implements CloudUtil {
                     .getTemporaryCredentials(s3Data)));
       } catch (Exception e) {
         log.error("Fetching IAM credentials failed: {}", e.getMessage());
-        throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, withIamRoleAdviceOnGcp(s3Data, e.getMessage()));
       }
     } else {
       String key = s3Data.awsAccessKeyId;
@@ -1759,8 +1761,36 @@ public class AWSUtil implements CloudUtil {
     } catch (Exception e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
-          String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage()));
+          withIamRoleAdviceOnGcp(
+              s3Data,
+              String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage())));
     }
+  }
+
+  /**
+   * The error of an IAM role config whose AWS credentials could not be had, with the way out on a
+   * YBA that runs on GCP, such as an HA standby promoted there: an IAM role config made on a YBA on
+   * AWS hands that YBA's own credentials to the DB nodes, and a YBA on GCP has them only if its
+   * host is set up with some. The advice is conditional, as the error may also come from AWS
+   * refusing or throttling credentials the host has. A config already federated gets no advice:
+   * what it lacks is the aws entry that the federation error describes.
+   */
+  @VisibleForTesting
+  String withIamRoleAdviceOnGcp(CustomerConfigStorageS3Data s3Data, String error) {
+    if (isCrossCloudFederationConfig(s3Data)
+        || hostCloudDetector == null
+        || !hostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp)) {
+      return error;
+    }
+    return error
+        + ". YBA runs on GCP, where an IAM role storage config has AWS credentials only if this"
+        + " host is set up with them: an AWS profile, a web identity token or container"
+        + " credentials. If it is not, turn on Federated IAM on the storage config, and set its"
+        + " Signing Region to the bucket's region unless the host base names it: for a federated"
+        + " config YBA does not look the region up, and otherwise uses us-east-1. YBA and the GCP"
+        + " DB nodes then reach S3 through the provider's federated IAM entry for aws, whose role"
+        + " must trust this YBA's service account as well as the nodes'. The AWS DB nodes use"
+        + " their own instance role instead, which must then have access to the bucket.";
   }
 
   @Override

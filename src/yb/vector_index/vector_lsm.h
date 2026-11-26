@@ -18,6 +18,7 @@
 #include <future>
 #include <map>
 #include <mutex>
+#include <span>
 #include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
@@ -32,6 +33,7 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_lsm_deletions.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
 namespace yb {
@@ -76,6 +78,9 @@ struct VectorLSMInsertContext {
   // the caller must keep the hold until the write that carries the reverse mappings of the inserted
   // vectors is visible to readers, and should release it right after.
   VectorLSMChunkHolds* chunk_holds = nullptr;
+  // Deletions of vectors in any chunk. They take capacity of the chunk the insert goes to, which
+  // keeps them until it is saved.
+  std::span<const VectorLSMDeletion> deletions = {};
 };
 
 template<IndexableVectorType Vector,
@@ -150,6 +155,9 @@ class VectorLSM {
   ~VectorLSM();
 
   Status Open(Options options);
+  // Stops the LSM without waiting: its inserts skip the vectors they have not inserted yet, and it
+  // saves no more chunks. Destroy waits for the tasks still using it and deletes its storage.
+  void StartDestroy();
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
@@ -186,6 +194,9 @@ class VectorLSM {
   size_t DefaultChunkCapacity() const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
+
+  // Returns the deletions of all chunks.
+  VectorLSMDeletionsLookup DeletionsLookup() const EXCLUDES(mutex_);
 
   Result<size_t> TotalEntries() const;
 
@@ -284,6 +295,9 @@ class VectorLSM {
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
   bool FlushesRetiredUnlocked() const REQUIRES(mutex_);
 
+  // StartDestroy cancels the registries. A destroyed LSM saves no chunks.
+  bool IsDestroyed() const;
+
   // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
   void ReleaseChunkHold(MutableChunk& chunk);
 
@@ -291,6 +305,8 @@ class VectorLSM {
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
   void RecordFailureUnlocked(const Status& status) REQUIRES(mutex_);
+  // Completes the flush waiters of the chunks in updates_queue_ with status.
+  void ReleaseFlushWaitersUnlocked(const Status& status) REQUIRES(mutex_);
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);

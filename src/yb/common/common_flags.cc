@@ -142,7 +142,8 @@ DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_replication_slot_transactional_ddl, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_transactional_ddl,
+    kLocalPersisted, false, true,
     "When set, logical replication with transactional DDL support is enabled.");
 
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
@@ -291,19 +292,20 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
-    "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
-    "support.] Use this flag to toggle support for concurrent DDLs.");
-DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+    "Takes effect only when enable_object_locking_for_table_locks is true and "
+    "disable_global_object_locks is false. When true, DDLs on unrelated objects run "
+    "concurrently, and object locks order DDLs on related objects. When false, the DDLs in a "
+    "database that increment the catalog version run one at a time, even on unrelated objects. "
+    "DDLs that do not increment the catalog version and ANALYZEs from the auto-analyze service "
+    "do not wait. A DDL that increments the catalog version of every database, such as one that "
+    "changes a shared catalog, waits only for the DDLs in the database it runs in. Set the same "
+    "value on every tserver: a DDL on a tserver where it is true does not wait.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(

@@ -803,7 +803,8 @@ YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
-bool YBCIsRestartReadPointRequested();
+void YBCPgResetRetryReadLimitCaps();
+bool YBCPgIsReadRestartRetryInProgress();
 YbcStatus YBCPgCommitPlainTransaction();
 YbcStatus YBCPgCommitPlainTransactionContainingDDL(
     YbcPgOid ddl_db_oid, bool ddl_is_silent_altering);
@@ -836,8 +837,8 @@ bool YBCUsingObjectLocksGloballyForCurrentTxn();
 
 // Whether DDLs run inside the enclosing transaction block.
 // ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
-// enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
-// object locking feature. It therefore follows global object locks for the current transaction.
+// enable_object_locking_for_table_locks, so this is part of the object locking feature. It
+// therefore follows global object locks for the current transaction.
 bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor
@@ -1008,7 +1009,11 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
+// part_of_connection_prefetch says this prefetch is a connection start's. These rounds carry no
+// caching info, so without it the first of them would look like an ordinary read and drop the
+// claim. See PgPerformOptionsPB.part_of_connection_prefetch.
+void YBCStartSysTablePrefetchingNoCache(
+    YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch);
 
 // send_away_if_fill_in_flight asks the tserver to answer Incomplete rather than queue this
 // prefetch behind a fill already under way in the same database, so the caller reads the older
@@ -1017,9 +1022,8 @@ void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 // one, or the two would answer each other. It reaches the wire only on the prefetch's opening
 // round; a round after that has fetched data a send-away would throw away.
 //
-// part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
-// counting the database as busy for the whole of it rather than only while one of its requests is
-// in flight.
+// part_of_connection_prefetch says this prefetch is a connection start's.
+// See PgPerformOptionsPB.part_of_connection_prefetch.
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,

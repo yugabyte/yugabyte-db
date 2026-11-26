@@ -109,13 +109,14 @@
 #include "utils/relfilenodemap.h"
 
 /* YB includes */
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/catcache.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -2243,7 +2244,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
-						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+						if (yb_enable_replication_slot_transactional_ddl)
 						{
 							const uint32_t *aborted_subtxn_set;
 							int			aborted_subtxn_set_size;
@@ -2516,6 +2517,15 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				case YB_REORDER_BUFFER_CHANGE_DDL:
 					YBCInvalidateCachesForHistoricalReadContext();
+					/*
+					 * A DDL record without a table comes from a pg_namespace
+					 * change such as ALTER SCHEMA ... RENAME TO. In such
+					 * cases, we need to invalidate the catalog cache,
+					 * otherwise the old cached schema name will be sent in
+					 * the RELATION message.
+					 */
+					if (!OidIsValid(change->data.yb_ddl.table_oid))
+						CatalogCacheFlushCatalog(NamespaceRelationId);
 					/*
 					 * Inform the output plugin about the schema change so that
 					 * it can send the RELATION message to the client.

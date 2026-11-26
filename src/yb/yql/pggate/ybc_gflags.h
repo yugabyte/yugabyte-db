@@ -61,6 +61,7 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_neghit_full_inheritscache;
   const bool*     enable_object_locking_for_table_locks;
+  const bool*     ysql_enable_concurrent_ddl;
   const bool*     ysql_yb_enable_ddl_savepoint_support;
   const bool*     ysql_bypass_anonymous_savepoint_ddl_check;
   const uint32_t* ysql_max_invalidation_message_queue_size;
@@ -78,9 +79,9 @@ typedef struct {
   const char *    placement_region;
   const char *    placement_zone;
   const int64_t*  TEST_delay_after_table_analyze_ms;
+  const uint32_t* TEST_ysql_delay_before_relcache_init_phase3_ms;
   const bool*     TEST_enable_obj_tuple_locks;
   const bool*     TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
-  const bool*     TEST_ysql_yb_enable_replication_slot_transactional_ddl;
   const uint32_t* wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
   const uint64_t* ysql_catalog_prefetch_row_limit;
   const uint64_t* ysql_catalog_prefetch_size_limit;

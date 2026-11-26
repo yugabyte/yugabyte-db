@@ -72,6 +72,7 @@ DECLARE_double(TEST_tserver_ysql_lease_refresh_failure_prob);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint64(object_lock_cleanup_interval_ms);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
+DECLARE_bool(TEST_pause_obj_lock_acquire_before_persist);
 DECLARE_bool(TEST_pause_obj_lock_release_before_persist);
 DECLARE_bool(TEST_pause_ysql_lease_refresh_after_epoch_update);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
@@ -2490,11 +2491,36 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
 
   auto added_ts = cluster_->tablet_server(1);
   auto added_ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(1);
-  auto future = ReleaseLockAtAsync(
-      &added_ts_proxy, ts->uuid(), kTxn1, kLeaseEpoch, /* clock */ nullptr,
-      /* apply_after */ std::nullopt, MonoDelta::FromSeconds(10));
-  ASSERT_OK(LogWaiter(added_ts, "Waiting until object lock manager is bootstrapped")
-                .WaitFor(MonoDelta::FromSeconds(2)));
+  // Register before sending the release, the tserver may log this right away.
+  LogWaiter log_waiter(added_ts, "Waiting until object lock manager is bootstrapped");
+  // The lease refresher starts only after initdb on the new tserver, so the release must outlive
+  // initdb.
+  std::future<Result<tserver::ReleaseObjectLockResponsePB>> future;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        if (!future.valid()) {
+          future = ReleaseLockAtAsync(
+              &added_ts_proxy, ts->uuid(), kTxn1, kLeaseEpoch, /* clock */ nullptr,
+              /* apply_after */ std::nullopt, 60s * kTimeMultiplier);
+        }
+        if (log_waiter.IsEventOccurred()) {
+          return true;
+        }
+        if (future.wait_for(100ms) != std::future_status::ready) {
+          return false;
+        }
+        // The tserver may still be starting up (e.g. the RPC server comes up before the lock
+        // manager is created); resend on such errors.
+        auto result = future.get();
+        SCHECK(!result.ok(), IllegalState, "Release completed before lock manager bootstrap");
+        const auto& s = result.status();
+        if (s.IsNetworkError() || s.IsServiceUnavailable() || s.IsTimedOut() ||
+            (s.IsIllegalState() && s.message().Contains("TSLocalLockManager not found"))) {
+          return false;
+        }
+        return s;
+      },
+      30s * kTimeMultiplier, "Wait for release to block until bootstrap"));
   ASSERT_EQ(future.wait_for(0s), std::future_status::timeout)
       << "Expected release request to block at tserver that has not acquired a lease yet";
 
@@ -2606,6 +2632,62 @@ INSTANTIATE_TEST_CASE_P(
     TestLeaseReacquisitionRace,
     ExternalObjectLockTestLeaseLost,
     ::testing::Values(DisableLeaseMode::DisablePoller, DisableLeaseMode::DisablePollerAndChecker));
+
+// An acquire granted inline by the master leader's local lock manager runs the master's callback,
+// which persists the lock and launches the fanout, on the acquiring thread. A catalog load on that
+// master resets the local lock manager and must not wait for such a callback (#34341). Once the
+// load is done, the paused callback fails its epoch check and the client retries the acquire.
+TEST_F_EX(
+    ObjectLockTest, CatalogLoadDoesNotWaitForInlineAcquireCallback, MultiMasterObjectLockTest) {
+  ASSERT_OK(EnsureClientCreated());
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  const auto leader_uuid = leader->permanent_uuid();
+  auto* catalog_manager = leader->master()->catalog_manager_impl();
+  const auto loaded_term = catalog_manager->catalog_loaded_term();
+  auto local_lock_manager =
+      catalog_manager->object_lock_info_manager()->TEST_ts_local_lock_manager();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = true;
+  auto unpause = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = false;
+  });
+  auto ddl_future = AcquireLockGloballyAsync(
+      client_.get(), TSUuid(0), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, std::nullopt,
+      kTimeout * 5 * kTimeMultiplier);
+  // Nothing conflicts, so the lock is granted inline and the callback pauses before persisting.
+  ASSERT_OK(WaitFor(
+      [&local_lock_manager] { return local_lock_manager->TEST_GrantedLocksSize() > 0; },
+      kTimeout, "wait for the lock to be granted by the master leader"));
+
+  // Move leadership away and back, so that the same master reloads its catalog.
+  std::string other_uuid;
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    if (cluster_->mini_master(i)->permanent_uuid() != leader_uuid) {
+      other_uuid = cluster_->mini_master(i)->permanent_uuid();
+      break;
+    }
+  }
+  for (const auto& new_leader_uuid : {other_uuid, leader_uuid}) {
+    ASSERT_OK(ResultToStatus(cluster_->StepDownMasterLeader(new_leader_uuid)));
+    ASSERT_OK(LoggedWaitFor(
+        [this, &new_leader_uuid]() -> Result<bool> {
+          auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+          return master->permanent_uuid() == new_leader_uuid;
+        },
+        kTimeout, Format("wait for $0 to become the master leader", new_leader_uuid)));
+  }
+  ASSERT_OK(LoggedWaitFor(
+      [catalog_manager, loaded_term] {
+        return catalog_manager->catalog_loaded_term() > loaded_term;
+      },
+      kTimeout, "wait for the catalog load with the acquire callback still paused"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = false;
+  // The client's first attempt has the whole request deadline, so it can't time out and retry on
+  // its own. Succeeding requires the paused callback's epoch-changed error to be retryable.
+  ASSERT_OK(ResolveFutureStatus(ddl_future));
+  ASSERT_OK(ReleaseLockGlobally(client_.get(), TSUuid(0), kTxn1, kLeaseEpoch));
+}
 
 class MultiMasterObjectLockTestWithFailover : public MultiMasterObjectLockTest,
                                               public ::testing::WithParamInterface<bool> {

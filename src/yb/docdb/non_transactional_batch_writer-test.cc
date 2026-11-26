@@ -97,6 +97,7 @@ class CountingVectorIndex : public DocVectorIndex {
   Status GetFlushStatus() const override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
+  void StartDestroy() override { LOG(FATAL) << "Unexpected call"; }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
   Result<size_t> TotalEntries() const override { LOG(FATAL) << "Unexpected call"; }
   uint64_t OnDiskSize() const override { LOG(FATAL) << "Unexpected call"; }

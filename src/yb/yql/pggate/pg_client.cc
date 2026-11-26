@@ -1002,6 +1002,21 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgRestartTransactionForRetryResponsePB> RestartTransactionForRetry(
+      tserver::PgPerformOptionsPB* options,
+      tserver::PgRestartTransactionForRetryRequestPB::Kind kind) {
+    tserver::PgRestartTransactionForRetryRequestPB req;
+    req.set_session_id(session_id_);
+    options->Swap(req.mutable_options());
+    req.set_kind(kind);
+
+    tserver::PgRestartTransactionForRetryResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RestartTransactionForRetry,
+        req, resp, PggateRPC::kRestartTransactionForRetry));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
@@ -1270,6 +1285,13 @@ class PgClient::Impl : public BigDataFetcher {
   bool TryReleaseAllObjectLocksInSharedMemory() {
     if (auto lock_shared = GetObjectLockSharedState()) {
       return (*lock_shared)->UnlockAll();
+    }
+    return false;
+  }
+
+  bool IsObjectLockSharedStateEnabled() {
+    if (auto lock_shared = GetObjectLockSharedState()) {
+      return (*lock_shared)->IsEnabled();
     }
     return false;
   }
@@ -2384,6 +2406,12 @@ Status PgClient::RollbackToSubTransaction(
   return impl_->RollbackToSubTransaction(id, options);
 }
 
+Result<tserver::PgRestartTransactionForRetryResponsePB> PgClient::RestartTransactionForRetry(
+    tserver::PgPerformOptionsPB* options,
+    tserver::PgRestartTransactionForRetryRequestPB::Kind kind) {
+  return impl_->RestartTransactionForRetry(options, kind);
+}
+
 Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {
   return impl_->ValidatePlacement(req);
 }
@@ -2463,6 +2491,10 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
 
 bool PgClient::TryReleaseAllObjectLocksInSharedMemory() {
   return impl_->TryReleaseAllObjectLocksInSharedMemory();
+}
+
+bool PgClient::IsObjectLockSharedStateEnabled() {
+  return impl_->IsObjectLockSharedStateEnabled();
 }
 
 Status PgClient::AcquireObjectLock(

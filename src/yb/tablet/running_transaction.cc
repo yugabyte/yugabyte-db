@@ -623,9 +623,15 @@ Status MakeAbortedStatus(const TransactionId& id) {
   return CreateAbortedStatus("Transaction aborted: $0", id);
 }
 
+void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state) {
+  SetApplyData(apply_state, /* data= */ nullptr, /* operation= */ nullptr,
+               ApplyOnCallingThread::kFalse);
+}
+
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
                                       const TransactionApplyData* data,
-                                      ScopedRWOperation* operation) {
+                                      ScopedRWOperation* operation,
+                                      ApplyOnCallingThread apply_on_calling_thread) {
   // TODO(savepoints): Add test to ensure that apply_state.aborted is properly set here.
   apply_state_ = apply_state;
   bool active = apply_state_.active();
@@ -649,7 +655,12 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
         << "Commit time does not match: " << local_commit_time_ << " vs " << data->commit_ht;
 
     if (apply_intents_task_.Prepare(shared_from_this(), operation)) {
-      context_.participant_context_.StrandEnqueue(&apply_intents_task_);
+      if (apply_on_calling_thread) {
+        apply_intents_task_.Run();
+        apply_intents_task_.Done(Status::OK());
+      } else {
+        context_.participant_context_.StrandEnqueue(&apply_intents_task_);
+      }
     } else {
       LOG_WITH_PREFIX(DFATAL) << "Unable to prepare apply intents task";
     }
@@ -667,8 +678,9 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 }
 
-void RunningTransaction::SetApplyOpId(const OpId& op_id) {
+void RunningTransaction::SetApplyInfo(const OpId& op_id, HybridTime log_ht) {
   apply_record_op_id_ = op_id;
+  apply_record_log_ht_ = log_ht;
 }
 
 bool RunningTransaction::ProcessingApply() const {
