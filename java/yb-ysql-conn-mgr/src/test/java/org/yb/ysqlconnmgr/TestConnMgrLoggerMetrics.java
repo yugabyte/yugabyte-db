@@ -25,7 +25,8 @@ import org.yb.util.RequiresLinux;
 @RunWith(value = YBTestRunner.class)
 public class TestConnMgrLoggerMetrics extends BaseYsqlConnMgr {
 
-  // On an idle cluster the logger metrics are exported and show an empty queue and no drops.
+  // On an idle cluster the logger metrics are exported, report no drops, and show a queue below
+  // the logger's 256-line limit.
   @Test
   public void testLoggerMetricsOnIdleCluster() throws Exception {
     TestUtils.waitFor(() -> {
