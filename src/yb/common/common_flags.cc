@@ -297,9 +297,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
     "disable_global_object_locks is false. When true, DDLs on unrelated objects run "
     "concurrently, and object locks order DDLs on related objects. When false, the DDLs in a "
     "database that increment the catalog version run one at a time, even on unrelated objects. "
-    "DDLs that do not increment the catalog version and ANALYZEs from the auto-analyze service "
-    "do not wait. A DDL that increments the catalog version of every database, such as one that "
-    "changes a shared catalog, waits only for the DDLs in the database it runs in. Set the same "
+    "These do not wait: DDLs that do not increment the catalog version, ANALYZEs from the "
+    "auto-analyze service, CREATE DATABASE, and DDLs replayed from a ysql_dump script "
+    "(yb_binary_restore). Any other DDL that increments the catalog version of every database, "
+    "such as one that changes a shared catalog, waits only for the DDLs in the database it runs "
+    "in. Set the same "
     "value on every tserver: a DDL on a tserver where it is true does not wait.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
