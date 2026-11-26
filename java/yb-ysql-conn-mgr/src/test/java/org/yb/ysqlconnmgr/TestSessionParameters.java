@@ -177,6 +177,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] {}),
     new SessionParameter("transaction_read_only", "off", "off", "on",
       new ExceptionType[] { ExceptionType.TRANSACTION_ONLY }),
+    new SessionParameter("default_tablespace", "", "pg_default",
+      new ExceptionType[] {}),
 
     // Sticky GUC variables make the primary connection sticky, test at the end.
 
@@ -186,8 +188,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("role", "none", "test2",
       new ExceptionType[] { ExceptionType.AUTH_PARAM, ExceptionType.INVALID_STARTUP,
         ExceptionType.STICKY_PARAM }),
-    new SessionParameter("default_tablespace", "", "pg_default",
-      new ExceptionType[] { ExceptionType.STICKY_PARAM }),
     new SessionParameter("temp_tablespaces", "", "pg_default",
       new ExceptionType[] { ExceptionType.STICKY_PARAM }),
   };
@@ -1243,6 +1243,47 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // The client sets default_tablespace by SET or in the startup packet, then another session
+  // drops the tablespace. A second client takes the only backend, then the client's next query
+  // replays the value on it. As in Postgres, CREATE TABLE then uses the database's tablespace.
+  @Test
+  public void testDefaultTablespaceReplaysAfterDrop() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      for (boolean startupPacket : new boolean[] {false, true}) {
+        String ts = "cm_ts_" + (startupPacket ? "startup" : "set");
+        String table = ts + "_tbl";
+        pgStmt.execute("CREATE TABLESPACE " + ts + " LOCATION '/invalid'");
+        try {
+          ConnectionBuilder builder = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+          if (startupPacket) {
+            builder = builder.withOptions("-c default_tablespace=" + ts);
+          }
+          try (Connection conn = builder.connect();
+               Statement stmt = conn.createStatement()) {
+            if (!startupPacket) {
+              stmt.execute("SET default_tablespace = '" + ts + "'");
+            }
+            pgStmt.execute("DROP TABLESPACE " + ts);
+
+            startQueuedClient().assertServed();
+            assertSettingValues(stmt, new String[] {"default_tablespace", ts});
+            stmt.execute("CREATE TABLE " + table + " (a int)");
+            ResultSet rs = stmt.executeQuery(
+                "SELECT reltablespace FROM pg_class WHERE relname = '" + table + "'");
+            assertTrue(rs.next());
+            assertEquals(0L, rs.getLong(1));
+          }
+        } finally {
+          pgStmt.execute("DROP TABLE IF EXISTS " + table);
+          pgStmt.execute("DROP TABLESPACE IF EXISTS " + ts);
+        }
+      }
+    }
+  }
+
   // The client sets yb_read_time and another setting, so its next deploy carries more than one
   // value. A second client takes the only backend, then the client's next query replays both on
   // it, and both must come back. yb_read_time's check hook, which rejects a transaction block, is
@@ -1381,7 +1422,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   // from the config file (ysql_pg_conf_csv), at startup or on SIGHUP, is applied by every backend
   // of the pool, so it must not.
   private static final String[][] STICKY_ON_SET_SETTINGS = {
-      {"default_tablespace", "pg_default"},
       {"temp_tablespaces", "pg_default"},
       {"yb_read_after_commit_visibility", "relaxed"},
   };
