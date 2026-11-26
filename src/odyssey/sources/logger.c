@@ -520,9 +520,12 @@ static inline void _od_logger_write(od_logger_t *l, char *data, int len,
 	(void)rc;
 }
 
+static __thread int yb_od_is_logger_thread = 0;
+
 static inline void od_logger(void *arg)
 {
 	od_logger_t *logger = arg;
+	yb_od_is_logger_thread = 1;
 
 	for (;;) {
 		machine_msg_t *msg;
@@ -544,9 +547,9 @@ static inline void od_logger(void *arg)
 					logger->current_log_size += len;
 				}
 			}
-			_od_logger_write(logger, le->msg, len, le->lvl);
+			_od_logger_write(logger, le->msg, len, le->lvl);			
 			if (le->lvl == OD_FATAL)
-				logger->yb_fatal_written = 1;
+				od_atomic_u32_inc(&logger->yb_fatal_written);
 		} break;
 		default: {
 			assert(0);
@@ -584,7 +587,8 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 	int len;
 	len = od_logger_format(logger, level, context, client, server, fmt,
 			       args, output, sizeof(output));
-	if (logger->loaded) {
+	if (logger->loaded &&
+	    !(level == OD_FATAL && yb_od_is_logger_thread)) {
 		/* create new log event and pass it to logger pool */
 		machine_msg_t *msg;
 		msg = machine_msg_create(od_log_entry_req_size(len));
@@ -596,14 +600,20 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 		le->msg[len] = '\0';
 
 		int rc = machine_channel_write(logger->task_channel, msg);
-		if (rc == MM_OK_RETCODE && level == OD_FATAL) {
+		if (level == OD_FATAL) {
 			/*
 			 * od_fatal() exits right after this returns. Wait (bounded)
-			 * for the logger thread to write the line rather than writing
-			 * it here, since that thread may rotate and close logger->fd.
+			 * for the logger thread to write the line, since that thread
+			 * may rotate and close logger->fd. If the queue rejected it
+			 * (the channel frees msg), write it here as a last resort.
 			 */
-			for (int i = 0; i < 1000 && !logger->yb_fatal_written; i++)
-				usleep(1000);
+			if (rc != MM_OK_RETCODE)
+				_od_logger_write(logger, output, len, level);
+			else
+				for (int i = 0; i < 1000 &&
+						!od_atomic_u32_of(&logger->yb_fatal_written);
+				     i++)
+					usleep(1000);
 		}
 	} else {
 		_od_logger_write(logger, output, len, level);

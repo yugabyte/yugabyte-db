@@ -39,7 +39,7 @@ struct od_logger {
 	int64_t machine;
 	/* makes sence only with use_asynclog option on */
 	machine_channel_t *task_channel;
-	_Atomic int yb_fatal_written;
+	od_atomic_u32_t yb_fatal_written;
 };
 
 extern od_retcode_t od_logger_init(od_logger_t *, od_pid_t *);
