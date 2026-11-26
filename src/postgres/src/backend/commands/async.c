@@ -3696,7 +3696,11 @@ ybNotifsPollerInit(void)
 
 		is_restart = poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS;
 
-		/* FAILED would refuse new LISTENs while existing ones get nothing. */
+		/*
+		 * On a restart, don't set init_status to FAILED: new LISTENs would
+		 * fail, but existing listeners would stay connected and get no
+		 * notifications. Retry like a runtime error.
+		 */
 		if (is_restart)
 		{
 			FlushErrorState();
