@@ -661,8 +661,8 @@ TEST_P(PgVectorIndexTest, ReadBeforeIndexCreation) {
   }
 }
 
-// A transaction that picked its read time before creating a vector index can't search it. The index
-// of a non-colocated table created by the same transaction is searchable.
+// A transaction that picked its read time before creating a vector index can't search it, even when
+// it created the indexed table too.
 TEST_P(PgVectorIndexTest, SearchInIndexCreatingTransaction) {
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, 1, 16));
@@ -706,13 +706,9 @@ TEST_P(PgVectorIndexTest, SearchInIndexCreatingTransaction) {
         "CREATE INDEX ON $0 USING ybhnsw (embedding $1)", table, VectorOpsName()));
     query = Format("SELECT * FROM $0$1", table, query_suffix);
     ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-    // Reads of a table created by the transaction use a later read time, unless the table is
-    // colocated.
-    if (IsColocated()) {
-      ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
-    } else {
-      ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), ExpectedRow(1));
-    }
+    // This branch has no read_at_in_txn_limit, so reads of a table created by the transaction
+    // use its read time too.
+    ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
     ASSERT_OK(conn.Execute("ROLLBACK"));
   }
 }
