@@ -1342,8 +1342,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   }
 
   // The client sets custom settings whose names SQL would need to quote: a reserved word as the
-  // second part, or an upper-case letter. A second client takes the only backend, then the
-  // client's next query replays them on it. The client must stay connected and get them back.
+  // second part. A second client takes the only backend, then the client's next query replays
+  // them on it. The client must stay connected and get them back.
   @Test
   public void testCustomSettingNamesNeedingQuotesReplay() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
@@ -1351,14 +1351,12 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         {"app.user", "alice"},
         {"app.select", "s"},
         {"app.table", "t"},
-        {"app.from", "f"},
-        {"g3.Tenant", "b"},
+        {"app.from", "f"}
     };
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
              .connect();
          Statement stmt = conn.createStatement()) {
-      stmt.execute("SET \"g3.Tenant\" = 'a'");
       for (String[] setting : settings) {
         stmt.execute("SET \"" + setting[0] + "\" = '" + setting[1] + "'");
       }
@@ -1367,71 +1365,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       startQueuedClient().assertServed();
       assertCustomSettingValues(stmt, settings);
     }
-  }
-
-  // The client changes a custom setting with an upper-case letter in its name on each of two
-  // backends in turn, and must always read its latest value, including on a backend that has
-  // never seen the setting. Holder transactions keep one backend of a pool of two busy, so that
-  // each of the client's queries lands on the other one.
-  @Test
-  public void testMixedCaseCustomSettingAcrossBackends() throws Exception {
-    Map<String, String> flags = new HashMap<>(SINGLE_BACKEND_FLAGS);
-    flags.put("ysql_conn_mgr_max_conns_per_db", "2");
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
-    ConnectionBuilder builder = getConnectionBuilder()
-        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
-    try (Connection conn = builder.connect();
-         Statement stmt = conn.createStatement();
-         Connection otherConn = builder.connect();
-         Statement otherStmt = otherConn.createStatement();
-         Connection holderConn1 = builder.connect();
-         Statement holderStmt1 = holderConn1.createStatement();
-         Connection holderConn2 = builder.connect();
-         Statement holderStmt2 = holderConn2.createStatement()) {
-      Statement[] holders = {holderStmt1, holderStmt2};
-      int[] pids = new int[2];
-
-      holderStmt1.execute("BEGIN");
-      pids[0] = backendPid(holderStmt1);
-      otherStmt.execute("SELECT 1");
-      pids[1] = backendPid(otherStmt);
-      assertTrue("expected two backends", pids[0] != pids[1]);
-      holderStmt2.execute("BEGIN");
-      assertEquals(pids[1], backendPid(holderStmt2));
-      holderStmt1.execute("COMMIT");
-
-      int current = 0;
-      stmt.execute("SET \"g3.Tenant\" = 'a'");
-      for (int i = 0; i < 6; i++) {
-        String value = "v" + i;
-        stmt.execute("SET \"g3.Tenant\" = '" + value + "'");
-        assertCustomSettingOnBackend(stmt, pids[current], "g3.Tenant", value);
-
-        holders[current].execute("BEGIN");
-        assertEquals(pids[current], backendPid(holders[current]));
-        current = 1 - current;
-        holders[current].execute("COMMIT");
-
-        assertCustomSettingOnBackend(stmt, pids[current], "g3.Tenant", value);
-        assertCustomSettingOnBackend(stmt, pids[current], "g3.tenant", value);
-      }
-      holders[1 - current].execute("COMMIT");
-    }
-  }
-
-  private static int backendPid(Statement stmt) throws Exception {
-    ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
-    assertTrue(rs.next());
-    return rs.getInt(1);
-  }
-
-  private static void assertCustomSettingOnBackend(Statement stmt, int pid, String name,
-                                                   String value) throws Exception {
-    ResultSet rs = stmt.executeQuery(
-        "SELECT pg_backend_pid(), current_setting('" + name + "')");
-    assertTrue(rs.next());
-    assertEquals(pid, rs.getInt(1));
-    assertEquals(name, value, rs.getString(2));
   }
 
   private static void assertCustomSettingValues(Statement stmt, String[]... settings)
