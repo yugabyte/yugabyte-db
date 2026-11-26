@@ -31,6 +31,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
@@ -96,10 +97,12 @@ import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -1732,6 +1735,115 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             .getUserVisibleMessage()
             .contains("Cannot delete gFlags through non-restart upgrade option"));
     verifyNoActions();
+  }
+
+  private Universe addReadReplicaWithSpecificGFlags(Universe universe) {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master-flag", "1"), Map.of("tserver-flag", "2"));
+            });
+    UserIntent rrUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags = SpecificGFlags.construct(Map.of(), Map.of("tserver-flag", "2"));
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+  }
+
+  private void changeReadReplicaTServerFlag(GFlagsUpgradeParams params) {
+    params.getReadOnlyClusters().get(0).userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of(), Map.of("tserver-flag", "3"));
+  }
+
+  private void assertGFlagsBadRequest(PlatformServiceException exception, String message) {
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals(message, exception.getUserVisibleMessage());
+    verifyNoActions();
+  }
+
+  @Test
+  public void testGflagsUpgradeReadReplicaOnlyRequest() {
+    Universe universe = addReadReplicaWithSpecificGFlags(defaultUniverse);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.clusters.removeIf(c -> c.clusterType == ClusterType.PRIMARY);
+                      changeReadReplicaTServerFlag(p);
+                    },
+                    GFlagsUpgradeParams.class,
+                    "gflags"));
+    assertGFlagsBadRequest(exception, UpgradeWithGFlags.MISSING_PRIMARY_CLUSTER_GFLAGS_ERROR);
+  }
+
+  @Test
+  public void testGflagsUpgradeReadReplicaOnlyWithOneTopLevelMap() {
+    Universe universe = addReadReplicaWithSpecificGFlags(defaultUniverse);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.clusters.removeIf(c -> c.clusterType == ClusterType.PRIMARY);
+                      p.masterGFlags = Map.of("master-flag", "2");
+                    },
+                    GFlagsUpgradeParams.class,
+                    "gflags"));
+    assertGFlagsBadRequest(exception, UpgradeWithGFlags.PARTIAL_TOP_LEVEL_GFLAGS_ERROR);
+  }
+
+  @Test
+  public void testGflagsUpgradeOnlyOneTopLevelMap() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master-flag", "1"), Map.of("tserver-flag", "2"));
+            });
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> p.masterGFlags = Map.of("master-flag", "2"),
+                    GFlagsUpgradeParams.class,
+                    "gflags"));
+    assertGFlagsBadRequest(exception, UpgradeWithGFlags.PARTIAL_TOP_LEVEL_GFLAGS_ERROR);
+  }
+
+  @Test
+  public void testGflagsUpgradeReadReplicaWithPrimary() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = addReadReplicaWithSpecificGFlags(defaultUniverse);
+    Result result =
+        runUpgrade(
+            universe, this::changeReadReplicaTServerFlag, GFlagsUpgradeParams.class, "gflags");
+    assertOk(result);
+    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
+    assertEquals(
+        "3",
+        argCaptor
+            .getValue()
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(UniverseTaskBase.ServerType.TSERVER)
+            .get("tserver-flag"));
   }
 
   // Certs rotate
