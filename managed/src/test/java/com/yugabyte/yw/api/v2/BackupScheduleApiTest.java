@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import api.v2.handlers.BackupScheduleHandler;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
@@ -824,15 +825,23 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     assertEquals(BackupScheduleHandler.NOT_EDITABLE, error(e).get("code").asText());
     assertEquals("ERROR", error(e).get("backup_schedule_state").asText());
 
-    // The Kubernetes operator manages it: edit its custom resource.
+    // The Kubernetes operator manages it: edit its custom resource. Imported into the operator.
     Schedule operated = editableSchedule("operated", false);
     BackupScheduleSpec operatedSpec = specOf(operated);
     operated.setIsKubernetesOperatorControlled(true);
-    operated.save();
     e = assertEditError(operated, operatedSpec, 409);
     assertEquals(BackupScheduleHandler.OPERATOR_CONTROLLED, error(e).get("code").asText());
     assertEquals(
         operated.getScheduleUUID().toString(), error(e).get("backup_schedule_uuid").asText());
+    // Created by the operator from a custom resource: only its params say so.
+    Schedule fromResource = editableSchedule("from-resource", false);
+    BackupScheduleSpec fromResourceSpec = specOf(fromResource);
+    ObjectNode params = fromResource.getTaskParams().deepCopy();
+    params.set("kubernetesResourceDetails", Json.toJson(new KubernetesResourceDetails("bs", "yb")));
+    fromResource.setTaskParams(params);
+    fromResource.save();
+    e = assertEditError(fromResource, fromResourceSpec, 409);
+    assertEquals(BackupScheduleHandler.OPERATOR_CONTROLLED, error(e).get("code").asText());
 
     // Another task holds it.
     Schedule held = editableSchedule("held", false);

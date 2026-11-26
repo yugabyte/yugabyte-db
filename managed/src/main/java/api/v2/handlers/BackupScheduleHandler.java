@@ -253,7 +253,7 @@ public class BackupScheduleHandler {
    * that the two don't drift apart: 409. Stricter than v1, which lets the API change it.
    */
   private static void checkNotOperatorControlled(Schedule schedule) {
-    if (schedule.isKubernetesOperatorControlled()) {
+    if (schedule.isOperatorManaged()) {
       ObjectNode error = Json.newObject();
       error.put("code", OPERATOR_CONTROLLED);
       error.put(
