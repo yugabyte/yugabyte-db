@@ -1026,8 +1026,6 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointAfterStaleVerificat
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName2));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName2));
-  auto table_info = catalog_manager.GetTableInfo(
-      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, kTableName)));
   auto table2_info = catalog_manager.GetTableInfo(
       ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, kTableName2)));
 
@@ -1040,13 +1038,18 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointAfterStaleVerificat
   const auto txn_id =
       ASSERT_RESULT(FullyDecodeTransactionId(table2_info->LockForRead()->pb_transaction_id()));
 
+  // The stale task of the first ALTER fails only if it polls while conn2's ALTER owns the table's
+  // verifier state. Keep conn2's transaction open until then: an autocommit ALTER can begin and
+  // finish within the task's initial ysql_transaction_bg_task_wait_ms delay.
+  ASSERT_OK(conn2.Execute("BEGIN"));
   ASSERT_OK(conn2.ExecuteFormat("ALTER TABLE $0 ADD COLUMN y INT", kTableName));
   ASSERT_OK(WaitFor(
-      [&] { return !table_info->HasTasks(server::MonitoredTaskType::TableSchemaVerification); },
-      MonoDelta::FromSeconds(30), "Wait for the verification task of the first ALTER to end"));
-  ASSERT_EQ(
-      catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id),
-      master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      [&] {
+        return catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id) ==
+               master::YsqlDdlVerificationState::kDdlPostProcessingFailed;
+      },
+      MonoDelta::FromSeconds(30), "Wait for the verification task of the first ALTER to fail"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
 
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
   ASSERT_OK(conn.Execute(GetParam() ? "COMMIT" : "ROLLBACK"));
