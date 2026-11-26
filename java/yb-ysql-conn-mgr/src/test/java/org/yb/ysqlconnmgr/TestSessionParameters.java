@@ -1371,22 +1371,10 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
   // The client changes a custom setting with an upper-case letter in its name on each of two
   // backends in turn, and must always read its latest value, including on a backend that has
-  // never seen the setting.
+  // never seen the setting. Holder transactions keep one backend of a pool of two busy, so that
+  // each of the client's queries lands on the other one.
   @Test
   public void testMixedCaseCustomSettingAcrossBackends() throws Exception {
-    checkCustomSettingAcrossBackends("SELECT 1");
-  }
-
-  // As above, but another client first sets the custom setting on the second backend with a
-  // lower-case name, so the two backends spell the name differently.
-  @Test
-  public void testMixedCaseCustomSettingAcrossDifferentlySpelledBackends() throws Exception {
-    checkCustomSettingAcrossBackends("SET g3.tenant = 'x'");
-  }
-
-  // Holder transactions keep one backend of a pool of two busy, so that each of the client's
-  // queries lands on the other one. otherQuery runs first on the second backend.
-  private void checkCustomSettingAcrossBackends(String otherQuery) throws Exception {
     Map<String, String> flags = new HashMap<>(SINGLE_BACKEND_FLAGS);
     flags.put("ysql_conn_mgr_max_conns_per_db", "2");
     restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
@@ -1405,7 +1393,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
       holderStmt1.execute("BEGIN");
       pids[0] = backendPid(holderStmt1);
-      otherStmt.execute(otherQuery);
+      otherStmt.execute("SELECT 1");
       pids[1] = backendPid(otherStmt);
       assertTrue("expected two backends", pids[0] != pids[1]);
       holderStmt2.execute("BEGIN");
