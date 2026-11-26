@@ -7419,10 +7419,8 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Sets the default tablespace to create tables and indexes in."),
 			gettext_noop("An empty string selects the database's default tablespace."),
 			/*
-			 * YB: ConnMgr can't replay this safely since the check hook looks
-			 * up the name again. The tablespace might have been dropped
-			 * between the SET and the replay, making the replay fail. So,
-			 * setting this GUC makes the connection sticky.
+			 * YB: TODO: unstick. ConnMgr replay skips this check hook, so a
+			 * dropped tablespace no longer fails the replay.
 			 */
 			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
@@ -7548,12 +7546,6 @@ static struct config_string ConfigureNamesString[] =
 		"C",
 		check_locale_time, assign_locale_time, NULL
 	},
-
-	/*
-	 * YB: Check var.h (odyssey) file to confirm if guc var need to be added in
-	 * avoid_enquote_guc_list list. Basic requirements are if GUC_LIST_INPUT, GUC_LIST_QUOTE flags
-	 * are enabled on a var and can be set in a session without making connection sticky.
-	 */
 
 	{
 		{"session_preload_libraries", PGC_SUSET, CLIENT_CONN_PRELOAD,
@@ -7938,10 +7930,8 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Sets default text search configuration."),
 			NULL,
 			/*
-			 * YB: ConnMgr can't replay this safely since the check hook looks
-			 * up the name again. The config might have been dropped between
-			 * the SET and the replay, making the replay fail. So, setting this
-			 * GUC makes the connection sticky.
+			 * YB: TODO: unstick. ConnMgr replay skips this check hook, so a
+			 * dropped config no longer fails the replay.
 			 */
 			GUC_YB_CONN_MGR_STICKY
 		},
@@ -8724,9 +8714,8 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " guarantee is maintained."
 			),
 			/*
-			 * ConnMgr can't replay this since the check hook rejects it
-			 * inside a transaction block, so setting it makes the connection
-			 * sticky.
+			 * YB: TODO: unstick. ConnMgr replay no longer runs in a
+			 * transaction block, and skips this check hook.
 			 */
 			GUC_YB_CONN_MGR_STICKY
 		},
@@ -18420,10 +18409,6 @@ check_yb_password_reuse(int *newVal, void **extra, GucSource source)
  *
  * Do not allow users to set yb_read_after_commit_visibility
  * from within a txn block.
- *
- * ConnMgr can't replay a GUC that uses this hook, since the replay runs
- * inside a transaction block. Such a GUC must also be marked
- * GUC_YB_CONN_MGR_STICKY.
  */
 static bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
@@ -18776,13 +18761,11 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * optimization takes a snapshot first, so SET to a value (PGC_S_SESSION) is
  * refused once the transaction has taken one, so that it does not appear to
  * take effect when it does not.  A SET before then is accepted, inside a
- * transaction block too, and takes effect for the transaction.  Connection
- * Manager relies on this: it replays a client's SETs as one multi-statement
- * query, which runs in an implicit transaction block.  A function's SET clause
- * is applied with PGC_S_SESSION too, inside the calling statement, so
- * YbValidateFunctionSetItem refuses such a clause up front.  RESET and SET ...
- * TO DEFAULT assign the reset value without calling this hook, so they are
- * accepted at any time.
+ * transaction block too, and takes effect for the transaction.  A function's
+ * SET clause is applied with PGC_S_SESSION too, inside the calling statement,
+ * so YbValidateFunctionSetItem refuses such a clause up front.  RESET and
+ * SET ... TO DEFAULT assign the reset value without calling this hook, so they
+ * are accepted at any time.
  *
  * Other sources are accepted.  None of them is a statement that could appear
  * to take effect, and refusing one would lose the value rather than delay it:
@@ -19009,7 +18992,8 @@ yb_conn_mgr_skip_check_hook(struct config_generic *gconf)
 
 /*
  * Read the next name\0value\0<skip> entry of a ConnMgr 'G' packet. Returns
- * false at the end of the data, or on a truncated entry.
+ * false at the end of the data. A truncated entry is a protocol violation, so
+ * that a partly applied state is never acknowledged.
  */
 static bool
 yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
@@ -19023,18 +19007,24 @@ yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
 		return false;
 	nul = memchr(p, '\0', end - p);
 	if (nul == NULL)
-		return false;
+		goto truncated;
 	*name = p;
 
 	p = nul + 1;
 	nul = memchr(p, '\0', end - p);
 	if (nul == NULL || nul + 1 >= end)
-		return false;
+		goto truncated;
 	*value = p;
 
 	*skip_check = nul[1] != 0;
 	*ptr = nul + 2;
 	return true;
+
+truncated:
+	ereport(FATAL,
+			(errcode(ERRCODE_PROTOCOL_VIOLATION),
+			 errmsg("truncated ConnMgr GUC state entry")));
+	pg_unreachable();
 }
 
 static bool

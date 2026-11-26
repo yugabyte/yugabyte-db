@@ -527,7 +527,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-		case 'G':				/* YB: RESET ALL & RESET defaults from ConnMgr */
+		case 'G':				/* YB: GUC state from ConnMgr */
 			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -8380,7 +8380,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'G':			/* YB: RESET ALL & RESET defaults from ConnMgr */
+			case 'G':			/* YB: GUC state from ConnMgr */
 				if (YbIsClientYsqlConnMgr())
 				{
 					int			subtype = pq_getmsgbyte(&input_message);
