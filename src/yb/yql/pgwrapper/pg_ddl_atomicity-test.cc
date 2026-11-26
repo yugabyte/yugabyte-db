@@ -102,8 +102,8 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
     ToggleDDLMode(options->extra_master_flags, LegacyDDLMode());
   }
 
-  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
-  // cross-flag validators in common_flags.cc, so a single knob drives all three.
+  // Object locking and transactional DDL are validated against each other in common_flags.cc,
+  // so a single knob drives both. Concurrent DDL moves with them.
   virtual bool LegacyDDLMode() const {
     // The tests assert for transaction verification errors in case of concurrent/conflicting DDLs.
     // But with object locks, conflicting DDLs get serialized, and the latter one times out with

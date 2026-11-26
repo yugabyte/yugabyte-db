@@ -96,9 +96,6 @@ DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
 
-// Not read here today. The guardrail that blocks concurrent DDLs by default (#34673) will read it.
-DECLARE_bool(ysql_enable_concurrent_ddl);
-
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 

@@ -305,8 +305,8 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-// Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
-// cross-flag validators in common_flags.cc, so a single parameter drives all three.
+// Object locking and transactional DDL are validated against each other in common_flags.cc,
+// so a single parameter drives both. Concurrent DDL moves with them.
 class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
                                                 public ::testing::WithParamInterface<bool> {
  public:
