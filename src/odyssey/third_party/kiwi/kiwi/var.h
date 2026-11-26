@@ -278,10 +278,9 @@ static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 
 /*
  * YB: Match GUC names case-insensitively, as postgres does in
- * guc_name_compare(). A placeholder GUC is reported under the spelling that
- * created it on each backend, e.g. g3.Tenant on one and g3.tenant on another,
- * and an exact match would keep a stale value under one of them. odyssey never
- * calls setlocale(), so strcasecmp() folds only ASCII, like guc_name_compare().
+ * guc_name_compare(). Needed for placeholder GUCs, which postgres reports under
+ * the spelling that created them, unlike other GUCs, which it reports under
+ * their defined name.
  */
 static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
 {
