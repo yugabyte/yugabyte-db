@@ -3255,8 +3255,10 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_allow_prehashed_passwords", PGC_SUSET, CONN_AUTH_AUTH,
 			gettext_noop("Allows a role to be given an already-hashed password."),
-			gettext_noop("A pre-hashed password cannot be inspected, so no password policy "
-						 "can be enforced while this is on.")
+			gettext_noop("Even when yb_allow_prehashed_passwords is on, a pre-hashed password "
+						 "is refused when a role with a password reuse policy changes its "
+						 "own password, because it cannot be compared with that role's "
+						 "previous passwords.")
 		},
 		&yb_allow_prehashed_passwords,
 		true,
@@ -18314,8 +18316,9 @@ check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
 	/*
 	 * ysql_pg_conf_csv is applied in file order, as PGC_S_FILE and the other
 	 * sources below PGC_S_CLIENT. Rejecting a conflicting pair there keeps the
-	 * postmaster from starting. CREATE and ALTER ROLE still refuse it, as do
-	 * SET and the ALTER ROLE validation pass.
+	 * postmaster from starting. SET and the ALTER ROLE validation pass still
+	 * refuse it; where both end up on anyway, ALTER ROLE refuses a role's own
+	 * pre-hashed password.
 	 */
 	if (*newVal &&
 		source >= PGC_S_CLIENT &&
@@ -18384,7 +18387,7 @@ yb_password_policy_source_allowed(GucSource source)
  * Mutual exclusion with yb_allow_prehashed_passwords is enforced on the
  * ALTER ROLE validation pass. A conflicting value in the configuration file
  * is not rejected here, so it cannot keep a backend from starting;
- * CREATE/ALTER ROLE still refuses the combination.
+ * ALTER ROLE then refuses a role's own pre-hashed password.
  */
 static bool
 check_yb_password_reuse(int *newVal, void **extra, GucSource source)
