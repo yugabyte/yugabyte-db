@@ -130,8 +130,11 @@ CheckLogicalDecodingRequirements(bool repack)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("logical decoding requires a database connection")));
 
-	/* CheckSlotRequirements() has already checked if wal_level >= 'replica' */
-	Assert(wal_level >= WAL_LEVEL_REPLICA);
+	/*
+	 * CheckSlotRequirements() has already checked if wal_level >= 'replica'.
+	 * YB: except under YSQL, where wal_level does not apply.
+	 */
+	Assert(IsYugaByteEnabled() || wal_level >= WAL_LEVEL_REPLICA);
 
 	/* Check if logical decoding is available on standby */
 	if (RecoveryInProgress() && !IsLogicalDecodingEnabled())
