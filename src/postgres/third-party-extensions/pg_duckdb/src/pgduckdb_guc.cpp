@@ -99,21 +99,22 @@ DefineCustomVariable(const char *name, const char *short_desc, T *var, T min, T 
 void
 DefineCustomDuckDBVariable(const char *name, const char *short_desc, bool *var, GucContext context = PGC_USERSET,
                            int flags = 0, GucBoolAssignHook assign_hook = NULL, GucShowHook show_hook = NULL) {
-	DefineCustomVariable(name, short_desc, var, context, flags | GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK,
-	                     GucCheckDuckDBNotInitdHook, assign_hook, show_hook);
+	flags |= GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK; /* YB */
+	DefineCustomVariable(name, short_desc, var, context, flags, GucCheckDuckDBNotInitdHook, assign_hook, show_hook);
 }
 
 void
 DefineCustomDuckDBVariable(const char *name, const char *short_desc, char **var, GucContext context = PGC_USERSET,
                            int flags = 0, GucStringAssignHook assign_hook = NULL, GucShowHook show_hook = NULL) {
-	DefineCustomVariable(name, short_desc, var, context, flags | GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK,
-	                     GucCheckDuckDBNotInitdHook, assign_hook, show_hook);
+	flags |= GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK; /* YB */
+	DefineCustomVariable(name, short_desc, var, context, flags, GucCheckDuckDBNotInitdHook, assign_hook, show_hook);
 }
 
 template <typename T>
 void
 DefineCustomDuckDBVariable(const char *name, const char *short_desc, T *var, T min, T max,
                            GucContext context = PGC_USERSET, int flags = 0) {
+	flags |= GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK; /* YB */
 	DefineCustomVariable(name, short_desc, var, min, max, context, flags, GucCheckDuckDBNotInitdHook<T>,
 	                     (GucTypeAssignHook<T>)NULL, NULL);
 }

@@ -1245,7 +1245,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
   // The client sets yb_read_time and another setting, so its next deploy carries more than one
   // value. A second client takes the only backend, then the client's next query replays both on
-  // it. yb_read_time can't be set inside a transaction block, and the replay must not open one.
+  // it, and both must come back. yb_read_time's check hook, which rejects a transaction block, is
+  // skipped on replay, so this doesn't show that the replay runs outside one.
   @Test
   public void testReadTimeReplaysWithOtherSettings() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
