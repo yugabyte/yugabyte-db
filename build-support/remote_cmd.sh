@@ -47,9 +47,8 @@ if [[ $YB_ENCODED_REMOTE_CMD_LINE != *"$ARG_SEPARATOR" ]]; then
   exit 1
 fi
 
-# Split the arguments in one awk pass.  Removing them from the front one at a time with parameter
-# expansion copies the rest of the string each time, which takes seconds for a link command with
-# thousands of arguments.  Arguments cannot contain NUL, so NUL separates them on the way back.
+# Split the arguments in one awk pass.  Arguments cannot contain NUL, so NUL separates them on the
+# way back.
 readarray -d '' args < <(
   awk -v sep="$ARG_SEPARATOR" 'BEGIN {
     n = split(ENVIRON["YB_ENCODED_REMOTE_CMD_LINE"], parts, sep)
