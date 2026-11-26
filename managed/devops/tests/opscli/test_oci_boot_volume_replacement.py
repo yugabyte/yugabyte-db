@@ -409,17 +409,29 @@ class TestUpdateDisk(TestCase):
         self.blockstorage.update_volume.assert_not_called()
 
     @patch("ybops.cloud.oci.utils.time.sleep")
-    @patch("ybops.cloud.oci.utils.time.time", side_effect=[0, 0, 300])
+    def test_retry_waits_for_a_resize_that_is_still_running(self, sleep):
+        self.blockstorage.get_volume.side_effect = [
+            MagicMock(data=SimpleNamespace(lifecycle_state=state, size_in_gbs=size))
+            for state, size in [("PROVISIONING", 100), ("AVAILABLE", 150)] * 2]
+
+        self.cloud.update_disk(self.args)
+
+        self.blockstorage.update_volume.assert_not_called()
+        self.assertEqual(2, sleep.call_count)
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    @patch("ybops.cloud.oci.utils.time.time", side_effect=[0, 0, 0, 0, 300])
     def test_resize_that_never_finishes_times_out(self, _, sleep):
-        self.blockstorage.get_volume.return_value.data = SimpleNamespace(
-            lifecycle_state="PROVISIONING", size_in_gbs=100)
+        self.blockstorage.get_volume.side_effect = [
+            MagicMock(data=SimpleNamespace(lifecycle_state=state, size_in_gbs=100))
+            for state in ("AVAILABLE", "PROVISIONING")]
 
         with self.assertRaises(YBOpsRuntimeError) as ctx:
             self.cloud.update_disk(self.args)
         self.assertIn("Timeout waiting for volume d0", str(ctx.exception))
         self.blockstorage.update_volume.assert_called_once()
 
-    @patch("ybops.utils.remote_shell.RemoteShell")
+    @patch("ybops.cloud.common.cloud.RemoteShell")
     def test_expand_file_system_rescans_device_before_growing(self, remote_shell_class):
         remote_shell = remote_shell_class.return_value
         remote_shell.check_exec_command.side_effect = [
@@ -437,7 +449,7 @@ class TestUpdateDisk(TestCase):
         self.assertIn("$(cat /sys/class/block/sdb/size)", commands[2])
         self.assertEqual("sudo xfs_growfs /mnt/d0", commands[3])
 
-    @patch("ybops.utils.remote_shell.RemoteShell")
+    @patch("ybops.cloud.common.cloud.RemoteShell")
     def test_expand_file_system_rejects_unexpected_device(self, remote_shell_class):
         remote_shell = remote_shell_class.return_value
         remote_shell.check_exec_command.side_effect = ["/dev/mapper/vg-lv\n", "/dev/dm-0\n"]
@@ -445,6 +457,15 @@ class TestUpdateDisk(TestCase):
         with self.assertRaises(YBOpsRuntimeError):
             self.cloud.expand_file_system(self.args, {"ssh_host": "10.0.0.1"})
         self.assertEqual(2, remote_shell.check_exec_command.call_count)
+
+    @patch("ybops.cloud.common.cloud.RemoteShell")
+    def test_expand_file_system_leaves_local_nvme_shapes(self, remote_shell_class):
+        # These shapes have local NVMe data disks and no block volumes to grow.
+        self.args.instance_type = "VM.DenseIO.E4.Flex"
+
+        self.cloud.expand_file_system(self.args, {"ssh_host": "10.0.0.1"})
+
+        remote_shell_class.assert_not_called()
 
 
 class TestOciReplaceRootVolumeMethod(TestCase):

@@ -1261,10 +1261,13 @@ class OciCloudAdmin:
 
     def update_volume_size(self, volume_id, new_size_in_gbs):
         from oci.core.models import UpdateVolumeDetails
-        # A retry finds the volume already resized, and OCI only accepts a larger size.
-        if self.blockstorage_client.get_volume(volume_id).data.size_in_gbs < new_size_in_gbs:
-            update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
-            self.blockstorage_client.update_volume(volume_id, update_details)
+        # A retry can find the earlier resize still running, or the volume already resized. OCI
+        # only accepts a larger size.
+        volume = self._wait_for_volume_state(volume_id, "AVAILABLE")
+        if volume.size_in_gbs >= new_size_in_gbs:
+            return
+        update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
+        self.blockstorage_client.update_volume(volume_id, update_details)
         # The resize is asynchronous.
         self._wait_for_volume_state(
             volume_id, "AVAILABLE",

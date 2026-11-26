@@ -13,8 +13,6 @@ import logging
 import socket
 import requests
 import os
-import re
-import shlex
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
@@ -36,7 +34,6 @@ class OciCloud(AbstractCloud):
 
     BASE_INSTANCE_METADATA_API = "http://169.254.169.254/opc/v2"
     METADATA_API_TIMEOUT_SECONDS = 3
-    DISK_RESIZE_TIMEOUT_SEC = 600
 
     def __init__(self):
         super(OciCloud, self).__init__("oci")
@@ -442,48 +439,21 @@ class OciCloud(AbstractCloud):
         """Shell command that makes the guest kernel pick up a resized OCI block volume and
         fails unless the device reaches size_gb GiB within DISK_RESIZE_TIMEOUT_SEC.
 
-        The guest keeps the old size until the device is rescanned. The rescan uses the
-        commands OCI documents for an online resize and is repeated until the new size shows up.
-        Without this, xfs_growfs runs against the old size and succeeds without growing anything.
+        The rescan uses the commands OCI documents for an online resize.
         """
-        # /sys/class/block/<dev>/size is always in 512-byte sectors.
-        wait_script = (
-            "want={sectors}; "
-            "for i in $(seq {timeout}); do "
+        rescan_script = (
             "dd iflag=direct if=/dev/{dev} of=/dev/null count=1 status=none; "
-            "echo 1 > /sys/class/block/{dev}/device/rescan; "
-            "[ \"$(cat /sys/class/block/{dev}/size)\" -ge \"$want\" ] && exit 0; "
-            "sleep 1; done; "
-            "echo \"/dev/{dev} has $(cat /sys/class/block/{dev}/size) sectors, expected at least "
-            "$want ({gb} GiB) after {timeout}s\" >&2; exit 1"
-        ).format(sectors=size_gb * 1024 * 1024 * 2, timeout=OciCloud.DISK_RESIZE_TIMEOUT_SEC,
-                 dev=device_name, gb=size_gb)
-        return "sudo bash -c '{}'".format(wait_script)
+            "echo 1 > /sys/class/block/{dev}/device/rescan"
+        ).format(dev=device_name)
+        return AbstractCloud._wait_for_disk_size_command(device_name, size_gb, rescan_script)
 
     def expand_file_system(self, args, connect_options):
-        from ybops.utils.remote_shell import RemoteShell
-        remote_shell = RemoteShell(connect_options)
-        mount_points = self.get_mount_points_csv(args).split(',')
-        for mount_point in mount_points:
-            quoted_mount_point = shlex.quote(mount_point)
-            source = remote_shell.check_exec_command(
-                "findmnt -rn -M {} -o SOURCE".format(quoted_mount_point)).strip()
-            if not source:
-                raise YBOpsRuntimeError(
-                    "Could not find a mounted device for {}".format(mount_point))
-            device_path = remote_shell.check_exec_command(
-                "readlink -f -- {}".format(shlex.quote(source))).strip()
-            device_name = os.path.basename(device_path)
-            # Block volumes are attached paravirtualized and show up as SCSI disks.
-            if not re.fullmatch(r"sd[a-z]+", device_name):
-                raise YBOpsRuntimeError(
-                    "Unsupported OCI data disk {} for mount point {}".format(
-                        device_path, mount_point))
-
-            remote_shell.check_exec_command(
-                self._disk_rescan_command(device_name, args.volume_size))
-            logging.info("Expanding file system with mount point: {}".format(mount_point))
-            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(quoted_mount_point))
+        # Local NVMe shapes have no block volumes, so nothing was resized.
+        if is_local_nvme_shape(getattr(args, "instance_type", None)):
+            return
+        # Block volumes are attached paravirtualized and show up as SCSI disks.
+        self._rescan_and_expand_file_system(
+            args, connect_options, r"sd[a-z]+", self._disk_rescan_command)
 
     def clone_disk(self, args, volume_id, num_disks):
         raise YBOpsRuntimeError("Disk cloning not yet implemented for OCI")
