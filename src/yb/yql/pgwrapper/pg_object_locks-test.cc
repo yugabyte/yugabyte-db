@@ -5671,6 +5671,35 @@ class PgObjectLocksNotifyTest : public PgObjectLocksTest {
         60s * kTimeMultiplier, "LISTEN/NOTIFY ready");
   }
 
+  // Connects the writer to ts and creates the deployments table once NOTIFY works.
+  Result<PGConn> ConnectWriterAndWaitForNotifyReady(ExternalTabletServer* ts) {
+    auto writer = VERIFY_RESULT(ConnectToTs(*ts));
+    RETURN_NOT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
+    RETURN_NOT_OK(WaitForNotifyReady(writer));
+    return writer;
+  }
+
+  // Keeps ts behind on catalog versions: its heartbeat catalog refresh is off, and the global lock
+  // release, which also carries a DDL's catalog version, fails on it until
+  // TEST_fail_release_object_locks is cleared. The returned guard resets all three flags.
+  Result<ScopeExit<std::function<void()>>> BlockCatalogVersionOn(ExternalTabletServer* ts) {
+    RETURN_NOT_OK(
+        cluster_->SetFlag(ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+    RETURN_NOT_OK(
+        cluster_->SetFlag(ts, "TEST_fail_release_object_locks_on_tserver_uuid", ts->uuid()));
+    RETURN_NOT_OK(cluster_->SetFlag(ts, "TEST_fail_release_object_locks", "true"));
+    return ScopeExit<std::function<void()>>([this, ts] {
+      WARN_NOT_OK(
+          cluster_->SetFlag(ts, "TEST_fail_release_object_locks", "false"), "Failed to reset flag");
+      WARN_NOT_OK(
+          cluster_->SetFlag(ts, "TEST_fail_release_object_locks_on_tserver_uuid", ""),
+          "Failed to reset flag");
+      WARN_NOT_OK(
+          cluster_->SetFlag(ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"),
+          "Failed to reset flag");
+    });
+  }
+
   static Status WaitForNotification(PGConn& listener) {
     return WaitFor(
         [&listener]() -> Result<bool> { return listener.HasNotification(); },
@@ -5682,9 +5711,7 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
     const NotifyAfterCatalogChangeOptions& options) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
-  auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
-  ASSERT_OK(WaitForNotifyReady(writer));
+  auto writer = ASSERT_RESULT(ConnectWriterAndWaitForNotifyReady(ts1));
 
   // Connections are opened before ts2 goes stale: a new connection waits at startup for its
   // tserver to reach the latest catalog version.
@@ -5696,21 +5723,11 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
   if (options.lookup_before_create) {
     ASSERT_NOK(listener.Fetch("SELECT * FROM t2"));
   }
-  // Logged by YbWaitForSharedCatalogVersionToCatchup when the listener finds ts2's catalog version
-  // behind the one it waits for.
+  // Logged when the listener finds ts2's catalog version behind the one it waits for.
   LogWaiter listener_waiting(
       ts2, Format("[$0] LOG:  waiting for shared catalog version to reach", listener_pid));
 
-  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
-  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks_on_tserver_uuid", ts2->uuid()));
-  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "true"));
-  auto reset_flags = ScopeExit([this, ts2] {
-    WARN_NOT_OK(
-        cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"), "Failed to reset flag");
-    WARN_NOT_OK(
-        cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"),
-        "Failed to reset flag");
-  });
+  auto reset_flags = ASSERT_RESULT(BlockCatalogVersionOn(ts2));
 
   const auto marker_count_query =
       Format("SELECT COUNT(*) FROM deployments WHERE name = '$0'", options.marker_name);
@@ -5814,9 +5831,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerSeesRelationCreatedBeforeNotify) {
 TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFails) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
-  auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
-  ASSERT_OK(WaitForNotifyReady(writer));
+  auto writer = ASSERT_RESULT(ConnectWriterAndWaitForNotifyReady(ts1));
 
   auto listener = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(listener.Execute("SET yb_test_fail_notify_catalog_version_read = true"));
@@ -5840,9 +5855,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFa
 TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
-  auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
-  ASSERT_OK(WaitForNotifyReady(writer));
+  auto writer = ASSERT_RESULT(ConnectWriterAndWaitForNotifyReady(ts1));
 
   auto listener = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
@@ -5856,16 +5869,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate
   LogWaiter listener_waiting(
       ts2, Format("[$0] LOG:  waiting for shared catalog version to reach", listener_pid));
 
-  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
-  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks_on_tserver_uuid", ts2->uuid()));
-  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "true"));
-  auto reset_flags = ScopeExit([this, ts2] {
-    WARN_NOT_OK(
-        cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"), "Failed to reset flag");
-    WARN_NOT_OK(
-        cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"),
-        "Failed to reset flag");
-  });
+  auto reset_flags = ASSERT_RESULT(BlockCatalogVersionOn(ts2));
 
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&writer] {

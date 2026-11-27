@@ -1351,12 +1351,6 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 		 */
 		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 			return;
-		/*
-		 * The backend is exiting, so it needs no version. A caller holding
-		 * interrupts relies on this to end the wait.
-		 */
-		if (ProcDiePending)
-			return;
 		/* Avoid flooding the log file, but always print for the first time. */
 		if (count % 20 == 1)
 			ereport(LOG,

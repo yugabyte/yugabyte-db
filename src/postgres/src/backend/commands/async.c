@@ -3939,11 +3939,57 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 }
 
 /*
+ * Wait until this node's shared catalog version reaches 'version', with the
+ * bound of YbWaitForSharedCatalogVersionToCatchup. Unlike that helper, return
+ * on a pending terminate: the caller holds interrupts, and the helper's
+ * callers in the commit path rely on it not returning early.
+ */
+static void
+ybListenerWaitForSharedCatalogVersion(uint64_t version)
+{
+	const int	kPollIntervalUs = 100000;
+	int			max_wait_ms = Max(60 * 1000, 10 * YBGetHeartbeatIntervalMs());
+	int			max_count = max_wait_ms / (kPollIntervalUs / 1000);
+	int			count = 0;
+	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
+
+	while (shared_catalog_version < version)
+	{
+		/* The database was dropped, or the backend is exiting. */
+		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED ||
+			ProcDiePending)
+			return;
+		if (count++ >= max_count)
+		{
+			ereport(WARNING,
+					(errmsg("shared catalog version %" PRIu64
+							" has not reached %" PRIu64,
+							shared_catalog_version, version),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+			return;
+		}
+		if (count % 20 == 1)
+			ereport(LOG,
+					(errmsg("waiting for shared catalog version to reach "
+							"%" PRIu64 " before delivering a notification",
+							version),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		pg_usleep(kPollIntervalUs);
+		shared_catalog_version = YbGetSharedCatalogVersion();
+	}
+}
+
+/*
  * PG sends a transaction's invalidations before signaling listeners. This
  * tserver gets the catalog version of a notifying transaction that changed the
  * catalog only after its commit (lock release or heartbeat), so wait for it
- * before delivering the transaction's first notification; the next statement
- * then refreshes the caches.
+ * before delivering the transaction's first notification. The next statement
+ * then refreshes the caches and gets the transaction's invalidation messages:
+ * the tserver publishes the version before it stores the messages, but holds
+ * its lock_ across both, and the message-list RPC takes lock_ too (see
+ * TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages).
  *
  * The caller has already advanced the queue position past this entry, and an
  * error here would also end the idle listener's connection. So a failed read
@@ -3978,7 +4024,7 @@ ybWaitForNotifyingTxnCatalogVersion(void)
 		if (yb_test_fail_notify_catalog_version_read)
 			ereport(ERROR,
 					(errmsg("TEST: failed to read the catalog version")));
-		YbWaitForSharedCatalogVersionToCatchup(YbGetMasterCatalogVersion());
+		ybListenerWaitForSharedCatalogVersion(YbGetMasterCatalogVersion());
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
