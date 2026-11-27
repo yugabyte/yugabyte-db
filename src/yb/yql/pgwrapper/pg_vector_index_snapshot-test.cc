@@ -65,10 +65,26 @@ extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 namespace yb::pgwrapper {
 
-MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
+YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
+
+class PgVectorIndexSnapshotTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+ protected:
+  void TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen crash_after_reopen);
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSnapshotTest);
+
+class PgVectorIndexColocationOnlyTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  void TestDroppedIndexKeepsUnflushedRows(bool skip_deactivation_flush);
+  void TestSkippedIndexStorageDestroyedOnRemove(bool with_kept_index);
+};
+
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexColocationOnlyTest);
 
-TEST_P(PgVectorIndexTest, SnapshotSchedule) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotSchedule) {
   constexpr size_t kNumRows = 128;
   constexpr size_t kQueryLimit = 5;
 
@@ -102,7 +118,7 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
 // An in-place restore of a plain snapshot keeps vector indexes created after the snapshot. They
 // have no counterpart in the snapshot superblock and must be backfilled from the restored rows.
 // See issue #35832.
-TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
   constexpr size_t kNumRows = 128;
   constexpr size_t kQueryLimit = 5;
 
@@ -148,7 +164,7 @@ TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
 // A restore to before a DROP COLUMN of the vector column must not leave the column recorded as
 // deleted, otherwise compaction past the drop discards its reverse mapping entries.
 // See issue #35814.
-TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotScheduleRestoreBeforeDropColumn) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
@@ -202,7 +218,7 @@ TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
 // A restored vector index that needs a compaction right away must not start it before the
 // restore resumes read/write operations. The compaction would fail with TryAgain, the index would
 // keep that failure, and the restore apply or the next write would crash the tserver. See DB-23803.
-TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
+TEST_P(PgVectorIndexSnapshotTest, CompactionAfterSnapshotRestore) {
   constexpr size_t kBatch = 8;
 
   num_pre_split_tablets_ = 1;
@@ -260,7 +276,7 @@ TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
   ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
 }
 
-void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
+void PgVectorIndexSnapshotTest::TestSnapshotRestoreNonTransactionalWrites(
     CrashAfterRestoreReopen crash_after_reopen) {
   constexpr size_t kNumRows = 16;
 
@@ -309,14 +325,14 @@ void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
 // A restore replaces the vector index storage together with the regular DB. The vector indexes
 // must get the restore op id like the regular DB, otherwise bootstrap starts replay at their older
 // flushed OpId and re-inserts the rolled back writes into them. See issue #32797.
-TEST_P(PgVectorIndexTest, SnapshotRestoreNonTransactionalWrites) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotRestoreNonTransactionalWrites) {
   TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen::kFalse);
 }
 
 // Once the regular DB has the restore op id, bootstrap does not replay the restore. A crash right
 // after the restore reopens the storages must find the vector indexes at the restore op id too,
 // not at the snapshot's OpIds. See issue #35077.
-TEST_P(PgVectorIndexTest, SnapshotRestoreCrashAfterReopen) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotRestoreCrashAfterReopen) {
   TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen::kTrue);
 }
 
