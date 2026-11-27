@@ -5403,7 +5403,8 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
  * catalog cache instead of keeping statistics they read before the restore.
  *
  * The increment only runs when the parameter is on: a server that does not
- * have the parameter already incremented the catalog version for each call.
+ * have the parameter already incremented the catalog version for each call,
+ * or once per relation with transactional DDL (see ybStatsNeedOwnTransaction).
  *
  * It is emitted before a script that disabled auto analyze on the database
  * (one that does not create the database) re-enables it, so that an auto
