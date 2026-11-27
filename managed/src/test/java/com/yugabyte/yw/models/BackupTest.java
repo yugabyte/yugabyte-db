@@ -963,4 +963,43 @@ public class BackupTest extends FakeDBApplication {
         nextIncrementMs + newRetentionMs,
         Backup.getOrBadRequest(defaultCustomer.getUuid(), baseUUID).getExpiry().getTime());
   }
+
+  @Test
+  public void testRecomputeExpiryForScheduleCountsManualIncrement() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    UUID scheduleUUID =
+        ModelFactory.createScheduleBackup(
+                defaultCustomer.getUuid(),
+                universe.getUniverseUUID(),
+                s3StorageConfig.getConfigUUID())
+            .getScheduleUUID();
+    long now = System.currentTimeMillis();
+    long retentionMs = 30 * DAY_MS;
+    UUID baseUUID =
+        createScheduleBackup(
+                universe,
+                scheduleUUID,
+                null /* baseBackupUUID */,
+                retentionMs,
+                now - 3 * DAY_MS,
+                BackupState.Completed)
+            .getBackupUUID();
+    createScheduleBackup(
+        universe, scheduleUUID, baseUUID, retentionMs, now - 2 * DAY_MS, BackupState.Completed);
+    // Added by hand, so it has no schedule UUID.
+    long manualIncrementMs = now - DAY_MS;
+    createScheduleBackup(
+        universe,
+        null /* scheduleUUID */,
+        baseUUID,
+        retentionMs,
+        manualIncrementMs,
+        BackupState.Completed);
+
+    Backup.recomputeExpiryForSchedule(defaultCustomer.getUuid(), scheduleUUID, retentionMs);
+
+    assertEquals(
+        manualIncrementMs + retentionMs,
+        Backup.getOrBadRequest(defaultCustomer.getUuid(), baseUUID).getExpiry().getTime());
+  }
 }

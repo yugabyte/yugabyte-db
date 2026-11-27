@@ -1152,11 +1152,26 @@ public class Backup extends Model {
     TransactionUtil.doInTxn(
         () -> {
           List<Backup> backups = fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID);
+          List<UUID> baseUUIDs =
+              backups.stream()
+                  .filter(Backup::isParentBackup)
+                  .map(Backup::getBackupUUID)
+                  .collect(Collectors.toList());
           Map<UUID, Long> lastIncrementTimeMs = new HashMap<>();
-          for (Backup backup : backups) {
-            if (backup.isIncrementalBackup()) {
-              lastIncrementTimeMs.merge(
-                  backup.getBaseBackupUUID(), backup.getCreateTime().getTime(), Math::max);
+          if (!baseUUIDs.isEmpty()) {
+            // By base, not schedule: an increment added by hand has no schedule UUID.
+            List<Backup> chains =
+                find.query()
+                    .where()
+                    .eq("customer_uuid", customerUUID)
+                    .in("base_backup_uuid", baseUUIDs)
+                    .eq("state", BackupState.Completed)
+                    .findList();
+            for (Backup backup : chains) {
+              if (backup.isIncrementalBackup()) {
+                lastIncrementTimeMs.merge(
+                    backup.getBaseBackupUUID(), backup.getCreateTime().getTime(), Math::max);
+              }
             }
           }
           for (Backup backup : backups) {
@@ -1165,7 +1180,8 @@ public class Backup extends Model {
                     ? backup.getCompletionTime()
                     : backup.getCreateTime();
             long expiryMs = anchor.getTime() + timeBeforeDelete;
-            // A base is kept until its latest increment expires.
+            // A base is kept until its latest increment's start plus the retention, as
+            // onIncrementCompletion() sets it.
             Long lastIncrementMs = lastIncrementTimeMs.get(backup.getBackupUUID());
             if (lastIncrementMs != null) {
               expiryMs = Math.max(expiryMs, lastIncrementMs + timeBeforeDelete);
