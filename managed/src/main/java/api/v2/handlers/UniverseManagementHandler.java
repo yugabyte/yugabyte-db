@@ -420,7 +420,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
 
     if (oldGeoPartitioned) {
-      checkOldGeoPartitionedConversionAllowed(dbUniverse, v1Params);
+      checkOldGeoPartitionedConversionAllowed(
+          dbUniverse,
+          v1Params,
+          universeEditSpec.getClusters().stream()
+              .map(c -> c.getUuid())
+              .collect(Collectors.toSet()));
     }
 
     Cluster primaryCluster = v1Params.getPrimaryCluster();
@@ -661,7 +666,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     universeCRUDHandler.configure(customer, v1Params);
 
     if (oldGeoPartitioned) {
-      checkOldGeoPartitionedConversionAllowed(dbUniverse, v1Params);
+      checkOldGeoPartitionedConversionAllowed(
+          dbUniverse, v1Params, Collections.singleton(newReadReplica.uuid));
     }
 
     // start the add cluster task
@@ -1816,14 +1822,20 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   private void checkOldGeoPartitionedConversionAllowed(
-      Universe universe, UniverseDefinitionTaskParams v1Params) {
-    boolean hasPartitions = hasPartitions(v1Params);
-    boolean newGeopartitioned = false;
-    if (v1Params.getPrimaryCluster() != null) {
-      newGeopartitioned = v1Params.getPrimaryCluster().isGeoPartitioned();
+      Universe universe, UniverseDefinitionTaskParams v1Params, Set<UUID> changedClusterUUIDs) {
+    if (v1Params.getPrimaryCluster() != null && v1Params.getPrimaryCluster().isGeoPartitioned()) {
+      // old geo-partitioning -> new geo-partitioning is allowed.
+      return;
+    }
+    boolean hasPartitions = false;
+    for (UUID uuid : changedClusterUUIDs) {
+      if (v1Params.getClusterByUuid(uuid) != null) {
+        hasPartitions =
+            hasPartitions
+                || !CollectionUtils.isEmpty(v1Params.getClusterByUuid(uuid).getPartitions());
+      }
     }
     if (hasPartitions
-        && !newGeopartitioned
         && !confGetter.getConfForScope(
             universe, UniverseConfKeys.allowOldGeoPartitionedConversion)) {
       throw new PlatformServiceException(

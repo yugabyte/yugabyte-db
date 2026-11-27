@@ -2083,5 +2083,5 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " that is geo-partitioned through a default region, converting it to the"
               + " partitions model",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
