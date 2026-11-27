@@ -982,6 +982,14 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValueMsg& column_v
 }
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
+  // Index requests are allocated from index_arena_ and sent only after Apply() returns, so one
+  // arena has to serve every UpdateIndexes() call of this attempt.
+  index_requests_.clear();
+  if (update_indexes_) {
+    index_arena_ = SharedThreadSafeArena();
+    index_requests_.reserve(request_.update_index_ids().size() * 2);
+  }
+
   data.doc_write_batch->SetDocReadContext(doc_read_context_);
 
   QLTableRow existing_row;
@@ -1470,10 +1478,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   // index (one insert and one delete).
   VLOG(2) << "Updating indexes, existing: " << existing_row.ToString() << ", new: "
           << new_row.ToString();
-  const auto& index_ids = request_.update_index_ids();
-  index_arena_ = SharedThreadSafeArena();
-  index_requests_.reserve(index_ids.size() * 2);
-  for (const auto& index_id : index_ids) {
+  for (const auto& index_id : request_.update_index_ids()) {
     const auto* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
     bool index_pred_new_row = true;
