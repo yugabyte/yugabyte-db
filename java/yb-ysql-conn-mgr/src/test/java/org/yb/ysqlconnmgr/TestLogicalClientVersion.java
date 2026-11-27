@@ -28,6 +28,7 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
@@ -230,6 +231,154 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
       assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
 
       assertThrows(SQLException.class, () -> statement.execute("SELECT 1"));
+    }
+  }
+
+  // ALTER ROLE ... NOSUPERUSER with other options bumps the version, so pooled backends
+  // started before it are not reused by new sessions of the role.
+  @Test
+  public void testVersionBumpOnAlterRoleSuperuserWithOtherOptions() throws Exception {
+    try (Connection adminConn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement adminStmt = adminConn.createStatement()) {
+      adminStmt.execute("CREATE ROLE su_role SUPERUSER LOGIN");
+
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .withUser("su_role")
+              .connect();
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
+      }
+
+      long oldVersion = getLogicalClientVersion(adminStmt);
+      adminStmt.execute("ALTER ROLE su_role NOSUPERUSER CREATEDB");
+      assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
+
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .withUser("su_role")
+              .connect();
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+        assertThrows(SQLException.class,
+            () -> stmt.execute("SET SESSION AUTHORIZATION yugabyte"));
+      }
+      adminStmt.execute("DROP ROLE su_role");
+    }
+  }
+
+  private Connection connectToConnMgrAs(String user) throws Exception {
+    return getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withUser(user)
+        .connect();
+  }
+
+  private void executeOnPgEndpoint(String query) throws Exception {
+    try (Connection connection = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+            .connect();
+        Statement statement = connection.createStatement()) {
+      statement.execute(query);
+    }
+  }
+
+  // ALTER ROLE ... NOSUPERUSER issued without going through Connection Manager bumps the
+  // version, so pooled backends started before it are not reused by new sessions of the role.
+  @Test
+  public void testVersionBumpOnAlterRoleSuperuserOnPgEndpoint() throws Exception {
+    executeOnPgEndpoint("CREATE ROLE su_pg_role SUPERUSER LOGIN");
+
+    try (Connection conn = connectToConnMgrAs("su_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
+    }
+
+    long oldVersion = getLogicalClientVersionFromPgEndpoint();
+    executeOnPgEndpoint("ALTER ROLE su_pg_role NOSUPERUSER");
+    assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
+
+    try (Connection conn = connectToConnMgrAs("su_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+      assertThrows(SQLException.class,
+          () -> stmt.execute("SET SESSION AUTHORIZATION yugabyte"));
+    }
+
+    executeOnPgEndpoint("DROP ROLE su_pg_role");
+  }
+
+  // ALTER ROLE ... SET issued without going through Connection Manager bumps the version, so
+  // new sessions of the role get a backend that has the new default.
+  @Test
+  public void testVersionBumpOnAlterRoleSetOnPgEndpoint() throws Exception {
+    executeOnPgEndpoint("CREATE ROLE guc_pg_role LOGIN");
+
+    try (Connection conn = connectToConnMgrAs("guc_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "statement_timeout", "0"));
+    }
+
+    long oldVersion = getLogicalClientVersionFromPgEndpoint();
+    executeOnPgEndpoint("ALTER ROLE guc_pg_role SET statement_timeout = '123s'");
+    assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
+
+    try (Connection conn = connectToConnMgrAs("guc_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "statement_timeout", "123s"));
+    }
+
+    executeOnPgEndpoint("DROP ROLE guc_pg_role");
+  }
+
+  // ALTER ROLE issued on a node without Connection Manager bumps the version, so pooled
+  // backends started before it on another node are not reused by new sessions of the role.
+  @Test
+  public void testVersionBumpOnAlterRoleFromNodeWithoutConnMgr() throws Exception {
+    Map<String, String> plainTserverFlags = getTServerFlags();
+    plainTserverFlags.put("enable_ysql_conn_mgr", "false");
+    int plainTserverIdx = miniCluster.getNumTServers();
+    miniCluster.startTServer(plainTserverFlags);
+    markClusterNeedsRecreation();
+
+    try (Connection plainConn = getConnectionBuilder()
+            .withTServer(plainTserverIdx)
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+            .connect();
+        Statement plainStmt = plainConn.createStatement()) {
+      plainStmt.execute("CREATE ROLE mixed_role SUPERUSER LOGIN");
+      Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
+
+      try (Connection conn = connectToConnMgrAs("mixed_role");
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
+        assertTrue(verifySessionParameterValue(stmt, "statement_timeout", "0"));
+      }
+
+      long oldVersion = getLogicalClientVersion(plainStmt);
+      plainStmt.execute("ALTER ROLE mixed_role NOSUPERUSER");
+      assertEquals(oldVersion + 1, getLogicalClientVersion(plainStmt));
+      Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
+
+      try (Connection conn = connectToConnMgrAs("mixed_role");
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+        assertThrows(SQLException.class,
+            () -> stmt.execute("SET SESSION AUTHORIZATION yugabyte"));
+      }
+
+      plainStmt.execute("ALTER ROLE mixed_role SET statement_timeout = '123s'");
+      assertEquals(oldVersion + 2, getLogicalClientVersion(plainStmt));
+      Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
+
+      try (Connection conn = connectToConnMgrAs("mixed_role");
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "statement_timeout", "123s"));
+      }
+
+      plainStmt.execute("DROP ROLE mixed_role");
     }
   }
 }
