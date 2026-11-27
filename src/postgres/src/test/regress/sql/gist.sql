@@ -169,6 +169,56 @@ explain (verbose, costs off)
 select p from gist_tbl order by circle(p,1) <-> point(0,0) limit 1;
 select p from gist_tbl order by circle(p,1) <-> point(0,0) limit 1;
 
+-- Test that an index-only scan deforms the tuple it reconstructs with the
+-- descriptor the AM formed it with, not the scan slot's descriptor.
+create temp table gist_ios_tupdesc (a inet, r numrange);
+
+-- range_ops forms its tuples using the opclass input type, the polymorphic
+-- anyrange (alignment 'd'), while the scan slot uses the actual range type
+-- numrange (alignment 'i').  A buggy implementation will incorrectly access
+-- the r/numrange column at the wrong offset.
+--
+-- The range bounds are made long so the value needs a four-byte varlena
+-- header; shorter values get a one-byte header and are stored without
+-- alignment padding, which would mask the problem.
+insert into gist_ios_tupdesc
+values (
+        '::1', -- shifts "r" datum value to differing offset
+        numrange(repeat('7', 200)::numeric, repeat('8', 200)::numeric));
+create index on gist_ios_tupdesc using gist (a inet_ops, r);
+vacuum analyze gist_ios_tupdesc;
+
+explain (costs off)
+select lower(r) = repeat('7', 200)::numeric as lower_ok,
+       upper(r) = repeat('8', 200)::numeric as upper_ok
+  from gist_ios_tupdesc where r && numrange(null, null);
+select lower(r) = repeat('7', 200)::numeric as lower_ok,
+       upper(r) = repeat('8', 200)::numeric as upper_ok
+  from gist_ios_tupdesc where r && numrange(null, null);
+
+drop table gist_ios_tupdesc;
+
+-- test deletion of LP_DEAD-marked index tuples
+create table gist_prune_tbl (k int, p point);
+create index gist_prune_tbl_p_index on gist_prune_tbl using gist (p);
+
+begin;
+insert into gist_prune_tbl select i, point(1, i) from generate_series(1, 600) i;
+rollback;
+
+set enable_bitmapscan = off;
+set enable_indexonlyscan = off;
+set enable_seqscan = off;
+
+select count(*) from gist_prune_tbl where p <@ box(point(0,0), point(2,1000));
+insert into gist_prune_tbl select i, point(1, i) from generate_series(1, 600) i;
+select count(*) from gist_prune_tbl where p <@ box(point(0,0), point(2,1000));
+
+reset enable_bitmapscan;
+reset enable_indexonlyscan;
+reset enable_seqscan;
+drop table gist_prune_tbl;
+
 -- Force an index build using buffering.
 create index gist_tbl_box_index_forcing_buffering on gist_tbl using gist (p)
   with (buffering=on, fillfactor=50);

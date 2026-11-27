@@ -335,6 +335,7 @@ array_cat(PG_FUNCTION_ARGS)
 				ndims2,
 				nitems2,
 				ndatabytes2;
+	bool		ovfl;
 	int			i;
 	char	   *dat1,
 			   *dat2;
@@ -513,6 +514,11 @@ array_cat(PG_FUNCTION_ARGS)
 	ArrayCheckBounds(ndims, dims, lbs);
 
 	/* build the result array */
+	ovfl = pg_add_s32_overflow(ndatabytes1, ndatabytes2, &ndatabytes);
+	if (ovfl || !AllocSizeIsValid(ndatabytes))
+		ereport(ERROR,
+				errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				errmsg("result array is too big"));
 	ndatabytes = ndatabytes1 + ndatabytes2;
 	if (ARR_HASNULL(v1) || ARR_HASNULL(v2))
 	{
@@ -1067,7 +1073,8 @@ array_agg_array_combine(PG_FUNCTION_ARGS)
 
 		/* Calculate new sizes, guarding against overflow. */
 		if (pg_add_s32_overflow(state1->nbytes, state2->nbytes, &reqsize) ||
-			pg_add_s32_overflow(state1->nitems, state2->nitems, &newnitems))
+			pg_add_s32_overflow(state1->nitems, state2->nitems, &newnitems) ||
+			!AllocSizeIsValid(reqsize))
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("array size exceeds the maximum allowed (%zu)",

@@ -140,8 +140,9 @@ static void manifest_process_wal_range(JsonManifestParseContext *context,
 									   XLogRecPtr start_lsn,
 									   XLogRecPtr end_lsn);
 pg_noreturn static void manifest_report_error(JsonManifestParseContext *context,
-											  const char *fmt,...)
+											  const char *fmt, ...)
 			pg_attribute_printf(2, 3);
+static int	compare_wal_summary_start_lsn(const ListCell *a, const ListCell *b);
 static int	compare_block_numbers(const void *a, const void *b);
 
 /*
@@ -426,6 +427,19 @@ PrepareForIncrementalBackup(IncrementalBackupInfo *ib,
 
 		if (range->tli == latest_wal_range_tli)
 		{
+			/*
+			 * If the prior backup's final timeline is now historic, its WAL
+			 * range must not extend past the switch point. Otherwise, the
+			 * backup may contain changes outside this server's history.
+			 */
+			if (XLogRecPtrIsValid(tlep[i]->end) && range->end_lsn > tlep[i]->end)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("manifest requires WAL from final timeline %u ending at %X/%08X, but this server switched timelines at %X/%08X",
+								range->tli,
+								LSN_FORMAT_ARGS(range->end_lsn),
+								LSN_FORMAT_ARGS(tlep[i]->end))));
+
 			if (range->end_lsn > backup_state->startpoint)
 				ereport(ERROR,
 						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -559,6 +573,12 @@ PrepareForIncrementalBackup(IncrementalBackupInfo *ib,
 		if (tle->tli == earliest_wal_range_tli)
 			break;
 	}
+
+	/*
+	 * Merge summaries in ascending start LSN order so that applying a limit
+	 * block does not discard block references from later summaries.
+	 */
+	list_sort(required_wslist, compare_wal_summary_start_lsn);
 
 	/*
 	 * Read all of the required block reference table files and merge all of
@@ -727,7 +747,11 @@ GetFileBackupMethod(IncrementalBackupInfo *ib, const char *path,
 		ipath = GetIncrementalFilePath(dboid, spcoid, relfilenumber,
 									   forknum, segno);
 		if (backup_file_lookup(ib->manifest_files, ipath) == NULL)
+		{
+			pfree(ipath);
 			return BACK_UP_FILE_FULLY;
+		}
+		pfree(ipath);
 	}
 
 	/*
@@ -1018,7 +1042,7 @@ manifest_process_wal_range(JsonManifestParseContext *context,
  * manifest.
  */
 static void
-manifest_report_error(JsonManifestParseContext *context, const char *fmt,...)
+manifest_report_error(JsonManifestParseContext *context, const char *fmt, ...)
 {
 	StringInfoData errbuf;
 
@@ -1039,6 +1063,18 @@ manifest_report_error(JsonManifestParseContext *context, const char *fmt,...)
 
 	ereport(ERROR,
 			errmsg_internal("%s", errbuf.data));
+}
+
+/*
+ * List comparator for WAL summary files, ordered by ascending start LSN.
+ */
+static int
+compare_wal_summary_start_lsn(const ListCell *a, const ListCell *b)
+{
+	WalSummaryFile *ws1 = lfirst(a);
+	WalSummaryFile *ws2 = lfirst(b);
+
+	return pg_cmp_u64(ws1->start_lsn, ws2->start_lsn);
 }
 
 /*

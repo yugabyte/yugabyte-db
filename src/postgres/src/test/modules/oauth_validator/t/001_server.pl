@@ -56,6 +56,8 @@ $node->safe_psql('postgres', 'CREATE USER test;');
 $node->safe_psql('postgres', 'CREATE USER testalt;');
 $node->safe_psql('postgres', 'CREATE USER testparam;');
 
+my $exec_backend = $node->safe_psql('postgres', 'SHOW debug_exec_backend');
+
 # Save a background connection for later configuration changes.
 my $bgconn = $node->background_psql('postgres');
 
@@ -134,6 +136,45 @@ is( $contents,
 3|oauth|\{issuer=$issuer/param,"scope=openid postgres",validator=validator\}},
 	"pg_hba_file_rules recreates OAuth HBA settings");
 
+# An all-whitespace library list parses as an empty list.  Reject it without
+# crashing the postmaster during HBA reload.
+$node->append_conf('postgresql.conf', "oauth_validator_libraries = '   '");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/parameter "oauth_validator_libraries" must be set for authentication/,
+	$log_start);
+$bgconn->query_safe('SELECT 1');
+
+# The failed reload leaves the old HBA lines in place, but their validator is
+# no longer allowed.
+SKIP:
+{
+	skip "EXEC_BACKEND builds do not use already loaded configuration", 1
+	  if ($exec_backend =~ /on/ || $windows_os);
+	$node->connect_fails(
+		"user=test dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
+		"validator removed from oauth_validator_libraries is not used",
+		expected_stderr =>
+		  qr/OAuth bearer authentication failed for user "test"/,
+		log_like => [
+			qr/parameter "oauth_validator_libraries" must be set for authentication method "oauth"/
+		]);
+}
+
+# Test that a quoted empty name is rejected
+$node->append_conf('postgresql.conf', "oauth_validator_libraries = 'validator,\"\"'");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/invalid list syntax in parameter "oauth_validator_libraries"/,
+	$log_start);
+
+$node->append_conf('postgresql.conf',
+	"oauth_validator_libraries = 'validator'");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/parameter "oauth_validator_libraries" changed to "validator"/,
+	$log_start);
+
 {
 	# Make sure PGOAUTHDEBUG=UNSAFE doesn't disable certificate verification.
 	local $ENV{PGOAUTHDEBUG} = "UNSAFE";
@@ -151,7 +192,7 @@ is( $contents,
 		# Key off of the "peer certificate" portion, since that seems to have
 		# remained constant over a long period of time.
 		expected_stderr =>
-		  qr/failed to fetch OpenID discovery document:.*peer certificate/i);
+		  qr/could not fetch OpenID discovery document:.*peer certificate/i);
 }
 
 my $alternative_ca = "$ENV{cert_dir}/root+server_ca.crt";
@@ -362,12 +403,12 @@ $node->connect_fails(
 	connstr(stage => 'device', huge_response => JSON::PP::true),
 	"bad device authz response: overlarge JSON",
 	expected_stderr =>
-	  qr/failed to obtain device authorization: response is too large/);
+	  qr/could not obtain device authorization: response is too large/);
 $node->connect_fails(
 	connstr(stage => 'token', huge_response => JSON::PP::true),
 	"bad token response: overlarge JSON",
 	expected_stderr =>
-	  qr/failed to obtain access token: response is too large/);
+	  qr/could not obtain access token: response is too large/);
 
 my $nesting_limit = 16;
 $node->connect_ok(
@@ -382,28 +423,28 @@ $node->connect_fails(
 	connstr(stage => 'device', nested_array => $nesting_limit + 1),
 	"bad discovery response: overly nested JSON array",
 	expected_stderr =>
-	  qr/failed to parse device authorization: JSON is too deeply nested/);
+	  qr/could not parse device authorization: JSON is too deeply nested/);
 $node->connect_fails(
 	connstr(stage => 'device', nested_object => $nesting_limit + 1),
 	"bad discovery response: overly nested JSON object",
 	expected_stderr =>
-	  qr/failed to parse device authorization: JSON is too deeply nested/);
+	  qr/could not parse device authorization: JSON is too deeply nested/);
 
 $node->connect_fails(
 	connstr(stage => 'device', content_type => 'text/plain'),
 	"bad device authz response: wrong content type",
 	expected_stderr =>
-	  qr/failed to parse device authorization: unexpected content type/);
+	  qr/could not parse device authorization: unexpected content type/);
 $node->connect_fails(
 	connstr(stage => 'token', content_type => 'text/plain'),
 	"bad token response: wrong content type",
 	expected_stderr =>
-	  qr/failed to parse access token response: unexpected content type/);
+	  qr/could not parse access token response: unexpected content type/);
 $node->connect_fails(
 	connstr(stage => 'token', content_type => 'application/jsonx'),
 	"bad token response: wrong content type (correct prefix)",
 	expected_stderr =>
-	  qr/failed to parse access token response: unexpected content type/);
+	  qr/could not parse access token response: unexpected content type/);
 
 $node->connect_fails(
 	connstr(
@@ -413,12 +454,12 @@ $node->connect_fails(
 		retry_code => "slow_down"),
 	"bad token response: server overflows the device authz interval",
 	expected_stderr =>
-	  qr/failed to obtain access token: slow_down interval overflow/);
+	  qr/could not obtain access token: slow_down interval overflow/);
 
 $node->connect_fails(
 	connstr(stage => 'token', error_code => "invalid_grant"),
 	"bad token response: invalid_grant, no description",
-	expected_stderr => qr/failed to obtain access token: \(invalid_grant\)/);
+	expected_stderr => qr/could not obtain access token: \(invalid_grant\)/);
 $node->connect_fails(
 	connstr(
 		stage => 'token',
@@ -426,7 +467,7 @@ $node->connect_fails(
 		error_desc => "grant expired"),
 	"bad token response: expired grant",
 	expected_stderr =>
-	  qr/failed to obtain access token: grant expired \(invalid_grant\)/);
+	  qr/could not obtain access token: grant expired \(invalid_grant\)/);
 $node->connect_fails(
 	connstr(
 		stage => 'token',
@@ -434,7 +475,7 @@ $node->connect_fails(
 		error_status => 401),
 	"bad token response: client authentication failure, default description",
 	expected_stderr =>
-	  qr/failed to obtain access token: provider requires client authentication, and no oauth_client_secret is set \(invalid_client\)/
+	  qr/could not obtain access token: provider requires client authentication, and no oauth_client_secret is set \(invalid_client\)/
 );
 $node->connect_fails(
 	connstr(
@@ -444,7 +485,7 @@ $node->connect_fails(
 		error_desc => "authn failure"),
 	"bad token response: client authentication failure, provided description",
 	expected_stderr =>
-	  qr/failed to obtain access token: authn failure \(invalid_client\)/);
+	  qr/could not obtain access token: authn failure \(invalid_client\)/);
 
 $node->connect_fails(
 	connstr(stage => 'token', token => ""),
@@ -479,7 +520,7 @@ $node->connect_fails(
 		error_status => 401),
 	"bad token response: client authentication failure, default description with oauth_client_secret",
 	expected_stderr =>
-	  qr/failed to obtain access token: provider rejected the oauth_client_secret \(invalid_client\)/
+	  qr/could not obtain access token: provider rejected the oauth_client_secret \(invalid_client\)/
 );
 $node->connect_fails(
 	connstr(
@@ -489,7 +530,7 @@ $node->connect_fails(
 		error_desc => "mutual TLS required for client"),
 	"bad token response: client authentication failure, provided description with oauth_client_secret",
 	expected_stderr =>
-	  qr/failed to obtain access token: mutual TLS required for client \(invalid_client\)/
+	  qr/could not obtain access token: mutual TLS required for client \(invalid_client\)/
 );
 
 # Count the number of calls to the internal flow when multiple retries are
@@ -510,15 +551,28 @@ like(
 	qr@Visit https://example\.com/ and enter the code: postgresuser@,
 	"call count: stderr matches");
 
-my $count_pattern = qr/\[libpq\] total number of polls: (\d+)/;
-if (like($stderr, $count_pattern, "call count: count is printed"))
+SKIP:
 {
-	# For reference, a typical flow with two retries might take between 5-15
-	# calls to the client implementation. And while this will probably continue
-	# to change across OSes and Curl updates, we're likely in trouble if we see
-	# hundreds or thousands of calls.
-	$stderr =~ $count_pattern;
-	cmp_ok($1, '<', 100, "call count is reasonably small");
+	# Curl 8.20.0 regressed this test case:
+	#
+	#     https://github.com/curl/curl/issues/21547
+	#
+	skip 'call-count test is known to fail with libcurl 8.20.0', 2
+	  if $stderr =~ m/\Qinitialized libcurl 8.20.0\E/;
+
+	my $count_pattern = qr/\[libpq\] total number of polls: (\d+)/;
+	if (like($stderr, $count_pattern, "call count: count is printed"))
+	{
+		# For reference, a typical flow with two retries might take between 5-15
+		# calls to the client implementation. And while this will probably
+		# continue to change across OSes and Curl updates, we're likely in
+		# trouble if we see hundreds or thousands of calls.
+		$stderr =~ $count_pattern;
+		unless (cmp_ok($1, '<', 100, "call count is reasonably small"))
+		{
+			diag "full stderr:\n$stderr";
+		}
+	}
 }
 
 # Stress test: make sure our builtin flow operates correctly even if the client
@@ -802,7 +856,7 @@ is($result, 0,
 	'restart fails without explicit validators in oauth HBA entries');
 
 $log_start = $node->wait_for_log(
-	qr/authentication method "oauth" requires argument "validator" to be set/,
+	qr/authentication method "oauth" requires option "validator" to be set/,
 	$log_start);
 
 unlink($node->data_dir . '/pg_hba.conf');

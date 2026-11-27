@@ -1865,8 +1865,13 @@ _bt_readnextpage(IndexScanDesc scan, BlockNumber blkno,
 			(ScanDirectionIsForward(dir) ?
 			 !so->currPos.moreRight : !so->currPos.moreLeft))
 		{
-			/* most recent _bt_readpage call (for lastcurrblkno) ended scan */
-			Assert(so->currPos.currPage == lastcurrblkno && !seized);
+			/*
+			 * most recent _bt_readpage call (for lastcurrblkno) ended scan,
+			 * or lastcurrblkno is a half-dead leftmost page (not read by
+			 * _bt_readpage, so so->currPos doesn't describe it)
+			 */
+			Assert(so->currPos.currPage == lastcurrblkno || blkno == P_NONE);
+			Assert(!seized);
 			BTScanPosInvalidate(so->currPos);
 			_bt_parallel_done(scan);	/* iff !so->needPrimScan */
 			return false;
@@ -2195,12 +2200,21 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 	if (!BufferIsValid(so->currPos.buf))
 	{
 		/*
-		 * Empty index. Lock the whole relation, as nothing finer to lock
-		 * exists.
+		 * Empty index. Lock the whole relation using the approach explained
+		 * at the same point in the _bt_first path.
 		 */
-		PredicateLockRelation(rel, scan->xs_snapshot);
-		_bt_parallel_done(scan);
-		return false;
+		if (IsolationIsSerializable())
+		{
+			PredicateLockRelation(rel, scan->xs_snapshot);
+			so->currPos.buf = _bt_get_endpoint(rel, 0,
+											   ScanDirectionIsBackward(dir));
+		}
+
+		if (!BufferIsValid(so->currPos.buf))
+		{
+			_bt_parallel_done(scan);
+			return false;
+		}
 	}
 
 	page = BufferGetPage(so->currPos.buf);

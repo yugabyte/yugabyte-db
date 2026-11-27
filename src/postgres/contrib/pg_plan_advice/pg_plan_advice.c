@@ -28,7 +28,10 @@
 #include "storage/dsm_registry.h"
 #include "utils/guc.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_plan_advice",
+					.version = PG_VERSION
+);
 
 /* GUC variables */
 char	   *pg_plan_advice_advice = NULL;
@@ -330,7 +333,7 @@ pg_plan_advice_explain_feedback(ExplainState *es, List *feedback)
 
 		appendStringInfo(&buf, "%s /* ", item->defname);
 		pgpa_trove_append_flags(&buf, flags);
-		appendStringInfo(&buf, " */\n");
+		appendStringInfoString(&buf, " */\n");
 	}
 
 	pg_plan_advice_explain_text_multiline(es, "Supplied Plan Advice",

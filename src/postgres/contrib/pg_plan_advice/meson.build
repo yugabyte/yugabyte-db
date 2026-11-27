@@ -64,4 +64,9 @@ tests += {
       'syntax',
     ],
   },
+  'tap': {
+    'tests': [
+      't/001_foreign_scan.pl',
+    ],
+  },
 }

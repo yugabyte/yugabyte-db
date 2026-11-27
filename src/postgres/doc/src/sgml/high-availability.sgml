@@ -920,7 +920,10 @@ primary_conninfo = 'host=192.168.1.50 port=5432 user=foo password=foopass'
      <structname>pg_stat_wal_receiver</structname></link> view.  A large
      difference between <function>pg_last_wal_replay_lsn</function> and the
      view's <literal>flushed_lsn</literal> indicates that WAL is being
-     received faster than it can be replayed.
+     received faster than it can be replayed.  Recovery state and replay
+     progress can also be monitored via the
+     <link linkend="monitoring-pg-stat-recovery-view">
+     <structname>pg_stat_recovery</structname></link> view.
     </para>
    </sect3>
   </sect2>
@@ -1406,37 +1409,38 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
    </para>
 
    <para>
-    This is achieved by the following steps.  After performing write
-    operations, the application retrieves the current WAL location using a
-    function call like this.
+    This is achieved by the following steps.  Once the write transaction
+    has committed, the application retrieves a WAL location from the
+    primary using a function call like this.
 
-    <programlisting>
+<programlisting>
 postgres=# SELECT pg_current_wal_insert_lsn();
-pg_current_wal_insert_lsn
---------------------
-0/306EE20
+ pg_current_wal_insert_lsn
+---------------------------
+ 0/306EE20
 (1 row)
-    </programlisting>
+</programlisting>
    </para>
 
    <para>
     The <acronym>LSN</acronym> obtained from the primary is then communicated
     to the standby server. This can be managed at the application level or
     via the connection pooler.  On the standby, the application issues the
-    <xref linkend="sql-wait-for"/> command to block further processing until
+    <xref linkend="sql-wait"/> command to block further processing until
     the standby's WAL replay process reaches (or exceeds) the specified
     <acronym>LSN</acronym>.
 
-    <programlisting>
+<programlisting>
 postgres=# WAIT FOR LSN '0/306EE20';
  status
---------
+---------
  success
 (1 row)
-    </programlisting>
+</programlisting>
     Once the command returns a status of success, it guarantees that all
-    changes up to the provided <acronym>LSN</acronym> have been applied,
-    ensuring that subsequent read queries will reflect the latest updates.
+    changes up to the provided <acronym>LSN</acronym> have been applied.
+    Therefore, if that <acronym>LSN</acronym> was retrieved from the primary
+    after the commit, subsequent read queries will reflect those updates.
    </para>
   </sect2>
 
@@ -1567,6 +1571,38 @@ postgres=# WAIT FOR LSN '0/306EE20';
     read-only queries from the primary, not for high availability purposes,
     you don't need to promote.
    </para>
+
+   <note>
+    <para>
+     On a standby with <xref linkend="guc-wal-level"/> set to
+     <literal>replica</literal> that has a valid logical replication slot at
+     the end of recovery, including a failover slot synchronized from the
+     primary, promotion waits until every process has refreshed its setting for
+     whether to include logical decoding information in WAL records.  A backend
+     that is blocked sending data to a client that has stopped reading cannot
+     do that, so promotion waits until the client goes away or the connection
+     is dropped, which can take a long time. While it waits, the startup
+     process logs a message of the form <literal>still waiting for backend with
+     PID <replaceable>nnn</replaceable> to accept ProcSignalBarrier</literal>
+     every 5 seconds.
+    </para>
+
+    <para>
+     If promotion is already waiting, calling
+     <function>pg_terminate_backend()</function> on the logged process ID lets
+     promotion finish.  This does not work if the backend is blocked sending
+     an error message, because the error is sent with interrupts held.  In
+     that case, close the client connection.
+    </para>
+
+    <para>
+     To bound such waits, configure <xref linkend="guc-tcp-user-timeout"/>
+     on the standby ahead of time, for example in
+     <filename>postgresql.conf</filename>, where supported by the operating
+     system.  Setting it after a backend is already blocked sending data has
+     no effect on that backend.
+    </para>
+   </note>
   </sect1>
 
  <sect1 id="hot-standby">
@@ -1801,9 +1837,11 @@ postgres=# WAIT FOR LSN '0/306EE20';
     (In server versions before 14, the <varname>in_hot_standby</varname>
     parameter did not exist; a workable substitute method for older servers
     is <command>SHOW transaction_read_only</command>.)  In addition, a set of
-    functions (<xref linkend="functions-recovery-info-table"/>) allow users to
-    access information about the standby server. These allow you to write
-    programs that are aware of the current state of the database. These
+    functions (<xref linkend="functions-recovery-info-table"/>) and the
+    <link linkend="monitoring-pg-stat-recovery-view">
+    <structname>pg_stat_recovery</structname></link> view allow users to
+    access information about the standby server. These facilities allow you to
+    write programs that are aware of the current state of the database. They
     can be used to monitor the progress of recovery, or to allow you to
     write complex programs that restore the database to particular states.
    </para>

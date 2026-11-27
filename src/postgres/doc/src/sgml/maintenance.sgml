@@ -171,11 +171,13 @@
     future reuse.  However, it will not return the space to the operating
     system, except in the special case where one or more pages at the
     end of a table become entirely free and an exclusive table lock can be
-    easily obtained.  In contrast, <command>VACUUM FULL</command> actively compacts
-    tables by writing a complete new version of the table file with no dead
-    space.  This minimizes the size of the table, but can take a long time.
-    It also requires extra disk space for the new copy of the table, until
-    the operation completes.
+    easily obtained.  In contrast, table-rewriting commands such as
+    <command>VACUUM FULL</command>, <command>CLUSTER</command>, and
+    <command>REPACK</command> actively compact tables by writing a complete
+    new version of the table file without the dead space left by old row
+    versions.  This minimizes the size of the table, but can take a long time.
+    It also requires extra disk space for the new copy of the table, until the
+    operation completes.
    </para>
 
    <para>
@@ -186,12 +188,14 @@
     is not to keep tables at their minimum size, but to maintain steady-state
     usage of disk space: each table occupies space equivalent to its
     minimum size plus however much space gets used up between vacuum runs.
-    Although <command>VACUUM FULL</command> can be used to shrink a table back
-    to its minimum size and return the disk space to the operating system,
-    there is not much point in this if the table will just grow again in the
-    future.  Thus, moderately-frequent standard <command>VACUUM</command> runs are a
-    better approach than infrequent <command>VACUUM FULL</command> runs for
-    maintaining heavily-updated tables.
+    Although table-rewriting compaction operations such as
+    <command>VACUUM FULL</command>, <command>CLUSTER</command>, and
+    <command>REPACK</command> can be used to shrink a table back to its
+    minimum size and return the disk space to the operating system, there is
+    not much point in this if the table will just grow again in the future.
+    Thus, moderately-frequent standard <command>VACUUM</command> runs are a
+    better approach than infrequent use of such operations for maintaining
+    heavily-updated tables.
    </para>
 
    <para>
@@ -199,7 +203,8 @@
     doing all the work at night when load is low.
     The difficulty with doing vacuuming according to a fixed schedule
     is that if a table has an unexpected spike in update activity, it may
-    get bloated to the point that <command>VACUUM FULL</command> is really necessary
+    get bloated to the point that a table-rewriting compaction operation such
+    as <command>VACUUM FULL</command> or <command>REPACK</command> may be needed
     to reclaim space.  Using the autovacuum daemon alleviates this problem,
     since the daemon schedules vacuuming dynamically in response to update
     activity.  It is unwise to disable the daemon completely unless you
@@ -227,16 +232,20 @@
     a table contains large numbers of dead row versions as a result of
     massive update or delete activity.  If you have such a table and
     you need to reclaim the excess disk space it occupies, you will need
-    to use <command>VACUUM FULL</command>, or alternatively
-    <link linkend="sql-cluster"><command>CLUSTER</command></link>
+    to use <command>VACUUM FULL</command>,
+    <link linkend="sql-cluster"><command>CLUSTER</command></link>,
+    <link linkend="sql-repack"><command>REPACK</command></link>,
     or one of the table-rewriting variants of
     <link linkend="sql-altertable"><command>ALTER TABLE</command></link>.
     These commands rewrite an entire new copy of the table and build
     new indexes for it.  All these options require an
-    <literal>ACCESS EXCLUSIVE</literal> lock.  Note that
-    they also temporarily use extra disk space approximately equal to the size
-    of the table, since the old copies of the table and indexes can't be
-    released until the new ones are complete.
+    <literal>ACCESS EXCLUSIVE</literal> lock, except that
+    <command>REPACK</command> can be run with <literal>CONCURRENTLY</literal>,
+    in which case the <literal>ACCESS EXCLUSIVE</literal> lock is held only
+    while swapping the table and index files.  Note that they also
+    temporarily use extra disk space approximately equal to the size of the
+    table, since the old copies of the table and indexes can't be released
+    until the new ones are complete.
    </para>
    </tip>
 
@@ -674,8 +683,8 @@ SELECT datname, age(datfrozenxid) FROM pg_database;
 
 <programlisting>
 WARNING:  database "mydb" must be vacuumed within 99985967 transactions
-DETAIL:  Approximately 4.66% of transaction IDs are available for use.
-HINT:  To avoid XID assignment failures, execute a database-wide VACUUM in that database.
+DETAIL:  Approximately 4.66% of transaction ID space remains before wraparound.
+HINT:  To avoid transaction ID assignment failures, execute a database-wide VACUUM in that database.
 </programlisting>
 
     (A manual <command>VACUUM</command> should fix the problem, as suggested by the
@@ -686,7 +695,7 @@ HINT:  To avoid XID assignment failures, execute a database-wide VACUUM in that 
     there are fewer than three million transactions left until wraparound:
 
 <programlisting>
-ERROR:  database is not accepting commands that assign new XIDs to avoid wraparound data loss in database "mydb"
+ERROR:  database is not accepting commands that assign new transaction IDs to avoid wraparound data loss in database "mydb"
 HINT:  Execute a database-wide VACUUM in that database.
 </programlisting>
 
@@ -702,20 +711,20 @@ HINT:  Execute a database-wide VACUUM in that database.
     <orderedlist>
      <listitem>
       <simpara>Resolve old prepared transactions. You can find these by checking
-       <link linkend="view-pg-prepared-xacts">pg_prepared_xacts</link> for rows where
+       <link linkend="view-pg-prepared-xacts"><structname>pg_prepared_xacts</structname></link> for rows where
        <literal>age(transactionid)</literal> is large. Such transactions should be
        committed or rolled back.</simpara>
      </listitem>
      <listitem>
       <simpara>End long-running open transactions. You can find these by checking
-       <link linkend="monitoring-pg-stat-activity-view">pg_stat_activity</link> for rows where
+       <link linkend="monitoring-pg-stat-activity-view"><structname>pg_stat_activity</structname></link> for rows where
        <literal>age(backend_xid)</literal> or <literal>age(backend_xmin)</literal> is
        large. Such transactions should be committed or rolled back, or the session
        can be terminated using <literal>pg_terminate_backend</literal>.</simpara>
      </listitem>
      <listitem>
       <simpara>Drop any old replication slots. Use
-       <link linkend="monitoring-pg-stat-replication-view">pg_stat_replication</link> to
+       <link linkend="view-pg-replication-slots"><structname>pg_replication_slots</structname></link> to
        find slots where <literal>age(xmin)</literal> or <literal>age(catalog_xmin)</literal>
        is large. In many cases, such slots were created for replication to servers that no
        longer exist, or that have been down for a long time. If you drop a slot for a server
@@ -724,7 +733,7 @@ HINT:  Execute a database-wide VACUUM in that database.
      </listitem>
      <listitem>
       <simpara>Execute <command>VACUUM</command> in the target database. A database-wide
-       <literal>VACUUM</literal> is simplest; to reduce the time required, it as also possible
+       <literal>VACUUM</literal> is simplest; to reduce the time required, it is also possible
        to issue manual <command>VACUUM</command> commands on the tables where
        <structfield>relminxid</structfield> is oldest. Do not use <literal>VACUUM FULL</literal>
        in this scenario, because it requires an XID and will therefore fail, except in super-user
@@ -779,8 +788,8 @@ HINT:  Execute a database-wide VACUUM in that database.
      32-bit counter and corresponding storage, all of which requires
      careful aging management, storage cleanup, and wraparound handling.
      There is a separate storage area which holds the list of members in
-     each multixact, which also uses a 32-bit counter and which must also
-     be managed.  The system function
+     each multixact, which cannot wrap around but must also be managed
+     to keep disk usage under control.  The system function
      <function>pg_get_multixact_members()</function> described in
      <xref linkend="functions-pg-snapshot"/> can be used to examine the
      transaction IDs associated with a multixact ID.
@@ -814,30 +823,27 @@ HINT:  Execute a database-wide VACUUM in that database.
     <para>
      As a safety device, an aggressive vacuum scan will
      occur for any table whose multixact-age is greater than <xref
-     linkend="guc-autovacuum-multixact-freeze-max-age"/>. Also, if the number
-     of multixact member entries created exceeds approximately 2 billion
-     entries (occupying roughly 10GB in the
+     linkend="guc-autovacuum-multixact-freeze-max-age"/>. The aggressive
+     scans will occur even if autovacuum is nominally disabled. Also, if
+     the number of multixact member entries created exceeds approximately
+     2 billion entries (occupying roughly 10GB in the
      <literal>pg_multixact/members</literal> directory), aggressive vacuum
      scans will occur more often for all tables, starting with those that
-     have the oldest multixact-age. Both of these kinds of aggressive
-     scans will occur even if autovacuum is nominally disabled. At approximately
-     4 billion entries (occupying roughly 20GB in the
-     <literal>pg_multixact/members</literal> directory), even more aggressive
-     vacuum scans are triggered to reclaim member storage space.
+     have the oldest multixact-age.
     </para>
 
     <para>
      The <function>pg_get_multixact_stats()</function> function described in
      <xref linkend="functions-pg-snapshot"/> provides a way to monitor
      multixact allocation and usage patterns in real time, for example:
-     <programlisting>
+<screen>
 =# SELECT *, pg_size_pretty(members_size) members_size_pretty
      FROM pg_catalog.pg_get_multixact_stats();
  num_mxids | num_members | members_size | oldest_multixact | members_size_pretty
 -----------+-------------+--------------+------------------+---------------------
  311740299 |  2785241176 |  13926205880 |                2 | 13 GB
 (1 row)
-     </programlisting>
+</screen>
      This output shows a system with significant multixact activity: about
      312 million multixact IDs and about 2.8 billion member entries consuming
      13 GB of storage space.
@@ -868,6 +874,12 @@ HINT:  Execute a database-wide VACUUM in that database.
      <listitem>
       <simpara>Running transactions and prepared transactions can be ignored if there
        is no chance that they might appear in a multixact.</simpara>
+     </listitem>
+     <listitem>
+      <simpara>Unlike transaction ID wraparound, replication slots do not
+       directly hold back multixact cleanup. Dropping stale replication
+       slots is therefore not usually relevant to resolving multixact ID
+       wraparound problems.</simpara>
      </listitem>
      <listitem>
       <simpara>MXID information is not directly visible in system views such as
@@ -1038,8 +1050,8 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
     per-table <literal>autovacuum_vacuum_cost_delay</literal> or
     <literal>autovacuum_vacuum_cost_limit</literal> storage parameters have been set
     are not considered in the balancing algorithm.
-    Parallel workers launched for <xref linkend="parallel-vacuum"/> are using
-    the same cost delay parameters as the leader worker. If any of these
+    For <xref linkend="parallel-vacuum"/>, the leader and its parallel workers
+    use the same cost delay but share the cost limit. If any of these
     parameters are changed in the leader worker, it will propagate the new
     parameter values to all of its parallel workers.
    </para>
@@ -1112,8 +1124,10 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
        field as compared to
        <xref linkend="guc-autovacuum-multixact-freeze-max-age"/>.  Furthermore,
        this component increases greatly once the age surpasses
-       <xref linkend="guc-vacuum-multixact-failsafe-age"/>.  The final value
-       for this component can be adjusted via
+       <xref linkend="guc-vacuum-multixact-failsafe-age"/> or when the number
+       of multixact member entries created exceeds approximately 2 billion
+       entries (see <xref linkend="vacuum-for-multixact-wraparound"/>).  The
+       final value for this component can be adjusted via
        <xref linkend="guc-autovacuum-multixact-freeze-score-weight"/>.  Note
        that increasing this parameter's value also lowers the age at which this
        component begins scaling aggressively, i.e., the scaling age is divided
@@ -1186,15 +1200,15 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
     vacuum phase, please refer to <xref linkend="vacuum-phases"/>).  The
     degree of parallelism is determined by the number of indexes on the
     relation that support parallel vacuum.  For manual <command>VACUUM</command>,
-    this is limited by the <literal>PARALLEL</literal> option, which is
-    further capped by <xref linkend="guc-max-parallel-maintenance-workers"/>.
+    this is limited by the <literal>PARALLEL</literal> option if specified,
+    which is further capped by <xref linkend="guc-max-parallel-maintenance-workers"/>.
     For autovacuum, it is limited by the table's
-    <xref linkend="reloption-autovacuum-parallel-workers"/> if any which is
-    capped limited by
-    <xref linkend="guc-autovacuum-max-parallel-workers"/> parameter.  Please
-    note that it is not guaranteed that the number of parallel workers that was
-    calculated will be used during execution.  It is possible for a vacuum to
-    run with fewer workers than specified, or even with no workers at all.
+    <xref linkend="reloption-autovacuum-parallel-workers"/> if specified,
+    which is further capped by <xref linkend="guc-autovacuum-max-parallel-workers"/>
+    parameter. Please note that it is not guaranteed that the number of parallel
+    workers that was calculated will be used during execution.  It is possible for
+    a vacuum to run with fewer workers than specified, or even with no workers at
+    all.
    </para>
 
    <para>

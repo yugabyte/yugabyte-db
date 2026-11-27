@@ -79,8 +79,7 @@ BRIN
 CommitTs
 ReplicationOrigin
 Generic
-LogicalMessage
-XLOG2$/,
+LogicalMessage$/,
 	'rmgr list');
 
 
@@ -198,8 +197,8 @@ END
 $$;
 });
 
-my $contrecord_lsn = $node->safe_psql('postgres',
-	'SELECT pg_current_wal_insert_lsn()');
+my $contrecord_lsn =
+  $node->safe_psql('postgres', 'SELECT pg_current_wal_insert_lsn()');
 # Generate contrecord record
 $node->safe_psql('postgres',
 	qq{SELECT pg_logical_emit_message(true, 'test 026', repeat('xyzxz', 123456))}
@@ -227,8 +226,14 @@ command_fails_like(
 	[ 'pg_waldump', 'foo', 'bar' ],
 	qr/error: could not locate WAL file "foo"/,
 	'start file not found');
-command_like([ 'pg_waldump', $node->data_dir . '/pg_wal/' . $start_walfile ],
-	qr/./, 'runs with start segment specified');
+command_like(
+	[
+		'pg_waldump',
+		'--limit' => 1,
+		$node->data_dir . '/pg_wal/' . $start_walfile
+	],
+	qr/./,
+	'runs with start segment specified');
 command_fails_like(
 	[ 'pg_waldump', $node->data_dir . '/pg_wal/' . $start_walfile, 'bar' ],
 	qr/error: could not open file "bar"/,
@@ -236,6 +241,7 @@ command_fails_like(
 command_like(
 	[
 		'pg_waldump',
+		'--limit' => 1,
 		$node->data_dir . '/pg_wal/' . $start_walfile,
 		$node->data_dir . '/pg_wal/' . $end_walfile
 	],
@@ -243,8 +249,10 @@ command_like(
 	'runs with start and end segment specified');
 command_like(
 	[
-		'pg_waldump', '--quiet', '--path',
-		$node->data_dir . '/pg_wal/', $start_walfile
+		'pg_waldump', '--quiet',
+		'--limit' => 1,
+		'--path', $node->data_dir . '/pg_wal/',
+		$start_walfile
 	],
 	qr/^$/,
 	'no output with --quiet option');
@@ -296,6 +304,7 @@ sub test_pg_waldump_skip_bytes
 		'--start' => $new_start,
 		'--end' => $endlsn,
 		'--path' => $path,
+		'--limit' => 1,
 	  ],
 	  '>' => \$stdout,
 	  '2>' => \$stderr;
@@ -336,7 +345,8 @@ sub generate_archive
 
 	my @files;
 	opendir my $dh, $directory or die "opendir: $!";
-	while (my $entry = readdir $dh) {
+	while (my $entry = readdir $dh)
+	{
 		# Skip '.' and '..'
 		next if $entry eq '.' || $entry eq '..';
 		push @files, $entry;
@@ -379,20 +389,23 @@ for my $scenario (@scenarios)
 {
 	my $path = $scenario->{'path'};
 
-	SKIP:
+  SKIP:
 	{
 		skip "tar command is not available", 56
 		  if (!defined $tar || $tar eq '') && $scenario->{'is_archive'};
-		skip "$scenario->{'compression_method'} compression not supported by this build", 56
+		skip
+		  "$scenario->{'compression_method'} compression not supported by this build",
+		  56
 		  if !$scenario->{'enabled'} && $scenario->{'is_archive'};
 
-		  # create pg_wal archive
-		  if ($scenario->{'is_archive'})
-		  {
-			  generate_archive($path,
-				  $node->data_dir . '/pg_wal',
-				  $scenario->{'compression_flags'});
-		  }
+		# create pg_wal archive
+		if ($scenario->{'is_archive'})
+		{
+			generate_archive(
+				$path,
+				$node->data_dir . '/pg_wal',
+				$scenario->{'compression_flags'});
+		}
 
 		command_fails_like(
 			[ 'pg_waldump', '--path' => $path ],
@@ -404,14 +417,18 @@ for my $scenario (@scenarios)
 				'--path' => $path,
 				'--start' => $start_lsn,
 				'--end' => $end_lsn,
+				'--limit' => 1,
 			],
 			qr/./,
 			'runs with path option and start and end locations');
+
+		# Start near the end to avoid decoding records that are not relevant
+		# to the fall-off-the-end tests.
 		command_fails_like(
 			[
 				'pg_waldump',
 				'--path' => $path,
-				'--start' => $start_lsn,
+				'--start' => $contrecord_lsn,
 			],
 			qr/error: error in WAL record at/,
 			'falling off the end of the WAL results in an error');
@@ -420,7 +437,7 @@ for my $scenario (@scenarios)
 			[
 				'pg_waldump', '--quiet',
 				'--path' => $path,
-				'--start' => $start_lsn
+				'--start' => $contrecord_lsn
 			],
 			qr/error: error in WAL record at/,
 			'errors are shown with --quiet');
@@ -445,22 +462,28 @@ for my $scenario (@scenarios)
 		like($lines[0], qr/WAL statistics/, "statistics on stdout");
 		is(grep(/^rmgr:/, @lines), 0, 'no rmgr lines output');
 
-		@lines = test_pg_waldump($path, $start_lsn, $end_lsn, '--stats=record');
+		@lines =
+		  test_pg_waldump($path, $start_lsn, $end_lsn, '--stats=record');
 		like($lines[0], qr/WAL statistics/, "statistics on stdout");
 		is(grep(/^rmgr:/, @lines), 0, 'no rmgr lines output');
 
-		@lines = test_pg_waldump($path, $start_lsn, $end_lsn, '--rmgr' => 'Btree');
+		@lines =
+		  test_pg_waldump($path, $start_lsn, $end_lsn, '--rmgr' => 'Btree');
 		is(grep(!/^rmgr: Btree/, @lines), 0, 'only Btree lines');
 
-		@lines = test_pg_waldump($path, $start_lsn, $end_lsn, '--fork' => 'init');
+		@lines =
+		  test_pg_waldump($path, $start_lsn, $end_lsn, '--fork' => 'init');
 		is(grep(!/fork init/, @lines), 0, 'only init fork lines');
 
 		@lines = test_pg_waldump($path, $start_lsn, $end_lsn,
 			'--relation' => "$default_ts_oid/$postgres_db_oid/$rel_t1_oid");
-		is(grep(!/rel $default_ts_oid\/$postgres_db_oid\/$rel_t1_oid/, @lines),
-			0, 'only lines for selected relation');
+		is( grep(!/rel $default_ts_oid\/$postgres_db_oid\/$rel_t1_oid/,
+				@lines),
+			0,
+			'only lines for selected relation');
 
-		@lines = test_pg_waldump($path, $start_lsn, $end_lsn,
+		@lines = test_pg_waldump(
+			$path, $start_lsn, $end_lsn,
 			'--relation' => "$default_ts_oid/$postgres_db_oid/$rel_i1a_oid",
 			'--block' => 1);
 		is(grep(!/\bblk 1\b/, @lines), 0, 'only lines for selected block');

@@ -39,9 +39,11 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
 
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
+\.
 
 -- too many columns in column list: should fail
 COPY x (a, b, c, d, e, d, c) from stdin;
+\.
 
 -- missing data: should fail
 COPY x from stdin;
@@ -182,10 +184,12 @@ ROLLBACK;
 -- should fail with "not referenced by COPY" error
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL(b));
+\.
 ROLLBACK;
 -- should fail with "not referenced by COPY" error
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
+\.
 ROLLBACK;
 
 -- Test NOT NULL constraint enforcement on columns omitted from the COPY column

@@ -530,7 +530,9 @@ ALTER TABLE bobs_table OWNER TO alice;
    that contains objects owned by the role.  (Note that the first
    such <command>REASSIGN OWNED</command> will change the ownership of any
    shared-across-databases objects, that is databases or tablespaces, that
-   are owned by the role-to-be-dropped.)
+   are owned by the role-to-be-dropped. Subscriptions, while stored in a
+   shared catalog, belong to a specific database and are reassigned only when
+   <command>REASSIGN OWNED</command> is executed in that database.)
   </para>
 
   <para>
@@ -660,6 +662,7 @@ GRANT pg_signal_backend TO admin_user;
        <link linkend="sql-vacuum"><command>VACUUM</command></link>,
        <link linkend="sql-analyze"><command>ANALYZE</command></link>,
        <link linkend="sql-cluster"><command>CLUSTER</command></link>,
+       <link linkend="sql-repack"><command>REPACK</command></link>,
        <link linkend="sql-refreshmaterializedview"><command>REFRESH MATERIALIZED VIEW</command></link>,
        <link linkend="sql-reindex"><command>REINDEX</command></link>,
        and <link linkend="sql-lock"><command>LOCK TABLE</command></link> on all

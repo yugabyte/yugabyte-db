@@ -345,7 +345,6 @@ ExecProcNode(PlanState *node)
  * prototypes from functions in execExpr.c
  */
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
-extern ExprState *ExecInitExprWithContext(Expr *node, PlanState *parent, Node *escontext);
 extern ExprState *ExecInitExprWithParams(Expr *node, ParamListInfo ext_params);
 extern ExprState *ExecInitQual(List *qual, PlanState *parent);
 extern ExprState *ExecInitCheck(List *qual, PlanState *parent);
@@ -394,7 +393,6 @@ extern ProjectionInfo *ExecBuildUpdateProjection(List *targetList,
 												 TupleTableSlot *slot,
 												 PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
-extern ExprState *ExecPrepareExprWithContext(Expr *node, EState *estate, Node *escontext);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);
 extern List *ExecPrepareExprList(List *nodes, EState *estate);
@@ -718,6 +716,7 @@ extern void ExecInitRangeTable(EState *estate, List *rangeTable, List *permInfos
 							   Bitmapset *unpruned_relids);
 extern void ExecCloseRangeTableRelations(EState *estate);
 extern void ExecCloseResultRelations(EState *estate);
+extern void ExecCloseTrigTargetRelations(EState *estate);
 
 static inline RangeTblEntry *
 exec_rt_fetch(Index rti, EState *estate)
@@ -771,7 +770,7 @@ extern void ExecCloseIndices(ResultRelInfo *resultRelInfo);
 #define		EIIT_NO_DUPE_ERROR		(1<<1)
 #define		EIIT_ONLY_SUMMARIZING	(1<<2)
 extern List *ExecInsertIndexTuples(ResultRelInfo *resultRelInfo, EState *estate,
-								   uint32 options, TupleTableSlot *slot,
+								   uint32 flags, TupleTableSlot *slot,
 								   List *arbiterIndexes,
 								   bool *specConflict);
 extern bool ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo,
@@ -790,18 +789,20 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
  * prototypes from functions in execReplication.c
  */
 extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
+										 bool skipduplicates,
 										 LockTupleMode lockmode,
 										 TupleTableSlot *searchslot,
 										 TupleTableSlot *outslot);
 extern bool RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 									 TupleTableSlot *searchslot, TupleTableSlot *outslot);
-extern bool RelationFindDeletedTupleInfoSeq(Relation rel,
+extern bool RelationFindDeletedTupleInfoSeq(Relation rel, Oid identidxoid,
 											TupleTableSlot *searchslot,
 											TransactionId oldestxmin,
 											TransactionId *delete_xid,
 											ReplOriginId *delete_origin,
 											TimestampTz *delete_time);
 extern bool RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
+												bool skipduplicates,
 												TupleTableSlot *searchslot,
 												TransactionId oldestxmin,
 												TransactionId *delete_xid,
@@ -817,8 +818,9 @@ extern void ExecSimpleRelationDelete(ResultRelInfo *resultRelInfo,
 									 TupleTableSlot *searchslot);
 extern void CheckCmdReplicaIdentity(Relation rel, CmdType cmd);
 
-extern void CheckSubscriptionRelkind(char localrelkind, char remoterelkind,
-									 const char *nspname, const char *relname);
+extern void CheckSubscriptionTargetRel(Oid relid, char remoterelkind,
+									   const char *nspname,
+									   const char *relname);
 
 /*
  * prototypes from functions in nodeModifyTable.c

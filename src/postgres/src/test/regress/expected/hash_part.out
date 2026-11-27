@@ -40,6 +40,13 @@ SELECT satisfies_hash_partition('mchash'::regclass, 4, NULL, NULL);
  f
 (1 row)
 
+-- variadic null
+SELECT satisfies_hash_partition('mchash'::regclass, 4, 0, VARIADIC NULL::int[]);
+ satisfies_hash_partition 
+--------------------------
+ f
+(1 row)
+
 -- too many arguments
 SELECT satisfies_hash_partition('mchash'::regclass, 4, 0, NULL::int, NULL::text, NULL::json);
 ERROR:  number of partitioning columns (2) does not match number of partition keys provided (3)

@@ -116,9 +116,9 @@
   opfmethod => 'hash', opfname => 'xid8_ops' },
 { oid => '5067',
   opfmethod => 'btree', opfname => 'xid8_ops' },
-{ oid => '8278',
+{ oid => '6459',
   opfmethod => 'hash', opfname => 'oid8_ops' },
-{ oid => '8279',
+{ oid => '6460',
   opfmethod => 'btree', opfname => 'oid8_ops' },
 { oid => '2226',
   opfmethod => 'hash', opfname => 'cid_ops' },
@@ -381,8 +381,7 @@
   opfmethod => 'lsm', opfname => 'range_ops' },
 { oid => '9938',
   opfmethod => 'lsm', opfname => 'jsonb_ops' },
-# TODO(#37895): collision with PG; changed from 9949 to 9814
-{ oid => '9814',
+{ oid => '9949',
   opfmethod => 'lsm', opfname => 'multirange_ops' },
 
 ]

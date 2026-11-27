@@ -507,9 +507,10 @@ include_dir 'conf.d'
      <para>
       In addition to the <filename>postgresql.conf</filename> file
       already mentioned, <productname>PostgreSQL</productname> uses
-      two other manually-edited configuration files, which control
+      three other manually-edited configuration files, which control
       client authentication (their use is discussed in <xref
-      linkend="client-authentication"/>).  By default, all three
+      linkend="client-authentication"/>) and SSL host configuration.
+      By default, all four
       configuration files are stored in the database cluster's data
       directory.  The parameters described in this section allow the
       configuration files to be placed elsewhere.  (Doing so can ease
@@ -579,6 +580,22 @@ include_dir 'conf.d'
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-hosts-file" xreflabel="hosts_file">
+      <term><varname>hosts_file</varname> (<type>string</type>)
+      <indexterm>
+       <primary><varname>hosts_file</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+         Specifies the configuration file for host-based SSL configuration
+         (customarily called <filename>pg_hosts.conf</filename>).
+         This parameter can only be set at server start. See also
+         <xref linkend="ssl-sni"/>.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-external-pid-file" xreflabel="external_pid_file">
       <term><varname>external_pid_file</varname> (<type>string</type>)
       <indexterm>
@@ -620,10 +637,11 @@ include_dir 'conf.d'
      <para>
       If you wish, you can specify the configuration file names and locations
       individually using the parameters <varname>config_file</varname>,
-      <varname>hba_file</varname> and/or <varname>ident_file</varname>.
+      <varname>hba_file</varname>, <varname>ident_file</varname> and/or
+      <varname>hosts_file</varname>.
       <varname>config_file</varname> can only be specified on the
       <command>postgres</command> command line, but the others can be
-      set within the main configuration file.  If all three parameters plus
+      set within the main configuration file.  If all four parameters plus
       <varname>data_directory</varname> are explicitly set, then it is not necessary
       to specify <option>-D</option> or <envar>PGDATA</envar>.
      </para>
@@ -1154,6 +1172,19 @@ include_dir 'conf.d'
         time of encryption. In order to make use of a changed value, a new
         password must be set.
        </para>
+       <note>
+        <para>
+         If a role password was created with a different iteration count than
+         the value of <literal>scram_iterations</literal> specified in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line, an unauthenticated user can discern the existence of the role by
+         observing discrepancies in the server's responses to connection
+         attempts.  If you find this concerning, ensure that all role passwords
+         are created with <literal>scram_iterations</literal> set to the value
+         specified in the <filename>postgresql.conf</filename> file or on the
+         server command line.
+        </para>
+       </note>
       </listitem>
      </varlistentry>
 
@@ -1188,7 +1219,8 @@ include_dir 'conf.d'
       <listitem>
        <para>
         Controls whether a <literal>WARNING</literal> about MD5 password
-        deprecation is produced upon successful MD5 password authentication or
+        deprecation is produced upon successful authentication using an
+        MD5-encrypted password or
         when a <command>CREATE ROLE</command> or
         <command>ALTER ROLE</command> statement sets an MD5-encrypted password.
         The default value is <literal>on</literal>.
@@ -1555,11 +1587,11 @@ include_dir 'conf.d'
       </term>
       <listitem>
        <para>
-        Specifies the name of the curve to use in <acronym>ECDH</acronym> key
-        exchange.  It needs to be supported by all clients that connect.
-        Multiple curves can be specified by using a colon-separated list.
-        It does not need to be the same curve used by the server's Elliptic
-        Curve key.  This parameter can only be set in the
+        Specifies the named group to use for <acronym>TLS</acronym> key
+        exchange.  It needs to be supported by all clients that
+        connect.  Multiple groups can be specified by using a colon-separated
+        list.  It does not need to match the key type used by the server
+        certificate.  This parameter can only be set in the
         <filename>postgresql.conf</filename> file or on the server command line.
         The default is <literal>X25519:prime256v1</literal>.
        </para>
@@ -1574,7 +1606,7 @@ include_dir 'conf.d'
        </note>
 
        <para>
-        <productname>OpenSSL</productname> names for the most common curves
+        <productname>OpenSSL</productname> names for the most common groups
         are:
         <literal>prime256v1</literal> (NIST P-256),
         <literal>secp384r1</literal> (NIST P-384),
@@ -1731,6 +1763,25 @@ include_dir 'conf.d'
        <para>
         This parameter can only be set in the <filename>postgresql.conf</filename>
         file or on the server command line.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-ssl-sni" xreflabel="ssl_sni">
+      <term><varname>ssl_sni</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>ssl_sni</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enables SNI configuration for SSL connections.  When set to <literal>on</literal>
+        host configuration from <xref linkend="guc-hosts-file"/> is used, see
+        <xref linkend="ssl-sni"/> for more details.
+       </para>
+       <para>
+        This parameter can only be set in the <filename>postgresql.conf</filename>
+        file or on the server command line.  The default is <literal>off</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -2962,7 +3013,7 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
       <varlistentry id="guc-io-max-workers" xreflabel="io_max_workers">
-       <term><varname>io_max_workers</varname> (<type>int</type>)
+       <term><varname>io_max_workers</varname> (<type>integer</type>)
        <indexterm>
         <primary><varname>io_max_workers</varname> configuration parameter</primary>
        </indexterm>
@@ -2981,7 +3032,7 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
       <varlistentry id="guc-io-worker-idle-timeout" xreflabel="io_worker_idle_timeout">
-       <term><varname>io_worker_idle_timeout</varname> (<type>int</type>)
+       <term><varname>io_worker_idle_timeout</varname> (<type>integer</type>)
        <indexterm>
         <primary><varname>io_worker_idle_timeout</varname> configuration parameter</primary>
        </indexterm>
@@ -3001,7 +3052,7 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
       <varlistentry id="guc-io-worker-launch-interval" xreflabel="io_worker_launch_interval">
-       <term><varname>io_worker_launch_interval</varname> (<type>int</type>)
+       <term><varname>io_worker_launch_interval</varname> (<type>integer</type>)
        <indexterm>
         <primary><varname>io_worker_launch_interval</varname> configuration parameter</primary>
        </indexterm>
@@ -3629,11 +3680,12 @@ include_dir 'conf.d'
         <xref linkend="guc-full-page-writes"/> is on, during a base backup,
         etc.).
         A compressed page image will be decompressed during WAL replay.
-        The supported methods are <literal>pglz</literal>,
-        <literal>lz4</literal> (if <productname>PostgreSQL</productname>
-        was compiled with <option>--with-lz4</option>) and
-        <literal>zstd</literal> (if <productname>PostgreSQL</productname>
-        was compiled with <option>--with-zstd</option>).
+        The supported methods are <literal>off</literal>, <literal>on</literal>,
+        <literal>zstd</literal> (if <productname>PostgreSQL</productname> was compiled with <option>--with-zstd</option>),
+        <literal>lz4</literal> (if <productname>PostgreSQL</productname> was compiled with <option>--with-lz4</option>), and
+        <literal>pglz</literal>.
+        The value <literal>on</literal> selects the first of <literal>zstd</literal>,
+        <literal>lz4</literal>, <literal>pglz</literal> that is available.
         The default value is <literal>off</literal>.
         Only superusers and users with the appropriate <literal>SET</literal>
         privilege can change this setting.
@@ -4806,6 +4858,104 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
        </listitem>
       </varlistentry>
 
+      <varlistentry id="guc-output-plugin-libraries" xreflabel="output_plugin_libraries">
+       <term><varname>output_plugin_libraries</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>output_plugin_libraries</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Lists the libraries installed in <xref linkend="guc-dynamic-library-path"/>
+         that are also trusted for use as logical output plugins by replication
+         clients. Any <link linkend="logicaldecoding-example">logical decoding</link>
+         or <link linkend="protocol-replication">replication</link> requests for
+         other libraries will be refused. All users are subject to this
+         restriction. The default is <literal>'pgoutput, test_decoding'</literal>,
+         which are the two logical output plugins included in the standard
+         <productname>PostgreSQL</productname> distribution.
+         (<xref linkend="guc-output-plugin-libraries-builtins"/> documents the
+         behavior of the system if they are removed from this list.)
+        </para>
+        <para>
+         The format is a comma-separated list of library names, where each name
+         is interpreted as for the <link linkend="sql-load"><command>LOAD</command></link>
+         command (but logical decoding clients must specify a plugin name that
+         <emphasis>exactly</emphasis> matches an entry in the list, without
+         variations in case or path structure). Whitespace between entries is
+         ignored; surround a library name with double quotes if you need to
+         include whitespace or commas in the name.
+        </para>
+        <para>
+         It is the responsibility of the server administrator to ensure that
+         libraries added to this list do not unintentionally give additional
+         privileges to non-superusers when they are loaded into the server.
+        </para>
+        <note>
+         <para>
+          When updating the server from a version that does not have the
+          <literal>output_plugin_libraries</literal> parameter, the following
+          query can help construct the list of plugins that are required by all
+          persistent logical replication slots:
+<programlisting>
+SELECT DISTINCT plugin FROM pg_replication_slots WHERE plugin IS NOT NULL;
+</programlisting>
+          Review the list carefully for safety before adjusting
+          <literal>output_plugin_libraries</literal>.
+         </para>
+         <para>
+          The above query can only display plugins which were successfully
+          added to replication slots at some point in the past. Newly refused
+          requests will appear in the logs with a message similar to
+<programlisting>
+ERROR:  library "..." may not be used as an output plugin
+DETAIL:  The configuration parameter "output_plugin_libraries" (currently 'pgoutput, test_decoding') does not name this library as a trusted output plugin.
+HINT:  If it is safe for all REPLICATION users to use this library as an output plugin, add it to "output_plugin_libraries" and reload the server configuration.
+</programlisting>
+         </para>
+        </note>
+
+        <table id="guc-output-plugin-libraries-builtins">
+         <title>Plugins Allowed by Default</title>
+         <tgroup cols="2">
+          <colspec colname="col1" colwidth="1*"/>
+          <colspec colname="col2" colwidth="2*"/>
+          <thead>
+           <row>
+            <entry>Plugin</entry>
+            <entry>Description</entry>
+           </row>
+          </thead>
+
+          <tbody>
+           <row>
+            <entry><xref linkend="logicaldecoding-pgoutput"/></entry>
+            <entry>
+             Core plugin for logical replication. Removing <literal>pgoutput</literal>
+             from <literal>output_plugin_libraries</literal> will cause future
+             subscription connections, and maintenance of the replication slots
+             for subscriptions, to fail with an error. (Beware that existing
+             replication tools may not degrade gracefully if the server is
+             configured in this way.)
+            </entry>
+           </row>
+           <row>
+            <entry><xref linkend="test-decoding"/></entry>
+            <entry>
+             Decodes the WAL stream into a human-readable text representation.
+             <xref linkend="app-pgrecvlogical"/> uses this plugin by default, so
+             removing it from <literal>output_plugin_libraries</literal> will
+             prevent the use of that utility unless a replacement plugin is
+             installed and explicitly selected with
+             <link linkend="app-pgrecvlogical-option-plugin"><literal>--plugin</literal></link>.
+            </entry>
+           </row>
+          </tbody>
+         </tgroup>
+        </table>
+       </listitem>
+      </varlistentry>
+
       <varlistentry id="guc-wal-keep-size" xreflabel="wal_keep_size">
        <term><varname>wal_keep_size</varname> (<type>integer</type>)
        <indexterm>
@@ -4949,23 +5099,31 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         Specifies the maximum time the server waits during shutdown for all
         WAL data to be replicated to the receiver.  If this value is specified
         without units, it is taken as milliseconds.  A value of
-        <literal>-1</literal> (the default) disables the timeout mechanism.
+        <literal>-1</literal> (the default) disables the timeout mechanism,
+        allowing the WAL sender to wait as long as necessary for the receiver
+        to catch up.  A value of <literal>0</literal> causes the WAL sender to
+        terminate without waiting for the receiver to catch up.
        </para>
+
        <para>
-       When replication is in use, the sending server normally waits until
-       all WAL data has been transferred to the receiver before completing
-       shutdown.  This helps keep sender and receiver in sync after shutdown,
-       which is especially important for physical replication switchovers,
-       but it can delay shutdown.
+        When replication is in use, the sending server normally waits until
+        all WAL data has been transferred to the receiver before completing
+        shutdown.  This helps keep sender and receiver in sync after shutdown,
+        which is especially important for physical replication switchovers,
+        but it can delay shutdown.
        </para>
+
        <para>
-        If this parameter is set, the server stops waiting and completes
-        shutdown when the timeout expires.  This can shorten shutdown time,
-        for example, when replication is slow on high-latency networks or
-        when a logical replication apply worker is blocked waiting for locks.
-        However, in this case the sender and receiver may be out of sync after
-        shutdown.
+        If this parameter is set to zero or a positive value, the server stops
+        waiting and completes shutdown when the timeout expires.  This can
+        shorten shutdown time, for example, when replication is slow on
+        high-latency networks or when a logical replication apply worker is
+        blocked waiting for locks.  However, in this case the sender and
+        receiver may be out of sync after shutdown.  Care should be taken to
+        select a value high enough to allow all WAL data to be replicated to
+        the receiver under normal circumstances.
        </para>
+
        <para>
         This parameter can be set in <varname>primary_conninfo</varname> and
         in the <literal>CONNECTION</literal> clause of
@@ -5805,7 +5963,7 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-enable-groupby-reordering" xreflabel="enable_group_by_reordering">
+     <varlistentry id="guc-enable-group-by-reordering" xreflabel="enable_group_by_reordering">
       <term><varname>enable_group_by_reordering</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>enable_group_by_reordering</varname> configuration parameter</primary>
@@ -7021,13 +7179,18 @@ local0.*    /var/log/postgresql
 
        <note>
         <para>
-          The logging collector is designed to never lose messages.  This means
+          The logging collector is designed to avoid dropping messages.  This means
           that in case of extremely high load, server processes could be
           blocked while trying to send additional log messages when the
           collector has fallen behind.  In contrast, <application>syslog</application>
           prefers to drop messages if it cannot write them, which means it
           may fail to log some messages in such cases but it will not block
           the rest of the system.
+        </para>
+        <para>
+         The logging collector does not guarantee that log messages have
+         reached durable storage.  It can still lose messages due to a system
+         crash, power loss, or an error while writing the log file.
         </para>
        </note>
 
@@ -7376,7 +7539,6 @@ local0.*    /var/log/postgresql
          <member><literal>bgworker</literal></member>
          <member><literal>bgwriter</literal></member>
          <member><literal>checkpointer</literal></member>
-         <member><literal>checksums</literal></member>
          <member><literal>ioworker</literal></member>
          <member><literal>postmaster</literal></member>
          <member><literal>slotsyncworker</literal></member>
@@ -7744,7 +7906,7 @@ local0.*    /var/log/postgresql
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-debug-print-parse">
+     <varlistentry id="guc-debug-print-raw-parse" xreflabel="debug_print_raw_parse">
       <term><varname>debug_print_raw_parse</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>debug_print_raw_parse</varname> configuration parameter</primary>
@@ -8088,7 +8250,8 @@ local0.*    /var/log/postgresql
       <listitem>
        <para>
          This is a <function>printf</function>-style string that is output at the
-         beginning of each log line.
+         beginning of each log entry that is sent to <literal>stderr</literal>,
+         <literal>syslog</literal>, or <literal>eventlog</literal>.
          <literal>%</literal> characters begin <quote>escape sequences</quote>
          that are replaced with status information as outlined below.
          Unrecognized escapes are ignored. Other
@@ -8388,9 +8551,10 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
        <para>
         This setting only affects log messages printed as a result of
         <xref linkend="guc-log-statement"/>,
-        <xref linkend="guc-log-duration"/>, and related settings.  Non-zero
-        values of this setting add some overhead, particularly if parameters
-        are sent in binary form, since then conversion to text is required.
+        <xref linkend="guc-log-min-duration-statement"/>, and related settings.
+        Non-zero values of this setting add some overhead, particularly
+        if parameters are sent in binary form, since then conversion to
+        text is required.
        </para>
       </listitem>
      </varlistentry>
@@ -9693,7 +9857,12 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
          per-autovacuum worker equivalent of the <literal>PARALLEL</literal>
          option of the <link linkend="sql-vacuum"><command>VACUUM</command></link>
          command. Setting this value to 0 disables parallel vacuum during autovacuum.
-         The default is 0.
+         The default is 0.  This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line; but the setting can be reduced for individual tables by
+         changing the
+         <link linkend="reloption-autovacuum-parallel-workers">corresponding
+         table storage parameter</link>.
         </para>
        </listitem>
      </varlistentry>
@@ -9842,7 +10011,16 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
        delay is calculated as <varname>vacuum_cost_delay</varname> *
        <varname>accumulated_balance</varname> /
        <varname>vacuum_cost_limit</varname> with a maximum of
-       <varname>vacuum_cost_delay</varname> * 4.
+       <varname>vacuum_cost_delay</varname> * 4 for a non-parallel vacuum.
+       For <xref linkend="parallel-vacuum"/>, each process
+       uses a share of the limit, so the delay is calculated as
+       <varname>vacuum_cost_delay</varname> *
+       <varname>accumulated_balance</varname> *
+       <varname>active_processes</varname> /
+       <varname>vacuum_cost_limit</varname> with a maximum of
+       <varname>vacuum_cost_delay</varname> * 4 *
+       <varname>active_processes</varname>, and never more than one second
+       at once.
       </para>
      </note>
     </sect2>
@@ -10084,10 +10262,7 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
        </para>
 
        <para>
-        This parameter can only be set in the
-        <filename>postgresql.conf</filename> file or on the server command
-        line; but the setting can be overridden for individual tables by
-        changing the
+        The setting can be overridden for individual tables by changing the
         <link linkend="reloption-vacuum-max-eager-freeze-failure-rate">
         corresponding table storage parameter</link>.
         For more information on tuning vacuum's freezing behavior,
@@ -11857,7 +12032,7 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
       </listitem>
      </varlistentry>
 
-    <varlistentry id="guc-quote-all-identifiers" xreflabel="quote-all-identifiers">
+    <varlistentry id="guc-quote-all-identifiers" xreflabel="quote_all_identifiers">
       <term><varname>quote_all_identifiers</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>quote_all_identifiers</varname> configuration parameter</primary>
@@ -12182,7 +12357,7 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
      </varlistentry>
 
      <varlistentry id="guc-data-checksums" xreflabel="data_checksums">
-      <term><varname>data_checksums</varname> (<type>enum</type>)
+      <term><varname>data_checksums</varname> (<type>bool</type>)
       <indexterm>
        <primary><varname>data_checksums</varname> configuration parameter</primary>
       </indexterm>
@@ -12190,8 +12365,6 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
       <listitem>
        <para>
         Reports the state of data checksums for this cluster.
-        Possible values are <literal>on</literal>, <literal>off</literal>,
-        <literal>inprogress-on</literal> and <literal>inprogress-off</literal>.
         See <xref linkend="checksums"/> for more information.
        </para>
       </listitem>
@@ -13143,7 +13316,7 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
       </term>
       <listitem>
        <para>
-        Only has effect if <xref linkend="app-initdb-data-checksums"/> are enabled.
+        Only has effect if <link linkend="checksums">data checksums</link> are enabled.
        </para>
        <para>
         Detection of a checksum failure during a read normally causes
@@ -13156,6 +13329,32 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         present in the table if the block header is still sane. If the header is
         corrupt an error will be reported even if this option is enabled. The
         default setting is <literal>off</literal>.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this setting.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    <varlistentry id="guc-composite-type-mismatch" xreflabel="composite_type_mismatch">
+      <term><varname>composite_type_mismatch</varname> (<type>enum</type>)
+      <indexterm>
+       <primary><varname>composite_type_mismatch</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Reading a composite value whose row type was altered in an
+        incompatible way after the value was created normally causes
+        <productname>PostgreSQL</productname> to report an error.
+        This parameter controls that behavior.  With the default,
+        <literal>error</literal>, an error is reported, aborting the current
+        transaction.  With <literal>warn</literal>, the system warns about
+        mismatches but allows execution to continue.  With
+        <literal>disabled</literal>, the check is not performed at all.
+       </para>
+       <para>
+        Settings other than <literal>error</literal> may <emphasis>cause
+        crashes, wrong results, or other serious problems</emphasis>.
         Only superusers and users with the appropriate <literal>SET</literal>
         privilege can change this setting.
        </para>
@@ -13226,7 +13425,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         If LLVM has the required functionality, register generated functions
         with <productname>GDB</productname>.  This makes debugging easier.
         The default setting is <literal>off</literal>.
-        This parameter can only be set at server start.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this parameter at session start,
+        and it cannot be changed at all within a session.
        </para>
       </listitem>
      </varlistentry>
@@ -13277,7 +13478,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         This writes out files to <filename>~/.debug/jit/</filename>; the
         user is responsible for performing cleanup when desired.
         The default setting is <literal>off</literal>.
-        This parameter can only be set at server start.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this parameter at session start,
+        and it cannot be changed at all within a session.
        </para>
       </listitem>
      </varlistentry>

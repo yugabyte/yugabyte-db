@@ -23,6 +23,16 @@ typedef struct
 	List	  **windowFuncs;	/* lists of WindowFuncs for each winref */
 } WindowFuncLists;
 
+/*
+ * Callback used by expression_has_grouping_conflict below.  Given a Var, the
+ * callback returns the equality operator that the relevant grouping mechanism
+ * (GROUP BY, DISTINCT, DISTINCT ON, window PARTITION BY, or set operation)
+ * uses for the column the Var references, or InvalidOid if the Var does not
+ * participate in that grouping.  Returning InvalidOid signals "not a grouping
+ * column" to both the opfamily and collation checks.
+ */
+typedef Oid (*grouping_eqop_callback) (Var *var, void *context);
+
 extern bool contain_agg_clause(Node *clause);
 
 extern bool contain_window_function(Node *clause);
@@ -55,6 +65,10 @@ extern Query *inline_function_in_from(PlannerInfo *root,
 									  RangeTblEntry *rte);
 
 extern Bitmapset *pull_paramids(Expr *expr);
+
+extern bool expression_has_grouping_conflict(Node *expr,
+											 grouping_eqop_callback get_eqop,
+											 void *context);
 
 /* YB */
 extern Node *yb_get_saop_left_op(const Expr *clause);

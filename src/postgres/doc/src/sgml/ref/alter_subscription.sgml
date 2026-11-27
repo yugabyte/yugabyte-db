@@ -21,7 +21,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SERVER <replaceable>servername</replaceable>
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SERVER <replaceable>server_name</replaceable>
 ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> CONNECTION '<replaceable>conninfo</replaceable>'
 ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SET PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
 ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> ADD PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
@@ -104,12 +104,12 @@ ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <
    </varlistentry>
 
    <varlistentry id="sql-altersubscription-params-server">
-    <term><literal>SERVER <replaceable class="parameter">servername</replaceable></literal></term>
+    <term><literal>SERVER <replaceable class="parameter">server_name</replaceable></literal></term>
     <listitem>
      <para>
       This clause replaces the foreign server or connection string originally
       set by <xref linkend="sql-createsubscription"/> with the foreign server
-      <replaceable>servername</replaceable>.
+      <replaceable>server_name</replaceable>.
      </para>
     </listitem>
    </varlistentry>
@@ -237,12 +237,20 @@ ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <
      <para>
       Re-synchronize sequence data with the publisher. Unlike
       <link linkend="sql-altersubscription-params-refresh-publication">
-      <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link> which
-      only has the ability to synchronize newly added sequences,
+      <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+      which synchronizes the subscription's set of sequences with the
+      publication (adding new and removing dropped sequences),
       <literal>REFRESH SEQUENCES</literal> will re-synchronize the sequence
-      data for all currently subscribed sequences. It does not add or remove
-      sequences from the subscription to match the publication.
+      data for all currently subscribed sequences without changing which
+      sequences are subscribed. Run <literal>REFRESH PUBLICATION</literal>
+      first if the publication's set of sequences has changed.
      </para>
+     <note>
+      <para>
+       Sequence replication requires the publisher to be running
+       <productname>PostgreSQL</productname> 19 or later.
+      </para>
+     </note>
      <para>
       See <xref linkend="sequence-definition-mismatches"/> for
       recommendations on how to handle any warnings about sequence definition
@@ -331,7 +339,7 @@ ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <
       process reports an error if any prepared transactions done by the
       logical replication worker (from when <literal>two_phase</literal>
       parameter was still <literal>true</literal>) are found. You can resolve
-      prepared transactions on the publisher node, or manually roll back them
+      prepared transactions on the publisher node, or manually roll them back
       on the subscriber, and then try again. The transactions prepared by
       logical replication worker corresponding to a particular subscription have
       the following pattern: <quote><literal>pg_gid_%u_%u</literal></quote>

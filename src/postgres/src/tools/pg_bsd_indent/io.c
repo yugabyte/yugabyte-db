@@ -97,7 +97,7 @@ dump_line(void)
 	    putc('\n', output);
 	n_real_blanklines = 0;
 	if (ps.ind_level == 0)
-	    ps.ind_stmt = 0;	/* this is a class A kludge. dont do
+	    ps.ind_stmt = 0;	/* this is a class A kludge. don't do
 				 * additional statement indentation if we are
 				 * at bracket level 0 */
 
@@ -553,53 +553,22 @@ count_spaces(int cur, char *buffer)
 }
 
 void
-diag4(int level, const char *msg, int a, int b)
+diag(int level, const char *msg, ...)
 {
+    va_list ap;
+
+    va_start(ap, msg);
     if (level)
 	found_err = 1;
     if (output == stdout) {
 	fprintf(stdout, "/**INDENT** %s@%d: ", level == 0 ? "Warning" : "Error", line_no);
-	fprintf(stdout, msg, a, b);
+	vfprintf(stdout, msg, ap);
 	fprintf(stdout, " */\n");
     }
     else {
 	fprintf(stderr, "%s@%d: ", level == 0 ? "Warning" : "Error", line_no);
-	fprintf(stderr, msg, a, b);
+	vfprintf(stderr, msg, ap);
 	fprintf(stderr, "\n");
     }
+    va_end(ap);
 }
-
-void
-diag3(int level, const char *msg, int a)
-{
-    if (level)
-	found_err = 1;
-    if (output == stdout) {
-	fprintf(stdout, "/**INDENT** %s@%d: ", level == 0 ? "Warning" : "Error", line_no);
-	fprintf(stdout, msg, a);
-	fprintf(stdout, " */\n");
-    }
-    else {
-	fprintf(stderr, "%s@%d: ", level == 0 ? "Warning" : "Error", line_no);
-	fprintf(stderr, msg, a);
-	fprintf(stderr, "\n");
-    }
-}
-
-void
-diag2(int level, const char *msg)
-{
-    if (level)
-	found_err = 1;
-    if (output == stdout) {
-	fprintf(stdout, "/**INDENT** %s@%d: ", level == 0 ? "Warning" : "Error", line_no);
-	fprintf(stdout, "%s", msg);
-	fprintf(stdout, " */\n");
-    }
-    else {
-	fprintf(stderr, "%s@%d: ", level == 0 ? "Warning" : "Error", line_no);
-	fprintf(stderr, "%s", msg);
-	fprintf(stderr, "\n");
-    }
-}
-

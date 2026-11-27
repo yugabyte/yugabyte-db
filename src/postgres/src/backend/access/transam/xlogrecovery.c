@@ -447,7 +447,7 @@ EnableStandbyMode(void)
  * the checkpoint record.  On entry, the caller has already read the control
  * file into memory, and passes it as argument.  This function updates it to
  * reflect the recovery state, and the caller is expected to write it back to
- * disk does after initializing other subsystems, but before calling
+ * disk after initializing other subsystems, but before calling
  * PerformWalRecovery().
  *
  * This initializes some global variables like ArchiveRecoveryRequested, and
@@ -468,6 +468,15 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 	bool		backupFromStandby = false;
 
 	dbstate_at_startup = ControlFile->state;
+
+	/*
+	 * A startup process always starts with an inconsistent database. Set the
+	 * flag accordingly, even if it was inherited from a postmaster that had
+	 * already marked the database as consistent. This keeps the invariant
+	 * local to the startup process without requiring every fork path to clear
+	 * the flag.
+	 */
+	reachedConsistency = false;
 
 	/*
 	 * Initialize on the assumption we want to recover to the latest timeline
@@ -1782,14 +1791,17 @@ PerformWalRecovery(void)
 			ApplyWalRecord(xlogreader, record, &replayTLI);
 
 			/*
-			 * If we replayed an LSN that someone was waiting for then walk
-			 * over the shared memory array and set latches to notify the
-			 * waiters.
+			 * Wake up processes waiting for standby replay, write, or flush
+			 * LSN to reach current replay position.  Replay implies that the
+			 * WAL was already written and flushed to disk, so write and flush
+			 * waiters can be woken at the replay position too.
 			 */
-			if (waitLSNState &&
-				(XLogRecoveryCtl->lastReplayedEndRecPtr >=
-				 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_STANDBY_REPLAY])))
-				WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_REPLAY, XLogRecoveryCtl->lastReplayedEndRecPtr);
+			WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_REPLAY,
+						  XLogRecoveryCtl->lastReplayedEndRecPtr);
+			WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_WRITE,
+						  XLogRecoveryCtl->lastReplayedEndRecPtr);
+			WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_FLUSH,
+						  XLogRecoveryCtl->lastReplayedEndRecPtr);
 
 			/* Exit loop if we reached inclusive recovery target */
 			if (recoveryStopsAfter(xlogreader))
@@ -2137,6 +2149,7 @@ CheckTablespaceDirectory(void)
 							   PG_TBLSPC_DIR),
 					 errhint("Remove those directories, or set \"allow_in_place_tablespaces\" to ON transiently to let recovery complete.")));
 	}
+	FreeDir(dir);
 }
 
 /*
@@ -2461,7 +2474,12 @@ verifyBackupPageConsistency(XLogReaderState *record)
 			continue;
 		}
 
-		Assert(XLogRecHasBlockImage(record, block_id));
+		/*
+		 * Blocks registered with REGBUF_NO_CHANGE may have no image, see
+		 * XLogRecordAssemble().  Nothing to compare for these.
+		 */
+		if (!XLogRecHasBlockImage(record, block_id))
+			continue;
 
 		if (XLogRecBlockImageApply(record, block_id))
 		{
@@ -3387,8 +3405,10 @@ retry:
 
 		pgstat_report_wait_end();
 
-		pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL, IOOP_READ,
-								io_start, 1, r);
+		/* Count I/O stats only for successful short reads */
+		if (r > 0)
+			pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL, IOOP_READ,
+									io_start, 1, r);
 
 		XLogFileName(fname, curFileTLI, readSegNo, wal_segment_size);
 		if (r < 0)
@@ -4474,6 +4494,32 @@ CheckPromoteSignal(void)
 		return true;
 
 	return false;
+}
+
+/*
+ * Has hot standby initialization started pg_subtrans?
+ */
+bool
+RecoverySubtransInitialized(void)
+{
+	bool		result;
+
+	SpinLockAcquire(&XLogRecoveryCtl->info_lck);
+	result = XLogRecoveryCtl->SharedRecoverySubtransInitialized;
+	SpinLockRelease(&XLogRecoveryCtl->info_lck);
+
+	return result;
+}
+
+/*
+ * Remember that hot standby initialization has started pg_subtrans.
+ */
+void
+SetRecoverySubtransInitialized(void)
+{
+	SpinLockAcquire(&XLogRecoveryCtl->info_lck);
+	XLogRecoveryCtl->SharedRecoverySubtransInitialized = true;
+	SpinLockRelease(&XLogRecoveryCtl->info_lck);
 }
 
 /*

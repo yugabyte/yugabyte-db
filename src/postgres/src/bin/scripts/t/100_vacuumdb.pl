@@ -240,16 +240,22 @@ $node->command_fails_like(
 	[ 'vacuumdb', '--all', 'postgres' ],
 	qr/cannot vacuum all databases and a specific one at the same time/,
 	'cannot use option --all and a dbname as argument at the same time');
+$node->command_fails_like(
+	[ 'vacuumdb', 'postgres', '--jobs' ],
+	qr/requires an argument/,
+	'option missing its argument after a non-option');
 
-$node->safe_psql('postgres', q|
+$node->safe_psql(
+	'postgres', q|
   CREATE TABLE regression_vacuumdb_test AS select generate_series(1, 10) a, generate_series(2, 11) b;
   ALTER TABLE regression_vacuumdb_test ADD COLUMN c INT GENERATED ALWAYS AS (a + b);
 |);
 $node->issues_sql_unlike(
 	[
-		'vacuumdb', '--analyze-only', '--dry-run',
-		'--missing-stats-only', '-t',
-		'regression_vacuumdb_test', 'postgres'
+		'vacuumdb', '--analyze-only',
+		'--dry-run', '--missing-stats-only',
+		'-t', 'regression_vacuumdb_test',
+		'postgres'
 	],
 	qr/statement:\ ANALYZE/sx,
 	'--missing-stats-only --dry-run');
@@ -334,6 +340,7 @@ $node->issues_sql_unlike(
 $node->safe_psql('postgres',
 	"CREATE TABLE regression_vacuumdb_parted (a INT) PARTITION BY LIST (a);\n"
 	  . "CREATE TABLE regression_vacuumdb_part1 PARTITION OF regression_vacuumdb_parted FOR VALUES IN (1);\n"
+	  . "CREATE INDEX ON regression_vacuumdb_parted ((a + 1));\n"
 	  . "INSERT INTO regression_vacuumdb_parted VALUES (1);\n"
 	  . "ANALYZE regression_vacuumdb_part1;\n");
 $node->issues_sql_like(
@@ -354,19 +361,23 @@ $node->issues_sql_unlike(
 	'--missing-stats-only with no missing partition stats');
 
 $node->safe_psql('postgres',
-	"CREATE TABLE parent_table (a INT) PARTITION BY LIST (a);\n"
+		"CREATE TABLE parent_table (a INT) PARTITION BY LIST (a);\n"
 	  . "CREATE TABLE child_table PARTITION OF parent_table FOR VALUES IN (1);\n"
 	  . "INSERT INTO parent_table VALUES (1);\n");
 $node->issues_sql_like(
-	[
-		'vacuumdb', '--analyze-only', 'postgres'
-	],
-	qr/statement: ANALYZE public.parent_table/s,
+	[ 'vacuumdb', '--analyze-only', 'postgres' ],
+	qr/statement: ANALYZE ONLY public.parent_table/s,
 	'--analyze-only updates statistics for partitioned tables');
+$node->issues_sql_like(
+	[ 'vacuumdb', '--analyze-in-stages', 'postgres' ],
+	qr/statement: ANALYZE ONLY public.parent_table/s,
+	'--analyze-in-stages updates statistics for partitioned tables');
+$node->issues_sql_like(
+	[ 'vacuumdb', '--analyze-only', '-t', 'parent_table', 'postgres' ],
+	qr/statement: ANALYZE public.parent_table/s,
+	'--analyze-only with --table keeps normal ANALYZE recursion');
 $node->issues_sql_unlike(
-	[
-		'vacuumdb', '--analyze-only', 'postgres'
-	],
+	[ 'vacuumdb', '--analyze-only', 'postgres' ],
 	qr/statement:\ VACUUM/sx,
 	'--analyze-only does not run vacuum');
 

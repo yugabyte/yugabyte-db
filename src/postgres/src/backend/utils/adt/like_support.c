@@ -69,6 +69,10 @@ typedef enum
 	Pattern_Prefix_None, Pattern_Prefix_Partial, Pattern_Prefix_Exact,
 } Pattern_Prefix_Status;
 
+/* non-collatable comparisons, eg for bytea, are always deterministic */
+#define NONDETERMINISTIC(coll) \
+	(OidIsValid(coll) && !get_collation_isdeterministic(coll))
+
 static Node *like_regex_support(Node *rawreq, Pattern_Type ptype);
 static List *match_pattern_prefix(Node *leftop,
 								  Node *rightop,
@@ -383,12 +387,22 @@ match_pattern_prefix(Node *leftop,
 	 * us to not be concerned with specific opclasses (except for the legacy
 	 * "pattern" cases); any index that correctly implements the operators
 	 * will work.
+	 *
+	 * This case will work for LIKE/regex expressions with nondeterministic
+	 * collation, so long as the index's collation is the same.  If the
+	 * expression's collation is deterministic, we can even use an index whose
+	 * collation differs from the expression's.  All deterministic collations
+	 * agree on equality (it's bitwise), while we assume that an index with
+	 * nondeterministic collation will return a superset of the bitwise-equal
+	 * entries.  Since the "=" indexqual is marked as lossy by default, we'll
+	 * apply the LIKE/regex operator as a recheck, and that will filter out
+	 * any non-matching entries.
 	 */
 	if (pstatus == Pattern_Prefix_Exact)
 	{
 		if (!op_in_opfamily(eqopr, opfamily))
 			return NIL;
-		if (indexcollation != expr_coll)
+		if (indexcollation != expr_coll && NONDETERMINISTIC(expr_coll))
 			return NIL;
 		expr = make_opclause(eqopr, BOOLOID, false,
 							 (Expr *) leftop, (Expr *) prefix,
@@ -402,10 +416,8 @@ match_pattern_prefix(Node *leftop,
 	 * expression collation is nondeterministic.  The optimized equality or
 	 * prefix tests use bytewise comparisons, which is not consistent with
 	 * nondeterministic collations.
-	 *
-	 * expr_coll is not set for a non-collation-aware data type such as bytea.
 	 */
-	if (expr_coll && !get_collation_isdeterministic(expr_coll))
+	if (NONDETERMINISTIC(expr_coll))
 		return NIL;
 
 	/*
@@ -1140,12 +1152,12 @@ like_fixed_prefix_ci(Const *patt_const, Oid collation, Const **prefix_const,
 
 	if (rest_selec != NULL)
 	{
-		int			wrestlen = wpattlen - wmatch_pos;
+		int			wrestlen = wpattlen - wpos;
 		char	   *rest;
 		int			rest_mblen;
 
 		rest = palloc(pg_database_encoding_max_length() * wrestlen + 1);
-		rest_mblen = pg_wchar2mb_with_len(&wpatt[wmatch_pos], rest, wrestlen);
+		rest_mblen = pg_wchar2mb_with_len(&wpatt[wpos], rest, wrestlen);
 
 		*rest_selec = like_selectivity(rest, rest_mblen, true);
 		pfree(rest);

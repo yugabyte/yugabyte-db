@@ -77,8 +77,8 @@
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList,
 										bool skipjunk);
-static pg_attribute_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
-															  int reqnatts, bool support_cstring);
+static pg_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
+													int reqnatts, bool support_cstring);
 static inline void tts_buffer_heap_store_tuple(TupleTableSlot *slot,
 											   HeapTuple tuple,
 											   Buffer buffer,
@@ -216,6 +216,11 @@ tts_virtual_materialize(TupleTableSlot *slot)
 			sz = att_nominal_alignby(sz, att->attalignby);
 			sz = att_addlength_datum(sz, att->attlen, val);
 		}
+
+		if (!AllocSizeIsValid(sz))
+			ereport(ERROR,
+					errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					errmsg("tuple is too big"));
 	}
 
 	/* all data is byval */
@@ -495,6 +500,14 @@ tts_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple, bool shouldFree)
 {
 	HeapTupleTableSlot *hslot = (HeapTupleTableSlot *) slot;
 
+	/*
+	 * The tuple later will likely get deformed and/or copied. Validate a
+	 * versioned datum once when it enters the slot, rather than having to
+	 * check on every copy and each incremental deformation.
+	 */
+	if (HeapTupleHeaderIsVersionedDatum(tuple->t_data))
+		heap_datum_check(tuple->t_data, slot->tts_tupleDescriptor);
+
 	tts_heap_clear(slot);
 
 	slot->tts_nvalid = 0;
@@ -520,7 +533,7 @@ tts_minimal_init(TupleTableSlot *slot)
 
 	/*
 	 * Initialize the heap tuple pointer to access attributes of the minimal
-	 * tuple contained in the slot as if its a heap tuple.
+	 * tuple contained in the slot as if it's a heap tuple.
 	 */
 	mslot->tuple = &mslot->minhdr;
 }
@@ -875,10 +888,29 @@ tts_buffer_heap_copyslot(TupleTableSlot *dstslot, TupleTableSlot *srcslot)
 	BufferHeapTupleTableSlot *bsrcslot = (BufferHeapTupleTableSlot *) srcslot;
 	BufferHeapTupleTableSlot *bdstslot = (BufferHeapTupleTableSlot *) dstslot;
 
-	/*
+	/* ---
 	 * If the source slot is of a different kind, or is a buffer slot that has
 	 * been materialized / is virtual, make a new copy of the tuple. Otherwise
 	 * make a new reference to the in-buffer tuple.
+	 *
+	 * There's no need to call heap_datum_check() here:
+	 *
+	 * - If the source is a buffer slot with a tuple in a buffer, the table
+	 *   locking protects (and the tuple is not marked as versioned)
+	 *
+	 * - If the source is a buffer slot with an allocated tuple or a heap slot,
+	 *   the tuple was checked when stored into the slot
+	 *
+	 * - If the source is a virtual slot, the heap tuple acquired below was
+	 *   just formed and thus will match the source slot's descriptor
+	 *
+	 * - Minimal slots do not carry composite tuples
+	 *
+	 * In all cases the planner / executor startup needs to have made sure the
+	 * slot's descriptors are compatible. It might make sense to verify that,
+	 * but that'd need to be done regardless of the tuple being a composite
+	 * tuple or a row tuple.
+	 * ---
 	 */
 	if (dstslot->tts_ops != srcslot->tts_ops ||
 		TTS_SHOULDFREE(srcslot) ||
@@ -956,6 +988,11 @@ tts_buffer_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple,
 {
 	BufferHeapTupleTableSlot *bslot = (BufferHeapTupleTableSlot *) slot;
 
+	/*
+	 * NB: We don't check the tuple version here, as this is an on-disk tuple
+	 * that is protected otherwise (and will not be marked as versioned).
+	 */
+
 	if (TTS_SHOULDFREE(slot))
 	{
 		/* materialized slot shouldn't have a buffer to release */
@@ -1025,7 +1062,7 @@ tts_buffer_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple,
  * emit code during inlining for cstring deforming when it's required.
  * cstrings can exist in MinimalTuples, but not in HeapTuples.
  */
-static pg_attribute_always_inline void
+static pg_always_inline void
 slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 					   int reqnatts, bool support_cstring)
 {
@@ -1086,6 +1123,13 @@ slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 		{
 			/* Otherwise all required columns are guaranteed to exist */
 			firstNullAttr = natts;
+
+			/*
+			 * Check TupleDescFinalize() didn't get confused when setting
+			 * firstNonGuaranteedAttr.  There should never be a NULL in a
+			 * guaranteed column.
+			 */
+			Assert(first_null_attr(tup->t_bits, natts) >= firstNullAttr);
 		}
 	}
 	else
@@ -1259,7 +1303,17 @@ slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 		 * to implement a tail-call optimization
 		 */
 		*offp = off;
-		slot_getmissingattrs(slot, attnum, reqnatts);
+
+		Assert(HeapTupleHeaderGetNatts(tup) <= attnum);
+
+		/*
+		 * Fetch all missing attributes.  We pass natts rather than attnum as
+		 * if we're deforming attributes after having already deformed some
+		 * missing attributes, then the call to populate_isnull_array() may
+		 * have overwritten the previous tts_isnull values from what was
+		 * stored in the previous call to slot_getmissingattrs().
+		 */
+		slot_getmissingattrs(slot, HeapTupleHeaderGetNatts(tup), reqnatts);
 		return;
 	}
 done:
@@ -1415,7 +1469,7 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 		 * Precalculate the maximum guaranteed attribute that has to exist in
 		 * every tuple which gets deformed into this slot.  When the
 		 * TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS flag is enabled, we simply take
-		 * the precalculated value from the tupleDesc, otherwise the
+		 * the pre-calculated value from the tupleDesc, otherwise the
 		 * optimization is disabled, and we set the value to 0.
 		 */
 		if ((flags & TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS) != 0)
@@ -1758,11 +1812,21 @@ ExecForceStoreHeapTuple(HeapTuple tuple,
 		MemoryContext oldContext;
 		BufferHeapTupleTableSlot *bslot = (BufferHeapTupleTableSlot *) slot;
 
+		/*
+		 * Normally buffer slots don't need checking, because the data should
+		 * come from an on-disk relation, which always should be protected
+		 * against concurrent modifications. But in this path that's not
+		 * really guaranteed to be the case - so better be paranoid.
+		 */
+		if (HeapTupleHeaderIsVersionedDatum(tuple->t_data))
+			heap_datum_check(tuple->t_data, slot->tts_tupleDescriptor);
+
 		ExecClearTuple(slot);
 		slot->tts_flags &= ~TTS_FLAG_EMPTY;
 		oldContext = MemoryContextSwitchTo(slot->tts_mcxt);
 		bslot->base.tuple = heap_copytuple(tuple);
 		slot->tts_flags |= TTS_FLAG_SHOULDFREE;
+		slot->tts_tid = tuple->t_self;
 		MemoryContextSwitchTo(oldContext);
 
 		if (shouldFree)
@@ -1774,6 +1838,7 @@ ExecForceStoreHeapTuple(HeapTuple tuple,
 		heap_deform_tuple(tuple, slot->tts_tupleDescriptor,
 						  slot->tts_values, slot->tts_isnull);
 		ExecStoreVirtualTuple(slot);
+		slot->tts_tid = tuple->t_self;
 
 		if (shouldFree)
 		{
@@ -1886,14 +1951,31 @@ ExecStoreHeapTupleDatum(Datum data, TupleTableSlot *slot)
 {
 	HeapTupleData tuple = {0};
 	HeapTupleHeader td;
+	bool		was_datum;
 
-	td = DatumGetHeapTupleHeader(data);
+	td = DatumGetHeapTupleHeaderExt(data, &was_datum);
+
+	/*
+	 * No known path (be it core or pgxn extensions) gets here with
+	 * pre-upgrade tuples, so it seems better to be paranoid and assert that
+	 * we are passed a versioned tuple.
+	 */
+	Assert(was_datum &&
+		   (HeapTupleHeaderIsVersionedDatum(td) ||
+			HeapTupleHeaderGetTypeId(td) == RECORDOID));
 
 	tuple.t_len = HeapTupleHeaderGetDatumLength(td);
-	tuple.t_self = td->t_ctid;
 	tuple.t_data = td;
 
 	ExecClearTuple(slot);
+
+	/*
+	 * Datum tuples do not have valid ctids, so there's no point in copying
+	 * them. Historically there was some code that pretended to do so, but it
+	 * never actually did anything.  The only current user of this function is
+	 * ROW_MARK_COPY, which forms a wholerow attribute via
+	 * ExecEvalWholeRowVar(), which does not maintain ctid.
+	 */
 
 	heap_deform_tuple(&tuple, slot->tts_tupleDescriptor,
 					  slot->tts_values, slot->tts_isnull);

@@ -57,7 +57,6 @@ extern PGDLLIMPORT int CommitDelay;
 extern PGDLLIMPORT int CommitSiblings;
 extern PGDLLIMPORT bool track_wal_io_timing;
 extern PGDLLIMPORT int wal_decode_buffer_size;
-extern PGDLLIMPORT int data_checksums;
 
 extern PGDLLIMPORT int CheckPointSegments;
 
@@ -86,6 +85,19 @@ typedef enum WalCompression
 	WAL_COMPRESSION_LZ4,
 	WAL_COMPRESSION_ZSTD,
 } WalCompression;
+
+/*
+ * Choose an appropriate default WAL compression method for wal_compression=on.
+ * Prefer zstd when compiled in; otherwise use lz4 if available, falling back
+ * to pglz.
+ */
+#if defined(USE_ZSTD)
+#define WAL_COMPRESSION_ON	WAL_COMPRESSION_ZSTD
+#elif defined(USE_LZ4)
+#define WAL_COMPRESSION_ON	WAL_COMPRESSION_LZ4
+#else
+#define WAL_COMPRESSION_ON	WAL_COMPRESSION_PGLZ
+#endif
 
 /* Recovery states */
 typedef enum RecoveryState
@@ -120,7 +132,7 @@ extern PGDLLIMPORT bool XLogLogicalInfo;
  * of the bits make it to disk, but the checksum wouldn't match.  Also WAL-log
  * them if forced by wal_log_hints=on.
  */
-#define XLogHintBitIsNeeded() (wal_log_hints || DataChecksumsNeedWrite())
+#define XLogHintBitIsNeeded() (wal_log_hints || DataChecksumsEnabled())
 
 /* Do we need to WAL-log information required only for Hot Standby and logical replication? */
 #define XLogStandbyInfoActive() (wal_level >= WAL_LEVEL_REPLICA)
@@ -223,6 +235,9 @@ extern bool XLogBackgroundFlush(void);
 extern bool XLogNeedsFlush(XLogRecPtr record);
 extern int	XLogFileInit(XLogSegNo logsegno, TimeLineID logtli);
 extern int	XLogFileOpen(XLogSegNo segno, TimeLineID tli);
+#ifdef WAL_DEBUG
+extern void InitWalDebug(void);
+#endif
 
 extern void CheckXLogRemoved(XLogSegNo segno, TimeLineID tli);
 extern XLogSegNo XLogGetLastRemovedSegno(void);
@@ -232,11 +247,8 @@ extern void XLogSetReplicationSlotMinimumLSN(XLogRecPtr lsn);
 extern XLogRecPtr XLogGetReplicationSlotMinimumLSN(void);
 
 extern void xlog_redo(struct XLogReaderState *record);
-extern void xlog2_redo(struct XLogReaderState *record);
 extern void xlog_desc(StringInfo buf, struct XLogReaderState *record);
-extern void xlog2_desc(StringInfo buf, struct XLogReaderState *record);
 extern const char *xlog_identify(uint8 info);
-extern const char *xlog2_identify(uint8 info);
 
 extern void issue_xlog_fsync(int fd, XLogSegNo segno, TimeLineID tli);
 
@@ -249,16 +261,7 @@ extern XLogRecPtr GetXLogWriteRecPtr(void);
 
 extern uint64 GetSystemIdentifier(void);
 extern char *GetMockAuthenticationNonce(void);
-extern bool DataChecksumsNeedWrite(void);
-extern bool DataChecksumsNeedVerify(void);
-extern bool DataChecksumsInProgressOn(void);
-extern void SetDataChecksumsOnInProgress(void);
-extern void SetDataChecksumsOn(void);
-extern void SetDataChecksumsOff(void);
-extern const char *show_data_checksums(void);
-extern const char *get_checksum_state_string(uint32 state);
-extern void InitLocalDataChecksumState(void);
-extern void SetLocalDataChecksumState(uint32 data_checksum_version);
+extern bool DataChecksumsEnabled(void);
 extern bool GetDefaultCharSignedness(void);
 extern XLogRecPtr GetFakeLSNForUnloggedRel(void);
 extern void BootStrapXLOG(uint32 data_checksum_version);

@@ -529,7 +529,7 @@ statext_dependencies_deserialize(bytea *data)
 		elog(ERROR, "invalid zero-length item array in MVDependencies");
 
 	/* what minimum bytea size do we expect for those parameters */
-	min_expected_size = SizeOfItem(dependencies->ndeps);
+	min_expected_size = MinSizeOfItems(dependencies->ndeps);
 
 	if (VARSIZE_ANY_EXHDR(data) < min_expected_size)
 		elog(ERROR, "invalid dependencies size %zu (expected at least %zu)",
@@ -1496,17 +1496,6 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 
 		/* make sure the attnum is positive (valid AttrNumber) */
 		attnum = list_attnums[i] + attnum_offset;
-
-		/*
-		 * Either it's a regular attribute, or it's an expression, in which
-		 * case we must not have seen it before (expressions are unique).
-		 *
-		 * XXX Check whether it's a regular attribute has to be done using the
-		 * original attnum, while the second check has to use the value with
-		 * an offset.
-		 */
-		Assert(AttrNumberIsForUserDefinedAttr(list_attnums[i]) ||
-			   !bms_is_member(attnum, clauses_attnums));
 
 		/*
 		 * Remember the offset attnum, both for attributes and expressions.

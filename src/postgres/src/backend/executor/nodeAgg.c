@@ -606,11 +606,11 @@ initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
 
 
 		/*
-		 * We use a plain Datum sorter when there's a single input column;
-		 * otherwise sort the full tuple.  (See comments for
-		 * process_ordered_aggregate_single.)
+		 * We use a plain Datum sorter when there's a single input column and
+		 * a single sort key; otherwise sort the full tuple.  (See comments
+		 * for process_ordered_aggregate_single.)
 		 */
-		if (pertrans->numInputs == 1)
+		if (pertrans->numInputs == 1 && pertrans->numSortCols == 1)
 		{
 			Form_pg_attribute attr = TupleDescAttr(pertrans->sortdesc, 0);
 
@@ -946,7 +946,7 @@ process_ordered_aggregate_single(AggState *aggstate,
 
 /*
  * Run the transition function for a DISTINCT or ORDER BY aggregate
- * with more than one input.  This is called after we have completed
+ * with multiple inputs or sort keys.  This is called after we have completed
  * entering all the input values into the sort object.  We complete the
  * sort, read out the values in sorted order, and run the transition
  * function on each value (applying DISTINCT if appropriate).
@@ -1240,7 +1240,7 @@ prepare_hash_slot(AggStatePerHash perhash,
  * read as null in the context of the current grouping set.  Also stash the
  * current group bitmap where GroupingExpr can get at it.
  *
- * This relies on three conditions:
+ * This relies on four conditions:
  *
  * 1) Nothing is ever going to try and extract the whole tuple from this slot,
  * only reference it in evaluations, which will only access individual
@@ -1252,6 +1252,12 @@ prepare_hash_slot(AggStatePerHash perhash,
  *
  * 3) Within a given phase, we never need to recover the value of an attribute
  * once it has been set to null.
+ *
+ * 4) We must extract all remaining required attributes from the tuple before
+ * manually adjusting the tts_isnull elements.  This is required to prevent
+ * further deforming that might be required for the HAVING clause or
+ * projection step from re-extracting the NULL bitmap into the tts_isnull
+ * array and overwriting our manual adjustments.
  *
  * Poking into the slot this way is a bit ugly, but the consensus is that the
  * alternative was worse.
@@ -1278,8 +1284,15 @@ prepare_projection_slot(AggState *aggstate, TupleTableSlot *slot, int currentSet
 		{
 			ListCell   *lc;
 
-			/* all_grouped_cols is arranged in desc order */
-			slot_getsomeattrs(slot, linitial_int(aggstate->all_grouped_cols));
+			/*
+			 * Sanity check on max_colno_needed value.  all_grouped_cols is
+			 * arranged in desc order.
+			 */
+			Assert(aggstate->max_colno_needed >=
+				   linitial_int(aggstate->all_grouped_cols));
+
+			/* deform all remaining columns, per condition #4 above */
+			slot_getsomeattrs(slot, aggstate->max_colno_needed);
 
 			foreach(lc, aggstate->all_grouped_cols)
 			{
@@ -1327,7 +1340,7 @@ finalize_aggregates(AggState *aggstate,
 			Assert(aggstate->aggstrategy != AGG_HASHED &&
 				   aggstate->aggstrategy != AGG_MIXED);
 
-			if (pertrans->numInputs == 1)
+			if (pertrans->numInputs == 1 && pertrans->numSortCols == 1)
 				process_ordered_aggregate_single(aggstate,
 												 pertrans,
 												 pergroupstate);
@@ -4201,6 +4214,19 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		/* Initialize this to 1, meaning nothing spilled, yet */
 		aggstate->hash_batches_used = 1;
 	}
+	else if (aggstate->all_grouped_cols != NIL)
+	{
+		Bitmapset  *varattnos;
+		Bitmapset  *aggvarattnos;
+		int			max_varattno;
+
+		/* Figure out the highest outer-side varattno required. */
+		find_cols(aggstate, &aggvarattnos, &varattnos);
+		max_varattno = bms_prev_member(varattnos, -1);
+		max_varattno = Max(max_varattno, bms_prev_member(aggvarattnos, -1));
+
+		aggstate->max_colno_needed = max_varattno;
+	}
 
 	/*
 	 * Initialize current phase-dependent values to initial phase. The initial
@@ -4836,9 +4862,15 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 							&pertrans->inputtypeLen,
 							&pertrans->inputtypeByVal);
 		}
-		else if (numDistinctCols > 0)
+
+		if (numDistinctCols > 1)
 		{
-			/* we will need an extra slot to store prior values */
+			/*
+			 * With more than one DISTINCT column we'll need an extra slot to
+			 * store the prior values.  Note that this can happen even with a
+			 * single input, since the aggregate's ORDER BY may list the same
+			 * argument more than once with different sort operators.
+			 */
 			pertrans->uniqslot =
 				ExecInitExtraTupleSlot(estate, pertrans->sortdesc,
 									   &TTSOpsMinimalTuple);
