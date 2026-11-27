@@ -797,6 +797,15 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->ybProhibitedJoins = NIL;
 
 	/*
+	 * YB: Check before pull_up_sublinks reshapes the jointree.  The result
+	 * relation is one FROM-list item; any other came from FROM or USING.
+	 */
+	root->ybTargetRowMayRepeat =
+		((parse->commandType == CMD_UPDATE ||
+		  parse->commandType == CMD_DELETE) &&
+		 list_length(parse->jointree->fromlist) > 1);
+
+	/*
 	 * If there is a WITH list, process each WITH query and either convert it
 	 * to RTE_SUBQUERY RTE(s) or build an initplan SubPlan structure for it.
 	 */

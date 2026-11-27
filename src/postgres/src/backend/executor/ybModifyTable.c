@@ -54,6 +54,7 @@
 #include "commands/dbcommands.h"
 #include "commands/trigger.h"
 #include "commands/yb_profile.h"
+#include "common/hashfn.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
 #include "executor/ybExpr.h"
@@ -66,6 +67,8 @@
 #include "tcop/pquery.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
+#include "utils/datum.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -1967,4 +1970,81 @@ YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo, EState *estate)
 
 	/* Skip this index-update if the predicate isn't satisfied */
 	return ExecQual(predicate, GetPerTupleExprContext(estate));
+}
+
+/*
+ * When a join returns a target row more than once, as UPDATE ... FROM and
+ * DELETE ... USING can, PostgreSQL acts on the first match: later ones find
+ * the tuple already modified by the current command (TM_SelfModified) and
+ * are skipped.  YB rows carry no such marker, so ModifyTable remembers the
+ * rows it modified.  The key includes the relation because an inheritance
+ * parent and child row with the same primary key have the same ybctid.
+ */
+typedef struct YbModifiedRowKey
+{
+	Oid			relid;
+	Datum		ybctid;
+} YbModifiedRowKey;
+
+static uint32
+YbModifiedRowHash(const void *key, Size keysize)
+{
+	const YbModifiedRowKey *k = key;
+
+	return hash_combine(murmurhash32(k->relid),
+						datum_image_hash(k->ybctid, false, -1));
+}
+
+static int
+YbModifiedRowMatch(const void *key1, const void *key2, Size keysize)
+{
+	const YbModifiedRowKey *k1 = key1;
+	const YbModifiedRowKey *k2 = key2;
+
+	return !(k1->relid == k2->relid &&
+			 datum_image_eq(k1->ybctid, k2->ybctid, false, -1));
+}
+
+HTAB *
+YbCreateModifiedRows(MemoryContext cxt)
+{
+	HASHCTL		ctl;
+
+	ctl.keysize = sizeof(YbModifiedRowKey);
+	ctl.entrysize = sizeof(YbModifiedRowKey);
+	ctl.hash = YbModifiedRowHash;
+	ctl.match = YbModifiedRowMatch;
+	ctl.hcxt = cxt;
+	return hash_create("YbModifiedRows", 256, &ctl,
+					   HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
+}
+
+bool
+YbIsRowModified(ModifyTableState *mtstate, Relation rel, Datum ybctid)
+{
+	YbModifiedRowKey key = {RelationGetRelid(rel), ybctid};
+
+	return (mtstate->yb_modified_rows &&
+			hash_search(mtstate->yb_modified_rows, &key, HASH_FIND, NULL));
+}
+
+void
+YbRememberModifiedRow(ModifyTableState *mtstate, Relation rel, Datum ybctid)
+{
+	YbModifiedRowKey key = {RelationGetRelid(rel), ybctid};
+	YbModifiedRowKey *entry;
+	bool		found;
+
+	if (!mtstate->yb_modified_rows)
+		return;
+
+	entry = hash_search(mtstate->yb_modified_rows, &key, HASH_ENTER, &found);
+	if (!found)
+	{
+		MemoryContext oldcxt =
+			MemoryContextSwitchTo(mtstate->ps.state->es_query_cxt);
+
+		entry->ybctid = datumCopy(ybctid, false, -1);
+		MemoryContextSwitchTo(oldcxt);
+	}
 }

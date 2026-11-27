@@ -316,3 +316,9 @@ extern bool YbSecondaryIndicesGetOneEntryPerRow(ResultRelInfo *resultRelInfo);
  */
 extern bool YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo,
 											   EState *estate);
+
+extern HTAB *YbCreateModifiedRows(MemoryContext cxt);
+extern bool YbIsRowModified(ModifyTableState *mtstate, Relation rel,
+							Datum ybctid);
+extern void YbRememberModifiedRow(ModifyTableState *mtstate, Relation rel,
+								  Datum ybctid);

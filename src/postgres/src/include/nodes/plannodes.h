@@ -417,6 +417,8 @@ typedef struct ModifyTable
 	 * yb_update_affected_entities.
 	 */
 	YbSkippableEntities *yb_skip_entities;
+	/* YB: the subplan can return a target row more than once */
+	bool		ybTargetRowMayRepeat;
 } ModifyTable;
 
 struct PartitionPruneInfo;		/* forward reference to struct below */
