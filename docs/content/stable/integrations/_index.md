@@ -76,6 +76,7 @@ Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. 
 | DataGrip        | 2023.2.2 | Full   |  |
 | DBeaver         | 23.2.2  | Full    | [DBeaver](tools/dbeaver-ysql/) |
 | DbSchema        |         | Full    | [DbSchema](tools/dbschema/) |
+| Draxlr          |         | Full    | [Draxlr](tools/draxlr/) |
 | LibreDB Studio  |         | Full    | [LibreDB Studio](tools/libredb-studio/) |
 | Metabase        |         | Full    | [Metabase](tools/metabase/) |
 | pgAdmin         |         | Full    | [pgAdmin](tools/pgadmin/) |
