@@ -21,6 +21,8 @@
  */
 #include "postgres.h"
 
+#include <limits.h>
+
 #include "access/htup_details.h"
 #include "access/relation.h"
 #include "catalog/pg_am_d.h"
@@ -359,6 +361,20 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 }
 
 /*
+ * Where a scan clause is evaluated, in evaluation order: a clause pushed to a
+ * secondary index runs on the index row before the table row is fetched,
+ * clauses pushed to the table run in DocDB on the table row, and local
+ * clauses run on the PostgreSQL side on the rows DocDB returned.
+ */
+typedef enum YbPushdownGroup
+{
+	YB_PUSHDOWN_IDX,
+	YB_PUSHDOWN_REL,
+	YB_PUSHDOWN_LOCAL,
+	YB_PUSHDOWN_NUM_GROUPS
+} YbPushdownGroup;
+
+/*
  * yb_extract_pushdown_clauses
  *	  Extract actual clauses from RestrictInfo list and distribute them
  * 	  between three groups:
@@ -389,18 +405,38 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 							List **idx_colrefs, Oid relid,
 							Bitmapset *non_pushable_attnums)
 {
+	int			nclauses = list_length(restrictinfo_list);
+	YbPushdownGroup *groups;
+	List	  **clause_colrefs;
+	Index		min_security[YB_PUSHDOWN_NUM_GROUPS];
 	ListCell   *lc;
+	int			i;
 
+	if (nclauses == 0)
+		return;
+
+	groups = palloc(nclauses * sizeof(YbPushdownGroup));
+	clause_colrefs = palloc0(nclauses * sizeof(List *));
+	for (int g = 0; g < YB_PUSHDOWN_NUM_GROUPS; g++)
+		min_security[g] = UINT_MAX;
+
+	/* Pass 1: the group each clause would go to on pushability alone. */
+	i = 0;
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
 		List	   *colrefs = NIL;
+		bool		pushable;
+		YbPushdownGroup group;
 
 		/* ignore pseudoconstants */
 		if (ri->pseudoconstant)
+		{
+			groups[i++] = YB_PUSHDOWN_NUM_GROUPS;
 			continue;
+		}
 
-		bool		pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
+		pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
 
 		/*
 		 * If clause was found pushable before, that shouldn't change.
@@ -431,7 +467,7 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		}
 
 		if (!pushable)
-			*local_quals = lappend(*local_quals, ri->clause);
+			group = YB_PUSHDOWN_LOCAL;
 		/*
 		 * If there are both main and secondary (index) relations,
 		 * determine one to pushdown the condition. It is more efficient
@@ -440,16 +476,70 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		 */
 		else if (indexinfo == NULL ||
 				 !is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
-		{
-			*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-			*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
-		}
+			group = YB_PUSHDOWN_REL;
 		else
-		{
-			*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-			*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
-		}
+			group = YB_PUSHDOWN_IDX;
+
+		groups[i] = group;
+		clause_colrefs[i] = colrefs;
+		min_security[group] = Min(min_security[group], ri->security_level);
+		i++;
 	}
+
+	/*
+	 * Pass 2: keep PostgreSQL's security ordering. A clause must not be
+	 * evaluated before a clause of lower security_level unless it is
+	 * leakproof (order_qual_clauses, restriction_is_securely_promotable):
+	 * a row-level security policy qual sits below the user's WHERE clauses
+	 * so that a user clause is not evaluated on rows the policy hides. The
+	 * groups are evaluated in order, so a non-leakproof clause moves to the
+	 * last group that holds a clause of lower security level. Within a group
+	 * the input order is kept; order_qual_clauses has sorted it by security
+	 * level and DocDB evaluates the pushed clauses in that order, stopping at
+	 * the first one that is not true.
+	 */
+	i = 0;
+	foreach(lc, restrictinfo_list)
+	{
+		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+		YbPushdownGroup group = groups[i];
+
+		if (group == YB_PUSHDOWN_NUM_GROUPS)
+		{
+			i++;
+			continue;
+		}
+
+		if (!ri->leakproof)
+		{
+			for (int g = group + 1; g < YB_PUSHDOWN_NUM_GROUPS; g++)
+			{
+				if (min_security[g] < ri->security_level)
+					group = g;
+			}
+		}
+
+		switch (group)
+		{
+			case YB_PUSHDOWN_IDX:
+				*idx_colrefs = list_concat(*idx_colrefs, clause_colrefs[i]);
+				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
+				break;
+			case YB_PUSHDOWN_REL:
+				*rel_colrefs = list_concat(*rel_colrefs, clause_colrefs[i]);
+				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
+				break;
+			case YB_PUSHDOWN_LOCAL:
+				*local_quals = lappend(*local_quals, ri->clause);
+				break;
+			default:
+				pg_unreachable();
+		}
+		i++;
+	}
+
+	pfree(groups);
+	pfree(clause_colrefs);
 }
 
 /*

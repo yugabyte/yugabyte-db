@@ -5198,6 +5198,14 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	List	   *fallback_colrefs = NIL;
 	List	   *fallback_local_quals = NIL;
 
+	/*
+	 * DocDB evaluates the pushed clauses in list order, and the fallback
+	 * sends them all, so put them in security order first: the raw list can
+	 * hold a row-level security policy qual after the user's clauses (an
+	 * equality policy comes back from its equivalence class last).
+	 */
+	scan_clauses = order_qual_clauses(root, scan_clauses);
+
 	yb_extract_pushdown_clauses(scan_clauses, NULL, /* index_info */
 								false, /* bitmapindex */ &fallback_local_quals,
 								&fallback_remote_quals, &fallback_colrefs,

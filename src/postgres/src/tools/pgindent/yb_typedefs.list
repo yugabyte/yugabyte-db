@@ -188,6 +188,7 @@ YbPrefetcherStarterFunctor
 YbPrefetcherStarterNoCache
 YbPrefetcherStarterWithCache
 YbPushdownExprs
+YbPushdownGroup
 YbQdPgssStoreKind
 YbQpmConfiguration
 YbQpmHashEntry
