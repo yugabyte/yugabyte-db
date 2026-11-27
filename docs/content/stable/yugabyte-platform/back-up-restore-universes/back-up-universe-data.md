@@ -97,25 +97,39 @@ A failed incremental backup, which you can delete, is reported similarly to any 
 
 ## Configure backup performance parameters
 
-You can manage the speed of backup and restore operations and their impact on database performance by configuring the following parameters:
+During a backup, YB Controller reads node data files from disk and uploads them to backup storage. During a restore, it downloads those files and writes them to disk. You can manage the speed and effect on performance by configuring resource throttling. Each node runs these operations on its own data. The same throttle settings apply to every TServer node in the universe, including read replica nodes, and they stay in effect for later backups and restores.
 
-- Parallel uploads per node. Number of parallel uploads/downloads of tablets per node. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
-- Buffers per upload per node. Number of buffers used to read from disk and upload/download for a single tablet. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
-- Disk read/write bytes per second (in MB/s). You can rate-limit disk throughput during backup upload and restore download to reduce impact on cluster operations. The minimum value is 1 MB/s. To allow backup and restore to use as much throughput as they can (that is, no disk-based throttling), enter a value of 0 (the default).
+The allowed values for the parallel and buffer settings depend on the vCPU count of the first TServer node in the primary cluster. YugabyteDB Anywhere takes the vCPU count from that node's instance type, or from the TServer CPU request on Kubernetes universes that use custom resources, and rounds it up to a whole number. The same range applies to every node in the universe, including read replicas.
 
-Choose values that balance backup and restore speed with impact on production. Too high a value can consume disk IO that the database needs; too low a value can make backups and restores run longer. This is especially important when using incremental backups.
+**Backups**
 
-To configure throttle parameters:
+| Setting | What it limits | Default | Allowed values |
+| :------ | :------------- | :------ | :------------- |
+| Number of parallel uploads per node | How many uploads run at the same time on each node | 2 | 1 through vCPU count + 1 |
+| Number of buffers per upload per node | How many buffers each upload keeps in its pool while it reads data from disk and sends it to backup storage | Half the rounded vCPU count, rounded down, plus 1 | 1 through vCPU count + 1 |
+| Disk read bytes per second to throttle disk usage during backups | How fast YB Controller reads backup data from the node disks, in MB/s | 0 (no limit) | 0 (no limit), or 1 MB/s or greater |
+
+**Restores**
+
+| Setting | What it limits | Default | Allowed values |
+| :------ | :------------- | :------ | :------------- |
+| Number of parallel downloads per node | How many downloads run at the same time on each node | 2 | 1 through vCPU count + 1 |
+| Number of buffers per download per node | How many buffers each download keeps in its pool while it receives data and writes it to disk | Half the rounded vCPU count, rounded down, plus 1 | 1 through vCPU count + 1 |
+| Disk write bytes per second to throttle disk usage during restore | How fast YB Controller writes restored data to the node disks, in MB/s | 0 (no limit) | 0 (no limit), or 1 MB/s or greater |
+
+The disk settings cap the local disk IO of backup and restore operations. Transfer speed still depends on the path to the bucket or NFS share. Lower the disk limits when backup and restore operations share the disks with a live workload. Incremental backups make this more relevant, because the operations run often.
+
+To configure throttle parameters, do the following:
 
 1. Navigate to the universe and select the **Backups** tab.
 
 1. Click **Advanced** and choose **Configure Throttle Parameters** to display the **Configure Resource Throttling** dialog.
 
-    ![Throttle](/images/yp/backup-restore-throttle-2025-2.png)
-
-1. Set resource parameters for backups and restores.
+1. Set the backup and restore parameters.
 
 1. Click **Save**.
+
+YugabyteDB Anywhere applies the new values to the running nodes.
 
 ## Disable backups for a universe
 
