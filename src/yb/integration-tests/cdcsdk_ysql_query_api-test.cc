@@ -15,6 +15,9 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+
 namespace yb {
 namespace cdc {
 
@@ -25,6 +28,9 @@ class CDCSDKYsqlQueryApiTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_query_api) = true;
+    // The query API needs object locking, which is off by default in debug builds.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
   }
 
   // pg_logical_slot_get_changes pins catalog reads to a past time and resets the pin before it
@@ -88,6 +94,27 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiGucGuard) {
       "SELECT * FROM pg_logical_slot_get_binary_changes('test_slot', NULL, NULL)");
   assert_query_api_unavailable(
       "SELECT * FROM pg_logical_slot_peek_binary_changes('test_slot', NULL, NULL)");
+}
+
+// Verify that the query API is unavailable without object locking.
+TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiObjectLockingGuard) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
+  ASSERT_OK(conn.Fetch(
+      "SELECT * FROM pg_create_logical_replication_slot('test_slot', 'test_decoding')"));
+
+  for (const auto* function : {
+           "pg_logical_slot_get_changes", "pg_logical_slot_peek_changes",
+           "pg_logical_slot_get_binary_changes", "pg_logical_slot_peek_binary_changes"}) {
+    auto result = conn.FetchFormat("SELECT * FROM $0('test_slot', NULL, NULL)", function);
+    ASSERT_NOK(result) << function;
+    ASSERT_STR_CONTAINS(
+        result.status().message().ToBuffer(), "enable_object_locking_for_table_locks is false");
+  }
 }
 
 // Verify peek vs get semantics with test_decoding (text output).

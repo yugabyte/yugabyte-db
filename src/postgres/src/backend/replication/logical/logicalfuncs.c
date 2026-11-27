@@ -112,6 +112,12 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 				 errmsg("getting logical slot changes is unavailable"),
 				 errdetail("yb_enable_replication_slot_query_api is false.")));
 
+	if (IsYugaByteEnabled() && YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("getting logical slot changes is unavailable"),
+				 errdetail("enable_object_locking_for_table_locks is false.")));
+
 	Name		name;
 	XLogRecPtr	upto_lsn;
 	int32		upto_nchanges;
