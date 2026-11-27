@@ -199,7 +199,7 @@ message ChangeMetadataRequestPB {
   optional bool mark_non_concurrent_index_done = 24;
 
   // Set by the tablet leader that creates the operation when MVCC tracks it.
-  // Followers then track it there too.
+  // Followers then track it there too, unless they get it through an older replica, which drops it.
   optional bool use_mvcc = 25;
 }
 
