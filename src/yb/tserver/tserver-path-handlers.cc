@@ -36,6 +36,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -54,6 +55,13 @@
 
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
+
+#include "yb/encryption/encryption_key_report.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
+#include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/walltime.h"
@@ -896,6 +904,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/meta-cache", "MetaCache",
       std::bind(&TabletServerPathHandlers::HandleTabletMetaCacheJSON, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/encryption-key-report", "Encryption key sizes of on-disk files",
+      std::bind(&TabletServerPathHandlers::HandleEncryptionKeyReportJSON, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
       "/api/v1/xcluster", "xcluster",
@@ -1754,6 +1766,75 @@ void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& re
     }
   }
   jw.EndArray();
+  jw.EndObject();
+}
+
+// Reads the header of every file under the tserver's data, WAL and metadata directories, so the
+// cost grows with the number of files on the node. Meant for on-demand attestation, not scraping.
+void TabletServerPathHandlers::HandleEncryptionKeyReportJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+  auto* universe_key_manager = tserver_->GetUniverseKeyManager();
+  if (!universe_key_manager) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String("Encryption at rest is not allowed on this tserver");
+    jw.EndObject();
+    return;
+  }
+
+  // Without the registry every encrypted file is undecodable, which would hide AES-128 files.
+  if (auto enabled = universe_key_manager->IsEncryptionEnabled(); !enabled.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(enabled.status().ToString());
+    jw.EndObject();
+    return;
+  }
+
+  auto* fs_manager = tserver_->fs_manager();
+  std::set<std::string> roots;
+  for (auto dirs : {fs_manager->GetDataRootDirs(), fs_manager->GetWalRootDirs(),
+                    fs_manager->GetRaftGroupMetadataDirs(),
+                    fs_manager->GetConsensusMetadataDirs()}) {
+    roots.insert(dirs.begin(), dirs.end());
+  }
+  constexpr size_t kMaxListedPaths = 1000;
+  const bool list_aes128_files = req.parsed_args.contains("list_aes128_files");
+  auto header_manager = encryption::DefaultHeaderManager(universe_key_manager);
+  auto report = encryption::CollectEncryptionKeyReport(
+      std::vector<std::string>(roots.begin(), roots.end()), Env::Default(), header_manager.get(),
+      universe_key_manager, list_aes128_files ? kMaxListedPaths : 0);
+  if (!report.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(report.status().ToString());
+    jw.EndObject();
+    return;
+  }
+
+  jw.StartObject();
+  auto encryption_enabled = universe_key_manager->IsEncryptionEnabled();
+  auto algorithm = universe_key_manager->GetEncryptionAlgorithm();
+  if (encryption_enabled.ok() && *encryption_enabled && algorithm.ok()) {
+    jw.String("encryption_algorithm_for_new_files");
+    jw.String(encryption::EncryptionAlgorithmName(*algorithm));
+    auto data_key_size = encryption::DataKeySize(*algorithm);
+    if (data_key_size.ok()) {
+      jw.String("data_key_bits_for_new_files");
+      jw.Uint(*data_key_size * 8);
+    }
+  }
+  auto latest = universe_key_manager->GetLatestUniverseParams();
+  if (latest.ok()) {
+    jw.String("latest_universe_key_id");
+    jw.String(latest->version_id);
+    jw.String("latest_universe_key_bits");
+    jw.Uint(latest->params->key_size * 8);
+  }
+  jw.String("report");
+  report->ToJson(&jw);
   jw.EndObject();
 }
 

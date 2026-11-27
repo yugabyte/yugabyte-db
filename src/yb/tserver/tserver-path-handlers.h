@@ -85,6 +85,8 @@ class TabletServerPathHandlers {
                               Webserver::WebResponse* resp);
   void HandleListMasterServers(const Webserver::WebRequest& req,
                                Webserver::WebResponse* resp);
+  void HandleEncryptionKeyReportJSON(
+      const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTabletsJSON(const Webserver::WebRequest& req,
                          Webserver::WebResponse* resp);
   void HandleSnapshotsPage(const Webserver::WebRequest& req,

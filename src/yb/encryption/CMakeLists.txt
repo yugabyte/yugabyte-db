@@ -32,6 +32,7 @@ ADD_YB_LIBRARY(encryption
       ctr_cipher_stream.cc
       encrypted_file.cc
       encrypted_file_factory.cc
+      encryption_key_report.cc
       encryption_util.cc
       header_manager_impl.cc
       universe_key_manager.cc

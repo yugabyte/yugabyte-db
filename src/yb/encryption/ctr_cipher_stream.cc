@@ -128,6 +128,10 @@ bool BlockAccessCipherStream::UseOpensslCompatibleCounterOverflow() {
   return encryption_params_->openssl_compatible_counter_overflow;
 }
 
+uint32_t BlockAccessCipherStream::key_size() const {
+  return encryption_params_->key_size;
+}
+
 Status BlockAccessCipherStream::EncryptByBlock(
     uint64_t block_index, const Slice& input, void* output,
     EncryptionOverflowWorkaround counter_overflow_workaround) {

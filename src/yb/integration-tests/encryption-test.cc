@@ -12,6 +12,7 @@
 //
 
 #include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
@@ -33,6 +34,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
@@ -153,6 +155,56 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   void DisableEncryption() {
     ASSERT_OK(yb_admin_client_->DisableEncryptionInMemory());
   }
+  Result<rapidjson::Document> GetEncryptionKeyReport(ExternalTabletServer* ts) {
+    faststring body;
+    RETURN_NOT_OK(EasyCurl().FetchURL(
+        Format("http://$0/api/v1/encryption-key-report?list_aes128_files",
+               HostPort(ts->bind_host(), ts->http_port())),
+        &body));
+    rapidjson::Document doc;
+    SCHECK(!doc.Parse(body.char_data(), body.length()).HasParseError(), IllegalState,
+           Format("Failed to parse report: $0", body.ToString()));
+    return doc;
+  }
+
+  // Waits until every tserver reports data_key_bits for new files.
+  Status WaitForDataKeyBits(uint32_t data_key_bits) {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      for (auto* ts : external_mini_cluster()->tserver_daemons()) {
+        auto doc = VERIFY_RESULT(GetEncryptionKeyReport(ts));
+        if (!doc.HasMember("data_key_bits_for_new_files") ||
+            doc["data_key_bits_for_new_files"].GetUint() != data_key_bits) {
+          return false;
+        }
+      }
+      return true;
+    }, 30s, Format("Wait for tservers to write $0-bit data keys", data_key_bits));
+  }
+
+  // Paths, across all tservers, of RocksDB files protected by an AES-128 data key or universe key.
+  // IDENTITY holds only a random DB id, is written once and never rewritten, so it is skipped.
+  Result<std::vector<std::string>> Aes128RocksDBPaths(bool sst_only) {
+    std::vector<std::string> result;
+    for (auto* ts : external_mini_cluster()->tserver_daemons()) {
+      auto doc = VERIFY_RESULT(GetEncryptionKeyReport(ts));
+      const auto& report = doc["report"];
+      if (!report.HasMember("aes128_paths")) {
+        continue;
+      }
+      for (const auto& path_value : report["aes128_paths"].GetArray()) {
+        std::string path = path_value.GetString();
+        if (path.find("/data/rocksdb/") == std::string::npos || path.ends_with("/IDENTITY")) {
+          continue;
+        }
+        if (sst_only && !path.ends_with(".sst") && path.find(".sblock.") == std::string::npos) {
+          continue;
+        }
+        result.push_back(path);
+      }
+    }
+    return result;
+  }
+
  protected:
   std::string current_key_id_ = "";
   std::vector<uint8_t> current_key_;
@@ -463,6 +515,69 @@ TEST_F_EX(EncryptionTest, WALRolloverAndRestart, WALRolloverTest) {
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
       tablet_server, MonoDelta::FromSeconds(30)));
+  ClusterVerifier cv(external_mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
+// Starts like a universe that enabled encryption at rest on AES-128 before AES-256 became the
+// default (16-byte data keys, 32-byte universe key) and follows the AES-128 to AES-256 migration
+// runbook while the workload keeps running.
+class EncryptionMigrationTest : public EncryptionTest {
+ public:
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_master_flags.push_back("--encryption_new_universe_algorithm=AES_128_CTR");
+  }
+
+  void BeforeCreateTable() override {
+    ASSERT_NO_FATALS(AddUniverseKeys(encryption::ENCRYPTION_ALGORITHM_AES_128_CTR));
+    ASSERT_NO_FATALS(RotateKey());
+    SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
+  }
+
+};
+
+TEST_F(EncryptionTest, NewUniverseUsesAes256) {
+  ASSERT_OK(WaitForDataKeyBits(256));
+  WriteWorkload(0, kNumKeys);
+  ASSERT_EQ(ASSERT_RESULT(Aes128RocksDBPaths(/* sst_only= */ false)), std::vector<std::string>());
+}
+
+TEST_F_EX(EncryptionTest, MigrateFromAes128ToAes256, EncryptionMigrationTest) {
+  ASSERT_OK(WaitForDataKeyBits(128));
+  WriteWorkload(0, kNumKeys);
+  ASSERT_FALSE(ASSERT_RESULT(Aes128RocksDBPaths(/* sst_only= */ true)).empty());
+
+  // Runbook: rotate to a 48-byte universe key and opt in to 32-byte data keys. Restart tservers
+  // one at a time, then force a full compaction: the compaction rewrites every SST file under the
+  // new keys, and its version edit is the first since the restart, so RocksDB also writes a new
+  // MANIFEST and CURRENT.
+  ASSERT_NO_FATALS(AddUniverseKeys(encryption::ENCRYPTION_ALGORITHM_AES_256_CTR));
+  ASSERT_NO_FATALS(RotateKey());
+  // Rotating the universe key alone does not change the algorithm for new files.
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
+  ASSERT_OK(WaitForDataKeyBits(128));
+  ASSERT_OK(yb_admin_client_->SetEncryptionAlgorithm(
+      encryption::ENCRYPTION_ALGORITHM_AES_256_CTR));
+  ASSERT_OK(WaitForDataKeyBits(256));
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
+
+  for (auto* ts : external_mini_cluster()->tserver_daemons()) {
+    ts->Shutdown();
+    ASSERT_OK(ts->Restart());
+    ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(ts, 30s));
+  }
+  ASSERT_OK(WaitForLoadBalanced());
+  ASSERT_OK(client_->CompactTables({table_->id()}));
+
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto paths = VERIFY_RESULT(Aes128RocksDBPaths(/* sst_only= */ false));
+    if (!paths.empty()) {
+      LOG(INFO) << "Files still on AES-128 keys: " << AsString(paths);
+    }
+    return paths.empty();
+  }, 60s, "Wait for all RocksDB files to be on AES-256 keys"));
+
+  ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
