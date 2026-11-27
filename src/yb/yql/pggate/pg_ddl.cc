@@ -514,7 +514,9 @@ Status PgAlterTable::SetSchema(const char *schema_name) {
 
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
-  if (!req_.drop_columns().empty()) {
+  // A separate DDL transaction has no sub-transactions: its DDL states carry sub-transaction id 0,
+  // not PG's ids, so don't send one.
+  if (!req_.drop_columns().empty() && req_.use_regular_transaction_block()) {
     req_.set_innermost_savepoint_sub_transaction_id(
         pg_session_->InnermostSavepointSubTransactionId());
   }

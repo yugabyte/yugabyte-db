@@ -8707,6 +8707,9 @@ Result<bool> NeedTwoPhaseDeleteForColumn(
   // live savepoint is the latest such target, so the column can be dropped at once only if the
   // table was created, or the column added, in a state at or after that savepoint. Without
   // savepoints, that is the first state.
+  // Exception: PG does not count the DROP statement's own READ COMMITTED sub-transaction, which a
+  // statement restart rolls back (see YbGetInnermostSavepointSubTransactionId). A compaction
+  // between the DROP and that restart can lose the restored column's values.
   const auto& states = pb.ysql_ddl_txn_verifier_state();
   if (states.empty()) {
     return true;
@@ -8755,8 +8758,9 @@ Result<bool> NeedTwoPhaseDeleteForColumn(
       return true;
     }
   }
-  // This column was added in 'state' or later, so no rollback can bring it back and no other
-  // transaction can see it. It is safe to drop right away.
+  // This column was added in 'state' or later, so no rollback to a savepoint or of the transaction
+  // can bring it back (a restart of the DROP statement can; see above), and no other transaction
+  // can see it. Drop it right away.
   return false;
 }
 
