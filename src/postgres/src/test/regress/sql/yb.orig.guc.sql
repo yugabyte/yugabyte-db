@@ -24,6 +24,15 @@ set yb_transaction_priority_upper_bound = 0.6;
 set yb_transaction_priority_lower_bound = 0.4;
 set yb_transaction_priority_lower_bound = 0.6;
 
+-- Abort restores the lower bound before the upper bound, so the pair is
+-- briefly inverted.
+begin;
+set yb_transaction_priority_lower_bound = 0.1;
+set yb_transaction_priority_upper_bound = 0.2;
+rollback;
+show yb_transaction_priority_lower_bound;
+show yb_transaction_priority_upper_bound;
+
 -- Test yb_fetch_row_limit
 set yb_fetch_row_limit = 100;
 show yb_fetch_row_limit;
