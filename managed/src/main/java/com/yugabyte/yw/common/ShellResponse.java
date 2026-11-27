@@ -14,6 +14,7 @@ public class ShellResponse {
   // Some known error codes for shell process.
   @VisibleForTesting public static final String RUN_COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final String ERROR_OUTPUT_PREFIX = "ERROR:";
+  @VisibleForTesting static final String OUTPUT_NOT_LOGGED = "<not logged>";
   public static final int ERROR_CODE_SUCCESS = 0;
   public static final int ERROR_CODE_GENERIC_ERROR = -1;
   public static final int ERROR_CODE_EXECUTION_CANCELLED = -2;
@@ -45,30 +46,49 @@ public class ShellResponse {
     return processErrors(() -> errorMessage);
   }
 
+  // Same as processErrors(errorMessage), but with logOutput false the logged error leaves out the
+  // output, for commands run with logCmdOutput false. The thrown exception still has the output.
+  public ShellResponse processErrors(String errorMessage, boolean logOutput) {
+    return processErrors(() -> errorMessage, logOutput);
+  }
+
   // Call this method to process or validate the exit code with custom error message supplier if
   // required. It performs delayed evaluation of the error message only when the code is not success
   // and avoids unnecessary computation of the error message when the code is success.
   public ShellResponse processErrors(Supplier<String> errorMessageSupplier) {
+    return processErrors(errorMessageSupplier, true);
+  }
+
+  private ShellResponse processErrors(Supplier<String> errorMessageSupplier, boolean logOutput) {
     if (code != ERROR_CODE_SUCCESS) {
+      String loggedOutput = logOutput ? message : OUTPUT_NOT_LOGGED;
       String errorMessage = errorMessageSupplier.get();
       String formatted = StringUtils.isBlank(errorMessage) ? "Error occurred" : errorMessage;
+      String logged = formatted;
       try {
         switch (code) {
           case ERROR_CODE_EXECUTION_CANCELLED:
             formatted = String.format("%s. Command is cancelled.", formatted);
+            logged = formatted;
             throw new CancellationException(formatted);
           case ERROR_CODE_RECOVERABLE_ERROR:
-            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
+            logged = withOutput(formatted, loggedOutput);
+            formatted = withOutput(formatted, message);
             throw new RecoverableException(formatted);
           default:
-            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
+            logged = withOutput(formatted, loggedOutput);
+            formatted = withOutput(formatted, message);
             throw new RuntimeException(formatted);
         }
       } finally {
-        log.error(formatted);
+        log.error(logged);
       }
     }
     return this;
+  }
+
+  private String withOutput(String errorMessage, String output) {
+    return String.format("%s. Code: %d. Output: %s", errorMessage, code, output);
   }
 
   public static String cleanedUpErrorMessage(String message) {

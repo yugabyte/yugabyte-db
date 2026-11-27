@@ -3,8 +3,10 @@
 package com.yugabyte.yw.common;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -13,6 +15,9 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -25,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatchers;
@@ -32,6 +38,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
@@ -73,6 +80,44 @@ public class ApiHelperTest {
     assertThat(
         exception.getMessage(),
         startsWith("HTTP request to https://yugabyte.com/test failed with status 400"));
+  }
+
+  @Test
+  public void testGetRequestLogsUnparsableBody() {
+    String logged = loggedWarningsForUnparsableBody(() -> apiHelper.getRequest("http://foo/rpcz"));
+    assertThat(logged, containsString("sentinel_query"));
+  }
+
+  @Test
+  public void testGetRequestWithoutLoggingBodyKeepsUnparsableBodyOutOfTheLog() {
+    String logged =
+        loggedWarningsForUnparsableBody(
+            () ->
+                assertEquals(
+                    Json.newObject(), apiHelper.getRequestWithoutLoggingBody("http://foo/rpcz")));
+    assertThat(
+        logged, containsString("Unexpected exception while parsing response body from http://foo"));
+    assertFalse(logged, logged.contains("sentinel_query"));
+  }
+
+  private String loggedWarningsForUnparsableBody(Runnable request) {
+    when(mockClient.url(anyString())).thenReturn(mockRequest);
+    when(mockRequest.get()).thenReturn(CompletableFuture.completedFuture(mockResponse));
+    when(mockRequest.getUrl()).thenReturn("http://foo/rpcz");
+    when(mockResponse.getStatus()).thenReturn(200);
+    when(mockResponse.getBody()).thenReturn("{\"connections\": [{\"query\": sentinel_query");
+    Logger logger = (Logger) LoggerFactory.getLogger(ApiHelper.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      request.run();
+    } finally {
+      logger.detachAppender(appender);
+    }
+    return appender.list.stream()
+        .map(ILoggingEvent::getFormattedMessage)
+        .collect(Collectors.joining("\n"));
   }
 
   @Test
