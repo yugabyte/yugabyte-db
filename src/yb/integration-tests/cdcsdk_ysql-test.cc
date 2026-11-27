@@ -209,6 +209,9 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
   auto metrics =
       ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
+  // Until the first GetChanges the lag is measured from the time SetCDCCheckpoint stored, and the
+  // tablet's last replicated time is past it: the stream's retention barrier op is MVCC-tracked.
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return metrics->cdcsdk_sent_lag_micros->value() == 0; },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -4228,6 +4231,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
   for (int idx = 0; idx < 2; idx++) {
     stream_ids.push_back(ASSERT_RESULT(CreateConsistentSnapshotStream()));
   }
+  // A later stream's retention barrier op moves the tablet's last replicated time past an earlier
+  // stream's snapshot time, so only the last stream starts with zero lag.
+  const auto& stream_id = stream_ids.back();
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
   auto cdc_service = CDCService(tserver);
@@ -4235,7 +4241,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
   ASSERT_OK(WaitFor(
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
   auto metrics =
-      ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_ids[0]));
+      ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return metrics->cdcsdk_sent_lag_micros->value() == 0; },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -4248,7 +4254,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
 
   // Call get changes.
   GetChangesResponsePB change_resp;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_ids[0], tablets, 2));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 2));
 
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, 2);
@@ -4258,12 +4264,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
 
   // Now, delete the CDC stream and check the metrics information for the tablet_id and stream_id
   // combination should be deleted from the cdc metrics map.
-  ASSERT_EQ(DeleteCDCStream(stream_ids[0]), true);
-  VerifyStreamDeletedFromCdcState(test_client(), stream_ids[0], tablets.Get(0).tablet_id());
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets.Get(0).tablet_id());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics = GetCDCSDKTabletMetrics(
-            *cdc_service, tablets[0].tablet_id(), stream_ids[0],
+            *cdc_service, tablets[0].tablet_id(), stream_id,
             CreateMetricsEntityIfNotFound::kFalse);
         return !metrics.ok() && metrics.status().IsNotFound();
       },
