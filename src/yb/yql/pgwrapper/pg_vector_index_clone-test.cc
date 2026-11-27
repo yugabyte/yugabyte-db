@@ -18,7 +18,6 @@
 
 #include "yb/consensus/log.h"
 
-#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_util.h"
@@ -27,8 +26,6 @@
 #include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/qlexpr/index.h"
-
-#include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -215,54 +212,6 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
 
   auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
   ASSERT_EQ(ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, kNumRows)).size(), kNumRows);
-}
-
-// A clone as of a time keeps the source's SST files written after it behind a hybrid time filter.
-// Until a compaction drops the filtered out entries, an index candidate check steps over them past
-// the candidate's key, so search time grows with the square of the filtered out vectors. The clone
-// triggers that compaction.
-TEST_P(PgVectorIndexColocationOnlyTest, CloneAsOfTimeCompactsFilteredFiles) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-
-  constexpr size_t kNumRows = 10;
-  constexpr size_t kNumNewerRows = 5000;
-  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
-  ASSERT_OK(CreateIndex(conn));
-  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  ASSERT_OK(CreateSourceSnapshotSchedule());
-
-  const auto clone_time = ASSERT_RESULT(conn.FetchRow<int64_t>(
-      "SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::bigint"));
-  // Closer to the query vector than any of the cloned rows, so a search goes through all of them.
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
-      "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
-      kNumRows + 1, kNumRows + kNumNewerRows));
-  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  ASSERT_OK(cluster_->FlushTablets());
-
-  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
-  ASSERT_OK(admin_conn.ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kCloneDb, kSourceDb, clone_time));
-
-  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
-  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
-  ASSERT_FALSE(peers.empty());
-  for (const auto& peer : peers) {
-    auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
-      for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
-        if (file.largest.user_frontier &&
-            down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).HasFilter()) {
-          return false;
-        }
-      }
-      return true;
-    }, 60s * kTimeMultiplier, "Compaction of the files the clone filtered"));
-  }
-
-  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
-  ASSERT_EQ(ASSERT_RESULT(NearestIds(clone_conn, 3)), "[1, 2, 3]");
 }
 
 // A clone restores the source snapshot onto tablets of a new Raft group, the same as a backup

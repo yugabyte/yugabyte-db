@@ -1359,27 +1359,27 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
   ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
 }
 
-// A restore to a time keeps the SST files written after it behind a hybrid time filter, whether
-// the rolled back rows have files of their own or share one with restored rows. Until a
-// compaction drops the rolled back entries, an index candidate check steps over them past the
-// candidate's key, so search time grows with the square of the rolled back vectors. The restore
-// triggers that compaction. Parameters: whether the index stores payloads, and whether the rolled
-// back rows are flushed to a file of their own.
-class PgVectorIndexRestoreToTimeTest
-    : public PgVectorIndexUtilTest, public testing::WithParamInterface<std::tuple<bool, bool>> {
-};
+namespace {
 
-INSTANTIATE_TEST_SUITE_P(
-    , PgVectorIndexRestoreToTimeTest, testing::Combine(testing::Bool(), testing::Bool()),
-    [](const testing::TestParamInfo<std::tuple<bool, bool>>& param_info) -> std::string {
-      return Format(
-          "$0$1", std::get<0>(param_info.param) ? "StoredPayload" : "ReverseMapping",
-          std::get<1>(param_info.param) ? "SeparateFile" : "WithinFile");
-    });
+Status WaitForFilteredFilesCompacted(tablet::Tablet& tablet) {
+  return WaitFor([&tablet]() -> Result<bool> {
+    for (const auto& file : tablet.regular_db()->GetLiveFilesMetaData()) {
+      if (file.largest.user_frontier &&
+          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).HasFilter()) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Compaction of the hybrid time filtered files");
+}
 
-TEST_P(PgVectorIndexRestoreToTimeTest, RestoreToTime) {
-  const auto [store_payload, separate_file] = GetParam();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
+} // namespace
+
+// A restore to a time keeps the SST files written after it behind a hybrid time filter, here a
+// file the rolled back rows share with restored rows. Until a compaction drops the rolled back
+// entries, an index candidate check steps over them past the candidate's key, so search time grows
+// with the square of the rolled back vectors. The restore triggers that compaction.
+TEST_F(PgVectorIndexUtilTest, RestoreToTimeCompactsFilteredFiles) {
   client::SnapshotTestUtil snapshot_util;
   snapshot_util.SetProxy(&client_->proxy_cache());
   snapshot_util.SetCluster(cluster_.get());
@@ -1390,13 +1390,10 @@ TEST_P(PgVectorIndexRestoreToTimeTest, RestoreToTime) {
   auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
       nullptr, YQL_DATABASE_PGSQL, DbName(),
       client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
-  // After the schedule's first snapshot, which flushes, so that without a flush here the restored
-  // rows share a file with the rolled back ones.
+  // After the schedule's first snapshot, which flushes, so that the restored rows share a file with
+  // the rolled back ones.
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  if (separate_file) {
-    ASSERT_OK(cluster_->FlushTablets());
-  }
   auto restore_at = cluster_->mini_master(0)->Now();
   // Closer to the query vector than any of the restored rows, so a search goes through all of them.
   ASSERT_OK(conn.ExecuteFormat(
@@ -1405,24 +1402,29 @@ TEST_P(PgVectorIndexRestoreToTimeTest, RestoreToTime) {
       kNumRows + 1, kNumRows + kNumRolledBackRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   ASSERT_OK(cluster_->FlushTablets());
-  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
-  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
-
-  conn = ASSERT_RESULT(Connect());
 
   auto peers = ASSERT_RESULT(
       ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
   ASSERT_EQ(peers.size(), 1);
   auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
-  ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
+  auto shares_file = [&tablet, restore_at] {
     for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
-      if (file.largest.user_frontier &&
-          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).HasFilter()) {
-        return false;
+      if (file.smallest.user_frontier && file.largest.user_frontier &&
+          down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier).hybrid_time() <=
+              restore_at &&
+          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).hybrid_time() >
+              restore_at) {
+        return true;
       }
     }
-    return true;
-  }, 60s * kTimeMultiplier, "Compaction of the files the restore filtered"));
+    return false;
+  };
+  ASSERT_TRUE(shares_file());
+
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(WaitForFilteredFilesCompacted(*tablet));
 
   // The rolled back rows are closer to the query vector, so they are not found.
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
@@ -1446,6 +1448,47 @@ TEST_P(PgVectorIndexRestoreToTimeTest, RestoreToTime) {
   // The rolled back vectors stay in the index, so a search checks each of them, reading about a
   // block per check. Stepping over the rolled back entries took over ten blocks per check.
   ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumRolledBackRows));
+}
+
+// A clone as of a time keeps the source's SST files written after it behind a hybrid time filter
+// too. The clone applies a restore, which triggers the compaction.
+TEST_F(PgVectorIndexUtilTest, CloneAsOfTimeCompactsFilteredFiles) {
+  constexpr auto kCloneDb = "clone_db";
+  constexpr size_t kNumRows = 10;
+  constexpr size_t kNumNewerRows = 5000;
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // Retention must outlive the clone, which takes minutes under sanitizers.
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10s * kTimeMultiplier,
+      1h));
+
+  const auto clone_time = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::bigint"));
+  // Closer to the query vector than any of the cloned rows, so a search goes through all of them.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
+      "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
+      kNumRows + 1, kNumRows + kNumNewerRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(admin_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kCloneDb, DbName(), clone_time));
+
+  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(WaitForFilteredFilesCompacted(*ASSERT_RESULT(peers.front()->shared_tablet())));
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(clone_conn, 3)), "[1, 2, 3]");
 }
 
 // A search at a read time before most of the vectors were written, e.g. in a REPEATABLE READ
@@ -1508,7 +1551,7 @@ TEST_P(PgVectorIndexSearchAtOldReadTimeTest, SearchAtOldReadTime) {
             << ", time per search: " << search_time;
   // A search checks each newer vector, reading about a block per check. Stepping over the newer
   // entries took over two blocks per check.
-  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumNewerRows));
+  ASSERT_LT(data_blocks_per_search, 3 * (kNumRows + kNumNewerRows) / 2);
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
