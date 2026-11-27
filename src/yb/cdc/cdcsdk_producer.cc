@@ -123,6 +123,13 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "from receiving data that was never actually committed. This flag is only "
                     "used for YSQL tables.");
 
+DEFINE_RUNTIME_bool(cdc_reload_schema_after_txn_schema_change, true,
+                    "When this flag is set to true, GetChanges will reload the schema of a table "
+                    "after streaming a transaction whose records were decoded with a schema other "
+                    "than the one at its commit, so that the records streamed after the "
+                    "transaction use the current schema. Only takes effect when "
+                    "ysql_yb_enable_replication_slot_transactional_ddl is true.");
+
 DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
                  "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
                  "This simulates the scenario when a GetChanges call is being served during tablet "
@@ -141,6 +148,88 @@ using dockv::SchemaPackingStorage;
 
 namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
+
+// Tracks the schema version of the last decoded intent for every table while decoding a batch of
+// transaction's intents. Also tracks whether its schema was loaded during the transaction so that
+// cached schema details are checked against the schema at commit post this transaction.
+class IntentSchemaState {
+ public:
+  explicit IntentSchemaState(SchemaDetailsMap* cached_schema_details)
+      : cached_schema_details_(cached_schema_details),
+        enabled_(
+            FLAGS_cdc_reload_schema_after_txn_schema_change &&
+            FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto& [table_id, details] : *cached_schema_details_) {
+      tables_.emplace(table_id, TableState{details.schema_version, details.loaded_in_txn});
+    }
+  }
+
+  // Marks the table's cached schema as loaded in the transaction when the table had no cached
+  // schema before the batch, or when the version differs from the one decoded before it. A table
+  // whose cached schema predates the batch and keeps its version stays unmarked, so a transaction
+  // that doesn't change the schema needs no lookup at its commit. A marked table is marked again on
+  // every call, since a schema erased and reloaded at the same version comes back unmarked.
+  void MarkIfLoadedInTxn(const TableId& table_id, SchemaVersion version) {
+    auto [it, inserted] = tables_.try_emplace(
+        table_id, TableState{.version = version, .loaded_in_txn = true});
+    auto& state = it->second;
+    if (state.version != version) {
+      state = TableState{.version = version, .loaded_in_txn = true};
+    }
+    if (!enabled_ || !state.loaded_in_txn) {
+      return;
+    }
+    auto cached = cached_schema_details_->find(table_id);
+    if (cached != cached_schema_details_->end()) {
+      cached->second.loaded_in_txn = true;
+    }
+  }
+
+ private:
+  struct TableState {
+    SchemaVersion version;
+    bool loaded_in_txn;
+  };
+
+  SchemaDetailsMap* const cached_schema_details_;
+  const bool enabled_;
+  std::unordered_map<TableId, TableState> tables_;
+};
+
+// Erases each cached schema loaded while decoding a transaction's intents whose version differs
+// from the table's schema at the transaction's commit. The next record then reloads the schema and
+// sends a DDL record for it. If the schema at commit can't be read, the tablet's current schema
+// version stands in for it, as in GetOrPopulateRequiredSchemaDetails: the tablet has already
+// applied the transaction's schema changes.
+void EraseSchemasLoadedInTxn(
+    client::YBClient* client, const tablet::RaftGroupMetadata& tablet_metadata,
+    HybridTime commit_time, SchemaDetailsMap* cached_schema_details) {
+  for (auto it = cached_schema_details->begin(); it != cached_schema_details->end();) {
+    auto& [table_id, details] = *it;
+    if (!details.loaded_in_txn) {
+      ++it;
+      continue;
+    }
+    details.loaded_in_txn = false;
+    SchemaVersion commit_version;
+    auto commit_schema = client->GetTableSchemaFromSysCatalog(table_id, commit_time.ToUint64());
+    if (commit_schema.ok()) {
+      commit_version = commit_schema->second;
+    } else {
+      commit_version = tablet_metadata.schema_version(table_id);
+      LOG(WARNING) << "Failed to get the schema of table " << table_id << " at commit time "
+                   << commit_time << ", using the tablet's schema version " << commit_version
+                   << ": " << commit_schema.status();
+    }
+    if (commit_version != details.schema_version) {
+      VLOG(1) << "Erasing cached schema version " << details.schema_version << " of table "
+              << table_id << ", its schema version at commit is " << commit_version;
+      it = cached_schema_details->erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 
 Result<bool> IsPackedRowUpdate(const dockv::ValueEntryType value_type, Slice value_slice) {
   if (value_type != dockv::ValueEntryType::kPackedRowV2) {
@@ -1126,6 +1215,7 @@ Status PopulateCDCSDKIntentRecord(
   dockv::SubDocKey prev_decoded_key;
   std::unordered_set<std::string> null_value_columns;
   bool is_packed_row_record = false;
+  IntentSchemaState intent_schema_state(cached_schema_details);
 
   for (size_t i = 0; i < intents.size(); i++) {
     const docdb::IntentKeyValueForCDC& intent = intents[i];
@@ -1155,6 +1245,7 @@ Status PopulateCDCSDKIntentRecord(
           tablet_peer, tablet->metadata()->table_id(), intent.intent_ht.hybrid_time().ToUint64(),
           cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
           client, resp, throughput_metrics));
+      intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
 
       record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
       table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(table_id));
@@ -1239,6 +1330,7 @@ Status PopulateCDCSDKIntentRecord(
             tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(), cached_schema_details,
             schema_packing_storage, IsPackedRow(value_type), value_slice, client, resp,
             throughput_metrics));
+        intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
 
         table_name = table_info->table_name;
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
@@ -1338,6 +1430,7 @@ Status PopulateCDCSDKIntentRecord(
             std::tie(schema_version, schema) = VERIFY_RESULT(ReloadSchemaAtIntentTime(
                 tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(),
                 cached_schema_details, client, resp, throughput_metrics));
+            intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
             column = schema.column_by_id(column_id_opt->GetColumnId());
           }
           const ColumnSchema& col = VERIFY_RESULT(std::move(column));
@@ -2028,6 +2121,10 @@ Status ProcessIntents(
         enum_oid_label_map, composite_atts_map, request_source, cached_schema_details,
         schema_packing_storages, resp, consumption, &write_id, &reverse_index_key, commit_time,
         client, end_of_transaction, throughput_metrics));
+  }
+
+  if (end_of_transaction && FLAGS_cdc_reload_schema_after_txn_schema_change) {
+    EraseSchemasLoadedInTxn(client, *tablet->metadata(), commit_time, cached_schema_details);
   }
 
   if (end_of_transaction) {
