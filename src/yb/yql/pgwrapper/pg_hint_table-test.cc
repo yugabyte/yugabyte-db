@@ -169,7 +169,18 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
   ASSERT_STR_EQ("Hash Join", ASSERT_RESULT(ExecuteExplainAndGetJoinType(&conn1, explain_query)));
 }
 
-TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
+class PgHintTableTestReadCommitted : public PgHintTableTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgHintTableTest::UpdateMiniClusterOptions(options);
+    // TODO(#39367): Without Read Committed isolation, concurrent updates of a hint fail with
+    // "could not serialize access due to concurrent update" when transactional DDL is on.
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+TEST_F_EX(PgHintTableTest, SimpleConcurrencyTest, PgHintTableTestReadCommitted) {
   auto conn_explain = ASSERT_RESULT(ConnectWithHintTable());
   // The planner refreshes the hint cache by scanning hint_plan.hints within the statement's read
   // snapshot, so the concurrent hint updates below can force a read restart. EXPLAIN is not query
