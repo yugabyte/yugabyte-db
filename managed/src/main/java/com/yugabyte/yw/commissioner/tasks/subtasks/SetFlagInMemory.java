@@ -15,8 +15,10 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Universe;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -25,6 +27,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -35,6 +38,12 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   // The gflag for master addresses.
   private static final String MASTER_MASTER_ADDR_FLAG = "master_addresses";
+
+  private static final Duration RETRY_DELAY = Duration.ofSeconds(5);
+
+  // Whether a failed setFlag RPC is retried, and until when.
+  private boolean retryRpcFailures;
+  private long retryDeadlineMs;
 
   @Inject
   public SetFlagInMemory(BaseTaskDependencies baseTaskDependencies) {
@@ -73,6 +82,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
   @Override
   public void run() {
     checkParams();
+    retryDeadlineMs = System.currentTimeMillis() + retryTimeout().toMillis();
     // Check if secondary IP is present, and if so, use that for the gflag value.
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
     HostAndPort hp = getHostPort();
@@ -92,6 +102,10 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
     try (YBClient client = getClient()) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      // A K8s pod can restart at any time, e.g. when the cluster autoscaler moves it, and comes
+      // back on its own; a VM server that is down usually does not. VM callers that push best
+      // effort (master failover) rely on the first failure, so they must not wait.
+      retryRpcFailures = Util.isKubernetesBasedUniverse(universe);
 
       if (!taskParams().updateMasterAddrs) {
         // Get the user provided Ysql pg conf csv gflag values and the pgaudit ones from the audit
@@ -165,10 +179,41 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
   }
 
+  // Package-private so tests can stub the timeout and the wait.
+  Duration retryTimeout() {
+    return config.getDuration("yb.wait_for_server_timeout");
+  }
+
+  void waitBeforeRetry(Duration delay) {
+    waitFor(delay);
+  }
+
   private void setFlag(YBClient client, String gflag, String value, HostAndPort hp)
       throws Exception {
     log.debug("Setting gflag {} to {} on node {} via non-restart rpc", gflag, value, hp);
-    boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+    boolean setSuccess;
+    while (true) {
+      try {
+        setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+        break;
+      } catch (Exception e) {
+        // A server that answers and refuses the flag is not retried. The deadline is checked only
+        // between attempts, so an attempt that hangs can run one admin operation timeout past it.
+        if (!retryRpcFailures
+            || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0
+            || System.currentTimeMillis() + RETRY_DELAY.toMillis() >= retryDeadlineMs) {
+          throw e;
+        }
+        log.warn(
+            "Retrying gflag {} on {} {} in {}: {}",
+            gflag,
+            taskParams().serverType,
+            taskParams().nodeName,
+            RETRY_DELAY,
+            e.getMessage());
+        waitBeforeRetry(RETRY_DELAY);
+      }
+    }
     if (!setSuccess) {
       throw new RuntimeException(
           "Could not set gflag "
