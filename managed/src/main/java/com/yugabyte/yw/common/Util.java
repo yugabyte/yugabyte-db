@@ -171,6 +171,8 @@ public class Util {
   public static final String UNIVERSE_UUID = "universeUUID";
   public static final String SOURCE_UNIVERSE_UUID = "sourceUniverseUUID";
   public static final String TARGET_UNIVERSE_UUID = "targetUniverseUUID";
+  // The universe that owns a backup schedule, in the schedule row (V2 schedule delete authz).
+  public static final String OWNER_UUID = "ownerUUID";
   // Nested path into TaskInfo.taskParams used by the V2 task rollback authz to resolve the
   // universe from a failed task (mirrors the V1 rollback @Resource path).
   public static final String TASK_PARAMS_UNIVERSE_UUID = "taskParams.universeUUID";

@@ -35,7 +35,10 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
@@ -54,6 +57,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -85,6 +89,7 @@ public class BackupScheduleHandler {
   public static final String NOT_EDITABLE = "BACKUP_SCHEDULE_NOT_EDITABLE";
   public static final String OPERATOR_CONTROLLED = "BACKUP_SCHEDULE_OPERATOR_CONTROLLED";
   public static final String UNIVERSE_LOCKED = "UNIVERSE_LOCKED";
+  public static final String BACKUP_RUNNING = "BACKUP_SCHEDULE_BACKUP_RUNNING";
 
   /**
    * The states v2 edits, which the edit task returns the schedule to. v1 also edits an Error
@@ -92,6 +97,13 @@ public class BackupScheduleHandler {
    */
   private static final Set<Schedule.State> EDITABLE_STATES =
       EnumSet.of(Schedule.State.Active, Schedule.State.Stopped);
+
+  /**
+   * The states v2 deletes. v1's internal Paused has no transition to Deleting, so its delete task
+   * would fail.
+   */
+  private static final Set<Schedule.State> DELETABLE_STATES =
+      EnumSet.of(Schedule.State.Active, Schedule.State.Stopped, Schedule.State.Error);
 
   private static final String BACKUP_TYPE_PARAM = "task_params->>'backupType'";
   private static final List<String> V2_BACKUP_TYPES =
@@ -188,6 +200,18 @@ public class BackupScheduleHandler {
   }
 
   public YBATask editBackupSchedule(UUID cUUID, UUID bsUUID, BackupScheduleSpec spec) {
+    Customer.getOrNotFound(cUUID);
+    getSchedule(cUUID, bsUUID);
+    // Under the schedule's lock, as the delete, so the two can't both submit a task.
+    Schedule.SCHEDULE_KEY_LOCK.acquireLock(bsUUID);
+    try {
+      return submitEdit(cUUID, bsUUID, spec);
+    } finally {
+      Schedule.SCHEDULE_KEY_LOCK.releaseLock(bsUUID);
+    }
+  }
+
+  private YBATask submitEdit(UUID cUUID, UUID bsUUID, BackupScheduleSpec spec) {
     Customer customer = Customer.getOrNotFound(cUUID);
     Schedule schedule = getSchedule(cUUID, bsUUID);
     checkNotOperatorControlled(schedule);
@@ -214,23 +238,15 @@ public class BackupScheduleHandler {
       error.put("backup_schedule_state", BackupScheduleState.BackupScheduleError.toString());
       throw new PlatformServiceException(CONFLICT, error);
     }
-    if (!EDITABLE_STATES.contains(schedule.getStatus()) || schedule.isRunningState()) {
+    if (!EDITABLE_STATES.contains(schedule.getStatus())
+        || schedule.isRunningState()
+        || inFlightTask(schedule, CustomerTask.TaskType.Delete).isPresent()
+        || inFlightTask(schedule, CustomerTask.TaskType.Update).isPresent()) {
       throw busy(schedule);
     }
     Universe universe = Universe.getOrNotFound(schedule.getOwnerUUID(), cUUID);
     BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    if (params.enablePointInTimeRestore && universe.universeIsLocked()) {
-      ObjectNode error = Json.newObject();
-      error.put("code", UNIVERSE_LOCKED);
-      error.put(
-          "message",
-          String.format(
-              "Universe %s is locked by another task; a point-in-time-restore schedule can't be"
-                  + " edited until it finishes",
-              universe.getName()));
-      error.put("universe_uuid", universe.getUniverseUUID().toString());
-      throw new PlatformServiceException(CONFLICT, error);
-    }
+    checkUniverseNotLocked(universe, params.enablePointInTimeRestore, "edited");
     // What v1's edit changes; the rest of the stored params stays.
     params.cronExpression = requested.cronExpression;
     params.schedulingFrequency = requested.schedulingFrequency;
@@ -255,6 +271,122 @@ public class BackupScheduleHandler {
     UUID taskUUID =
         scheduleTaskHelper.createEditScheduledBackupTask(taskParams, customer, universe, schedule);
     return new YBATask().taskUuid(taskUUID).resourceUuid(bsUUID);
+  }
+
+  /**
+   * Deletes the schedule through v1's delete task, which also lowers a point-in-time-restore
+   * schedule's history retention. A repeated delete gets the task already deleting it. Stricter
+   * than v1: not while a backup the schedule started runs.
+   */
+  public YBATask deleteBackupSchedule(UUID cUUID, UUID bsUUID) {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    getSchedule(cUUID, bsUUID);
+    // Under the schedule's lock, which the scheduler and v1's schedule changes take too: two
+    // deletes can't both submit a task, and the schedule can't change between the checks and the
+    // submit. The lock spans the submit on purpose: released before it, a second delete could pass
+    // the in-flight lookup before the first one's task is recorded.
+    Schedule.SCHEDULE_KEY_LOCK.acquireLock(bsUUID);
+    try {
+      Schedule schedule = getSchedule(cUUID, bsUUID);
+      checkNotOperatorControlled(schedule);
+      // A delete task already submitted for the schedule, whatever the state: the task sets
+      // DELETING and locks the schedule and universe only once it runs, so a queued one leaves
+      // them as they were.
+      Optional<TaskInfo> deleting = inFlightTask(schedule, CustomerTask.TaskType.Delete);
+      if (deleting.isPresent()) {
+        return new YBATask().taskUuid(deleting.get().getUuid()).resourceUuid(bsUUID);
+      }
+      if (!DELETABLE_STATES.contains(schedule.getStatus())
+          || schedule.isRunningState()
+          || inFlightTask(schedule, CustomerTask.TaskType.Update).isPresent()) {
+        throw busy(schedule);
+      }
+      // A backup is running while the schedule's last task hasn't completed, as the scheduler and
+      // backup_running tell it.
+      ScheduleTask lastTask = ScheduleTask.getLastTask(bsUUID);
+      if (lastTask != null && lastTask.getCompletedTime() == null) {
+        ObjectNode error = Json.newObject();
+        error.put("code", BACKUP_RUNNING);
+        error.put(
+            "message",
+            String.format(
+                "A backup of schedule %s is running; delete the schedule when it finishes",
+                schedule.getScheduleName()));
+        error.put("task_uuid", lastTask.getTaskUUID().toString());
+        throw new PlatformServiceException(CONFLICT, error);
+      }
+      Universe universe = Universe.getOrNotFound(schedule.getOwnerUUID(), cUUID);
+      // Read as v1's delete reads it.
+      boolean pointInTimeRestore =
+          Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class)
+              .enablePointInTimeRestore;
+      checkUniverseNotLocked(universe, pointInTimeRestore, "deleted");
+      UUID taskUUID;
+      try {
+        taskUUID =
+            scheduleTaskHelper.createDeleteScheduledBackupTask(
+                schedule, universe.getUniverseUUID(), customer);
+      } catch (PlatformServiceException e) {
+        if (e.getHttpStatus() != BAD_REQUEST) {
+          throw e;
+        }
+        // v1 repeats the checks and answers 400. A universe another task locked meanwhile, or a
+        // schedule another task holds, is a 409 as above; any other 400 is passed on as it is.
+        checkUniverseNotLocked(
+            Universe.getOrNotFound(schedule.getOwnerUUID(), cUUID), pointInTimeRestore, "deleted");
+        Schedule current = getSchedule(cUUID, bsUUID);
+        if (current.isRunningState()) {
+          throw busy(current);
+        }
+        throw e;
+      }
+      return new YBATask().taskUuid(taskUUID).resourceUuid(bsUUID);
+    } finally {
+      Schedule.SCHEDULE_KEY_LOCK.releaseLock(bsUUID);
+    }
+  }
+
+  /**
+   * The incomplete edit ({@code Update}) or delete task submitted for the schedule. v1 records
+   * these tasks against the schedule's universe, so that universe's few incomplete customer tasks
+   * are searched, and their params tell the schedule.
+   */
+  private static Optional<TaskInfo> inFlightTask(Schedule schedule, CustomerTask.TaskType type) {
+    String scheduleUUID = schedule.getScheduleUUID().toString();
+    for (CustomerTask customerTask :
+        CustomerTask.findIncompleteByTargetUUID(schedule.getOwnerUUID())) {
+      if (customerTask.getTargetType() != CustomerTask.TargetType.Schedule
+          || customerTask.getType() != type) {
+        continue;
+      }
+      Optional<TaskInfo> task = TaskInfo.maybeGet(customerTask.getTaskUUID());
+      if (task.isPresent()
+          && TaskInfo.INCOMPLETE_STATES.contains(task.get().getTaskState())
+          && scheduleUUID.equals(task.get().getTaskParams().path("scheduleUUID").asText())) {
+        return task;
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * A point-in-time-restore schedule's edit and delete change the universe's history retention, so
+   * they wait while another task holds the universe: 409.
+   */
+  private static void checkUniverseNotLocked(
+      Universe universe, boolean pointInTimeRestore, String action) {
+    if (pointInTimeRestore && universe.universeIsLocked()) {
+      ObjectNode error = Json.newObject();
+      error.put("code", UNIVERSE_LOCKED);
+      error.put(
+          "message",
+          String.format(
+              "Universe %s is locked by another task; a point-in-time-restore schedule can't be"
+                  + " %s until it finishes",
+              universe.getName(), action));
+      error.put("universe_uuid", universe.getUniverseUUID().toString());
+      throw new PlatformServiceException(CONFLICT, error);
+    }
   }
 
   /**
@@ -461,6 +593,10 @@ public class BackupScheduleHandler {
         bsUUID,
         s -> {
           checkNotOperatorControlled(s);
+          // A queued delete would remove it anyway.
+          if (inFlightTask(s, CustomerTask.TaskType.Delete).isPresent()) {
+            throw busy(s);
+          }
           if (s.getStatus() == Schedule.State.Error) {
             ObjectNode error = Json.newObject();
             error.put("code", NOT_EDITABLE);

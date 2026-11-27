@@ -7942,11 +7942,38 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Ok to fail, don't put this inside try block.
     Schedule.modifyScheduleRunningAndSave(
         customerUUID, schedule.getScheduleUUID(), true /* isRunning */);
-
-    // Lock universe if PIT based schedule
-    if (scheduleParams.enablePointInTimeRestore) {
-      lockAndFreezeUniverseForUpdate(
-          universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+    try {
+      // The schedule may have changed since the request checked it, e.g. the scheduler started a
+      // backup while this task was queued. Fail without touching it when it can't be deleted now.
+      State state = Schedule.getOrBadRequest(customerUUID, scheduleUUID).getStatus();
+      if (!state.stateTransitionAllowed(State.Deleting)) {
+        throw new PlatformServiceException(
+            CONFLICT, String.format("Schedule is %s, so it can't be deleted now", state));
+      }
+      ScheduleTask lastTask = ScheduleTask.getLastTask(scheduleUUID);
+      if (lastTask != null && lastTask.getCompletedTime() == null) {
+        throw new PlatformServiceException(
+            CONFLICT,
+            String.format(
+                "A backup of the schedule is running (task %s); delete the schedule when it"
+                    + " finishes",
+                lastTask.getTaskUUID()));
+      }
+      // Lock universe if PIT based schedule
+      if (scheduleParams.enablePointInTimeRestore) {
+        lockAndFreezeUniverseForUpdate(
+            universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+      }
+    } catch (Throwable t) {
+      // Nothing changed; just release the schedule, so that a later delete can run. The original
+      // error is the one reported.
+      try {
+        Schedule.modifyScheduleRunningAndSave(
+            customerUUID, schedule.getScheduleUUID(), false /* isRunning */);
+      } catch (Throwable releaseError) {
+        t.addSuppressed(releaseError);
+      }
+      throw t;
     }
     try {
       log.info(
