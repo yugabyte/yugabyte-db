@@ -7376,8 +7376,8 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 								YBFirstLowInvalidAttributeNumber + 1);
 	}
 
-	/* True if the per-attribute loop below sees ybctid in its source set. */
-	bool		ybctid_in_pathtarget_or_local_clauses = false;
+	/* True if the per-attribute loop below finds ybctid in attrs. */
+	bool		ybctid_in_attrs = false;
 
 	if (bms_num_members(attrs) > 0)
 	{
@@ -7400,7 +7400,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			if (attnum < 0)
 			{
 				if (attnum == YBTupleIdAttributeNumber)
-					ybctid_in_pathtarget_or_local_clauses = true;
+					ybctid_in_attrs = true;
 				/* Ignore system attributes */
 				continue;
 			}
@@ -7454,8 +7454,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	 */
 	bool		include_ybctid_target =
 		(!is_index_only &&
-		 (ybctid_required_by_cmd_or_rowmark ||
-		  ybctid_in_pathtarget_or_local_clauses));
+		 (ybctid_required_by_cmd_or_rowmark || ybctid_in_attrs));
 
 	if (include_ybctid_target && result_width > 0)
 	{
@@ -7463,7 +7462,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			yb_get_base_table_ybctid_width(baserel_oid);
 
 		/* Avoid double-counting the null indicator the loop already charged. */
-		if (ybctid_in_pathtarget_or_local_clauses)
+		if (ybctid_in_attrs)
 			ybctid_target_width -= 1;
 
 		if (ybctid_target_width > 0)
@@ -9883,6 +9882,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 	}
 
+	/*
+	 * The scan requests the columns of every index condition, including the
+	 * conditions dropped below (yb_get_docdb_result_width()).
+	 */
+	List	   *all_index_conditions = list_copy(index_conditions);
+
 	bool		yb_exist_conditions_on_all_hash_keys_;
 
 	yb_exist_conditions_on_all_hash_keys_ =
@@ -10298,7 +10303,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 												   true,	/* is_index_path */
 												   is_primary_index,
 												   index_only,
-												   index_conditions,
+												   all_index_conditions,
 												   local_clauses,
 												   baserel, baserel_oid);
 

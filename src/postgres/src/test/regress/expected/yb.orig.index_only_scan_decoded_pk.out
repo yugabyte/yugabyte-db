@@ -1150,20 +1150,19 @@ INSERT INTO t_jsonb_expr SELECT i, jsonb_build_object('key', i, 'val', 'x')
 CREATE INDEX t_jsonb_expr_key ON t_jsonb_expr(((data->>'key')::int));
 ANALYZE t_jsonb_expr;
 SELECT $$
-:P SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
+:P /*+ IndexScan(t_jsonb_expr t_jsonb_expr_key) */ SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
 $$ AS query \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (COSTS OFF) SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
-                         QUERY PLAN                          
--------------------------------------------------------------
- YB Bitmap Table Scan on t_jsonb_expr
-   ->  Bitmap Index Scan on t_jsonb_expr_key
-         Index Cond: (((data ->> 'key'::text))::integer = 5)
-(3 rows)
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_jsonb_expr t_jsonb_expr_key) */ SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Index Scan using t_jsonb_expr_key on t_jsonb_expr
+   Index Cond: (((data ->> 'key'::text))::integer = 5)
+(2 rows)
 
-SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
+/*+ IndexScan(t_jsonb_expr t_jsonb_expr_key) */ SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
  id 
 ----
   5

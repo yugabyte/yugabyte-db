@@ -628,6 +628,25 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       testDocdbResultWidhEstimationHelper(stmt,
           "/*+IndexOnlyScan(t_20956 t_20956_i2_idx)*/ SELECT i1 FROM t_20956 WHERE i2 >= 1",
           "t_20956", 10);
+
+      /* A condition on one column of a two-column hash key is an index condition that DocDB does
+       * not enforce. DocDB returns the column of the condition all the same.
+       */
+      stmt.execute("CREATE TABLE t_20956_hash (h1 INT, h2 INT, v INT, " +
+          "PRIMARY KEY ((h1, h2) HASH))");
+      stmt.execute("CREATE INDEX t_20956_hash_v_idx ON t_20956_hash ((v, h2) HASH) INCLUDE (h1)");
+      stmt.execute("INSERT INTO t_20956_hash values (1, 1, 1)");
+      stmt.execute("ANALYZE t_20956_hash");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexScan(t_20956_hash t_20956_hash_pkey)*/ SELECT v FROM t_20956_hash WHERE h1 = 1",
+          "t_20956_hash", 10);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexScan(t_20956_hash t_20956_hash_pkey)*/ SELECT 0 FROM t_20956_hash WHERE h1 = 1",
+          "t_20956_hash", 5);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexOnlyScan(t_20956_hash t_20956_hash_v_idx)*/ SELECT h1 FROM t_20956_hash " +
+          "WHERE v = 1",
+          "t_20956_hash", 10);
     }
   }
 
