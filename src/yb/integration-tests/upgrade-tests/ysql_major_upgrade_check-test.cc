@@ -31,6 +31,8 @@ struct UpgradeIncompatibilityCheck {
 
 using YsqlMajorUpgradeCheckTest = YsqlMajorUpgradeTestBase;
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeCheckTest);
+
 static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
     {// check_proper_datallowconn
      .setup_stmts = {"ALTER DATABASE postgres WITH allow_connections FALSE"},
@@ -134,7 +136,7 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
 // old_9_3_check_for_line_data_type_usage
 // check_for_gist_inet_ops (YSQL tables have no GiST indexes, and btree_gist is not allowed)
 
-TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
+TEST_P(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
 
   // Run each check in isolation.
@@ -187,7 +189,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
       "currently on YSQL version 19"));
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, CheckUpgradeCompatibilityGuc) {
+TEST_P(YsqlMajorUpgradeCheckTest, CheckUpgradeCompatibilityGuc) {
   // Whether or not yb_major_version_upgrade_compatibility is enabled, pg_upgrade --check will not
   // error.
 
@@ -211,7 +213,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, CheckUpgradeCompatibilityGuc) {
   ASSERT_TRUE(log_waiter.IsEventOccurred());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
+TEST_P(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
   auto escape_single_quote = [](const std::string& str) {
     return std::regex_replace(str, std::regex("'"), "''");
   };
@@ -321,7 +323,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
   ASSERT_NO_FATALS(check_roles(conn));
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, InvalidIndexes) {
+TEST_P(YsqlMajorUpgradeCheckTest, InvalidIndexes) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   TestThreadHolder thread_holder;
 
@@ -411,7 +413,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, InvalidIndexes) {
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, YbPrefixRoles) {
+TEST_P(YsqlMajorUpgradeCheckTest, YbPrefixRoles) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
 
   // Create roles with "yb_" prefix
@@ -434,7 +436,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, YbPrefixRoles) {
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, StaleFunctionAclGrantors) {
+TEST_P(YsqlMajorUpgradeCheckTest, StaleFunctionAclGrantors) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
 
   auto phase1_single_function = [this, &conn]() {
@@ -813,7 +815,7 @@ Status ResetAcls(
   return Status::OK();
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
+TEST_P(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
 
@@ -907,7 +909,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
   ASSERT_OK(empty_acl());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsColumns) {
+TEST_P(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsColumns) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
 
@@ -926,7 +928,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsColumns) {
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsMultipleDatabases) {
+TEST_P(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsMultipleDatabases) {
   auto conn_yugabyte = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
   auto conn_postgres = ASSERT_RESULT(cluster_->ConnectToDB("postgres"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE ROLE test_role1"));
@@ -949,7 +951,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsMultipleDatabases) {
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, CollectSchemaDump) {
+TEST_P(YsqlMajorUpgradeCheckTest, CollectSchemaDump) {
   const auto pg_data_dir =
       JoinPathSegments(cluster_->tablet_server(0)->GetDataDirs().front(), "../../pg_data");
   const auto output_root = JoinPathSegments(pg_data_dir, "pg_upgrade_output.d");

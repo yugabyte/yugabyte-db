@@ -161,7 +161,9 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
   int matview_rows_ = 0;
 };
 
-TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeDdlBlockingTest);
+
+TEST_P(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
   upgrade_state_ = UpgradeState::kBeforeUpgrade;
   ASSERT_OK(RunDdlFunctions(std::nullopt));
 
@@ -189,7 +191,7 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
 }
 
 // Make sure we cannot run DDLs during a failed upgrade.
-TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestFailedUpgrade) {
+TEST_P(YsqlMajorUpgradeDdlBlockingTest, TestFailedUpgrade) {
   upgrade_state_ = UpgradeState::kDuringUpgrade;
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
@@ -219,7 +221,7 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestFailedUpgrade) {
 // Make sure we can upgrade even when postgres, and system_platform databases do not exist.
 // Make sure prechecks fail if yugabyte database does not exist.
 // Make sure we cannot create or drop databases during the upgrade.
-TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
+TEST_P(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
   {
     auto template1_conn = ASSERT_RESULT(cluster_->ConnectToDB("template1", std::nullopt));
     ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE postgres"));
@@ -263,7 +265,7 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
 }
 
 // REFRESH MATERIALIZED VIEW (both normal and CONCURRENTLY) should be allowed during upgrade.
-TEST_F(YsqlMajorUpgradeDdlBlockingTest, RefreshMatviewDuringUpgrade) {
+TEST_P(YsqlMajorUpgradeDdlBlockingTest, RefreshMatviewDuringUpgrade) {
   ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
 
   // Start upgrade.
@@ -290,7 +292,7 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, RefreshMatviewDuringUpgrade) {
 }
 
 // Make sure in-flight DDL transactions are killed by the upgrade.
-TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
+TEST_P(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   TestThreadHolder thread_holder;
 
   // Create table with a comment.

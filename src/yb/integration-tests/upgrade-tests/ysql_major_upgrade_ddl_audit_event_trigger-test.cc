@@ -78,7 +78,9 @@ class YsqlMajorUpgradeDdlAuditEventTriggerTest : public YsqlMajorUpgradeTestBase
   }
 };
 
-TEST_F(YsqlMajorUpgradeDdlAuditEventTriggerTest, EnabledDdlAuditTrigger) {
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeDdlAuditEventTriggerTest);
+
+TEST_P(YsqlMajorUpgradeDdlAuditEventTriggerTest, EnabledDdlAuditTrigger) {
   const std::vector<std::string> db_names = {kDefaultDb, kSecondDb};
 
   ASSERT_NO_FATALS(SetUpDdlAudit(kDefaultDb));

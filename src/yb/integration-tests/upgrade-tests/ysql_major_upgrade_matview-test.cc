@@ -97,7 +97,9 @@ class YsqlMajorUpgradeMatviewTest : public YsqlMajorUpgradeTestBase {
   uint32 num_rows_ = 0;
 };
 
-TEST_F(YsqlMajorUpgradeMatviewTest, TestMatView) {
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeMatviewTest);
+
+TEST_P(YsqlMajorUpgradeMatviewTest, TestMatView) {
   ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
   ASSERT_OK(UpgradeClusterToMixedMode());
 
@@ -117,7 +119,7 @@ TEST_F(YsqlMajorUpgradeMatviewTest, TestMatView) {
   ASSERT_OK(InsertDataRefreshAndValidate());
 }
 
-TEST_F(YsqlMajorUpgradeMatviewTest, RollbackWithMatView) {
+TEST_P(YsqlMajorUpgradeMatviewTest, RollbackWithMatView) {
   ASSERT_OK(CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType::kNone));
   ASSERT_OK(UpgradeClusterToMixedMode());
 

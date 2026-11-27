@@ -471,7 +471,9 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
   }
 };
 
-TEST_F(YsqlMajorExtensionUpgradeTest, Upgrade) {
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorExtensionUpgradeTest);
+
+TEST_P(YsqlMajorExtensionUpgradeTest, Upgrade) {
   TestUpgrade({
       Simple(), HStore(), FileFdw(), FuzzyStrMatch(), PasswordCheck(), PgCrypto(),
       PgStatStatements(), PostgresFdw(), HypoPG(), Orafce(), PlPgsql(), YbYcqlUtils()});
@@ -481,7 +483,7 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Upgrade) {
 // refuses the upgrade while the old cluster still uses it: installed in a database, or named in
 // shared_preload_libraries or session_preload_libraries, in the server configuration or in a role
 // or database setting.
-TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
+TEST_P(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
   const std::vector<std::string> fix_message = {
       "Your installation uses the pg_stat_monitor extension, which the new",
       "version does not include, so it cannot be reinstalled after the",
@@ -609,7 +611,7 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
 // The old release ships anon 1.x, whose catalog objects reference C symbols that the pgrx-based
 // anon 3.x no longer exports, so the upgrade must be refused until anon is dropped.  DROP
 // EXTENSION leaves anon's security labels behind, and those must be removed as well.
-TEST_F(YsqlMajorExtensionUpgradeTest, Anon) {
+TEST_P(YsqlMajorExtensionUpgradeTest, Anon) {
   // TODO(#37181): postgresql_anonymizer is not built on pg19.
   GTEST_SKIP() << "postgresql_anonymizer is not built on pg19";
   const auto kColumnLabel =

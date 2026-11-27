@@ -71,8 +71,10 @@ WHERE table_schema = 'pg_catalog'
   }
 };
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeStatsImportTest);
+
 // Make sure relation and attribute stats are imported by the upgrade.
-TEST_F(YsqlMajorUpgradeStatsImportTest, ValidateStatsImported) {
+TEST_P(YsqlMajorUpgradeStatsImportTest, ValidateStatsImported) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
 
   const auto initial_relation_stats = ASSERT_RESULT(GetRelationStats(conn));
@@ -119,10 +121,11 @@ class YsqlMajorUpgradeStatsDontImportTest : public YsqlMajorUpgradeStatsImportTe
   bool IsStatsImportEnabled() const override { return false; }
 };
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeStatsDontImportTest);
+
 // Make sure relation and attribute stats are NOT imported when ysql_upgrade_import_stats is set to
 // false.
-TEST_F_EX(
-    YsqlMajorUpgradeStatsImportTest, ValidateNoStatsImport, YsqlMajorUpgradeStatsDontImportTest) {
+TEST_P(YsqlMajorUpgradeStatsDontImportTest, ValidateNoStatsImport) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
 
   const auto initial_relation_stats = ASSERT_RESULT(GetRelationStats(conn));

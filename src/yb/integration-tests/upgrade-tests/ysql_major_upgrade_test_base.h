@@ -17,9 +17,11 @@
 
 namespace yb {
 
-class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
+// The parameter is the source version. Instantiate with INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE.
+class YsqlMajorUpgradeTestBase : public UpgradeTestBase,
+                                 public ::testing::WithParamInterface<std::string> {
  public:
-  YsqlMajorUpgradeTestBase() : UpgradeTestBase(kBuild_2026_1_4_0) {}
+  YsqlMajorUpgradeTestBase() : UpgradeTestBase(GetParam()) {}
   virtual ~YsqlMajorUpgradeTestBase() override = default;
 
   void SetUp() override;
@@ -100,5 +102,12 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
   uint32 simple_tbl_row_count_ = 0;
 
 };
+
+// Runs every test of the fixture once from each PG15 source build.
+#define INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(fixture) \
+  INSTANTIATE_TEST_SUITE_P( \
+      UpgradeFrom_2025_2_9_0, fixture, ::testing::Values(kBuild_2025_2_9_0)); \
+  INSTANTIATE_TEST_SUITE_P( \
+      UpgradeFrom_2026_1_4_0, fixture, ::testing::Values(kBuild_2026_1_4_0))
 
 }  // namespace yb

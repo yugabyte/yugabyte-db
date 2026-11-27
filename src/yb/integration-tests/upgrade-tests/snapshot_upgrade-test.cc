@@ -137,13 +137,15 @@ class SnapshotUpgradeTest : public YsqlMajorUpgradeTestBase {
   }
 };
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(SnapshotUpgradeTest);
+
 // A YSQL major upgrade should block clone in multiple ways.
 //   1. after a YSQL major upgrade has begun and before it is finalized we should not clone
 //   2. after a YSQL major upgrade is finalized, we should not clone as of before the upgrade
 //        began
 //   3. after a YSQL major upgrade is finalized, we should not clone as of after the upgrade
 //        began and before the upgrade was finalized
-TEST_F(SnapshotUpgradeTest, YSQLMajorUpgradeBlocksClone) {
+TEST_P(SnapshotUpgradeTest, YSQLMajorUpgradeBlocksClone) {
   auto yb_conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(yb_conn.ExecuteFormat("CREATE DATABASE $0", kSourceDbName));
   auto source_conn = ASSERT_RESULT(cluster_->ConnectToDB(kSourceDbName));
@@ -202,7 +204,7 @@ TEST_F(SnapshotUpgradeTest, YSQLMajorUpgradeBlocksClone) {
 
 // PITR (RestoreSnapshotSchedule) to a time before a major upgrade should fail because the
 // pg_yb_migration row count changes during the upgrade.
-TEST_F(SnapshotUpgradeTest, PITRToPreUpgradeTimeFails) {
+TEST_P(SnapshotUpgradeTest, PITRToPreUpgradeTimeFails) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceDbName));
   conn = ASSERT_RESULT(cluster_->ConnectToDB(kSourceDbName));
