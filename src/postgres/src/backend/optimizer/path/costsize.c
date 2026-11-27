@@ -110,6 +110,7 @@
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"
 #include "utils/syscache.h"
 
 
@@ -7170,6 +7171,100 @@ yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
 }
 
 /*
+ * Width of a bpchar value without its padding, varlena header included: the
+ * one-byte header for a value that fits it, as in a stored tuple.
+ */
+static int
+yb_bpchar_unpadded_width(Datum value)
+{
+	BpChar	   *bpchar = DatumGetBpCharPP(value);
+	int			len = bpchartruelen(VARDATA_ANY(bpchar),
+									VARSIZE_ANY_EXHDR(bpchar));
+
+	return len + (len + VARHDRSZ_SHORT <= VARATT_SHORT_MAX ?
+				  VARHDRSZ_SHORT : VARHDRSZ);
+}
+
+/*
+ * yb_bpchar_unpadded_avg_width
+ *		Average width of a bpchar column's values without their padding.
+ *
+ * A bpchar value is stored and sent without its trailing spaces
+ * (YbDatumToBPChar()), but ANALYZE measures the value padded to the column's
+ * length again, so avg_width, the column's average width from the
+ * statistics, counts the padding.  The statistics hold no unpadded width.
+ * Estimate one from the values they do hold: the most common values weighted
+ * by their frequencies, and the histogram bounds standing in equal shares
+ * for the other non-null values.  Returns avg_width for a column that has
+ * neither.  Like avg_width, the result counts the varlena header.
+ */
+static int32
+yb_bpchar_unpadded_avg_width(PlannerInfo *root, RelOptInfo *baserel,
+							 Oid baserel_oid, AttrNumber attnum,
+							 int32 avg_width)
+{
+	HeapTuple	stats_tuple;
+	AttStatsSlot sslot;
+	double		mcv_frac = 0.0;
+	double		mcv_width = 0.0;	/* sum weighted by frequency */
+	double		hist_frac = 0.0;
+	double		hist_width = 0.0;	/* average */
+	int32		width = avg_width;
+
+	/* Reading the values is costly, so do it once for each column. */
+	if (baserel->yb_bpchar_unpadded_widths == NULL)
+		baserel->yb_bpchar_unpadded_widths =
+			MemoryContextAllocZero(root->planner_cxt,
+								   (baserel->max_attr + 1) * sizeof(int32));
+	else if (baserel->yb_bpchar_unpadded_widths[attnum] > 0)
+		return baserel->yb_bpchar_unpadded_widths[attnum];
+
+	stats_tuple = SearchSysCache3(STATRELATTINH,
+								  ObjectIdGetDatum(baserel_oid),
+								  Int16GetDatum(attnum),
+								  BoolGetDatum(false));
+	if (!HeapTupleIsValid(stats_tuple))
+		return width;
+
+	if (get_attstatsslot(&sslot, stats_tuple, STATISTIC_KIND_MCV, InvalidOid,
+						 ATTSTATSSLOT_VALUES | ATTSTATSSLOT_NUMBERS))
+	{
+		for (int i = 0; i < sslot.nvalues && i < sslot.nnumbers; i++)
+		{
+			mcv_frac += sslot.numbers[i];
+			mcv_width += sslot.numbers[i] *
+				yb_bpchar_unpadded_width(sslot.values[i]);
+		}
+		free_attstatsslot(&sslot);
+	}
+
+	if (get_attstatsslot(&sslot, stats_tuple, STATISTIC_KIND_HISTOGRAM,
+						 InvalidOid, ATTSTATSSLOT_VALUES))
+	{
+		if (sslot.nvalues > 0)
+		{
+			Form_pg_statistic stats =
+				(Form_pg_statistic) GETSTRUCT(stats_tuple);
+
+			for (int i = 0; i < sslot.nvalues; i++)
+				hist_width += yb_bpchar_unpadded_width(sslot.values[i]);
+			hist_width /= sslot.nvalues;
+			hist_frac = fmax(1.0 - stats->stanullfrac - mcv_frac, 0.0);
+		}
+		free_attstatsslot(&sslot);
+	}
+
+	ReleaseSysCache(stats_tuple);
+
+	if (mcv_frac + hist_frac > 0.0)
+		width = (int32) rint((mcv_width + hist_frac * hist_width) /
+							 (mcv_frac + hist_frac));
+
+	baserel->yb_bpchar_unpadded_widths[attnum] = width;
+	return width;
+}
+
+/*
  * yb_get_docdb_result_width
  *		Determines width of the result that is transferred from DocDB to pggate.
  *
@@ -7313,8 +7408,8 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			/* The whole-row entry was replaced by its columns above. */
 			Assert(attnum > 0);
 
-			Relation	baserel = table_open(baserel_oid, NoLock);
-			Form_pg_attribute att = TupleDescAttr(baserel->rd_att, attnum - 1);
+			Relation	relation = table_open(baserel_oid, NoLock);
+			Form_pg_attribute att = TupleDescAttr(relation->rd_att, attnum - 1);
 			int32		avg_width = get_attavgwidth(baserel_oid, attnum);
 
 			if (att->attlen < 0)
@@ -7324,6 +7419,13 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 				 * prefixes the value with the 8 bytes length.
 				 */
 				result_width += 8;
+
+				/* DocDB sends a bpchar value without its padding. */
+				if (att->atttypid == BPCHAROID)
+					avg_width = yb_bpchar_unpadded_avg_width(root, baserel,
+															 baserel_oid,
+															 attnum,
+															 avg_width);
 
 				/*
 				 * The average width counts the varlena header, which DocDB
@@ -7335,7 +7437,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 				if (att->attlen == -1 && avg_width > VARATT_SHORT_MAX)
 					avg_width -= VARHDRSZ - VARHDRSZ_SHORT;
 			}
-			table_close(baserel, NoLock);
+			table_close(relation, NoLock);
 
 			result_width += avg_width;
 		}

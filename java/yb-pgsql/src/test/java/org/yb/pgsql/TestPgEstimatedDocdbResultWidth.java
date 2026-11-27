@@ -652,6 +652,47 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testDocdbResultWidthEstimationPaddedChars() throws Exception {
+    /* A CHAR(n) value is stored and sent without its padding, while the statistics measure the
+     * padded value. The estimate takes the length without the padding from the column's most
+     * common values and histogram bounds. The result holds 1 byte for the null indicator, 8 bytes
+     * for the size, the value without its padding and 1 byte for null termination.
+     */
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_padded_chars (k INT, mcv CHAR(10), hist CHAR(10), " +
+                   "mixed CHAR(10), wide CHAR(200), PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_padded_chars SELECT i, 'abc', lpad(i::text, 5, '0'), " +
+                   "CASE WHEN i % 2 = 0 THEN 'ab' ELSE lpad(i::text, 6, '0') END, " +
+                   "lpad(i::text, 150, '0') FROM generate_series(1, 1000) i");
+      stmt.execute("ANALYZE t_padded_chars");
+      /* One most common value of 3 characters. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT mcv FROM t_padded_chars", "t_padded_chars", 13);
+      /* Histogram bounds of 5 characters each. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT hist FROM t_padded_chars", "t_padded_chars", 15);
+      /* A most common value of 2 characters in half of the rows, and histogram bounds of 6
+       * characters each for the other half.
+       */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT mixed FROM t_padded_chars", "t_padded_chars", 14);
+      /* Values of 150 characters in a CHAR(200). */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT wide FROM t_padded_chars", "t_padded_chars", 160);
+
+      /* A single row leaves the column without most common values and histogram bounds, and
+       * the estimate counts the padding.
+       */
+      stmt.execute("CREATE TABLE t_padded_chars_one_row (k INT, c CHAR(10), " +
+                   "PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_padded_chars_one_row VALUES (1, 'abc')");
+      stmt.execute("ANALYZE t_padded_chars_one_row");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT c FROM t_padded_chars_one_row", "t_padded_chars_one_row", 20);
+    }
+  }
+
   /**
    * A whole-row reference fetches every column that is not dropped. Every UPDATE carries one to
    * rebuild its unchanged columns, and so does a DELETE on a table with a secondary index.
