@@ -25,6 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
@@ -44,9 +45,13 @@ import io.ebean.PagedList;
 import io.ebean.SqlRow;
 import java.util.Collection;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
@@ -62,12 +67,27 @@ import play.libs.Json;
  * is free for a retry. Status codes, unlike v1: 400 for an invalid spec, 404 for a missing universe
  * or storage config, and 409 with a code for a name conflict (also when the DB unique constraint
  * catches a concurrent create) or a storage config that isn't Active.
+ *
+ * <p>Edit merges the frequency, incremental interval and retention of the spec into the stored
+ * params and returns the v1 EditBackupSchedule task; every other field must be unchanged. Unlike
+ * v1's 400s, a schedule another task holds or a locked universe is a 409 with a code.
  */
 @Singleton
 public class BackupScheduleHandler {
 
   public static final String NAME_CONFLICT = "BACKUP_SCHEDULE_NAME_CONFLICT";
   public static final String STORAGE_CONFIG_NOT_ACTIVE = StorageConfigHandler.NOT_ACTIVE;
+  public static final String BUSY = "BACKUP_SCHEDULE_BUSY";
+  public static final String NOT_EDITABLE = "BACKUP_SCHEDULE_NOT_EDITABLE";
+  public static final String OPERATOR_CONTROLLED = "BACKUP_SCHEDULE_OPERATOR_CONTROLLED";
+  public static final String UNIVERSE_LOCKED = "UNIVERSE_LOCKED";
+
+  /**
+   * The states v2 edits, which the edit task returns the schedule to. v1 also edits an Error
+   * schedule, which may have no stable state to return to.
+   */
+  private static final Set<Schedule.State> EDITABLE_STATES =
+      EnumSet.of(Schedule.State.Active, Schedule.State.Stopped);
 
   private static final String BACKUP_TYPE_PARAM = "task_params->>'backupType'";
   private static final List<String> V2_BACKUP_TYPES =
@@ -158,6 +178,173 @@ public class BackupScheduleHandler {
     return new YBATask().taskUuid(taskUUID).resourceUuid(schedule.getScheduleUUID());
   }
 
+  public YBATask editBackupSchedule(UUID cUUID, UUID bsUUID, BackupScheduleSpec spec) {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    Schedule schedule = getSchedule(cUUID, bsUUID);
+    checkNotOperatorControlled(schedule);
+    if (schedule.getTaskType() != TaskType.CreateBackup) {
+      throw badRequest(
+          "Schedules of the older backup tasks (BackupUniverse, MultiTableBackup) can't be"
+              + " edited");
+    }
+    checkSpec(spec);
+    BackupScheduleSpec current = BackupScheduleMapper.INSTANCE.toBackupScheduleSpec(schedule);
+    checkUnchanged(current, spec, schedule);
+    BackupRequestParams requested = BackupScheduleMapper.toBackupRequestParams(cUUID, spec);
+    if (current.getRetention() != null && requested.timeBeforeDelete <= 0L) {
+      throw badRequest("The retention can't be removed");
+    }
+    if (schedule.getStatus() == Schedule.State.Error) {
+      ObjectNode error = Json.newObject();
+      error.put("code", NOT_EDITABLE);
+      error.put(
+          "message",
+          String.format(
+              "Backup schedule %s is in ERROR and can't be edited; delete it",
+              schedule.getScheduleName()));
+      error.put("backup_schedule_state", BackupScheduleState.BackupScheduleError.toString());
+      throw new PlatformServiceException(CONFLICT, error);
+    }
+    if (!EDITABLE_STATES.contains(schedule.getStatus()) || schedule.isRunningState()) {
+      throw busy(schedule);
+    }
+    Universe universe = Universe.getOrNotFound(schedule.getOwnerUUID(), cUUID);
+    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    if (params.enablePointInTimeRestore && universe.universeIsLocked()) {
+      ObjectNode error = Json.newObject();
+      error.put("code", UNIVERSE_LOCKED);
+      error.put(
+          "message",
+          String.format(
+              "Universe %s is locked by another task; a point-in-time-restore schedule can't be"
+                  + " edited until it finishes",
+              universe.getName()));
+      error.put("universe_uuid", universe.getUniverseUUID().toString());
+      throw new PlatformServiceException(CONFLICT, error);
+    }
+    // What v1's edit changes; the rest of the stored params stays.
+    params.cronExpression = requested.cronExpression;
+    params.schedulingFrequency = requested.schedulingFrequency;
+    params.frequencyTimeUnit = requested.frequencyTimeUnit;
+    params.incrementalBackupFrequency = requested.incrementalBackupFrequency;
+    params.incrementalBackupFrequencyTimeUnit = requested.incrementalBackupFrequencyTimeUnit;
+    if (requested.timeBeforeDelete > 0L) {
+      params.timeBeforeDelete = requested.timeBeforeDelete;
+      params.expiryTimeUnit = requested.expiryTimeUnit;
+    }
+    // Frequencies, cron, incremental and point-in-time rules; no I/O.
+    params.validateScheduleEditParams(
+        backupHelper, universe, current.getIncrementalInterval() != null);
+
+    BackupScheduleTaskParams taskParams =
+        Json.mapper().convertValue(universe.getUniverseDetails(), BackupScheduleTaskParams.class);
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.creatingUser = CommonUtils.getUserFromContext();
+    taskParams.setCustomerUUID(cUUID);
+    taskParams.setScheduleUUID(bsUUID);
+    taskParams.setScheduleParams(params);
+    UUID taskUUID =
+        scheduleTaskHelper.createEditScheduledBackupTask(taskParams, customer, universe, schedule);
+    return new YBATask().taskUuid(taskUUID).resourceUuid(bsUUID);
+  }
+
+  /**
+   * A schedule the YBA Kubernetes operator manages is changed only through its custom resource, so
+   * that the two don't drift apart: 409. Stricter than v1, which lets the API change it.
+   */
+  private static void checkNotOperatorControlled(Schedule schedule) {
+    if (schedule.isOperatorManaged()) {
+      ObjectNode error = Json.newObject();
+      error.put("code", OPERATOR_CONTROLLED);
+      error.put(
+          "message",
+          String.format(
+              "Backup schedule %s is managed by the YBA Kubernetes operator; change it through its"
+                  + " custom resource",
+              schedule.getScheduleName()));
+      error.put("backup_schedule_uuid", schedule.getScheduleUUID().toString());
+      throw new PlatformServiceException(CONFLICT, error);
+    }
+  }
+
+  /**
+   * The fields an edit can't change must be as the schedule has them. An omitted option counts as
+   * false, and an omitted min_backups_to_retain as v1's default.
+   */
+  private static void checkUnchanged(
+      BackupScheduleSpec current, BackupScheduleSpec spec, Schedule schedule) {
+    checkUnchanged("name", current.getName(), spec.getName());
+    checkUnchanged("universe_uuid", current.getUniverseUuid(), spec.getUniverseUuid());
+    checkUnchanged(
+        "storage_config_uuid", current.getStorageConfigUuid(), spec.getStorageConfigUuid());
+    checkUnchanged("backup_type", current.getBackupType(), spec.getBackupType());
+    checkUnchanged("keyspaces", keyspaces(current), keyspaces(spec));
+    checkUnchanged("kms_config_uuid", current.getKmsConfigUuid(), spec.getKmsConfigUuid());
+    checkUnchanged("sse", isTrue(current.getSse()), isTrue(spec.getSse()));
+    checkUnchanged(
+        "table_by_table_backup",
+        isTrue(current.getTableByTableBackup()),
+        isTrue(spec.getTableByTableBackup()));
+    checkUnchanged(
+        "point_in_time_restore",
+        isTrue(current.getPointInTimeRestore()),
+        isTrue(spec.getPointInTimeRestore()));
+    checkUnchanged(
+        "use_tablespaces", isTrue(current.getUseTablespaces()), isTrue(spec.getUseTablespaces()));
+    checkUnchanged("use_roles", isTrue(current.getUseRoles()), isTrue(spec.getUseRoles()));
+    checkUnchanged(
+        "min_backups_to_retain",
+        current.getMinBackupsToRetain(),
+        spec.getMinBackupsToRetain() == null
+            ? Integer.valueOf(Util.MIN_NUM_BACKUPS_TO_RETAIN)
+            : spec.getMinBackupsToRetain());
+    // The task doesn't change the schedule's timezone.
+    if (spec.getFrequency() instanceof BackupScheduleCronFrequency cron) {
+      checkUnchanged(
+          "frequency.use_local_timezone",
+          schedule.isUseLocalTimezone(),
+          !Boolean.FALSE.equals(cron.getUseLocalTimezone()));
+    }
+  }
+
+  private static void checkUnchanged(String field, Object current, Object requested) {
+    if (!Objects.equals(current, requested)) {
+      throw badRequest(field + " can't be changed");
+    }
+  }
+
+  private static boolean isTrue(Boolean value) {
+    return Boolean.TRUE.equals(value);
+  }
+
+  /** Keyspace to tables, in any order; an omitted table list is empty. */
+  private static Map<String, Set<UUID>> keyspaces(BackupScheduleSpec spec) {
+    Map<String, Set<UUID>> keyspaces = new HashMap<>();
+    if (spec.getKeyspaces() != null) {
+      for (BackupScheduleKeyspace keyspace : spec.getKeyspaces()) {
+        keyspaces
+            .computeIfAbsent(keyspace.getKeyspace(), k -> new HashSet<>())
+            .addAll(keyspace.getTableUuids() == null ? List.of() : keyspace.getTableUuids());
+      }
+    }
+    return keyspaces;
+  }
+
+  private static PlatformServiceException busy(Schedule schedule) {
+    BackupScheduleState state = BackupScheduleMapper.toBackupScheduleState(schedule.getStatus());
+    ObjectNode error = Json.newObject();
+    error.put("code", BUSY);
+    error.put(
+        "message",
+        schedule.isRunningState()
+            ? String.format(
+                "Backup schedule %s is held by another task; retry when it finishes",
+                schedule.getScheduleName())
+            : String.format("Backup schedule %s is %s", schedule.getScheduleName(), state));
+    error.put("backup_schedule_state", state.toString());
+    return new PlatformServiceException(CONFLICT, error);
+  }
+
   /** The spec checks the v1 params can't express. */
   private static void checkSpec(BackupScheduleSpec spec) {
     if (spec.getName() == null
@@ -225,11 +412,16 @@ public class BackupScheduleHandler {
   }
 
   public BackupSchedule getBackupSchedule(UUID cUUID, UUID bsUUID) {
+    return toBackupSchedule(getSchedule(cUUID, bsUUID), lastTasks(List.of(bsUUID)));
+  }
+
+  /** The customer's backup schedule, or 404. */
+  private static Schedule getSchedule(UUID cUUID, UUID bsUUID) {
     Schedule schedule = backupSchedules(cUUID).idEq(bsUUID).findOne();
     if (schedule == null) {
       throw new PlatformServiceException(NOT_FOUND, "No backup schedule with UUID " + bsUUID);
     }
-    return toBackupSchedule(schedule, lastTasks(List.of(bsUUID)));
+    return schedule;
   }
 
   public BackupSchedulePagedResp pageListBackupSchedules(
