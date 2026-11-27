@@ -1195,10 +1195,10 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestDropColumnInLaterSavepointIsTwoPhase) 
   }
 }
 
-// Tests for #39490: a column dropped in a savepoint and brought back by a rollback to that savepoint
-// keeps its values even when a compaction runs in between. The new-relation fast path writes the
-// transaction's rows of a created or rewritten table straight to the regular DB, where a compaction
-// discards the values of every column the tablets have recorded as deleted.
+// Tests for #39490: a column dropped in a savepoint and brought back by a rollback to that
+// savepoint keeps its values even when a compaction runs in between. The new-relation fast path
+// writes the transaction's rows of a created or rewritten table straight to the regular DB, where a
+// compaction discards the values of every column the tablets have recorded as deleted.
 // Parameters: whether READ COMMITTED is enabled (it opens an internal savepoint per statement), and
 // whether the transaction commits or rolls back at the end.
 class PgDdlSavepointDropColumnDataTest
