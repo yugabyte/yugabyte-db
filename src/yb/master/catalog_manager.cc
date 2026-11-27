@@ -8690,8 +8690,9 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 }
 
 namespace {
-// Given the SysTablesEntryPB for a table and 'col_name', return whether the column can be directly
-// dropped or if it should be marked for deletion first and dropped later.
+// Given the SysTablesEntryPB for a table, the AlterTableRequestPB dropping 'col_name' and the
+// column's name, return whether the column can be directly dropped or if it should be marked for
+// deletion first and dropped later.
 Result<bool> NeedTwoPhaseDeleteForColumn(
     const SysTablesEntryPB& pb, const AlterTableRequestPB& req, const string& col_name) {
   // Applicable only for YSQL tables.
@@ -8700,16 +8701,30 @@ Result<bool> NeedTwoPhaseDeleteForColumn(
   }
 
   // Mark the column for deletion and drop it only after the transaction commits, unless no
-  // rollback, of the transaction or to a savepoint, can bring the column back: the table was
-  // created, or the column added, in the sub-transaction running the DROP.
-  if (pb.ysql_ddl_txn_verifier_state_size() == 0) {
+  // rollback, of the transaction or to a savepoint, can bring the column back.
+  // ROLLBACK TO a sub-transaction undoes the DDL states at or after it, so the column comes back
+  // only if it, or its table, was created before a savepoint that is still live. The innermost
+  // live savepoint is the latest such target, so the column can be dropped at once only if the
+  // table was created, or the column added, in a state at or after that savepoint. Without
+  // savepoints, that is the first state.
+  const auto& states = pb.ysql_ddl_txn_verifier_state();
+  if (states.empty()) {
     return true;
   }
 
-  const auto& state = *pb.ysql_ddl_txn_verifier_state().rbegin();
-  if (req.has_sub_transaction_id() && state.sub_transaction_id() != req.sub_transaction_id()) {
-    return true;
+  auto it = states.begin();
+  if (req.has_sub_transaction_id()) {
+    const SubTransactionId savepoint_sub_txn = req.has_innermost_savepoint_sub_transaction_id()
+        ? req.innermost_savepoint_sub_transaction_id()
+        : req.sub_transaction_id();
+    it = std::find_if(states.begin(), states.end(), [savepoint_sub_txn](const auto& state) {
+      return state.sub_transaction_id() >= savepoint_sub_txn;
+    });
+    if (it == states.end()) {
+      return true;
+    }
   }
+  const auto& state = *it;
   if (state.contains_create_table_op()) {
     return false;
   }
@@ -8717,7 +8732,7 @@ Result<bool> NeedTwoPhaseDeleteForColumn(
     return true;
   }
 
-  // Find whether this column was added in this transaction. This should be done by comparing the
+  // Find whether this column was added in 'state' or later. This should be done by comparing the
   // 'order' field which corresponds to postgres' attnum field. Comparing the name can result in
   // erroneous conditions if the column was renamed in this transaction.
   int order = -1;
@@ -8735,13 +8750,13 @@ Result<bool> NeedTwoPhaseDeleteForColumn(
   // Find column with same order in previous schema.
   for (const auto& col : state.previous_schema().columns()) {
     if (col.order() == order) {
-      // This column already existed before the current transaction. Therefore it is not being
-      // added as part of this transaction and needs to be deleted using 2 phase deletion.
+      // This column existed before 'state': before the transaction, or before a savepoint that a
+      // rollback can still target. Either can bring it back, so it needs 2 phase deletion.
       return true;
     }
   }
-  // This column was added as part of this transaction and need not be visible to any other
-  // transactions. It is safe to drop right away.
+  // This column was added in 'state' or later, so no rollback can bring it back and no other
+  // transaction can see it. It is safe to drop right away.
   return false;
 }
 

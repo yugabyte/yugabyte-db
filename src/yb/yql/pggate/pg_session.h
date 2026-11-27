@@ -241,6 +241,12 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     return explicit_row_lock_buffer_;
   }
 
+  // Id of the innermost subtransaction a rollback can still target, not counting the internal
+  // ones READ COMMITTED creates per statement.
+  [[nodiscard]] SubTransactionId InnermostSavepointSubTransactionId() const {
+    return pg_callbacks_.GetInnermostSavepointSubTransactionId();
+  }
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,

@@ -514,6 +514,10 @@ Status PgAlterTable::SetSchema(const char *schema_name) {
 
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
+  if (!req_.drop_columns().empty()) {
+    req_.set_innermost_savepoint_sub_transaction_id(
+        pg_session_->InnermostSavepointSubTransactionId());
+  }
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);

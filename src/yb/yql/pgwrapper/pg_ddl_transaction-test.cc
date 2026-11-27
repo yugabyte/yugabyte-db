@@ -1375,6 +1375,37 @@ TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTableExceptionBlock) {
   ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kTrue));
 }
 
+// With no savepoint since the table was created, nothing can bring a dropped column back, so it is
+// dropped at once and a column with the same name can be added again. Under READ COMMITTED, each
+// statement runs in its own internal savepoint, released when the statement succeeds; those do not
+// count.
+// 1. Create a table and insert rows in a transaction, then add column c.
+// 2. Drop b and c and add them again with another type.
+// 3. Check the new columns after the transaction ends.
+TEST_P(PgDdlSavepointDropColumnDataTest, ReAddColumnDroppedFromCreatedTable) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Step 1
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, b INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", kTableName));
+
+  // Step 2
+  for (const auto* column : {"b", "c"}) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", kTableName, column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", kTableName, column));
+  }
+
+  // Step 3
+  ASSERT_OK(conn.Execute(Commit() ? "COMMIT" : "ROLLBACK"));
+  if (Commit()) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM $0 WHERE b IS NULL AND c IS NULL", kTableName))), kNumRows);
+  }
+}
+
 // Probe for #29139 / D51840: without the fix, when sys.catalog raft replication on yb-master is
 // delayed, the master's safe time lags current hybrid time and this can cause a read restart error
 // even without concurrent sessions. This can happen in a single connection in auto-commit mode

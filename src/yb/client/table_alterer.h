@@ -88,6 +88,10 @@ class YBTableAlterer {
   // rolled back, this altering will be rolled back too.
   YBTableAlterer* part_of_sub_transaction(uint32_t sub_txn_id);
 
+  // The innermost sub-transaction that a rollback can still target, not counting the per-statement
+  // ones of READ COMMITTED. The master uses it to decide whether a dropped column can come back.
+  YBTableAlterer* innermost_savepoint_sub_transaction(uint32_t sub_txn_id);
+
   // Set increment_schema_version to true.
   YBTableAlterer* set_increment_schema_version();
 
@@ -129,6 +133,7 @@ class YBTableAlterer {
 
   const TransactionMetadata* txn_ = nullptr;
   uint32_t sub_txn_id_ = kMinSubTransactionId;
+  std::optional<uint32_t> innermost_savepoint_sub_txn_id_;
 
   bool increment_schema_version_ = false;
 

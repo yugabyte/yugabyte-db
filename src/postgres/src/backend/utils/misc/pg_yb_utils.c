@@ -1219,6 +1219,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
+			.GetInnermostSavepointSubTransactionId = &YbGetInnermostSavepointSubTransactionId,
 		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;

@@ -353,6 +353,9 @@ message PgAlterTableRequestPB {
   // Used to setup the session in case the table is being altered in a
   // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
   PgPerformOptionsPB options = 12;
+  // Set when the request drops columns: innermost sub-transaction that a rollback can still
+  // target, not counting the per-statement ones of READ COMMITTED. 0 means unset.
+  uint32 innermost_savepoint_sub_transaction_id = 13;
 }
 
 message PgAlterTableResponsePB {

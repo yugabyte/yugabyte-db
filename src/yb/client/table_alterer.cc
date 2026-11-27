@@ -104,6 +104,11 @@ YBTableAlterer* YBTableAlterer::part_of_sub_transaction(uint32_t sub_txn_id) {
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::innermost_savepoint_sub_transaction(uint32_t sub_txn_id) {
+  innermost_savepoint_sub_txn_id_ = sub_txn_id;
+  return this;
+}
+
 YBTableAlterer* YBTableAlterer::set_increment_schema_version() {
   increment_schema_version_ = true;
   return this;
@@ -217,6 +222,9 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     req->set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
     if (YsqlDdlSavepointEnabled()) {
       req->set_sub_transaction_id(sub_txn_id_);
+      if (innermost_savepoint_sub_txn_id_) {
+        req->set_innermost_savepoint_sub_transaction_id(*innermost_savepoint_sub_txn_id_);
+      }
     }
   }
 

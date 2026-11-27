@@ -413,6 +413,7 @@ typedef struct {
   bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
+  uint32_t (*GetInnermostSavepointSubTransactionId)();
 } YbcPgCallbacks;
 
 typedef struct {

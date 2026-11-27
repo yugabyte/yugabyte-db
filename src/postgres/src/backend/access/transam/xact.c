@@ -5268,6 +5268,31 @@ YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_
 }
 
 /*
+ * YbGetInnermostSavepointSubTransactionId
+ *		Return the id of the innermost subtransaction that a rollback can still
+ *		target, other than the internal ones created for READ COMMITTED
+ *		isolation level: a user savepoint or an anonymous internal
+ *		subtransaction such as a PL/pgSQL EXCEPTION block.  Return the top
+ *		level's id when there is none.
+ *
+ * READ COMMITTED's internal subtransaction is skipped because it is released
+ * when its statement succeeds.  The master uses this id to decide whether a
+ * dropped column can come back and must be kept until commit.
+ */
+SubTransactionId
+YbGetInnermostSavepointSubTransactionId(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	while (s->parent != NULL &&
+		   s->name != NULL &&
+		   strcmp(s->name, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0)
+		s = s->parent;
+
+	return s->subTransactionId;
+}
+
+/*
  * ReleaseCurrentSubTransaction
  *
  * RELEASE (ie, commit) the innermost subtransaction, regardless of its

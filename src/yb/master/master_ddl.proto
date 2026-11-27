@@ -524,6 +524,12 @@ message AlterTableRequestPB {
 
   // This is the sub-transaction performing the Alter operation.
   optional uint32 sub_transaction_id = 15;
+
+  // Innermost sub-transaction that a rollback can still target when the Alter operation runs,
+  // not counting the per-statement ones of READ COMMITTED. Decides whether a dropped column can
+  // be removed at once or must be kept, marked for deletion, until commit. When unset, the master
+  // uses sub_transaction_id.
+  optional uint32 innermost_savepoint_sub_transaction_id = 16;
 }
 
 message AlterTableResponsePB {
