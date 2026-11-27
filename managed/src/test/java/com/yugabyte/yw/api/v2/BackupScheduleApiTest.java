@@ -1094,6 +1094,32 @@ public class BackupScheduleApiTest extends FakeDBApplication {
   }
 
   @Test
+  public void aRepeatGetsTheQueuedDeleteTask() throws ApiException {
+    mockDeleteSubmit();
+    Schedule schedule = editableSchedule("queued", true);
+    YBATask task =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+
+    // The task is queued: the schedule is still ACTIVE.
+    assertEquals(Schedule.State.Active, reload(schedule).getStatus());
+    YBATask repeat =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+    assertEquals(task.getTaskUuid(), repeat.getTaskUuid());
+
+    // The task has started: it holds the schedule and the universe, before it sets DELETING.
+    Schedule.modifyScheduleRunningAndSave(customer.getUuid(), schedule.getScheduleUUID(), true);
+    Universe.saveDetails(
+        universe.getUniverseUUID(), u -> u.getUniverseDetails().updateInProgress = true);
+    repeat =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+    assertEquals(task.getTaskUuid(), repeat.getTaskUuid());
+    submittedDelete(1);
+  }
+
+  @Test
   public void deletesPausedErrorAndOlderSchedules() throws ApiException {
     mockDeleteSubmit();
     Schedule paused = editableSchedule("paused", false);

@@ -269,21 +269,24 @@ public class BackupScheduleHandler {
     Customer customer = Customer.getOrNotFound(cUUID);
     Schedule schedule = getSchedule(cUUID, bsUUID);
     checkNotOperatorControlled(schedule);
+    // A delete task already submitted for the schedule, whatever the state: the task sets DELETING
+    // and locks the schedule and universe only once it runs, so a queued one leaves them as they
+    // were.
+    Optional<TaskInfo> deleting =
+        TaskInfo.find
+            .query()
+            .where()
+            .in("task_type", DELETE_TASK_TYPES)
+            .in("task_state", TaskInfo.INCOMPLETE_STATES)
+            .eq("task_params->>'scheduleUUID'", bsUUID.toString())
+            .orderBy()
+            .desc("create_time")
+            .setMaxRows(1)
+            .findOneOrEmpty();
+    if (deleting.isPresent()) {
+      return new YBATask().taskUuid(deleting.get().getUuid()).resourceUuid(bsUUID);
+    }
     if (schedule.getStatus() == Schedule.State.Deleting) {
-      Optional<TaskInfo> deleting =
-          TaskInfo.find
-              .query()
-              .where()
-              .in("task_type", DELETE_TASK_TYPES)
-              .in("task_state", TaskInfo.INCOMPLETE_STATES)
-              .eq("task_params->>'scheduleUUID'", bsUUID.toString())
-              .orderBy()
-              .desc("create_time")
-              .setMaxRows(1)
-              .findOneOrEmpty();
-      if (deleting.isPresent()) {
-        return new YBATask().taskUuid(deleting.get().getUuid()).resourceUuid(bsUUID);
-      }
       throw busy(schedule);
     }
     if (!DELETABLE_STATES.contains(schedule.getStatus()) || schedule.isRunningState()) {
