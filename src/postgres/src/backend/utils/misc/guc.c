@@ -19177,54 +19177,10 @@ static char *
 YbShowOptionRaw(struct config_generic *record)
 {
 	char		buffer[256];
-	const char *val;
+	const char *val = YbFormatConfigValue(record, NULL /* val */ , buffer,
+										  sizeof(buffer));
 
-	switch (record->vartype)
-	{
-		case PGC_BOOL:
-			val = *((struct config_bool *) record)->variable ? "on" : "off";
-			break;
-
-		case PGC_INT:
-			snprintf(buffer, sizeof(buffer), INT64_FORMAT,
-					 (int64) *((struct config_int *) record)->variable);
-			val = buffer;
-			break;
-
-		case PGC_OID:
-			snprintf(buffer, sizeof(buffer), INT64_FORMAT,
-					 (int64) *((struct yb_config_oid *) record)->variable);
-			val = buffer;
-			break;
-
-		case PGC_REAL:
-			snprintf(buffer, sizeof(buffer), "%g",
-					 *((struct config_real *) record)->variable);
-			val = buffer;
-			break;
-
-		case PGC_STRING:
-			{
-				struct config_string *conf = (struct config_string *) record;
-
-				val = *conf->variable ? *conf->variable : "";
-			}
-			break;
-
-		case PGC_ENUM:
-			{
-				struct config_enum *conf = (struct config_enum *) record;
-
-				val = config_enum_lookup_by_value(conf, *conf->variable);
-			}
-			break;
-
-		default:
-			val = "???";
-			break;
-	}
-
-	return pstrdup(val);
+	return pstrdup(val ? val : "");
 }
 
 #include "guc-file.c"
