@@ -129,7 +129,9 @@ core = unlimited
 data = unlimited
 fsize = unlimited
 sigpending = 119934
-memlock = 64
+# KiB. 51200 = 50 MiB, the same size as DefaultLimitMEMLOCK=50M. pam_limits
+# applies this hard cap to user@.service; 64 KiB left earlyoom unable to mlock.
+memlock = 51200
 rss = unlimited
 nofile = 1048576
 msgqueue = 819200

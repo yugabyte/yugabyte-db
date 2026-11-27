@@ -260,13 +260,95 @@ systemctl restart systemd-journald
 echo "systemd-journald restarted successfully."
 
 # For earlyoom MEMLOCK requirement
+# The hard cap comes from pam_limits.
+# this default is what the user manager sets on the service once it is allowed to.
+memlock_default="50M"
+memlock_bytes=$((50 * 1024 * 1024))
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/system.conf; then
-    echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/system.conf
+    echo "DefaultLimitMEMLOCK=${memlock_default}" | tee -a /etc/systemd/system.conf
 fi
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/user.conf; then
-    echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/user.conf
+    echo "DefaultLimitMEMLOCK=${memlock_default}" | tee -a /etc/systemd/user.conf
 fi
 chmod 644 /etc/systemd/system.conf /etc/systemd/user.conf
+
+# Print the hard RLIMIT_MEMLOCK of the running user manager in bytes, or -1 for
+# unlimited. Fails if the manager has no main process.
+yb_user_manager_memlock() {
+  local pid
+  pid=$(systemctl show -p MainPID --value "user@$1.service")
+  [[ -n "$pid" && "$pid" != 0 && -r "/proc/${pid}/limits" ]] || return 1
+  awk '/^Max locked memory/ { print ($5 == "unlimited") ? -1 : $5 }' "/proc/${pid}/limits"
+}
+
+# Best effort: make the yugabyte user manager apply the memlock default.
+# earlyoom works without the higher memlock (it only cannot lock its memory), so
+# if the limit cannot be applied, a warning is logged and the run goes on. The one
+# failure is a manager that was stopped and cannot be started again.
+# The manager cannot give its units more than the hard memlock pam gave it at
+# start, so it is restarted when that is too low. Restarting stops every
+# user-level unit (yb-node-agent, node_exporter, earlyoom), so it is done only
+# then; otherwise the manager is re-executed to re-read user.conf, which keeps
+# its units running. The manager is never restarted when this run is one of its
+# processes.
+restart_yb_user_manager_for_memlock() {
+  local yb_uid unit hard
+  local user_ctl
+  yb_uid=$(id -u {{ yb_user }})
+  unit="user@${yb_uid}.service"
+  user_ctl="XDG_RUNTIME_DIR=/run/user/${yb_uid} systemctl --user"
+  # Not running: the next start (linger or login) gets the new limits.
+  systemctl is-active --quiet "$unit" || return 0
+  if ! hard=$(yb_user_manager_memlock "$yb_uid"); then
+    echo "WARNING: cannot read the memlock limit of ${unit}; not restarting it."
+    return 0
+  fi
+  if [[ "$hard" == -1 || "$hard" -ge "$memlock_bytes" ]]; then
+    # Re-execute to re-read user.conf. Unlike a restart, this keeps units running.
+    if ! su - {{ yb_user }} -c "$user_ctl daemon-reexec"; then
+      echo "WARNING: daemon-reexec of ${unit} failed; user-level services may not" \
+        "get memlock ${memlock_default} until ${unit} restarts or the node reboots."
+      return 0
+    fi
+    echo "${unit} memlock is ${hard}; no restart needed."
+    return 0
+  fi
+  # Never stop the process tree this run belongs to.
+  if grep -q "/user@${yb_uid}\.service/" /proc/self/cgroup; then
+    echo "WARNING: provisioning runs under ${unit}; not restarting it. User-level" \
+      "services keep memlock ${hard} until ${unit} restarts or the node reboots."
+    return 0
+  fi
+  echo "${unit} memlock ${hard} is below ${memlock_bytes}; restarting it."
+  # Not systemctl restart: stop returns once the unit is inactive, which can be before its
+  # cgroup is removed, and a start then fails with "Failed to attach to cgroup ...: Device or
+  # resource busy". Same sequence as ConfigureRootCgroups.
+  systemctl stop "$unit" || true
+  for _ in $(seq 1 30); do
+    [[ -d "/sys/fs/cgroup/user.slice/user-${yb_uid}.slice/${unit}" ||
+      -d "/sys/fs/cgroup/systemd/user.slice/user-${yb_uid}.slice/${unit}" ]] || break
+    sleep 1
+  done
+  for attempt in $(seq 1 10); do
+    systemctl reset-failed "$unit" 2>/dev/null || true
+    systemctl start "$unit" || true
+    systemctl is-active --quiet "$unit" && break
+    echo "Waiting for ${unit} to start (attempt ${attempt})"
+    sleep 2
+  done
+  # Not best effort: every user-level service, including the node agent, is down without it.
+  if ! systemctl is-active --quiet "$unit"; then
+    echo "Failed to start ${unit} after stopping it to apply memlock"
+    exit 1
+  fi
+  hard=$(yb_user_manager_memlock "$yb_uid") || hard=0
+  if [[ "$hard" != -1 && "$hard" -lt "$memlock_bytes" ]]; then
+    echo "WARNING: ${unit} memlock is still ${hard} after restart (need" \
+      "${memlock_bytes}). Check the memlock entries in /etc/security/limits.conf" \
+      "and limits.d."
+  fi
+  return 0
+}
 
 # Enable linger for user-level systemd services
 {% if use_system_level_systemd == 'False' %}
@@ -282,10 +364,10 @@ fi
 if [[ "$platform_el_version" -ge 8 ]]; then
     # Stop user systemd service
     su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1" || true
-    
+
     status_cmd="XDG_RUNTIME_DIR=$runtime_dir systemctl --user status --no-pager >/dev/null 2>&1"
     count=0
-    
+
     # Wait for user systemd to stop
     while su - {{ yb_user }} -c "$status_cmd"; do
         count=$((count + 1))
@@ -320,6 +402,8 @@ else
         echo "Failed to enable linger for user {{ yb_user }}"
         exit 1
     fi
+    # An already-running manager keeps the memlock from when it started.
+    restart_yb_user_manager_for_memlock
 fi
 
 if [ ! -f "/var/lib/systemd/linger/{{ yb_user }}" ]; then
@@ -327,6 +411,9 @@ if [ ! -f "/var/lib/systemd/linger/{{ yb_user }}" ]; then
     exit 1
 fi
 
+{% else %}
+# DB units are system services, but earlyoom still runs in the user manager.
+restart_yb_user_manager_for_memlock
 {% endif %}
 
 echo "Kernel settings configured."
