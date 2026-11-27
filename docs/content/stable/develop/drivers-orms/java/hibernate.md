@@ -164,7 +164,7 @@ public class EmployeeDAO {
   public void save(final Employee employeeEntity) {
     Transaction transaction = hibernateSession.beginTransaction();
     try {
-      hibernateSession.save(employeeEntity);
+      hibernateSession.merge(employeeEntity);
       transaction.commit();
     } catch (RuntimeException rte) {
       transaction.rollback();
@@ -292,6 +292,8 @@ Running `QuickStartOrmApp` prints:
 Connected to the YugabyteDB Cluster successfully.
 Query Returned: name=John, age=35, language: Java
 ```
+
+A later run updates the row with id 1. `merge` inserts a missing id and updates an id that is already stored, so the primary key stays unique.
 
 ## Learn more
 
