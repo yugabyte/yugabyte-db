@@ -45,6 +45,8 @@
 #include <boost/version.hpp>
 #include "yb/util/flags.h"
 
+#include "yb/ash/ash_fwd.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -194,7 +196,8 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Returns true if there are more pending ops to process, false otherwise.
   bool ProcessResponseWithStatus(const Status& status,
-                                 LWConsensusResponsePB* response);
+                                 LWConsensusResponsePB* response,
+                                 const RaftAckLedger* ack_ledger = nullptr);
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -260,6 +263,11 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   rpc::RpcController controller_;
   std::atomic<CoarseTimePoint> last_rpc_start_time_{CoarseTimePoint::min()};
+
+  // Set while an outstanding request carries operations that keep a latency ledger: a wait state
+  // whose ledger receives the request's RPC, and when the request was sent.
+  ash::WaitStateInfoPtr ledger_carrier_;
+  int64_t ledger_sent_nanos_ = 0;
 
   // Held if there is an outstanding request.  This is used in order to ensure that we only have a
   // single request outstanding at a time, and to wait for the outstanding requests at Close().

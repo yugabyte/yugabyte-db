@@ -32,6 +32,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -1112,6 +1115,13 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   }
 
   const AshMetadataPB& ash_metadata() const { return ash_metadata_; }
+
+  // Remembers the wait state of a request that keeps a latency ledger, so the response can carry
+  // the ledger.
+  void SetLedgerWaitState(ash::WaitStateInfoPtr wait_state) {
+    ledger_wait_state_ = std::move(wait_state);
+  }
+
   const opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>& trace_span() const {
     return trace_span_;
   }
@@ -1135,6 +1145,10 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     using google::protobuf::io::CodedOutputStream;
     rpc::ResponseHeader header;
     header.set_call_id(42);
+    if (ledger_wait_state_) {
+      ledger_wait_state_->latency_ledger()->Finish(
+          ash::LedgerNowNanos(), header.mutable_latency_ledger());
+    }
     const auto resp_size = resp_.SerializedSize();
     sidecars_.MoveOffsetsTo(resp_size, header.mutable_sidecar_offsets());
     const auto header_size = header.ByteSize();
@@ -1191,6 +1205,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
   AshMetadataPB ash_metadata_;
+  ash::WaitStateInfoPtr ledger_wait_state_;
   // Started only when the request carried a valid trace context; ended by SendResponse.
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> trace_span_;
   rpc::Sidecars sidecars_;
@@ -3097,6 +3112,16 @@ class PgClientSession::Impl {
     auto [data, deadline] = VERIFY_RESULT(
         query.ParseRequest(input, size, session_id, std::forward<Args>(args)...));
     auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
+    if (wait_state && query.ash_metadata().latency_ledger()) {
+      // The backend stamped the request when it wrote it, on the same host and clock, so the
+      // ledger starts there and the first interval is the shared memory handoff.
+      const auto now = ash::LedgerNowNanos();
+      const auto written = query.ash_metadata().ledger_start_mono_nanos();
+      wait_state->EnableLatencyLedger(
+          written > 0 && written <= now ? written : now,
+          std::to_underlying(ash::LedgerCode::kShmemRequest));
+      query.SetLedgerWaitState(wait_state);
+    }
     ADOPT_WAIT_STATE(wait_state);
     SCOPED_WAIT_STATUS(OnCpu_Active);
     auto track_guard = wait_state

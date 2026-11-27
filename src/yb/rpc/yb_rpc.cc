@@ -17,9 +17,13 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/common.pb.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
@@ -307,6 +311,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
   UpdateWaitStateInfo();
+  BackdateLatencyLedger();
 
   // Extract the propagated distributed-trace parent from the header, if present. The span itself is
   // created later, when the RpcContext is constructed (CreateServerSpan). Tracing is best-effort: a
@@ -353,6 +358,21 @@ void YBInboundCall::CreateServerSpan(std::optional<opentelemetry::trace::SpanCon
   }
 }
 
+void YBInboundCall::BackdateLatencyLedger() {
+  const auto& wait_state = this->wait_state();
+  auto* ledger = wait_state ? wait_state->latency_ledger() : nullptr;
+  auto* stamps = ledger ? ash::CurrentReactorReadStamps() : nullptr;
+  if (!stamps || !stamps->read_nanos) {
+    return;
+  }
+  ledger->Backdate(stamps->read_nanos, ash::LedgerCode::kServerRecvReactor);
+  if (stamps->kernel_rx_nanos) {
+    ledger->Backdate(stamps->kernel_rx_nanos, ash::LedgerCode::kServerRecvWakeup);
+  } else {
+    stamps->want_kernel_rx = true;
+  }
+}
+
 Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success) {
   auto body_size = response.SerializedSize();
 
@@ -364,12 +384,33 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
     resp_hdr.set_crc(0);
   }
   sidecars_.MoveOffsetsTo(body_size, resp_hdr.mutable_sidecar_offsets());
+  ledger_send_queue_offset_ = 0;
+  if (const auto& wait_state = this->wait_state()) {
+    if (auto* ledger = wait_state->latency_ledger()) {
+      ledger_finish_nanos_ = ash::LedgerNowNanos();
+      ledger->Finish(ledger_finish_nanos_, resp_hdr.mutable_latency_ledger());
+      // Written into the serialized header by DoSerialize.
+      resp_hdr.set_ledger_send_queue_nanos(0);
+    }
+  }
 
   size_t header_size;
   std::tie(response_buf_, header_size) = VERIFY_RESULT(SerializeResponse(
       body_size, sidecars_.size(), resp_hdr, response));
   if (use_crc) {
     StoreCrc(response_buf_, header_size, response_buf_.size() - header_size, &sidecars_);
+  }
+  if (resp_hdr.has_ledger_send_queue_nanos()) {
+    // Fields are serialized in field number order, so the fixed64 is the last field before crc.
+    constexpr size_t kCrcFieldSize = 5;
+    ledger_send_queue_offset_ = header_size - (use_crc ? kCrcFieldSize : 0) - sizeof(uint64_t);
+    response_header_size_ = header_size;
+    response_has_crc_ = use_crc;
+    constexpr uint8_t kSendQueueTag = (ResponseHeader::kLedgerSendQueueNanosFieldNumber << 3) | 1;
+    if (response_buf_.udata()[ledger_send_queue_offset_ - 1] != kSendQueueTag) {
+      LOG(DFATAL) << "Unexpected ResponseHeader layout for " << ToString();
+      ledger_send_queue_offset_ = 0;
+    }
   }
 
   response_data_memory_usage_ = response_buf_.size();
@@ -450,6 +491,16 @@ void YBInboundCall::LogTrace() const {
 void YBInboundCall::DoSerialize(ByteBlocks* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
+  if (ledger_send_queue_offset_) {
+    LittleEndian::Store64(
+        response_buf_.udata() + ledger_send_queue_offset_,
+        std::max<int64_t>(ash::LedgerNowNanos() - ledger_finish_nanos_, 0));
+    if (response_has_crc_) {
+      StoreCrc(
+          response_buf_, response_header_size_, response_buf_.size() - response_header_size_,
+          &sidecars_);
+    }
+  }
   output->emplace_back(std::move(response_buf_));
   sidecars_.Flush(output);
 }

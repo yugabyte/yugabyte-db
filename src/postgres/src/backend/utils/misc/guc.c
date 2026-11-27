@@ -133,6 +133,7 @@
 #include "utils/syscache.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
+#include "yb_latency_ledger.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
@@ -6500,6 +6501,31 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_latency_ledger_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Number of round trips the latency ledger ring buffer holds."),
+			gettext_noop("0 turns the latency ledger off. Set through the "
+						 "ysql_yb_latency_ledger_buffer_size yb-tserver flag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_latency_ledger_buffer_size,
+		0, 0, 1048576,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_latency_ledger_min_duration_ms", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Records the latency ledger of every round trip that "
+						 "takes at least this long."),
+			gettext_noop("-1 turns this off. Not negative makes every backend "
+						 "account its round trips."),
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_latency_ledger_min_duration_ms,
+		-1, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_ash_sampling_interval_ms", PGC_SIGHUP, STATS_MONITORING,
 			gettext_noop("Time (in milliseconds) between two consecutive sampling events"),
 			NULL,
@@ -7264,6 +7290,18 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&yb_test_delay_next_ddl,
 		0, 0, 86400000,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_latency_ledger_sample_rate", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Fraction of backends that record the latency ledger "
+						 "of every round trip."),
+			gettext_noop("Each backend draws once per value of this setting."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_latency_ledger_sample_rate,
+		0.0, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
 

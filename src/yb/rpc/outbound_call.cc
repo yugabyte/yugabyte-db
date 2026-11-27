@@ -33,7 +33,9 @@
 #include "yb/rpc/outbound_call.h"
 
 #include <algorithm>
+#include <atomic>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,9 @@
 #include <google/protobuf/descriptor.h>
 
 #include "opentelemetry/trace/span.h"
+
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
 
 #include "yb/gutil/walltime.h"
 
@@ -243,6 +248,27 @@ void CompletedCallQueue::Shutdown() {
 /// OutboundCall
 ///
 
+struct OutboundCallLedger {
+  OutboundCallLedger(ash::WaitStateInfoPtr parent_, int64_t start_nanos_)
+      : parent(std::move(parent_)), start_nanos(start_nanos_) {}
+
+  // The request on whose behalf the call is made.
+  const ash::WaitStateInfoPtr parent;
+  const int64_t start_nanos;
+  // The reactor queued the call on its connection.
+  std::atomic<int64_t> queued_nanos{0};
+  // The last byte of the request was written to the socket.
+  std::atomic<int64_t> sent_nanos{0};
+  // The response was parsed (or the call failed).
+  std::atomic<int64_t> received_nanos{0};
+  // Set before the call is finished, read after: the call state transition orders them.
+  std::optional<LatencyLedgerPB> server_ledger;
+  int64_t server_send_queue_nanos = 0;
+  // The reactor read the response, and the kernel received its last packet (0 if unknown).
+  int64_t read_nanos = 0;
+  int64_t kernel_rx_nanos = 0;
+};
+
 OutboundCall::OutboundCall(const RemoteMethod& remote_method,
                            const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                            std::shared_ptr<const OutboundMethodMetrics> method_metrics,
@@ -275,6 +301,11 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
 
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
+
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+      wait_state && wait_state->latency_ledger()) {
+    ledger_ = std::make_unique<OutboundCallLedger>(wait_state, ash::LedgerNowNanos());
+  }
 
   if (dist_trace::HasActiveContext()) {
     otel_span_ = dist_trace::StartClientSpan(Format("rpc $0", remote_method_.ToString()));
@@ -617,6 +648,10 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
 
   // TODO: consider removing the cycle-based mechanism of reporting slow callbacks below.
 
+  if (ledger_) {
+    MergeLedgerIntoParent();
+  }
+
   int64_t start_cycles = CycleClock::Now();
   {
     dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
@@ -688,6 +723,20 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
   }
   call_response_ = std::move(resp);
   Slice r(call_response_.serialized_response());
+  if (ledger_) {
+    ledger_->received_nanos.store(ash::LedgerNowNanos(), std::memory_order_release);
+    if (const auto* server_ledger = call_response_.latency_ledger()) {
+      ledger_->server_ledger = *server_ledger;
+      ledger_->server_send_queue_nanos = call_response_.ledger_send_queue_nanos();
+    }
+    if (auto* stamps = ash::CurrentReactorReadStamps(); stamps && stamps->read_nanos) {
+      ledger_->read_nanos = stamps->read_nanos;
+      ledger_->kernel_rx_nanos = stamps->kernel_rx_nanos;
+      if (!stamps->kernel_rx_nanos) {
+        stamps->want_kernel_rx = true;
+      }
+    }
+  }
 
   if (method_metrics_) {
     IncrementCounterBy(method_metrics_->response_bytes, r.size());
@@ -720,6 +769,9 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
 }
 
 void OutboundCall::SetQueued() {
+  if (ledger_) {
+    ledger_->queued_nanos.store(ash::LedgerNowNanos(), std::memory_order_release);
+  }
   auto end_time = CoarseMonoClock::Now();
   // Track time taken to be queued.
   if (outbound_call_metrics_) {
@@ -730,6 +782,9 @@ void OutboundCall::SetQueued() {
 }
 
 bool OutboundCall::SetSent() {
+  if (ledger_) {
+    ledger_->sent_nanos.store(ash::LedgerNowNanos(), std::memory_order_release);
+  }
   auto end_time = CoarseMonoClock::Now();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
@@ -740,7 +795,71 @@ bool OutboundCall::SetSent() {
   return state_set_successfully;
 }
 
+void OutboundCall::SetLocalServerLedger(LatencyLedgerPB&& ledger) {
+  if (ledger_) {
+    ledger_->server_ledger = std::move(ledger);
+  }
+}
+
+const LatencyLedgerPB* OutboundCall::server_latency_ledger() const NO_THREAD_SAFETY_ANALYSIS {
+  // The response is only written before the call finishes.
+  if (is_local() || state() != RpcCallState::FINISHED_SUCCESS) {
+    return nullptr;
+  }
+  return call_response_.latency_ledger();
+}
+
+void OutboundCall::MergeLedgerIntoParent() {
+  auto* parent = ledger_->parent->latency_ledger();
+  if (!parent) {
+    return;
+  }
+  // Each step falls back to the end of the previous one when its stamp is missing, so the entries
+  // always add up to the time since the call was created.
+  const auto now = ash::LedgerNowNanos();
+  const auto start = ledger_->start_nanos;
+  auto queued = ledger_->queued_nanos.load(std::memory_order_acquire);
+  if (!queued) {
+    queued = start;
+  }
+  auto sent = ledger_->sent_nanos.load(std::memory_order_acquire);
+  if (!sent) {
+    sent = queued;
+  }
+  auto received = ledger_->received_nanos.load(std::memory_order_acquire);
+  if (!received) {
+    received = now;
+  }
+  const auto read = ledger_->read_nanos ? ledger_->read_nanos : received;
+  const auto kernel_rx = ledger_->kernel_rx_nanos ? ledger_->kernel_rx_nanos : read;
+  ash::LedgerEntries entries;
+  auto add_entry = [&entries](ash::LedgerCode code, int64_t nanos) {
+    if (nanos > 0) {
+      ash::AddLedgerEntry(&entries, ash::MakeLedgerKey(0, 0, code), nanos);
+    }
+  };
+  add_entry(ash::LedgerCode::kClientReactorQueue, queued - start);
+  add_entry(ash::LedgerCode::kClientSend, sent - queued);
+  int64_t server_nanos = 0;
+  if (ledger_->server_ledger) {
+    server_nanos = ledger_->server_ledger->total_nanos() + ledger_->server_send_queue_nanos;
+    ash::AppendLedgerEntries(*ledger_->server_ledger, 0, 0, &entries);
+    add_entry(ash::LedgerCode::kServerSendQueue, ledger_->server_send_queue_nanos);
+  }
+  add_entry(ash::LedgerCode::kTransport, kernel_rx - sent - server_nanos);
+  add_entry(ash::LedgerCode::kClientRecvWakeup, read - kernel_rx);
+  add_entry(ash::LedgerCode::kClientRecvReactor, received - read);
+  add_entry(ash::LedgerCode::kCallbackDelay, now - received);
+  parent->AddChild(now, std::move(entries));
+}
+
 void OutboundCall::SetFinished() {
+  if (ledger_) {
+    // Keeps the time SetResponse recorded.
+    int64_t expected = 0;
+    ledger_->received_nanos.compare_exchange_strong(
+        expected, ash::LedgerNowNanos(), std::memory_order_acq_rel);
+  }
   // Track time taken to be responded.
   if (outbound_call_metrics_) {
     outbound_call_metrics_->time_to_response->Increment(

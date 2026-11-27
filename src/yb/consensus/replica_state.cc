@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/raft_ack_ledger.h"
 
 #include "yb/gutil/casts.h"
 
@@ -55,6 +56,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
@@ -806,8 +808,10 @@ scoped_refptr<ConsensusRound> ReplicaState::GetPendingOpByIndexOrNullUnlocked(in
 
 Status ReplicaState::UpdateMajorityReplicatedUnlocked(
     const OpId& majority_replicated, OpId* committed_op_id,
-    bool* committed_op_id_changed, OpId* last_applied_op_id) {
+    bool* committed_op_id_changed, OpId* last_applied_op_id, RaftAckLedgerPtr ack_ledger) {
   DCHECK(IsLocked());
+  majority_ack_ledger_ = std::move(ack_ledger);
+  auto clear_ack_ledger = ScopeExit([this] { majority_ack_ledger_ = nullptr; });
   if (PREDICT_FALSE(state_ == kShuttingDown || state_ == kShutDown)) {
     return STATUS(ServiceUnavailable, "Cannot trigger apply. Replica is shutting down.");
   }
@@ -1570,6 +1574,12 @@ OpId ReplicaState::MinRetryableRequestOpId() {
 void ReplicaState::NotifyReplicationFinishedUnlocked(
     const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
     OpIds* applied_op_ids) {
+  if (majority_ack_ledger_ && status.ok() && round->ledger_added_nanos()) {
+    const auto index = round->id().index;
+    if (index > majority_ack_ledger_->from_index && index <= majority_ack_ledger_->to_index) {
+      round->set_majority_ack_ledger(majority_ack_ledger_);
+    }
+  }
   round->NotifyReplicationFinished(status, leader_term, applied_op_ids);
   retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
   if (OpId::FromPB(round->replicate_msg()->id()) == GetPendingSplitOpIdUnlocked()) {

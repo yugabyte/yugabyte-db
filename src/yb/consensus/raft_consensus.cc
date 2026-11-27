@@ -1497,6 +1497,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
     AtomicFlagSleepMs(&FLAGS_TEST_delay_before_added_to_leader_ms);
     RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
+    if (round->ledger_added_nanos()) {
+      queue_->NoteLedgerOp(op_id.index);
+    }
 
     // After NotifyAddedToLeader, so the op is judged by its assigned hybrid time.
     // After RegisterRetryableRequest, so a resend of an already-replicated id answers
@@ -1587,7 +1590,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
-      last_applied_op_id);
+      last_applied_op_id, majority_replicated_data.ack_ledger);
   if (s.ok() && state_->GetLeaderStateUnlocked().ok()) {
     s = state_->context()->MajorityReplicated(*committed_op_id);
   }

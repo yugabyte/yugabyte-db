@@ -120,8 +120,9 @@ class MockQueue : public PeerMessageQueue {
                                       PeerMemberType* member_type,
                                       bool* last_exchange_successful,
                                       bool* batch_reaches_majority_replicated));
-  MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
-                                      const LWConsensusResponsePB& response));
+  MOCK_METHOD3(ResponseFromPeer, bool(const std::string& peer_uuid,
+                                      const LWConsensusResponsePB& response,
+                                      const RaftAckLedger* ack_ledger));
   MOCK_CONST_METHOD1(CanPeerBecomeLeader, bool(const std::string& peer_uuid));
   MOCK_CONST_METHOD1(PeerLastReceivedOpId, OpId(const TabletServerId& uuid));
   MOCK_METHOD0(Close, void());

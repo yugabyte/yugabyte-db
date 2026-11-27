@@ -246,7 +246,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
             .op_id = majority_replicated,
             .leader_lease_expiration = CoarseTimePoint::min(),
             .ht_lease_expiration = HybridTime::kMin.GetPhysicalValueMicros(),
-            .num_sst_files = 0},
+            .num_sst_files = 0,
+            .ack_ledger = nullptr},
         committed_index, last_committed_op_id);
   }
 

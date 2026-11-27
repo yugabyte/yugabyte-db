@@ -40,9 +40,13 @@
 #include <string>
 #include <vector>
 
+#include "yb/ash/latency_ledger.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/consensus/raft_ack_ledger.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -212,6 +216,11 @@ Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_o
 
   RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
   SET_WAIT_STATUS(Raft_WaitingForReplication);
+  if (const auto& ws = wait_state(); ws && ws->latency_ledger()) {
+    if (auto* round = operation_->consensus_round()) {
+      round->set_ledger_added_nanos(ash::LedgerNowNanos());
+    }
+  }
 
   StartOperation();
   return Status::OK();
@@ -329,6 +338,34 @@ void OperationDriver::HandleFailure(const Status& status) {
   }
 }
 
+void OperationDriver::AddMajorityAckToLedger() {
+  const auto& ws = wait_state();
+  auto* ledger = ws ? ws->latency_ledger() : nullptr;
+  auto* round = ledger && operation_ ? operation_->consensus_round() : nullptr;
+  if (!round || !round->majority_ack_ledger() || !round->ledger_added_nanos()) {
+    return;
+  }
+  const auto& ack = *round->majority_ack_ledger();
+  const auto added = round->ledger_added_nanos();
+  const auto now = ash::LedgerNowNanos();
+  ash::LedgerEntries entries;
+  auto add_entry = [&entries](ash::LedgerCode code, int64_t nanos) {
+    if (nanos > 0) {
+      ash::AddLedgerEntry(&entries, ash::MakeLedgerKey(0, 0, code), nanos);
+    }
+  };
+  if (ack.local) {
+    add_entry(ash::LedgerCode::kRaftLocalWal, ack.acked_nanos - added);
+  } else {
+    add_entry(ash::LedgerCode::kRaftPeerWait, ack.sent_nanos - added);
+    for (const auto& entry : ack.rpc_entries) {
+      ash::AddLedgerEntry(&entries, entry.key, entry.nanos);
+    }
+  }
+  add_entry(ash::LedgerCode::kRaftMajorityNotify, now - ack.acked_nanos);
+  ledger->AddChild(now, std::move(entries));
+}
+
 void OperationDriver::ReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
   TRACE_BEGIN_END_FUNC();
@@ -344,6 +381,8 @@ void OperationDriver::ReplicationFinished(
     CHECK_EQ(replication_state_, REPLICATING);
     if (status.ok()) {
       replication_state_ = REPLICATED;
+      AddMajorityAckToLedger();
+      ash::WaitStateInfo::LedgerNote(wait_state(), ash::LedgerCode::kRaftApplyQueue);
     } else {
       replication_state_ = REPLICATION_FAILED;
     }

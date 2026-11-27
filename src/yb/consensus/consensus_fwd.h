@@ -49,6 +49,9 @@ struct XClusterReadOpsResult;
 struct RetryableRequestsCounts;
 struct StateChangeContext;
 
+struct RaftAckLedger;
+using RaftAckLedgerPtr = std::shared_ptr<const RaftAckLedger>;
+
 class ConsensusRound;
 typedef scoped_refptr<ConsensusRound> ConsensusRoundPtr;
 typedef std::vector<ConsensusRoundPtr> ConsensusRounds;

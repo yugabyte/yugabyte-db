@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -372,6 +373,7 @@ struct AshMetadata {
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
   uint8_t addr_family = AF_UNSPEC;
+  bool latency_ledger = false;
 
   void set_client_host_port(const HostPort& host_port);
   void clear_rpc_request_id();
@@ -408,6 +410,9 @@ struct AshMetadata {
     }
     if (other.addr_family != AF_UNSPEC) {
       addr_family = other.addr_family;
+    }
+    if (other.latency_ledger) {
+      latency_ledger = true;
     }
   }
 
@@ -468,6 +473,11 @@ struct AshMetadata {
     } else {
       pb->clear_addr_family();
     }
+    if (latency_ledger) {
+      pb->set_latency_ledger(true);
+    } else {
+      pb->clear_latency_ledger();
+    }
   }
 
   template <class PB>
@@ -499,6 +509,7 @@ struct AshMetadata {
         pb.rpc_request_id(),                    // rpc_request_id
         HostPortFromPB(pb.client_host_port()),  // client_host_port
         static_cast<uint8_t>(pb.addr_family()), // addr_family
+        pb.latency_ledger(),                    // latency_ledger
     };
   }
 };
@@ -529,7 +540,7 @@ class WaitStateInfo {
  public:
   WaitStateInfo() = default;
   explicit WaitStateInfo(int64_t rpc_request_id);
-  virtual ~WaitStateInfo() = default;
+  virtual ~WaitStateInfo();
 
   void set_code(WaitStateCode c, const char* location);
   WaitStateCode code() const;
@@ -612,6 +623,20 @@ class WaitStateInfo {
   void EnableConcurrentUpdates();
   bool IsConcurrentUpdatesEnabled();
 
+  // The latency ledger of this request, or nullptr when it was not requested. Once set, it lives
+  // as long as this WaitStateInfo.
+  LatencyLedger* latency_ledger() const {
+    return latency_ledger_.load(std::memory_order_acquire);
+  }
+
+  // Starts a latency ledger at start_nanos, charging the time until the next transition to
+  // initial_code (the current wait state code when not given). No-op if there is one already.
+  void EnableLatencyLedger(int64_t start_nanos, std::optional<uint32_t> initial_code = {});
+
+  // Charges the time from now on to a ledger-only interval, without changing the ASH wait state
+  // code. The next wait state transition ends it.
+  static void LedgerNote(const WaitStateInfoPtr& wait_state, LedgerCode code);
+
   static std::vector<WaitStatesDescription> GetWaitStatesDescription();
   static int GetCircularBufferSizeInKiBs();
 
@@ -631,6 +656,7 @@ class WaitStateInfo {
 
   std::atomic_bool concurrent_updates_allowed_{false};
   std::atomic<uint8_t> TEST_num_sleeps_{0};
+  std::atomic<LatencyLedger*> latency_ledger_{nullptr};
 };
 
 void EnableConcurrentUpdates(const WaitStateInfoPtr& ptr);

@@ -519,7 +519,19 @@ Result<size_t> Socket::Recv(uint8_t* buf, ssize_t amt) {
   return res;
 }
 
-Result<size_t> Socket::Recvv(IoVecs* vecs) {
+Status Socket::EnableReceiveTimestamps() {
+#ifdef SO_TIMESTAMPNS
+  int flag = 1;
+  if (setsockopt(fd_, SOL_SOCKET, SO_TIMESTAMPNS, &flag, sizeof(flag)) == -1) {
+    return STATUS(NetworkError, "Failed to set SO_TIMESTAMPNS", Errno(errno));
+  }
+  return Status::OK();
+#else
+  return STATUS(NotSupported, "SO_TIMESTAMPNS is not supported");
+#endif
+}
+
+Result<size_t> Socket::Recvv(IoVecs* vecs, int64_t* rx_realtime_nanos) {
   if (PREDICT_FALSE(vecs->empty())) {
     return STATUS(NetworkError, "Recvv: receive to empty vecs");
   }
@@ -531,7 +543,24 @@ Result<size_t> Socket::Recvv(IoVecs* vecs) {
   memset(&msg, 0, sizeof(struct msghdr));
   msg.msg_iov = vecs->data();
   msg.msg_iovlen = narrow_cast<int>(vecs->size());
+  alignas(struct cmsghdr) char control[CMSG_SPACE(sizeof(struct timespec))];
+  if (rx_realtime_nanos) {
+    *rx_realtime_nanos = 0;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+  }
   auto res = recvmsg(fd_, &msg, MSG_NOSIGNAL);
+#ifdef SCM_TIMESTAMPNS
+  if (rx_realtime_nanos && res > 0) {
+    for (auto* cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+      if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_TIMESTAMPNS) {
+        struct timespec ts;
+        memcpy(&ts, CMSG_DATA(cmsg), sizeof(ts));
+        *rx_realtime_nanos = static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+      }
+    }
+  }
+#endif
   if (PREDICT_FALSE(res <= 0)) {
     if (res == 0) {
       return STATUS(NetworkError, "recvmsg got EOF from remote", Slice(), Errno(ESHUTDOWN));

@@ -43,6 +43,9 @@
 
 #include <boost/asio/strand.hpp>
 
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -188,6 +191,7 @@ class ServicePoolImpl final : public InboundCallHandler {
 
     TRACE_TO(call->trace(), "Inserting onto call queue");
     SET_WAIT_STATUS_TO(call->wait_state(), OnCpu_Passive);
+    ash::WaitStateInfo::LedgerNote(call->wait_state(), ash::LedgerCode::kServiceQueue);
 
     auto task = call->BindTask(this);
     if (!task) {

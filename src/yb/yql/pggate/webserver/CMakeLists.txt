@@ -19,6 +19,7 @@ set(PGGATE_WEBSERVER_SRCS
 
 set(PGGATE_WEBSERVER_LIBS
     server_process
+    yb_ash
     yb_common
     yb_pggate_util
     yb_util

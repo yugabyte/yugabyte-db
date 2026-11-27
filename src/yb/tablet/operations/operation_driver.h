@@ -209,6 +209,9 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   size_t ReplicateMsgSize();
 
  private:
+  // Adds the ack that made the operation majority replicated to its latency ledger, if any.
+  void AddMajorityAckToLedger();
+
   friend class RefCountedThreadSafe<OperationDriver>;
   enum ReplicationState {
     // The operation has not yet been sent to consensus for replication

@@ -17,6 +17,7 @@
 #ifndef YB_YQL_PGGATE_YBC_DIST_TRACE_H
 #define YB_YQL_PGGATE_YBC_DIST_TRACE_H
 
+#include "yb/yql/pggate/ybc_latency_ledger.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
@@ -45,10 +46,14 @@
 extern "C" {
 #endif
 
+// The latency ledger takes its YSQL phases from the same span stack.
 #define YB_DIST_TRACE_START_SPAN(op_name) \
   do { \
     if (YBCIsDistTraceActive()) { \
       YBCDistTraceStartSpan(op_name); \
+    } \
+    if (YBCLedgerIsActive()) { \
+      YBCLedgerPushPhase(op_name); \
     } \
   } while (0)
 
@@ -56,6 +61,9 @@ extern "C" {
   do { \
     if (YBCIsDistTraceActive()) { \
       YBCDistTraceEndSpan(); \
+    } \
+    if (YBCLedgerIsActive()) { \
+      YBCLedgerPopPhase(); \
     } \
   } while (0)
 

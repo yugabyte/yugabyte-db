@@ -229,6 +229,9 @@ class YBInboundCall : public InboundCall {
 
   virtual void UpdateWaitStateInfo();
 
+  // Moves the start of the call's latency ledger, if any, back to when the reactor read it.
+  void BackdateLatencyLedger();
+
  private:
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
@@ -251,6 +254,14 @@ class YBInboundCall : public InboundCall {
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
   std::atomic<size_t> response_data_memory_usage_{0};
+
+  // When the response carries a latency ledger: where in response_buf_ the reactor writes
+  // ResponseHeader.ledger_send_queue_nanos (0 if it does not), when the ledger was finished, and
+  // what it needs to recompute the CRC afterwards.
+  size_t ledger_send_queue_offset_ = 0;
+  int64_t ledger_finish_nanos_ = 0;
+  size_t response_header_size_ = 0;
+  bool response_has_crc_ = false;
 
   ReceivedSidecars received_sidecars_;
 

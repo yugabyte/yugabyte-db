@@ -43,6 +43,11 @@ class CallStateListenerFactory : public rpc::CallStateListenerFactory {
 class MetadataSerializer : public rpc::MetadataSerializer {
  public:
   explicit MetadataSerializer(rpc::MetadataSerializationMode mode);
+
+  // Asks for a latency ledger whose first interval starts at start_nanos (CLOCK_MONOTONIC). Must
+  // be called before SerializedSize().
+  void SetLedgerStartNanos(int64_t start_nanos);
+
   size_t SerializedSize() override;
   uint8_t* SerializeToArray(uint8_t* out) override;
 

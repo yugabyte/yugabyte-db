@@ -15,6 +15,8 @@
 
 #include "yb/rpc/tcp_stream.h"
 
+#include "yb/ash/latency_ledger.h"
+
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_util.h"
@@ -318,6 +320,16 @@ void TcpStream::UpdateEvents() {
 }
 
 Status TcpStream::ReadHandler() {
+  ash::ScopedReactorReadStamps read_stamps;
+  auto status = DoReadHandler();
+  if (read_stamps.stamps().want_kernel_rx && !rx_timestamps_) {
+    rx_timestamps_ = true;
+    WARN_NOT_OK(socket_.EnableReceiveTimestamps(), "Failed to enable receive timestamps");
+  }
+  return status;
+}
+
+Status TcpStream::DoReadHandler() {
   context_->UpdateLastRead();
 
   for (;;) {
@@ -377,13 +389,19 @@ Result<bool> TcpStream::Receive() {
     } while (inbound_bytes_to_skip_ > 0);
   }
 
-  auto nread = socket_.Recvv(iov.get_ptr());
+  int64_t rx_realtime_nanos = 0;
+  auto nread = socket_.Recvv(iov.get_ptr(), rx_timestamps_ ? &rx_realtime_nanos : nullptr);
   if (!nread.ok()) {
     DVLOG_WITH_PREFIX(3) << "socket_.Recvv() error: " << nread.status();
     if (nread.status().IsTryAgain()) {
       return false;
     }
     return nread.status();
+  }
+  if (auto* stamps = ash::CurrentReactorReadStamps()) {
+    stamps->read_nanos = ash::LedgerNowNanos();
+    stamps->kernel_rx_nanos = rx_realtime_nanos
+        ? ash::LedgerMonoFromRealtime(rx_realtime_nanos, stamps->read_nanos) : 0;
   }
   DVLOG_WITH_PREFIX(4) << "socket_.Recvv() bytes: " << *nread;
 

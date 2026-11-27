@@ -99,6 +99,7 @@ class TcpStream : public Stream {
 
   void Handler(ev::io& watcher, int revents); // NOLINT
   Status ReadHandler();
+  Status DoReadHandler();
   Status WriteHandler(bool just_connected);
 
   Result<bool> Receive();
@@ -144,6 +145,10 @@ class TcpStream : public Stream {
   bool connected_ = false;
 
   bool read_buffer_full_ = false;
+
+  // Whether the kernel timestamps packets received on socket_. Turned on when a call that keeps a
+  // latency ledger is read from or answered on this stream.
+  bool rx_timestamps_ = false;
 
   std::deque<TcpStreamSendingData> sending_;
   size_t data_blocks_sent_ = 0;

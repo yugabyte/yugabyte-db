@@ -267,6 +267,8 @@ extern bool YbIsIdleWaitEvent(uint32 wait_event_info);
 
 extern PGDLLIMPORT uint32 *my_wait_event_info;
 extern PGDLLIMPORT YbcWaitEventInfoPtr yb_my_wait_event_info;
+extern PGDLLIMPORT bool yb_latency_ledger_active;
+extern void YbLatencyLedgerWaitEvent(uint32 wait_event_info);
 
 
 /* ----------
@@ -296,6 +298,10 @@ pgstat_report_wait_start(uint32 wait_event_info)
 	 * four-bytes, updates are atomic.
 	 */
 	*(volatile uint32 *) my_wait_event_info = wait_event_info;
+
+	/* YB: charge the wait to the round trip's latency ledger */
+	if (unlikely(yb_latency_ledger_active))
+		YbLatencyLedgerWaitEvent(wait_event_info);
 }
 
 /* ----------
@@ -309,6 +315,10 @@ pgstat_report_wait_end(void)
 {
 	/* see pgstat_report_wait_start() */
 	*(volatile uint32 *) my_wait_event_info = 0;
+
+	/* YB: charge the wait to the round trip's latency ledger */
+	if (unlikely(yb_latency_ledger_active))
+		YbLatencyLedgerWaitEvent(0);
 }
 
 /* ----------
@@ -343,6 +353,9 @@ yb_pgstat_report_wait_start(YbcWaitEventInfo info)
 		*(volatile uint32 *) yb_my_wait_event_info.aux = info.aux;
 		*(volatile uint32 *) yb_my_wait_event_info.wait_event = info.wait_event;
 	}
+
+	if (unlikely(yb_latency_ledger_active))
+		YbLatencyLedgerWaitEvent(info.wait_event);
 
 	return prev_wait_event_info;
 }

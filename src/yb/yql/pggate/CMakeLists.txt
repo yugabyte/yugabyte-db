@@ -66,6 +66,7 @@ set(PGGATE_SRCS
     pg_global_view_read.cc
     ybc_dist_trace.cc
     ybc_gflags.cc
+    ybc_latency_ledger.cc
     ybc_pg_shared_mem.cc
     ybc_pggate.cc)
 

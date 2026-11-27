@@ -90,6 +90,8 @@ class Message;
 
 namespace yb::rpc {
 
+struct OutboundCallLedger;
+
 // Used to key on Connection information.
 // For use as a key in an unordered STL collection, use ConnectionIdHash and ConnectionIdEqual.
 // This class is copyable for STL compatibility, but not assignable (use CopyFrom() for that).
@@ -193,6 +195,18 @@ class CallResponse {
 
   const RefCntBuffer& data_holder() const {
     return response_data_.holder();
+  }
+
+  // The latency ledger the server returned, or nullptr if it did not return one.
+  const LatencyLedgerPB* latency_ledger() const {
+    DCHECK(parsed_);
+    return header_.has_latency_ledger() ? &header_.latency_ledger() : nullptr;
+  }
+
+  // Time from the server finishing its latency ledger until its reactor picked the response up.
+  int64_t ledger_send_queue_nanos() const {
+    DCHECK(parsed_);
+    return static_cast<int64_t>(header_.ledger_send_queue_nanos());
   }
 
  private:
@@ -429,6 +443,13 @@ class OutboundCall : public RpcCall {
 
   virtual bool is_local() const { return false; }
 
+  // For a local call, the ledger of the inbound call that handled it. Must be called before the
+  // call is finished.
+  void SetLocalServerLedger(LatencyLedgerPB&& ledger);
+
+  // The latency ledger a remote server returned with a successful response, or nullptr.
+  const LatencyLedgerPB* server_latency_ledger() const;
+
   // Returns true if the callback has been triggered, e.g. by transitioning the call to a final
   // state.
   bool callback_triggered() const {
@@ -615,9 +636,15 @@ class OutboundCall : public RpcCall {
   // completion callback so follow-on RPCs nest as SIBLINGS of this call.
   dist_trace::TraceParent trace_parent_;
 
+  // Set when the call is made on behalf of a request that keeps a latency ledger.
+  std::unique_ptr<OutboundCallLedger> ledger_;
+
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.
   friend class InvokeCallbackTask;
+
+  // Folds this call's ledger into the ledger of the request it was made for.
+  void MergeLedgerIntoParent();
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

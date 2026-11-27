@@ -17,10 +17,15 @@
 #include <math.h>
 #include <cassert>
 
+#include <atomic>
 #include <map>
+#include <set>
 #include <vector>
 #include <string>
 #include <regex>
+
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -56,6 +61,8 @@ static YbcRpczEntry **rpczResultPointer;
 static YbcConnectionMetrics *conn_metrics = NULL;
 
 static YbcPostgresCallbacks pgCallbacks;
+static YbcLedgerRing *latency_ledger_ring = nullptr;
+static YbcLedgerWaitEventNameFunc latency_ledger_name_fn = nullptr;
 static YbcIterateDbCatalogCacheMetricsFunc ybc_iterate_db_catalog_cache_metrics_fn = nullptr;
 
 static const char *EXPORTED_INSTANCE = "exported_instance";
@@ -367,6 +374,133 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   writer.EndArray();
   writer.EndObject();
   writer.EndArray();
+}
+
+// Returns the finished round trips with sequence numbers above since (at most max of them) as
+//   {"num_slots": .., "next_seq": .., "resume_after": .., "lost": ..,
+//    "records": [[seq, start_time_us, duration_ns, pid, query_id, txn_seq, db_oid, flags,
+//                 cpu_ns, runqueue_ns, [key, duration, key, duration, ...]], ...],
+//    "names": {"ysql": {code: name}, "tserver": {code: name}}}
+// Entry durations are in units of 64 ns. Pass resume_after as since in the next call: records
+// that were still being written are returned then. lost counts records overwritten before they
+// were read.
+static void PgLatencyLedgerHandler(
+    const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
+  JsonWriter writer(&resp->output, JsonWriter::COMPACT);
+  writer.StartObject();
+  auto *ring = latency_ledger_ring;
+  if (!ring || !ring->num_slots) {
+    writer.String("error");
+    writer.String("The latency ledger is off: ysql_yb_latency_ledger_buffer_size is 0");
+    writer.EndObject();
+    return;
+  }
+  const uint64_t since = strtoull(
+      FindWithDefault(req.parsed_args, "since", "0").c_str(), nullptr, 10);
+  const uint64_t max_records = strtoull(
+      FindWithDefault(req.parsed_args, "max", std::to_string(ring->num_slots)).c_str(), nullptr,
+      10);
+  const uint64_t next_seq = __atomic_load_n(&ring->next_seq, __ATOMIC_ACQUIRE);
+  const uint64_t oldest = next_seq > ring->num_slots ? next_seq - ring->num_slots + 1 : 1;
+  uint64_t seq = std::max(since + 1, oldest);
+  const uint64_t lost = seq - since - 1;
+
+  writer.String("num_slots");
+  writer.Uint64(ring->num_slots);
+  writer.String("next_seq");
+  writer.Uint64(next_seq);
+
+  std::set<uint32_t> ysql_codes;
+  std::set<uint32_t> tserver_codes;
+  YbcLedgerRecord record;
+  uint64_t resume_after = seq - 1;
+  uint64_t num_records = 0;
+  writer.String("records");
+  writer.StartArray();
+  for (; seq <= next_seq && num_records < max_records; ++seq) {
+    const auto &slot = ring->slots[(seq - 1) % ring->num_slots];
+    const auto before = __atomic_load_n(&slot.seq, __ATOMIC_ACQUIRE);
+    if (before > seq) {
+      // Overwritten by a newer record.
+      resume_after = seq;
+      continue;
+    }
+    if (before != seq) {
+      // Still being written.
+      break;
+    }
+    memcpy(&record, &slot, sizeof(record));
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (__atomic_load_n(&slot.seq, __ATOMIC_RELAXED) != seq) {
+      resume_after = seq;
+      continue;
+    }
+    resume_after = seq;
+    ++num_records;
+    writer.StartArray();
+    writer.Uint64(record.seq);
+    writer.Int64(record.start_time_us);
+    writer.Int64(record.duration_ns);
+    writer.Int64(record.pid);
+    writer.Uint64(record.query_id);
+    writer.Uint64(record.txn_seq);
+    writer.Uint64(record.db_oid);
+    writer.Uint64(record.flags);
+    writer.Int64(record.cpu_ns);
+    writer.Int64(record.runqueue_ns);
+    writer.StartArray();
+    const auto num_entries = std::min<int>(record.num_entries, YB_LEDGER_MAX_ENTRIES);
+    for (int i = 0; i != num_entries; ++i) {
+      const auto key = record.entries[i].key;
+      writer.Uint64(key);
+      writer.Uint64(record.entries[i].duration);
+      (ash::LedgerKeyDepth(key) == 0 ? ysql_codes : tserver_codes).insert(
+          ash::LedgerKeyCode(key));
+    }
+    writer.EndArray();
+    writer.EndArray();
+  }
+  writer.EndArray();
+
+  writer.String("resume_after");
+  writer.Uint64(resume_after);
+  writer.String("lost");
+  writer.Uint64(lost);
+
+  if (FindOrNull(req.parsed_args, "all_names")) {
+    for (auto code : ash::WaitStateCodeList()) {
+      tserver_codes.insert(std::to_underlying(code));
+    }
+  }
+  writer.String("names");
+  writer.StartObject();
+  writer.String("ysql");
+  writer.StartObject();
+  char name[256];
+  for (auto code : ysql_codes) {
+    if (code >= static_cast<uint32_t>(ash::LedgerCode::kServiceQueue)) {
+      snprintf(name, sizeof(name), "%s", ash::LedgerCodeName(code).c_str());
+    } else if (code == 0) {
+      snprintf(name, sizeof(name), "CPU");
+    } else if (latency_ledger_name_fn) {
+      latency_ledger_name_fn(code, name, sizeof(name));
+    } else {
+      snprintf(name, sizeof(name), "%u", code);
+    }
+    writer.String(std::to_string(code));
+    writer.String(name);
+  }
+  writer.EndObject();
+  writer.String("tserver");
+  writer.StartObject();
+  for (auto code : tserver_codes) {
+    writer.String(std::to_string(code));
+    writer.String(ash::LedgerCodeName(code));
+  }
+  writer.EndObject();
+  writer.EndObject();
+
+  writer.EndObject();
 }
 
 static void PgStatStatementsHandler(
@@ -737,6 +871,11 @@ void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *)) {
   pullYsqlStatementStats = getYsqlStatementStats;
 }
 
+void RegisterLatencyLedger(YbcLedgerRing *ring, YbcLedgerWaitEventNameFunc name_fn) {
+  latency_ledger_ring = ring;
+  latency_ledger_name_fn = name_fn;
+}
+
 void RegisterResetYsqlStatStatements(void (*fn)()) {
     resetYsqlStatementStats = fn;
 }
@@ -763,6 +902,8 @@ YbcStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/statements", "PG Stat Statements", PgStatStatementsHandler, false, false);
   webserver->RegisterPathHandler(
       "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
+  webserver->RegisterPathHandler(
+      "/latency-ledger", "Latency ledger", PgLatencyLedgerHandler, false, false);
   webserver->RegisterPathHandler("/webserver-heap-snapshot", "",
       PprofHeapSnapshotHandler, true /* is_styled */, false /* is_on_nav_bar */);
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);

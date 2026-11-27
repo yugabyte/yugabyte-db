@@ -83,6 +83,10 @@ void RpcController::Reset() {
   call_.reset();
 }
 
+const LatencyLedgerPB* RpcController::server_latency_ledger() const {
+  return call_ ? call_->server_latency_ledger() : nullptr;
+}
+
 bool RpcController::finished() const {
   std::lock_guard l(lock_);
   return FinishedUnlocked();

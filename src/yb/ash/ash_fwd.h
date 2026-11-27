@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 namespace yb::ash {
@@ -28,5 +29,8 @@ using WaitStateInfoPtr = std::shared_ptr<WaitStateInfo>;
 
 struct AshMetadata;
 struct AshAuxInfo;
+
+class LatencyLedger;
+enum class LedgerCode : uint32_t;
 
 }  // namespace yb::ash
