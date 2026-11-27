@@ -184,7 +184,7 @@ libraryDependencies ++= Seq(
   guice,
   "org.postgresql" % "postgresql" % "42.7.15",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
-  "ch.qos.logback" % "logback-classic" % "1.6.3",
+  "ch.qos.logback" % "logback-classic" % "1.6.8",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
@@ -224,7 +224,7 @@ libraryDependencies ++= Seq(
   "software.amazon.awssdk" % "elasticloadbalancingv2" % "2.29.52",
   "software.amazon.awssdk" % "route53" % "2.29.52",
   "software.amazon.awssdk" % "cloudtrail" % "2.29.52",
-  "net.minidev" % "json-smart" % "2.5.2",
+  "net.minidev" % "json-smart" % "2.6.1",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -1121,7 +1121,7 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 libraryDependencies += "com.yugabyte.troubleshoot" % "perf-advisor-client" % "0.2.0"
 
 libraryDependencies ++= Seq(
-  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.86.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.139.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
@@ -1140,6 +1140,12 @@ dependencyOverrides += "io.netty" % "netty-common" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
+
+// ASM comes in transitively at mixed versions (9.2 and 9.7.1); 9.11 fixes CVE-2026-110257 and
+// the related class-file parsing CVEs.
+val asmVersion = "9.11.1"
+dependencyOverrides ++= Seq("asm", "asm-analysis", "asm-commons", "asm-tree", "asm-util").map(
+  "org.ow2.asm" % _ % asmVersion)
 
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949,
 // CVE-2026-106451 and GHSA-48mj-8f7c-7qfm.
