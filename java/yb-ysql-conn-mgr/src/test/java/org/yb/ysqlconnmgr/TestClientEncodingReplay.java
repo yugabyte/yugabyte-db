@@ -37,8 +37,8 @@ import org.yb.util.RequiresLinux;
 @RunWith(value = YBTestRunner.class)
 public class TestClientEncodingReplay extends BaseYsqlConnMgr {
   private static final Charset LATIN1 = StandardCharsets.ISO_8859_1;
-  private static final String CAFE = "café";
-  private static final String EURO = "€";
+  private static final String CAFE = "caf\u00e9";
+  private static final String EURO = "\u20ac";
   private static final AtomicInteger dbCounter = new AtomicInteger();
 
   @Override
@@ -144,7 +144,7 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
   @Test
   public void testSessionAuthorizationReportedInClientEncoding() throws Exception {
     String db = createDatabase();
-    String role = "rôle";
+    String role = "r\u00f4le";
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
              .connect();
