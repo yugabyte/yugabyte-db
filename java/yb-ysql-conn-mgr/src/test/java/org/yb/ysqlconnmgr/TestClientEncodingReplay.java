@@ -166,6 +166,30 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
     }
   }
 
+  // Sets TimeZone in lowercase. The client gets one ParameterStatus with the canonical name, and
+  // a fresh backend that replays the setting shows the same canonical name.
+  @Test
+  public void testTimeZoneReportedCanonicalAndReplayed() throws Exception {
+    String db = createDatabase();
+    try (WireConn client = connect(db, null)) {
+      PipelineResult result = client.createPipeline()
+          .query("SET TimeZone = 'america/new_york'")
+          .run();
+      List<String> reported = new ArrayList<>();
+      for (Pair<String, String> status : result.parameterStatuses()) {
+        if (status.getFirst().equals("TimeZone")) {
+          reported.add(status.getSecond());
+        }
+      }
+      assertEquals(Arrays.asList("America/New_York"), reported);
+      try (WireConn holder = pinCurrentBackend(db, client)) {
+        client.createPipeline()
+            .query("SHOW TimeZone").row("America/New_York")
+            .run();
+      }
+    }
+  }
+
   // A value with no LATIN1 equivalent still replays. Only reading it fails, with 22P05 as in
   // PG, and the session stays usable.
   @Test
