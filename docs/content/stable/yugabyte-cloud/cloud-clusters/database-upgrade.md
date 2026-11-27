@@ -52,7 +52,7 @@ Use the pre-check to make sure your cluster is compatible with the new major YSQ
 After you are notified of an upcoming YSQL major upgrade, to perform the pre-check do the following:
 
 1. Navigate to the cluster **Maintenance** tab.
-1. Under **Scheduled Maintenance**, Select the maintenance task to disply the details.
+1. Under **Scheduled Maintenance**, Select the maintenance task to display the details.
 1. Click **Run Pre-Check**.
 
 If your cluster is not fully compatible with the YSQL major upgrade, the pre-check will fail. Click **View Report** to view a report of recommendations changes.
@@ -86,7 +86,7 @@ If you aren't satisfied with an upgrade, you can roll back to the version that w
 To roll back an upgrade, do the following:
 
 1. Navigate to the cluster **Maintenance** tab.
-1. Under **Scheduled Maintenance**, Select the maintenance task to disply the details.
+1. Under **Scheduled Maintenance**, Select the maintenance task to display the details.
 
 1. Click **Roll Back**.
 
@@ -97,6 +97,6 @@ When an upgrade is in progress, you have 48 hours to monitor your cluster and th
 To manually finalize an upgrade, do the following:
 
 1. Navigate to the cluster **Maintenance** tab.
-1. Under **Scheduled Maintenance**, Select the maintenance task to disply the details.
+1. Under **Scheduled Maintenance**, Select the maintenance task to display the details.
 
 1. Click **Finalize Upgrade Now**.

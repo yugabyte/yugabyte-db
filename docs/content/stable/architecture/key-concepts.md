@@ -41,7 +41,7 @@ Sometimes the term *cluster* is used interchangeably with the term *universe*. H
 
 ## DocDB
 
-DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/). {{<link dest="../docdb">}}
+DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized version of [RocksDB](http://rocksdb.org/). {{<link dest="../docdb">}}
 
 ## Fault domain
 
