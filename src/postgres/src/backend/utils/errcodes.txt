@@ -505,3 +505,4 @@ YB003    E    ERRCODE_YB_TXN_CONFLICT                                        yb_
 YB004    E    ERRCODE_YB_DEADLOCK                                            yb_deadlock
 YB010    E    ERRCODE_YB_TXN_SKIP_LOCKING                                    yb_transaction_skip_locking
 YB011    E    ERRCODE_YB_TXN_LOCK_NOT_FOUND                                  yb_transaction_lock_not_found
+YB012    E    ERRCODE_YB_ADVISORY_LOCKS_UNAVAILABLE                          yb_advisory_locks_unavailable

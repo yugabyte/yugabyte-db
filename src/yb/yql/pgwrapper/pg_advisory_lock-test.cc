@@ -13,6 +13,7 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -302,9 +303,9 @@ TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksSanityTest)) {
   ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
 }
 
-// The deprecated GUC must not skip YB advisory locks.
+// While advisory locks are available, the silence GUC must not skip YB advisory locks.
 TEST_F(PgAdvisoryLockTest,
-       YB_DISABLE_TEST_IN_TSAN(DeprecatedSilenceGucStillAcquiresYbAdvisoryLocks)) {
+       YB_DISABLE_TEST_IN_TSAN(SilenceGucStillAcquiresYbAdvisoryLocks)) {
   constexpr int kMinTxnAgeMs = 0;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = on"));
@@ -431,6 +432,25 @@ TEST_F(PgAdvisoryLockTest, ToggleAdvisoryLockFlag) {
   ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
   // Verify that unlock attempt return false because the lock is already released.
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
+}
+
+// Once the advisory locks table exists, the silence GUC must not turn locks into no-ops, even with
+// ysql_yb_enable_advisory_locks turned off: acquires fail, and a lock taken before the flag was
+// turned off is still released through DocDB.
+TEST_F(PgAdvisoryLockTest, SilenceGucIgnoredWhileAdvisoryLocksDisabled) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(10)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
+  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = on"));
+  for (const auto* query : {
+           "SELECT pg_advisory_lock(11)", "SELECT pg_try_advisory_lock(11)"}) {
+    auto s = conn.Fetch(query);
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "advisory locks are disabled");
+  }
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10)")));
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10)")));
 }
 
 class PgAdvisoryLockTestMultipleTablets : public PgAdvisoryLockTest {

@@ -112,6 +112,17 @@ Result<client::YBTablePtr> YsqlAdvisoryLocksTable::GetTable() {
   return table_;
 }
 
+Result<bool> YsqlAdvisoryLocksTable::TableExists() {
+  auto table = GetTable();
+  if (table.ok()) {
+    return true;
+  }
+  if (table.status().IsNotFound()) {
+    return false;
+  }
+  return table.status();
+}
+
 Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::MakeLockOp(
     const LockId& lock_id, AdvisoryLockMode mode, bool wait) {
   auto lock = client::YBPgsqlLockOp::NewLock(VERIFY_RESULT(GetTable()));

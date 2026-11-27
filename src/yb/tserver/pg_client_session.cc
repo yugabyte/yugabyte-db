@@ -1659,6 +1659,19 @@ YsqlAdvisoryLocksTableLockId MakeAdvisoryLockId(uint32_t db_oid, const AdvisoryL
           .objsubid = lock_pb.objsubid()};
 }
 
+// With yb_silence_advisory_locks_not_supported_error set, YSQL turns this error into a successful
+// no-op, as releases without DocDB advisory locks did. So return it only while the advisory locks
+// table doesn't exist: the master creates it when a YSQL major upgrade from such a release is
+// finalized. Until then no node can hold a DocDB advisory lock, so a no-op can't let two sessions
+// both believe they hold the same lock. Returning it in any other case, including while
+// ysql_yb_enable_advisory_locks is off but the table exists, would turn a real lock or unlock
+// failure into a silent success.
+Status AdvisoryLocksUnavailableStatus() {
+  return STATUS(
+      NotSupported, "advisory locks table doesn't exist", Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_ADVISORY_LOCKS_UNAVAILABLE));
+}
+
 size_t RenewSignature(UsedReadTime& used_read_time) {
   std::lock_guard guard(used_read_time.lock);
   used_read_time.data.reset();
@@ -3206,6 +3219,9 @@ class PgClientSession::Impl {
       const PgAcquireAdvisoryLockRequestPB& req, PgAcquireAdvisoryLockResponsePB* resp,
       rpc::RpcContext* context) {
     VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
+    if (!VERIFY_RESULT(advisory_locks_table().TableExists())) {
+      return AdvisoryLocksUnavailableStatus();
+    }
     SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
     const auto deadline = context->GetClientDeadline();
     auto* primary_session_data = &GetSessionData(GetSessionKindBasedOnDDLOptions(
@@ -3262,6 +3278,11 @@ class PgClientSession::Impl {
       const PgReleaseAdvisoryLockRequestPB& req, PgReleaseAdvisoryLockResponsePB* resp,
       rpc::RpcContext* context) {
     VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
+    // Release doesn't require ysql_yb_enable_advisory_locks, so that locks taken before the flag
+    // was turned off can still be released.
+    if (!VERIFY_RESULT(advisory_locks_table().TableExists())) {
+      return AdvisoryLocksUnavailableStatus();
+    }
     // Release Advisory lock api is only invoked for session advisory locks.
     const auto& session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(
         context->GetClientDeadline(), /* arena= */ nullptr));

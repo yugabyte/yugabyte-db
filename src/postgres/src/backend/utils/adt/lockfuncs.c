@@ -77,6 +77,41 @@ HandleStatusIgnoreSkipLocking(YbcStatus status)
 }
 
 /*
+ * Handles ERRCODE_YB_ADVISORY_LOCKS_UNAVAILABLE, which the tserver returns
+ * only while the advisory locks table doesn't exist (see
+ * AdvisoryLocksUnavailableStatus in pg_client_session.cc).  With
+ * yb_silence_advisory_locks_not_supported_error set, consumes the status and
+ * returns true: the caller then returns success without taking or releasing a
+ * lock.  Otherwise raises it as FEATURE_NOT_SUPPORTED.  Any other status is
+ * left to the caller.
+ *
+ * On a cluster upgraded from a release without DocDB advisory locks (2024.2
+ * and earlier), the master doesn't create the advisory locks table until the
+ * YSQL major upgrade is finalized.  On those releases the GUC made every
+ * advisory lock function a successful no-op, and applications rely on that,
+ * so keep it until then.  No node can hold a DocDB advisory lock without the
+ * table, so the no-op can't let two sessions both believe they hold the same
+ * lock.  Once the table exists, the GUC has no effect.
+ */
+static bool
+YbHandleAdvisoryLocksUnavailable(YbcStatus status)
+{
+	if (!status ||
+		YBCStatusPgsqlError(status) != ERRCODE_YB_ADVISORY_LOCKS_UNAVAILABLE)
+		return false;
+
+	YBCFreeStatus(status);
+	if (yb_silence_advisory_locks_not_supported_error)
+		return true;
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("advisory locks are not available yet"),
+			 errdetail("The advisory locks table is created when the YSQL "
+					   "major upgrade is finalized.")));
+	return false;				/* keep compiler quiet */
+}
+
+/*
  * YB: If Connection Manager is enabled, make the connection sticky for any
  * locks that were successfully acquired with a session-level scope.
  */
@@ -84,8 +119,13 @@ HandleStatusIgnoreSkipLocking(YbcStatus status)
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
 	{ \
-		bool yb_ret_status = HandleStatusIgnoreSkipLocking(YBCAcquireAdvisoryLock( \
-			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level)); \
+		YbcStatus	yb_status = YBCAcquireAdvisoryLock( \
+			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level); \
+		bool		yb_ret_status; \
+		\
+		if (YbHandleAdvisoryLocksUnavailable(yb_status)) \
+			PG_RETURN_BOOL(true); \
+		yb_ret_status = HandleStatusIgnoreSkipLocking(yb_status); \
 		if (yb_ret_status && YbIsClientYsqlConnMgr() && session_level) \
 			yb_ysql_conn_mgr_sticky_locks = true; \
 		PG_RETURN_BOOL(yb_ret_status); \
@@ -100,8 +140,12 @@ do { \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
 	{ \
-		HandleYBStatus(YBCAcquireAdvisoryLock( \
-			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level)); \
+		YbcStatus	yb_status = YBCAcquireAdvisoryLock( \
+			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level); \
+		\
+		if (YbHandleAdvisoryLocksUnavailable(yb_status)) \
+			PG_RETURN_VOID(); \
+		HandleYBStatus(yb_status); \
 		if (YbIsClientYsqlConnMgr() && session_level) \
 			yb_ysql_conn_mgr_sticky_locks = true; \
 		PG_RETURN_VOID(); \
@@ -111,8 +155,14 @@ do { \
 #define ReleaseYBAdvisoryLock(tag, mode) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
-		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound( \
-			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode), mode)); \
+	{ \
+		YbcStatus	yb_status = YBCReleaseAdvisoryLock( \
+			GetYBAdvisoryLockId(tag), mode); \
+		\
+		if (YbHandleAdvisoryLocksUnavailable(yb_status)) \
+			PG_RETURN_BOOL(true); \
+		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound(yb_status, mode)); \
+	} \
 } while(0)
 
 /*
@@ -1183,7 +1233,10 @@ pg_advisory_unlock_all(PG_FUNCTION_ARGS)
 {
 	if (ShouldAcquireYBAdvisoryLocks())
 	{
-		HandleYBStatus(YBCReleaseAllAdvisoryLocks(MyDatabaseId));
+		YbcStatus	yb_status = YBCReleaseAllAdvisoryLocks(MyDatabaseId);
+
+		if (!YbHandleAdvisoryLocksUnavailable(yb_status))
+			HandleYBStatus(yb_status);
 		PG_RETURN_VOID();
 	}
 	LockReleaseSession(USER_LOCKMETHOD);
