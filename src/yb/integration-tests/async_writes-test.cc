@@ -1668,7 +1668,11 @@ class AsyncWritesPausedLeaderTest : public AsyncWritesSingleTabletTest {
   // leader catches up with it without crashing.
   void ResumeLeaderAndCheck(uint64_t expected_rows) {
     ASSERT_OK(leader_->Resume());
-    ASSERT_OK(cluster_->SetFlag(leader_, delay_flag_, "0"));
+    // The pause can outlast rpc_connection_timeout_ms, so the test's connection to the leader may
+    // be torn down right after resuming, failing the first call on it.
+    ASSERT_OK(WaitFor(
+        [this] { return cluster_->SetFlag(leader_, delay_flag_, "0").ok(); },
+        30s * kTimeMultiplier, "Reset write delay on old leader"));
     ASSERT_OK(cluster_->SetFlag(leader_, "vmodule", ""));
 
     auto new_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
