@@ -794,7 +794,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             ApiException.class,
             () -> new UniverseApi().addCluster(customer.getUuid(), universeUuid, clusterAddSpec));
     assertEquals(400, ex.getCode());
-    assertThat(ex.getResponseBody(), containsString("cannot be converted to plain universe"));
+    assertThat(ex.getResponseBody(), containsString("a read replica cannot have partitions"));
     assertThat(
         ex.getResponseBody(),
         containsString(UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()));
