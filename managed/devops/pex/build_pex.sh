@@ -66,6 +66,10 @@ function repairPexWheels {
             else
                 echo "Skipping non-platform wheel $whl"
             fi
+    # A wheel with a <name>.libs directory was already repaired by its publisher. auditwheel
+    # cannot find those bundled libraries again and fails on wheels such as psycopg2-binary.
+    elif [[ -n $(unzip -Z1 "$whl" '*.libs/*' 2>/dev/null) ]]; then
+        echo "Skipping already repaired wheel $whl"
     else
         auditwheel repair --plat manylinux2014_x86_64 $whl --no-update-tags
     fi

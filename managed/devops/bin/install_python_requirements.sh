@@ -104,10 +104,11 @@ else
         "of $FROZEN_REQUIREMENTS_FILE"
     # We will skip grpcio in this check, as it has addition python version requirements included in
     # the requirements.txt, and this data is not stored by pip.
-    # Also skipping pip and setuptools for the same reason, and azure-core and wheel, which are
-    # pinned to different versions for Python < 3.9 and >= 3.9.
+    # Also skipping pip and setuptools for the same reason, and every line with a python_version
+    # marker: those packages are pinned to different versions for Python < 3.9 and >= 3.9, and
+    # the line for the other Python never matches what is installed.
     if grep -Fvf <(run_pip freeze --all | grep -v ybops) \
-        <(egrep -v 'grpcio|protobuf|pip|setuptools|^azure-core==|^wheel==' \
+        <(egrep -v 'grpcio|protobuf|pip|setuptools|;python_version' \
         $FROZEN_REQUIREMENTS_FILE); then
       log_warn "WARNING: discrepancies found between the contents of '$FROZEN_REQUIREMENTS_FILE'" \
               "and what's installed in the virtualenv $virtualenv_dir."
