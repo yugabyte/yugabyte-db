@@ -232,6 +232,13 @@ uint64_t	YbWalSndTotalTimeInReorderBufferMicros = 0;
  */
 uint64_t	YbWalSndTotalTimeInSendingMicros = 0;
 
+/*
+ * YB: commit LSN of the last COMMIT record the decoder has processed, i.e. of
+ * the last transaction fully written to the client. Keepalives advertise this
+ * instead of sentPtr, see WalSndKeepalive.
+ */
+static XLogRecPtr yb_last_sent_commit_lsn = InvalidXLogRecPtr;
+
 /* A sample associating a WAL location with the time it was written. */
 typedef struct
 {
@@ -1618,6 +1625,9 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 	 * current sentPtr.
 	 */
 	sentPtr = MyReplicationSlot->data.confirmed_flush;
+
+	if (IsYugaByteEnabled())
+		yb_last_sent_commit_lsn = sentPtr;
 
 	/* Also update the sent position status in shared memory */
 	SpinLockAcquire(&MyWalSnd->mutex);
@@ -3431,6 +3441,14 @@ XLogSendLogical(void)
 
 		sentPtr = logical_decoding_ctx->reader->EndRecPtr;
 
+		/*
+		 * YB: the commit callback has run by now, so the whole transaction
+		 * is written out and its commit LSN may be advertised.
+		 */
+		if (IsYugaByteEnabled() &&
+			yb_record->action == YB_PG_ROW_MESSAGE_ACTION_COMMIT)
+			yb_last_sent_commit_lsn = yb_record->lsn;
+
 		/* YB: test hook to send a keepalive after every record. */
 		if (IsYugaByteEnabled() && yb_test_walsender_keepalive_after_each_record)
 		{
@@ -4067,11 +4085,18 @@ WalSndKeepalive(bool requestReply, XLogRecPtr writePtr)
 
 	XLogRecPtr	yb_keepalive_ptr = XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr;
 
+	/*
+	 * YB: sentPtr advances with every decoded record, so while a transaction
+	 * is still being decoded it already names that transaction's commit LSN
+	 * (on a HYBRID_TIME slot every record of the transaction carries it)
+	 * although nothing of it has reached the client. Clients may echo a
+	 * keepalive position back as a flush, so advertise only the commit LSN
+	 * of the last transaction actually written out.
+	 */
 	if (IsYugaByteEnabled() &&
-		MyReplicationSlot != NULL &&
-		MyReplicationSlot->yb_lsn_type == CRS_HYBRID_TIME &&
-		yb_keepalive_ptr > 0)
-		yb_keepalive_ptr -= 1;
+		XLogRecPtrIsInvalid(writePtr) &&
+		!XLogRecPtrIsInvalid(yb_last_sent_commit_lsn))
+		yb_keepalive_ptr = yb_last_sent_commit_lsn;
 
 	/* construct the message... */
 	resetStringInfo(&output_message);
