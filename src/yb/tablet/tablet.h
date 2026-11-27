@@ -1187,10 +1187,6 @@ class Tablet : public AbstractTablet,
   // Returns ServiceUnavailable until DoEnableCompactions enables compactions, e.g. during startup.
   Status CheckCompactionsEnabled() const;
 
-  bool compactions_enabled() const {
-    return compactions_enabled_;
-  }
-
   // Waits until DoEnableCompactions enables compactions, which a tablet completing startup does
   // soon. Fails if the tablet shuts down, or if its peer fails and so never completes startup.
   Status WaitCompactionsEnabled(CoarseTimePoint deadline) const;

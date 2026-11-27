@@ -314,13 +314,14 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     if (!tablet) {
       return Status::OK();
     }
-    auto status = tablet->WaitCompactionsEnabled(CompactionsEnabledDeadline());
-    if (status.ok()) {
-      status = tablet->ForceManualRocksDBCompact(skip_flush);
-    }
     // A tablet whose shutdown has already started, e.g. because it is being deleted
     // concurrently, or whose peer failed to start has nothing left to compact.
-    return status.IsShutdownInProgress() || !tablet_peer->error().ok() ? Status::OK() : status;
+    auto status = tablet->WaitCompactionsEnabled(CompactionsEnabledDeadline());
+    if (!status.ok()) {
+      return status.IsShutdownInProgress() || !tablet_peer->error().ok() ? Status::OK() : status;
+    }
+    status = tablet->ForceManualRocksDBCompact(skip_flush);
+    return status.IsShutdownInProgress() ? Status::OK() : status;
   });
 }
 
