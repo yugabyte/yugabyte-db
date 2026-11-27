@@ -4214,6 +4214,26 @@ Status ClusterAdminClient::RotateUniverseKeyInMemory(const std::string& key_id) 
   return Status::OK();
 }
 
+Status ClusterAdminClient::SetEncryptionAlgorithm(encryption::EncryptionAlgorithmPB algorithm) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::SetEncryptionAlgorithmRequestPB req;
+  master::SetEncryptionAlgorithmResponsePB resp;
+  req.set_algorithm(algorithm);
+  RETURN_NOT_OK_PREPEND(
+      master_encryption_proxy_->SetEncryptionAlgorithm(req, &resp, &rpc),
+      "MasterServiceImpl::SetEncryptionAlgorithm call fails.");
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Encryption algorithm for new files set to "
+            << encryption::EncryptionAlgorithmName(algorithm) << "\n";
+  return Status::OK();
+}
+
 Status ClusterAdminClient::DisableEncryptionInMemory() {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
   rpc::RpcController rpc;

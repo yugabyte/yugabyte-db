@@ -18,8 +18,10 @@
 
 #include "yb/master/catalog_entity_info.pb.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 
 #include "yb/gutil/endian.h"
 
@@ -79,6 +81,12 @@ Status RotateUniverseKey(const Slice& old_universe_key,
     registry_for_flush = Slice(encoded);
   } else {
     LOG_IF(DFATAL, new_universe_key.empty());
+    // Only a universe that never had a universe key gets the new-universe algorithm; a universe
+    // that enabled encryption at rest before keeps its algorithm until an operator changes it.
+    if (universe_key_registry.universe_keys().empty()) {
+      universe_key_registry.set_encryption_algorithm(
+          VERIFY_RESULT(encryption::NewUniverseEncryptionAlgorithm()));
+    }
     auto params = VERIFY_RESULT(encryption::EncryptionParams::FromSlice(new_universe_key));
     encryption::EncryptionParamsPB params_pb;
     params->ToEncryptionParamsPB(&params_pb);
@@ -95,6 +103,26 @@ Status RotateUniverseKey(const Slice& old_universe_key,
       registry_for_flush.data(), registry_for_flush.size());
   encryption_info->set_latest_version_id(new_key_version_id);
 
+  return Status::OK();
+}
+
+Status SetEncryptionAlgorithm(
+    const Slice& universe_key, encryption::EncryptionAlgorithmPB algorithm,
+    EncryptionInfoPB* encryption_info) {
+  RETURN_NOT_OK(encryption::DataKeySize(algorithm));
+  auto decrypted = VERIFY_RESULT(DecryptUniverseKeyRegistry(
+      encryption_info->universe_key_registry_encoded(), universe_key));
+  auto registry = VERIFY_RESULT(
+      pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(Slice(decrypted)));
+  LOG(INFO) << Format("Changing the encryption algorithm for new files from $0 to $1",
+                      encryption::EncryptionAlgorithmName(registry.encryption_algorithm()),
+                      encryption::EncryptionAlgorithmName(algorithm));
+  registry.set_encryption_algorithm(algorithm);
+
+  faststring encoded;
+  RETURN_NOT_OK(pb_util::SerializeToString(registry, &encoded));
+  auto encrypted = VERIFY_RESULT(EncryptUniverseKeyRegistry(Slice(encoded), universe_key));
+  encryption_info->set_universe_key_registry_encoded(encrypted.data(), encrypted.size());
   return Status::OK();
 }
 

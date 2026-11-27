@@ -37,6 +37,7 @@ class HeaderManagerMockImpl : public HeaderManager {
   Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) override;
   Result<std::string> GetLatestUniverseKeyId() override;
   Result<bool> IsEncryptionEnabled() override;
+  Result<EncryptionAlgorithmPB> GetEncryptionAlgorithm() override;
 
  private:
   EncryptionParamsPtr encryption_params_;

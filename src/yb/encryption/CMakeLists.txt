@@ -44,7 +44,7 @@ ADD_YB_LIBRARY(encryption
 ADD_YB_TEST_LIBRARY(
   encryption_test_util
   SRCS encryption_test_util.cc header_manager_mock_impl.cc
-  DEPS yb_test_util)
+  DEPS encryption yb_test_util)
 
 set(YB_TEST_LINK_LIBS encryption encryption_test_util ${YB_MIN_TEST_LIBS})
 

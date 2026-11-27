@@ -60,6 +60,8 @@
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_fwd.h"
@@ -439,6 +441,8 @@ class ClusterAdminClient {
   Status AllMastersHaveUniverseKeyInMemory(const std::string& key_id);
 
   Status RotateUniverseKeyInMemory(const std::string& key_id);
+
+  Status SetEncryptionAlgorithm(encryption::EncryptionAlgorithmPB algorithm);
 
   Status DisableEncryptionInMemory();
 

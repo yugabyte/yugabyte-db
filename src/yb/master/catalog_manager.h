@@ -913,6 +913,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
 
+  Status SetEncryptionAlgorithm(
+      const SetEncryptionAlgorithmRequestPB* req, SetEncryptionAlgorithmResponsePB* resp);
+
+  // Applies update to the cluster config's encryption info, persists it, and resends the universe
+  // key registry to tservers on their next heartbeat.
+  Status UpdateEncryptionInfo(const std::function<Status(EncryptionInfoPB*)>& update);
+
   Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
                                     GetFullUniverseKeyRegistryResponsePB* resp);
 

@@ -53,6 +53,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
@@ -2307,6 +2309,17 @@ Status rotate_universe_key_in_memory_action(
   return Status::OK();
 }
 
+Status SetEncryptionAlgorithmAction(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  const auto algorithm = VERIFY_RESULT(encryption::ParseEncryptionAlgorithm(args[0]));
+  RETURN_NOT_OK_PREPEND(
+      client->SetEncryptionAlgorithm(algorithm), "Unable to set the encryption algorithm.");
+  return Status::OK();
+}
+
 const auto disable_encryption_in_memory_args = "";
 Status disable_encryption_in_memory_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -3668,6 +3681,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(add_universe_key_to_all_masters);
   REGISTER_COMMAND(all_masters_have_universe_key_in_memory);
   REGISTER_COMMAND(rotate_universe_key_in_memory);
+  Register(
+      "set_encryption_algorithm",
+      "<" + JoinStrings(encryption::EncryptionAlgorithmNames(), "|") + ">",
+      SetEncryptionAlgorithmAction);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
   REGISTER_COMMAND(are_nodes_safe_to_take_down);

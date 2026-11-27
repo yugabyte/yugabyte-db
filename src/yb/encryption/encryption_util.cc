@@ -29,10 +29,13 @@
 #include "yb/encryption/header_manager.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_UNKNOWN_int64(encryption_counter_min, 0,
              "Minimum value (inclusive) for the randomly generated 32-bit encryption counter at "
@@ -49,6 +52,19 @@ DEFINE_UNKNOWN_int64(encryption_counter_max, 0x7fffffffLL,
 TAG_FLAG(encryption_counter_max, advanced);
 TAG_FLAG(encryption_counter_max, hidden);
 
+// Algorithm flags take an EncryptionAlgorithmPB value name without its ENCRYPTION_ALGORITHM_
+// prefix, so the enum is the only list of algorithms.
+DEFINE_RUNTIME_string(encryption_algorithm_override, "",
+    "Overrides the encryption algorithm recorded in the universe key registry for files this "
+    "tserver writes, such as AES_256_CTR. Empty uses the registry. For diagnostics only.");
+TAG_FLAG(encryption_algorithm_override, advanced);
+
+DEFINE_RUNTIME_string(encryption_new_universe_algorithm, "AES_256_CTR",
+    "Encryption algorithm recorded in the universe key registry when encryption at rest is "
+    "enabled for the first time, such as AES_256_CTR or AES_128_CTR. Universes that already "
+    "enabled encryption at rest keep their recorded algorithm.");
+TAG_FLAG(encryption_new_universe_algorithm, advanced);
+
 DEFINE_test_flag(bool, encryption_use_openssl_compatible_counter_overflow, true,
                  "Overflow into the rest of the initialization vector when computing counter"
                  "increment for newly created keys.");
@@ -58,11 +74,27 @@ namespace encryption {
 
 namespace {
 
+constexpr std::string_view kEncryptionAlgorithmPrefix = "ENCRYPTION_ALGORITHM_";
+
+bool ValidateEncryptionAlgorithmFlag(const char* flag_name, const std::string& value) {
+  if (value.empty() && flag_name == std::string_view("encryption_algorithm_override")) {
+    return true;
+  }
+  auto algorithm = ParseEncryptionAlgorithm(value);
+  if (!algorithm.ok()) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << algorithm.status().message().ToBuffer();
+    return false;
+  }
+  return true;
+}
+
+} // namespace
+
+namespace {
+
 std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
 
 }  // anonymous namespace
-
-constexpr uint32_t kDefaultKeySize = 16;
 
 void EncryptionParams::ToEncryptionParamsPB(EncryptionParamsPB* encryption_header) const {
   encryption_header->set_data_key(key, key_size);
@@ -98,9 +130,11 @@ Result<EncryptionParamsPtr> EncryptionParams::FromSlice(const Slice& s) {
   return params;
 }
 
-EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
+Result<EncryptionParamsPtr> EncryptionParams::NewEncryptionParams(
+    EncryptionAlgorithmPB algorithm) {
+  const auto key_size = VERIFY_RESULT(DataKeySize(algorithm));
   auto encryption_params = std::make_unique<EncryptionParams>();
-  RAND_bytes(encryption_params->key, kDefaultKeySize);
+  RAND_bytes(encryption_params->key, key_size);
   RAND_bytes(encryption_params->nonce, kBlockSize - 4);
   RAND_bytes(boost::reinterpret_pointer_cast<uint8_t>(&encryption_params->counter), 4);
 
@@ -115,10 +149,123 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
         << "[" << ctr_min << ", " << ctr_max << "] specified by --encryption_counter_{min,max}, "
         << "falling back to using the full unsigned 32-bit integer range.";
   }
-  encryption_params->key_size = kDefaultKeySize;
+  encryption_params->key_size = key_size;
   encryption_params->openssl_compatible_counter_overflow =
       FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow;
   return encryption_params;
+}
+
+std::vector<std::string> EncryptionAlgorithmNames() {
+  std::vector<std::string> names;
+  const auto* descriptor = EncryptionAlgorithmPB_descriptor();
+  for (int i = 0; i != descriptor->value_count(); ++i) {
+    names.push_back(EncryptionAlgorithmName(
+        static_cast<EncryptionAlgorithmPB>(descriptor->value(i)->number())));
+  }
+  return names;
+}
+
+Result<EncryptionAlgorithmPB> ParseEncryptionAlgorithm(const std::string& name) {
+  EncryptionAlgorithmPB algorithm;
+  SCHECK(EncryptionAlgorithmPB_Parse(std::string(kEncryptionAlgorithmPrefix) + name, &algorithm),
+         InvalidArgument,
+         Format("Unknown encryption algorithm $0; expected one of $1", name,
+                EncryptionAlgorithmNames()));
+  return algorithm;
+}
+
+std::string EncryptionAlgorithmName(EncryptionAlgorithmPB algorithm) {
+  const auto& name = EncryptionAlgorithmPB_Name(algorithm);
+  return name.starts_with(kEncryptionAlgorithmPrefix)
+      ? name.substr(kEncryptionAlgorithmPrefix.size()) : std::to_string(algorithm);
+}
+
+Result<uint32_t> DataKeySize(EncryptionAlgorithmPB algorithm) {
+  switch (algorithm) {
+    case ENCRYPTION_ALGORITHM_AES_128_CTR:
+      return EncryptionParams::kAes128KeySize;
+    case ENCRYPTION_ALGORITHM_AES_256_CTR:
+      return EncryptionParams::kAes256KeySize;
+    default:
+      // A later release, or a bad registry, can send a value this release does not support.
+      return STATUS_FORMAT(
+          NotSupported, "Unsupported encryption algorithm $0", static_cast<int>(algorithm));
+  }
+}
+
+namespace {
+
+// A runtime string flag can't be read through FLAGS_ while set_flag may assign it, and
+// GetCommandLineOption takes the gflags registry lock, too costly on every file creation. So each
+// algorithm flag is parsed into an atomic by its flag callback, or on first use if no callback has
+// run yet.
+class AlgorithmFlag {
+ public:
+  explicit AlgorithmFlag(const char* flag_name) : flag_name_(flag_name) {}
+
+  void Reload() { value_.store(Read(), std::memory_order_release); }
+
+  // Returns std::nullopt when the flag is empty.
+  std::optional<EncryptionAlgorithmPB> Get() {
+    auto value = value_.load(std::memory_order_acquire);
+    if (value == kUnloaded) {
+      // A concurrent Reload's value wins over this one.
+      value_.compare_exchange_strong(value, Read(), std::memory_order_acq_rel);
+      value = value_.load(std::memory_order_acquire);
+    }
+    if (value == kEmpty) {
+      return std::nullopt;
+    }
+    return static_cast<EncryptionAlgorithmPB>(value);
+  }
+
+ private:
+  static constexpr int kUnloaded = -2;
+  static constexpr int kEmpty = -1;
+
+  int Read() const {
+    std::string value;
+    CHECK(google::GetCommandLineOption(flag_name_, &value)) << flag_name_;
+    if (value.empty()) {
+      return kEmpty;
+    }
+    // The flag validator only allows supported algorithms.
+    return CHECK_RESULT(ParseEncryptionAlgorithm(value));
+  }
+
+  const char* const flag_name_;
+  std::atomic<int> value_{kUnloaded};
+};
+
+AlgorithmFlag& NewUniverseAlgorithmFlag() {
+  static AlgorithmFlag flag("encryption_new_universe_algorithm");
+  return flag;
+}
+
+AlgorithmFlag& AlgorithmOverrideFlag() {
+  static AlgorithmFlag flag("encryption_algorithm_override");
+  return flag;
+}
+
+} // namespace
+
+Result<EncryptionAlgorithmPB> NewUniverseEncryptionAlgorithm() {
+  auto algorithm = NewUniverseAlgorithmFlag().Get();
+  SCHECK(algorithm, IllegalState, "encryption_new_universe_algorithm is empty");
+  return *algorithm;
+}
+
+std::optional<EncryptionAlgorithmPB> EncryptionAlgorithmOverride() {
+  return AlgorithmOverrideFlag().Get();
+}
+
+Result<uint32_t> UniverseKeySize(EncryptionAlgorithmPB algorithm) {
+  return EncryptionParams::kUniverseKeyPrefixSize + VERIFY_RESULT(DataKeySize(algorithm));
+}
+
+uint32_t DefaultUniverseKeySize() {
+  // The flag validator only allows supported algorithms.
+  return CHECK_RESULT(UniverseKeySize(CHECK_RESULT(NewUniverseEncryptionAlgorithm())));
 }
 
 Status EncryptionParams::IsValidKeySize(size_t size) {
@@ -187,5 +334,19 @@ Status CompleteCreateEncryptionInfoForWrite(const std::string& header,
   return Status::OK();
 }
 
+void ReloadEncryptionAlgorithmFlags() {
+  NewUniverseAlgorithmFlag().Reload();
+  AlgorithmOverrideFlag().Reload();
+}
+
 } // namespace encryption
 } // namespace yb
+
+DEFINE_validator(encryption_algorithm_override, &yb::encryption::ValidateEncryptionAlgorithmFlag);
+DEFINE_validator(encryption_new_universe_algorithm,
+                 &yb::encryption::ValidateEncryptionAlgorithmFlag);
+
+REGISTER_CALLBACK(encryption_new_universe_algorithm, "Reload encryption algorithm flags",
+                  &yb::encryption::ReloadEncryptionAlgorithmFlags);
+REGISTER_CALLBACK(encryption_algorithm_override, "Reload encryption algorithm flags",
+                  &yb::encryption::ReloadEncryptionAlgorithmFlags);

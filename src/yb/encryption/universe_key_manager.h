@@ -35,6 +35,10 @@ class UniverseKeyManager {
   // Get the latest universe key in the registry. Used when creating writable files.
   Result<UniverseKeyParams> GetLatestUniverseParams();
   Result<bool> IsEncryptionEnabled();
+  // Algorithm for new files: encryption_algorithm_override if set, otherwise the algorithm recorded
+  // in the registry. The algorithm comes from the master, so one this release does not support
+  // fails the file write in NewEncryptionParams.
+  Result<EncryptionAlgorithmPB> GetEncryptionAlgorithm();
  private:
   // Registry from master.
   encryption::UniverseKeyRegistryPB universe_key_registry_ GUARDED_BY(mutex_);
