@@ -556,9 +556,17 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 
 			od_readahead_reuse(&relay->src->readahead);
 
-			rc = od_io_read_start(relay->src);
-			if (rc == -1)
-				return relay->error_read;
+			/*
+			 * YB: Honour yb_paused and keep the client read stopped,
+			 * even though freeing the readahead above would let more
+			 * be read from the socket. yb_resume_client_relay() starts
+			 * it when the pause ends.
+			 */
+			if (!relay->yb_paused) {
+				rc = od_io_read_start(relay->src);
+				if (rc == -1)
+					return relay->error_read;
+			}
 		} else {
 			rc = od_io_write_start(relay->dst);
 			if (rc == -1)
