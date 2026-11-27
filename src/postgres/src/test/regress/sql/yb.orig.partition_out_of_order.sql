@@ -120,3 +120,32 @@ UPDATE base SET (b, c, a) = (SELECT base.b || 'y', base.c, base.a + 1);
 INSERT INTO base (a, b) VALUES (12, 'foo'), (32, 'baz') ON CONFLICT(a) DO UPDATE SET (a, b) = (SELECT EXCLUDED.a, base.b || 'x');
 
 SELECT * FROM base ORDER BY a;
+
+-- GH-34438: Test DELETE RETURNING with partitions out-of-order.
+CREATE TABLE part7 (xdrop INT4, c BOOL, b TEXT, a INT4 NOT NULL);
+ALTER TABLE part7 DROP COLUMN xdrop;
+ALTER TABLE base ATTACH PARTITION part7 FOR VALUES FROM (71) TO (81);
+TRUNCATE base;
+INSERT INTO base VALUES (11, 'p1', TRUE), (12, 'p1', FALSE), (13, 'p1', TRUE),
+  (21, 'p2', TRUE), (22, 'p2', FALSE), (31, 'p3', TRUE), (32, 'p3', FALSE),
+  (71, 'p7', TRUE), (72, 'p7', FALSE), (73, 'p7', TRUE), (74, 'p7', FALSE),
+  (75, 'p7', TRUE), (76, 'p7', FALSE);
+DELETE FROM base WHERE b = 'p1' AND c RETURNING *;
+DELETE FROM base WHERE a = 12 RETURNING *;
+DELETE FROM base WHERE c = FALSE AND a < 40 RETURNING b, a, tableoid::regclass;
+DELETE FROM base WHERE a IN (71, 72) RETURNING a, b, c, a * 2 AS a2;
+WITH d AS (DELETE FROM base WHERE b = 'p3' RETURNING *) SELECT * FROM d;
+DELETE FROM part7 WHERE a = 73 RETURNING *;
+-- The wholerow junk column is also fetched for tables with a secondary index
+-- or row triggers.
+CREATE INDEX ON base (b);
+DELETE FROM base WHERE a = 74 RETURNING *;
+DROP INDEX base_b_idx;
+CREATE FUNCTION base_row_trig() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RETURN OLD; END $$;
+CREATE TRIGGER part7_del BEFORE DELETE ON part7 FOR EACH ROW
+  EXECUTE FUNCTION base_row_trig();
+DELETE FROM base WHERE b = 'p7' RETURNING *;
+SELECT * FROM base ORDER BY a;
+DROP TRIGGER part7_del ON part7;
+DROP FUNCTION base_row_trig();
