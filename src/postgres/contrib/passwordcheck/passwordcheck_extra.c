@@ -26,9 +26,10 @@
 #include "utils/guc.h"
 
 /*
- * YB_TODO_PG19MERGE: port PG19 changes to passwordcheck.c
+ * YB: this file is built as PG's passwordcheck module, so it follows that
+ * module's PG18 switch to PG_MODULE_MAGIC_EXT.
  */
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(.name = "passwordcheck", .version = PG_VERSION);
 
 /* GUC variables */
 static int	password_min_len = 8;
@@ -114,7 +115,10 @@ check_password(const char *username,
 				if (pwdlen < password_min_len)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("password is too short")));
+							 errmsg("password is too short"),
+							 /* YB: errdetail ported from upstream PG passwordcheck */
+							 errdetail("Password must be at least \"passwordcheck.minimum_length\" (%d) bytes long.",
+									   password_min_len)));
 
 				/* enforce maximum length */
 				if (pwdlen > password_max_len)
@@ -285,7 +289,8 @@ passwordcheck_load_params(void)
 							PGC_SUSET,
 							0, NULL, NULL, NULL);
 
-	MarkGUCPrefixReserved("passwordcheck_extra");
+	/* YB: the GUCs above are renamed to the passwordcheck.* prefix */
+	MarkGUCPrefixReserved("passwordcheck");
 }
 
 /*
