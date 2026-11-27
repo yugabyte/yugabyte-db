@@ -1672,21 +1672,63 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     }
   }
 
-  // Changing the k8s instance type through a v2 edit requires explicit resource specs; they are
-  // no longer derived from the instance type.
+  // Changing the k8s instance type without resource specs derives them from the new instance type.
   @Test
-  public void testEditUniverseV2K8sResourceSpecsRequiredOnInstanceTypeChange() throws ApiException {
+  public void testEditUniverseV2K8sResourceSpecsDerivedOnInstanceTypeChange() throws ApiException {
     UUID k8sUuid = setupK8sUniverseForResourceSpecEdit();
     UniverseEditSpec universeEditSpec = k8sNodeSpecEditSpec(k8sUuid, "new.type", null, null);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
 
-    ApiException ex =
-        assertThrows(
-            ApiException.class,
-            () -> new UniverseApi().editUniverse(customer.getUuid(), k8sUuid, universeEditSpec));
-    assertEquals(400, ex.getCode());
-    assertTrue(ex.getResponseBody().contains("Tserver k8s resource spec is required"));
-    verify(mockCommissioner, never())
-        .submit(eq(TaskType.EditKubernetesUniverse), any(UniverseDefinitionTaskParams.class));
+    new UniverseApi().editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UserIntent edited = v1EditParamsCapture.getValue().getPrimaryCluster().userIntent;
+    UUID providerUuid = Util.getSingleProviderUUID(edited);
+    assertEquals("new.type", edited.getBaseInstanceType(providerUuid));
+    UserIntent.K8SNodeResourceSpec tserverSpec = edited.getTserverK8SNodeResourceSpec(providerUuid);
+    assertEquals(4.0, tserverSpec.cpuCoreCount, 0.001);
+    assertEquals(8.0, tserverSpec.memoryGib, 0.001);
+    UserIntent.K8SNodeResourceSpec masterSpec = edited.getMasterK8SNodeResourceSpec(providerUuid);
+    assertEquals(4.0, masterSpec.cpuCoreCount, 0.001);
+    assertEquals(8.0, masterSpec.memoryGib, 0.001);
+  }
+
+  // An explicit spec is kept on an instance type change; only the omitted one is derived.
+  @Test
+  public void testEditUniverseV2K8sResourceSpecPartiallyDerivedOnInstanceTypeChange()
+      throws ApiException {
+    UUID k8sUuid = setupK8sUniverseForResourceSpecEdit();
+    UniverseEditSpec universeEditSpec =
+        k8sNodeSpecEditSpec(
+            k8sUuid,
+            "new.type",
+            new com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec()
+                .cpuCoreCount(2.0)
+                .memoryGib(4.0),
+            null);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    new UniverseApi().editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UserIntent edited = v1EditParamsCapture.getValue().getPrimaryCluster().userIntent;
+    UUID providerUuid = Util.getSingleProviderUUID(edited);
+    UserIntent.K8SNodeResourceSpec tserverSpec = edited.getTserverK8SNodeResourceSpec(providerUuid);
+    assertEquals(2.0, tserverSpec.cpuCoreCount, 0.001);
+    assertEquals(4.0, tserverSpec.memoryGib, 0.001);
+    UserIntent.K8SNodeResourceSpec masterSpec = edited.getMasterK8SNodeResourceSpec(providerUuid);
+    assertEquals(4.0, masterSpec.cpuCoreCount, 0.001);
+    assertEquals(8.0, masterSpec.memoryGib, 0.001);
   }
 
   @Test
@@ -1725,6 +1767,56 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertNotNull(masterSpec);
     assertEquals(3.0, masterSpec.cpuCoreCount, 0.001);
     assertEquals(6.0, masterSpec.memoryGib, 0.001);
+  }
+
+  // Rules for an edited cluster with custom resources, relative to its stored instance type
+  // (old.type) and specs (tserver 1.5/3.0, master 2.5/5.0).
+
+  // Unchanged instance type without specs keeps the stored specs.
+  @Test
+  public void testEditUniverseV2K8sSameInstanceTypeKeepsResourceSpecs() throws ApiException {
+    UserIntent edited = editK8sNodeSpec("old.type", null, null);
+    assertK8sSpecs(edited, 1.5, 3.0, 2.5, 5.0);
+  }
+
+  // Neither instance type nor specs keeps both.
+  @Test
+  public void testEditUniverseV2K8sNoInstanceTypeKeepsResourceSpecs() throws ApiException {
+    UserIntent edited = editK8sNodeSpec(null, null, null);
+    assertEquals("old.type", edited.getBaseInstanceType(Util.getSingleProviderUUID(edited)));
+    assertK8sSpecs(edited, 1.5, 3.0, 2.5, 5.0);
+  }
+
+  private UserIntent editK8sNodeSpec(
+      String instanceType,
+      com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec tserverSpec,
+      com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec masterSpec)
+      throws ApiException {
+    UUID k8sUuid = setupK8sUniverseForResourceSpecEdit();
+    UniverseEditSpec universeEditSpec =
+        k8sNodeSpecEditSpec(k8sUuid, instanceType, tserverSpec, masterSpec);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    new UniverseApi().editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    return v1EditParamsCapture.getValue().getPrimaryCluster().userIntent;
+  }
+
+  private static void assertK8sSpecs(
+      UserIntent userIntent, double tCpu, double tMem, double mCpu, double mMem) {
+    UUID providerUuid = Util.getSingleProviderUUID(userIntent);
+    UserIntent.K8SNodeResourceSpec tserverSpec =
+        userIntent.getTserverK8SNodeResourceSpec(providerUuid);
+    assertEquals(tCpu, tserverSpec.cpuCoreCount, 0.001);
+    assertEquals(tMem, tserverSpec.memoryGib, 0.001);
+    UserIntent.K8SNodeResourceSpec masterSpec =
+        userIntent.getMasterK8SNodeResourceSpec(providerUuid);
+    assertEquals(mCpu, masterSpec.cpuCoreCount, 0.001);
+    assertEquals(mMem, masterSpec.memoryGib, 0.001);
   }
 
   // node_spec without resource specs and with an unchanged instance type keeps the stored specs.
@@ -1801,15 +1893,72 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertEquals(5.0, masterSpec.memoryGib, 0.001);
   }
 
-  // The read replica starts from a clone of the primary's intent, but must not inherit its k8s
-  // resource specs: the omitted tserver spec is derived from the replica's instance type.
+  // Primary has old.type with tserver spec 1.5/3.0 and master spec 2.5/5.0. A read replica never
+  // gets a master spec.
+
+  // A different instance type without a tserver spec derives the spec from that instance type.
   @Test
-  public void testAddReadReplicaDoesNotInheritPrimaryK8sResourceSpecs() throws ApiException {
+  public void testAddReadReplicaK8sNewInstanceTypeDerivesResourceSpec() throws ApiException {
+    UserIntent replica = addK8sReadReplica("new.type", null);
+    assertEquals("new.type", replica.getBaseInstanceType(Util.getSingleProviderUUID(replica)));
+    assertReplicaTserverSpec(replica, 4.0, 8.0);
+  }
+
+  // The primary's instance type without a tserver spec inherits the primary's spec.
+  @Test
+  public void testAddReadReplicaK8sSameInstanceTypeInheritsResourceSpec() throws ApiException {
+    UserIntent replica = addK8sReadReplica("old.type", null);
+    assertReplicaTserverSpec(replica, 1.5, 3.0);
+  }
+
+  // An explicit tserver spec is used as is.
+  @Test
+  public void testAddReadReplicaK8sExplicitResourceSpec() throws ApiException {
+    UserIntent replica =
+        addK8sReadReplica(
+            "new.type",
+            new com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec()
+                .cpuCoreCount(2.0)
+                .memoryGib(4.0));
+    assertReplicaTserverSpec(replica, 2.0, 4.0);
+  }
+
+  // Neither instance type nor tserver spec inherits both from the primary.
+  @Test
+  public void testAddReadReplicaK8sInheritsInstanceTypeAndResourceSpec() throws ApiException {
+    UserIntent replica = addK8sReadReplica(null, null);
+    assertEquals("old.type", replica.getBaseInstanceType(Util.getSingleProviderUUID(replica)));
+    assertReplicaTserverSpec(replica, 1.5, 3.0);
+  }
+
+  // Without custom resources pods are sized from the instance type, and the replica keeps no
+  // resource spec from the primary.
+  @Test
+  public void testAddReadReplicaK8sWithoutCustomResourcesDropsResourceSpecs() throws ApiException {
+    UserIntent replica = addK8sReadReplica(false, "old.type", null);
+    UUID providerUuid = Util.getSingleProviderUUID(replica);
+    assertNull(replica.getTserverK8SNodeResourceSpec(providerUuid));
+    assertNull(replica.getMasterK8SNodeResourceSpec(providerUuid));
+  }
+
+  private UserIntent addK8sReadReplica(
+      String instanceType, com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec tserverSpec)
+      throws ApiException {
+    return addK8sReadReplica(true, instanceType, tserverSpec);
+  }
+
+  private UserIntent addK8sReadReplica(
+      boolean customResources,
+      String instanceType,
+      com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec tserverSpec)
+      throws ApiException {
     UUID k8sUuid = setupK8sUniverseForResourceSpecEdit();
-    UniverseApi api = new UniverseApi();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.usek8sCustomResources.getKey()))
+        .thenReturn(customResources);
     ClusterNodeSpec nodeSpec =
         new ClusterNodeSpec()
-            .instanceType("new.type")
+            .instanceType(instanceType)
+            .k8sTserverResourceSpec(tserverSpec)
             .storageSpec(new ClusterStorageSpec().numVolumes(1).volumeSize(100));
     ClusterAddSpec clusterAddSpec =
         new ClusterAddSpec()
@@ -1825,19 +1974,22 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         .thenReturn(fakeTaskUUID);
 
     UUID newClusterUuid =
-        api.addCluster(customer.getUuid(), k8sUuid, clusterAddSpec).getResourceUuid();
+        new UniverseApi().addCluster(customer.getUuid(), k8sUuid, clusterAddSpec).getResourceUuid();
 
     ArgumentCaptor<UniverseDefinitionTaskParams> paramsCapture =
         ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
     verify(mockCommissioner)
         .submit(eq(TaskType.ReadOnlyKubernetesClusterCreate), paramsCapture.capture());
-    UserIntent replica = paramsCapture.getValue().getClusterByUuid(newClusterUuid).userIntent;
+    return paramsCapture.getValue().getClusterByUuid(newClusterUuid).userIntent;
+  }
+
+  private static void assertReplicaTserverSpec(UserIntent replica, double cpu, double memoryGib) {
     UUID providerUuid = Util.getSingleProviderUUID(replica);
     UserIntent.K8SNodeResourceSpec tserverSpec =
         replica.getTserverK8SNodeResourceSpec(providerUuid);
     assertNotNull(tserverSpec);
-    assertEquals(4.0, tserverSpec.cpuCoreCount, 0.001);
-    assertEquals(8.0, tserverSpec.memoryGib, 0.001);
+    assertEquals(cpu, tserverSpec.cpuCoreCount, 0.001);
+    assertEquals(memoryGib, tserverSpec.memoryGib, 0.001);
     assertNull(replica.getMasterK8SNodeResourceSpec(providerUuid));
   }
 
