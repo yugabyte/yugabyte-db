@@ -1886,14 +1886,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         taskParams,
         cluster.uuid,
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
-    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+    UniverseCRUDHandler.UpdateOptionsState updateOptionsState =
         UniverseCRUDHandler.getUpdateOptions(
             taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT, cluster, dbUniverse);
     log.info(
         "Check resize options for universe {} cluster {}: {}",
         uniUUID,
         spec.getClusterUuid(),
-        updateOptions);
+        updateOptionsState);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        updateOptionsState.getUpdateOptions();
     List<ResizeUpdateOption> res = new ArrayList<>();
     for (UniverseDefinitionTaskParams.UpdateOptions updateOption : updateOptions) {
       try {
@@ -1912,6 +1914,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         && updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)) {
       res.add(ResizeUpdateOption.FULL_MOVE);
     }
-    return new CheckResizeOptionsResp().options(res);
+    return new CheckResizeOptionsResp()
+        .options(res)
+        .hasResizeChanges(updateOptionsState.isHasResizeChanges())
+        .resizeRestrictions(updateOptionsState.getResizeRestrictions().stream().sorted().toList());
   }
 }
