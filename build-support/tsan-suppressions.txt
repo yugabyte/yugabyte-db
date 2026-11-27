@@ -187,6 +187,9 @@ race:k5_once
 race:od_logger_format
 race:od_stat_query_end
 race:od_route_pool_stat
+# SIGHUP config reload updates config/rules in place without synchronizing
+# with other odyssey threads (upstream design, see od_config_reload).
+race:od_system_config_reload
 
 # pg_documentdb_gw_host bundles Rust code (tokio runtime, Rust stdlib, the
 # documentdb_gateway crate, and our bgworker glue) that is not compiled with
