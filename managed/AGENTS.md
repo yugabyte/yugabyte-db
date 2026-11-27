@@ -5,6 +5,11 @@ PRs, commits and review comments for `managed/` are public. They follow
 and security fixes follow its
 [disclosure tiers](../src/AGENTS.md#security-and-customer-sensitive-changes).
 
+## Review guides
+
+Before you call a change done, check it against [REVIEW.md](REVIEW.md). For a change under
+`yba-cli/`, also check it against [yba-cli/REVIEW.md](yba-cli/REVIEW.md).
+
 ## v2 REST API
 
 The v2 API is defined in OpenAPI and its Play controllers are generated. API clients include

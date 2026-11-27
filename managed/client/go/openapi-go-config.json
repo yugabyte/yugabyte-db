@@ -1,8 +1,8 @@
     {
         "hideGenerationTimestamp": "true",
-        "packageName": "v1",
+        "packageName": "ywclient",
         "structPrefix": "true",
-        "isGoSubmodule": "true",
+        "isGoSubmodule": "false",
         "gitHost": "github.com",
         "gitUserId": "yugabyte",
         "gitRepoId": "platform-go-client"
