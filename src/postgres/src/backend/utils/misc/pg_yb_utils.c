@@ -11589,11 +11589,15 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
 /*
  * Restoring statistics from a ysql_dump script writes pg_class and
  * pg_statistic once per relation and once per column.  Each write is a
- * breaking catalog change, which makes restoring statistics cost one catalog
- * version increment per column.
+ * breaking catalog change.  Without transactional DDL, each commits in its own
+ * DDL transaction, which makes restoring statistics cost one catalog version
+ * increment per column.  With transactional DDL, ysql_dump
+ * --include-yb-metadata scripts wrap the writes of each relation in a
+ * transaction block, which increments the catalog version once per relation.
  *
- * When yb_stats_restore_defer_catalog_version_increment is set, each write is
- * a silent DDL instead: it still runs as a DDL, but its commit does not
+ * Without transactional DDL (yb_ddl_transaction_block_enabled off), when
+ * yb_stats_restore_defer_catalog_version_increment is set, each write is a
+ * silent DDL instead: it still runs as a DDL, but its commit does not
  * increment the catalog version, and the caller increments it once at the end
  * of the restore.  The same applies to pg_clear_relation_stats() and
  * pg_clear_attribute_stats(), which share these writes, although restore
@@ -11603,14 +11607,26 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
  * backends of the database keep the pg_class and pg_statistic tuples they
  * cached before the restore, and new connections on other nodes can load them
  * from those nodes' catalog response caches, which the silent commits do not
- * reach: they plan with the old statistics, and a DDL
- * that rewrites a restored relation's pg_class row from its cached copy, such
- * as ALTER TABLE, writes the old relpages, reltuples and relallvisible back
- * over the restored ones.  Usually there are no such backends: clone keeps
- * its target database closed to other connections, and backup restore
- * normally creates the database it restores into.  A backup restore that
- * applies the schema to an existing database (YBC with ignore_restore_errors)
- * leaves that window open until the final increment.
+ * reach: they plan with the old statistics, and a DDL that rewrites a
+ * restored relation's pg_class row from its cached copy, such as ALTER TABLE,
+ * writes the old relpages, reltuples and relallvisible back over the restored
+ * ones.  Without transactional DDL there is no object locking either, so each
+ * breaking write already left the same window open until its increment
+ * reached the other backends; deferring makes it last until the final
+ * increment.  Usually there are no such backends: clone keeps its target
+ * database closed to other connections, and backup restore normally creates
+ * the database it restores into.  A backup restore that applies the schema to
+ * an existing database (YBC with ignore_restore_errors) leaves that window
+ * open.
+ *
+ * With transactional DDL the parameter has no effect, so that the writes stay
+ * breaking.  With object locking, which needs transactional DDL, releasing
+ * the relation's lock at the commit of a breaking write sends the new catalog
+ * version to all TServers, and a backend that locks the relation after that,
+ * for example for ALTER TABLE, refreshes its catalog cache first.  A silent
+ * write would leave that backend's cached pg_class row in place.  The restore
+ * script reads yb_ddl_transaction_block_enabled, which is fixed at postmaster
+ * start, to decide whether to increment the catalog version at the end.
  *
  * Only per-database catalog version mode defers: the restore script
  * increments the version of its own database.
@@ -11630,6 +11646,7 @@ YbStatsCatalogWriteBegin(void)
 	if (!IsYugaByteEnabled())
 		return false;
 	if (yb_stats_restore_defer_catalog_version_increment &&
+		!yb_ddl_transaction_block_enabled &&
 		YBIsDBCatalogVersionMode())
 		mode = YB_DDL_MODE_SILENT_ALTERING;
 

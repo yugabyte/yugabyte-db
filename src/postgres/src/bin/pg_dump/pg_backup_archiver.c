@@ -5371,11 +5371,10 @@ DeCloneArchive(ArchiveHandle *AH)
  * Only for --include-yb-metadata scripts, the restore scripts of backup
  * restore and clone, so that other dumps keep upstream's output.  With
  * transactional DDL, the writes of one relation, one per column, then join
- * the block's transaction and commit once, which, on a server that defers
- * the catalog version increments (see
- * ybEmitStatsRestoreCatalogVersionIncrement), is one commit without an
- * increment.  Without transactional DDL, each call still commits its own DDL
- * transaction.  When the script runs without ON_ERROR_STOP, a failing
+ * the block's transaction and commit once, incrementing the catalog version
+ * once per relation instead of once per column.  Without transactional DDL,
+ * each call still commits its own DDL transaction, and the server defers the
+ * increments instead (see ybEmitStatsRestoreCatalogVersionIncrement).  When the script runs without ON_ERROR_STOP, a failing
  * statistics call discards the statistics of its whole relation with
  * transactional DDL; without it, the calls before it stay committed, and it
  * and the calls after it in the block are lost.
@@ -5419,18 +5418,20 @@ ybRestoresStatisticsData(ArchiveHandle *AH)
  * YB: increment the catalog version once after restoring statistics.
  *
  * The fixed output state of a --include-yb-metadata script with statistics
- * sets yb_stats_restore_defer_catalog_version_increment, so the server restores
- * statistics without incrementing the catalog version for each relation and
- * column.  This increments it once at the end, for the current database, with
+ * sets yb_stats_restore_defer_catalog_version_increment, so that a server
+ * without transactional DDL restores statistics without incrementing the
+ * catalog version for each column.  This increments it once at the end, for the current database, with
  * no invalidation messages (NULL), so that its backends refresh their whole
  * catalog cache instead of keeping statistics they read before the restore.
  * It is only emitted when the script restores a STATISTICS DATA entry, so
  * that the database of a script, or of a ysql_dumpall section, without any
  * does not get a full catalog cache refresh for nothing.
  *
- * The increment only runs when the parameter is on: a server that does not
- * have the parameter already incremented the catalog version for each call,
- * or once per relation with transactional DDL (see ybStatsNeedOwnTransaction).
+ * The increment only runs when the server deferred: when the parameter is on
+ * and yb_ddl_transaction_block_enabled is off.  A server that does not have
+ * the parameter already incremented the catalog version for each call, and a
+ * server with transactional DDL does not defer and incremented it once per
+ * relation (see ybStatsNeedOwnTransaction).
  *
  * It is emitted before a script that disabled auto analyze on the database
  * (one that does not create the database) re-enables it, so that an auto
@@ -5454,7 +5455,8 @@ ybEmitStatsRestoreCatalogVersionIncrement(ArchiveHandle *AH)
 	ahprintf(AH,
 			 "DO $$\n"
 			 "BEGIN\n"
-			 "  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN\n"
+			 "  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on'\n"
+			 "     AND current_setting('yb_ddl_transaction_block_enabled', true) IS DISTINCT FROM 'on' THEN\n"
 			 "    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(\n"
 			 "      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),\n"
 			 "      false, NULL, 2147483647);\n"

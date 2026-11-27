@@ -773,17 +773,21 @@ public class TestYsqlDump extends BasePgSQLTest {
   /**
    * Restoring a relation's statistics is a catalog-version-incrementing DDL per
    * pg_restore_*_stats() call, and a dump has one call per column.  A --include-yb-metadata
-   * restore script (backup restore, clone) defers those increments with
-   * yb_stats_restore_defer_catalog_version_increment and increments the catalog version once at
-   * the end, so restoring the statistics adds one catalog version whatever the number of
-   * columns, with or without transactional DDL.
+   * restore script (backup restore, clone) wraps each relation's calls in a transaction block,
+   * so with transactional DDL restoring the statistics adds one catalog version per relation.
    */
   @Test
-  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnce() throws Exception {
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionPerRelation() throws Exception {
     assertStatisticsRestoreCatalogVersions(
         /* useLegacyDdlMode */ false, /* includeYbMetadata */ true);
   }
 
+  /**
+   * Without transactional DDL, the script defers the increments with
+   * yb_stats_restore_defer_catalog_version_increment and increments the catalog version once at
+   * the end, so restoring the statistics adds one catalog version whatever the number of
+   * relations and columns.
+   */
   @Test
   public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnceLegacyDdlMode()
       throws Exception {
@@ -803,11 +807,33 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   /**
-   * With yb_stats_restore_defer_catalog_version_increment, a statistics write still runs as a DDL
-   * but does not increment the catalog version; without it, it increments the version as before.
+   * Without transactional DDL, with yb_stats_restore_defer_catalog_version_increment, a
+   * statistics write still runs as a DDL but does not increment the catalog version; without the
+   * parameter, it increments the version as before.
    */
   @Test
-  public void ysqlDumpStatisticsDeferCatalogVersionIncrement() throws Exception {
+  public void ysqlDumpStatisticsDeferCatalogVersionIncrementLegacyDdlMode() throws Exception {
+    assertStatisticsDeferCatalogVersionIncrement(/* useLegacyDdlMode */ true);
+  }
+
+  /**
+   * With transactional DDL, yb_stats_restore_defer_catalog_version_increment has no effect: a
+   * statistics write increments the catalog version, so that with object locking other backends
+   * refresh their cached pg_class row before they can lock the relation.
+   */
+  @Test
+  public void ysqlDumpStatisticsDeferCatalogVersionIncrementIgnoredWithTxnDdl() throws Exception {
+    assertStatisticsDeferCatalogVersionIncrement(/* useLegacyDdlMode */ false);
+  }
+
+  private void assertStatisticsDeferCatalogVersionIncrement(boolean useLegacyDdlMode)
+      throws Exception {
+    Map<String, String> masterFlags = getMasterFlags();
+    Map<String, String> tserverFlags = getTServerFlags();
+    toggleDDLMode(masterFlags, useLegacyDdlMode);
+    toggleDDLMode(tserverFlags, useLegacyDdlMode);
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
     final String versionQuery = "SELECT current_version FROM pg_yb_catalog_version " +
         "WHERE db_oid = (SELECT oid FROM pg_database WHERE datname = current_database())";
     final String restoreQuery = "SELECT pg_catalog.pg_restore_relation_stats(" +
@@ -825,7 +851,8 @@ public class TestYsqlDump extends BasePgSQLTest {
 
       stmt.execute("SET yb_stats_restore_defer_catalog_version_increment = true");
       stmt.execute(String.format(restoreQuery, 2));
-      assertEquals(afterNotDeferred, getSingleRow(stmt, versionQuery).getLong(0).longValue());
+      assertEquals(useLegacyDdlMode ? afterNotDeferred : afterNotDeferred + 1,
+          getSingleRow(stmt, versionQuery).getLong(0).longValue());
       assertEquals(2L, getSingleRow(stmt, relpagesQuery).getLong(0).longValue());
     }
   }
@@ -921,7 +948,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     assertEquals(2 * numTables, numStatsEntries);
     assertEquals(
         String.format("catalog versions: %s", versions),
-        includeYbMetadata ? 1L : (long) numStatsCalls,
+        !includeYbMetadata ? (long) numStatsCalls
+            : useLegacyDdlMode ? 1L : (long) numStatsEntries,
         versions.get("stats_restored") - versions.get("stats_none"));
   }
 
