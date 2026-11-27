@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -56,8 +57,9 @@ public class DeleteBackupScheduleTest extends CommissionerBaseTest {
     storageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "S3-config");
   }
 
-  /** Submits the delete task with a universe lock that fails. */
-  private TaskInfo submitTask(BackupRequestParams scheduleParams, UUID scheduleUUID) {
+  /** Submits the delete task, with a universe lock that fails if {@code failUniverseLock}. */
+  private TaskInfo submitTask(
+      BackupRequestParams scheduleParams, UUID scheduleUUID, boolean failUniverseLock) {
     try {
       BackupScheduleTaskParams params =
           UniverseControllerRequestBinder.deepCopy(
@@ -68,7 +70,7 @@ public class DeleteBackupScheduleTest extends CommissionerBaseTest {
       params.scheduleUUID = scheduleUUID;
       // The universe lock throws before it locks anything for a prechecks-only run. A universe
       // that's already locked can't stand in: the submit itself rejects it.
-      params.setRunOnlyPrechecks(true);
+      params.setRunOnlyPrechecks(failUniverseLock);
       UUID taskUUID = commissioner.submit(TaskType.DeleteBackupSchedule, params);
       TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
@@ -85,8 +87,7 @@ public class DeleteBackupScheduleTest extends CommissionerBaseTest {
     return null;
   }
 
-  @Test
-  public void testDeleteReleasesTheScheduleWhenTheUniverseLockFails() {
+  private Schedule createSchedule(boolean pointInTimeRestore) {
     BackupRequestParams backupParams = new BackupRequestParams();
     backupParams.schedulingFrequency = 100000000L;
     backupParams.frequencyTimeUnit = TimeUnit.HOURS;
@@ -94,21 +95,57 @@ public class DeleteBackupScheduleTest extends CommissionerBaseTest {
     backupParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
     backupParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     backupParams.storageConfigUUID = storageConfig.getConfigUUID();
-    backupParams.enablePointInTimeRestore = true;
+    backupParams.enablePointInTimeRestore = pointInTimeRestore;
     backupParams.scheduleName = "test-schedule";
-    Schedule schedule =
-        Schedule.create(
-            defaultCustomer.getUuid(), backupParams, TaskType.CreateBackup, 100000000L, null);
+    return Schedule.create(
+        defaultCustomer.getUuid(), backupParams, TaskType.CreateBackup, 100000000L, null);
+  }
+
+  private TaskInfo submitTask(Schedule schedule, boolean failUniverseLock) {
+    return submitTask(
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class),
+        schedule.getScheduleUUID(),
+        failUniverseLock);
+  }
+
+  @Test
+  public void testDeleteReleasesTheScheduleWhenTheUniverseLockFails() {
+    Schedule schedule = createSchedule(true /* pointInTimeRestore */);
     UUID scheduleUUID = schedule.getScheduleUUID();
 
-    TaskInfo tInfo =
-        submitTask(
-            Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class), scheduleUUID);
+    TaskInfo tInfo = submitTask(schedule, true /* failUniverseLock */);
 
     assertEquals(TaskInfo.State.Failure, tInfo.getTaskState());
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
     // Untouched and released, so that a later delete can run.
     assertEquals(State.Active, schedule.getStatus());
     assertFalse(schedule.isRunningState());
+  }
+
+  @Test
+  public void testDeleteFailsWithoutChangesWhileABackupOfTheScheduleRuns() {
+    Schedule schedule = createSchedule(false /* pointInTimeRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    // The scheduler started a backup after the request was checked: its task hasn't completed.
+    ScheduleTask.create(UUID.randomUUID(), scheduleUUID);
+
+    TaskInfo tInfo = submitTask(schedule, false /* failUniverseLock */);
+
+    assertEquals(TaskInfo.State.Failure, tInfo.getTaskState());
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
+    assertEquals(State.Active, schedule.getStatus());
+    assertFalse(schedule.isRunningState());
+  }
+
+  @Test
+  public void testDeleteRemovesTheScheduleOnceItsBackupsFinished() {
+    Schedule schedule = createSchedule(false /* pointInTimeRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    ScheduleTask.create(UUID.randomUUID(), scheduleUUID).markCompleted();
+
+    TaskInfo tInfo = submitTask(schedule, false /* failUniverseLock */);
+
+    assertEquals(TaskInfo.State.Success, tInfo.getTaskState());
+    assertFalse(Schedule.maybeGet(defaultCustomer.getUuid(), scheduleUUID).isPresent());
   }
 }

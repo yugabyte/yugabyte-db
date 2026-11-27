@@ -283,7 +283,8 @@ public class BackupScheduleHandler {
     getSchedule(cUUID, bsUUID);
     // Under the schedule's lock, which the scheduler and v1's schedule changes take too: two
     // deletes can't both submit a task, and the schedule can't change between the checks and the
-    // submit.
+    // submit. The lock spans the submit on purpose: released before it, a second delete could pass
+    // the in-flight lookup before the first one's task is recorded.
     Schedule.SCHEDULE_KEY_LOCK.acquireLock(bsUUID);
     try {
       Schedule schedule = getSchedule(cUUID, bsUUID);
@@ -315,8 +316,10 @@ public class BackupScheduleHandler {
         throw new PlatformServiceException(CONFLICT, error);
       }
       Universe universe = Universe.getOrNotFound(schedule.getOwnerUUID(), cUUID);
+      // Read as v1's delete reads it.
       boolean pointInTimeRestore =
-          schedule.getTaskParams().path("enablePointInTimeRestore").asBoolean(false);
+          Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class)
+              .enablePointInTimeRestore;
       checkUniverseNotLocked(universe, pointInTimeRestore, "deleted");
       UUID taskUUID;
       try {
@@ -327,11 +330,15 @@ public class BackupScheduleHandler {
         if (e.getHttpStatus() != BAD_REQUEST) {
           throw e;
         }
-        // v1 repeats the checks and answers 400; the schedule is held here, but another task may
-        // have locked the universe meanwhile.
+        // v1 repeats the checks and answers 400. A universe another task locked meanwhile, or a
+        // schedule another task holds, is a 409 as above; any other 400 is passed on as it is.
         checkUniverseNotLocked(
             Universe.getOrNotFound(schedule.getOwnerUUID(), cUUID), pointInTimeRestore, "deleted");
-        throw busy(getSchedule(cUUID, bsUUID));
+        Schedule current = getSchedule(cUUID, bsUUID);
+        if (current.isRunningState()) {
+          throw busy(current);
+        }
+        throw e;
       }
       return new YBATask().taskUuid(taskUUID).resourceUuid(bsUUID);
     } finally {
