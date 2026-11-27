@@ -22,7 +22,7 @@ YugabyteDB publishes the following servers.
 | Server | Purpose | Audience |
 | :----- | :------ | :------- |
 | [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/) | Query a database. Summarize a schema, run read-only SQL, and optionally run guarded writes. | Developers with a YugabyteDB or PostgreSQL database. |
-| [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) | Manage Serverless Postgres clusters, branches, and endpoints in YugabyteDB Aeon. | Aeon users managing Serverless Postgres from an AI client. |
+| [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) {{<tags/feature/tp>}} | Manage Serverless Postgres clusters, branches, and endpoints in YugabyteDB Aeon. | Aeon users managing Serverless Postgres from an AI client. |
 | [Docs MCP Server](../docs-mcp-server/) | Look up official documentation, API and CLI references, blogs, and support articles. | Anyone answering questions about YugabyteDB from an IDE or AI tool. |
 
 ## Skills
@@ -39,7 +39,7 @@ npx skills add yugabyte/yugabytedb-skills
 
 A client connects to a server in one of two ways:
 
-- **Remote HTTP.** The server is hosted at a URL. You register that URL. Some servers also require a header, such as an API key. The [Docs MCP Server](docs-mcp-server/) and the [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) use this method.
+- **Remote HTTP.** The server is hosted at a URL. You register that URL. Some servers also require a header, such as an API key. The [Docs MCP Server](../docs-mcp-server/) and the [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) use this method.
 - **Local command.** The client starts a program on your computer, and that program connects to your database. The [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/) uses this method.
 
 For commands, configuration, and sign-in instructions, see the individual [server documentation](#servers). Common clients include Claude Code, Claude Desktop, Cursor, Visual Studio Code, Windsurf, and ChatGPT. After you add a server, restart the client or reconnect it.
@@ -71,7 +71,7 @@ The YugabyteDB MCP Server runs on your computer and connects to the endpoint; ad
 
 Read-only tools fetch information. A schema summary, a `SELECT`, a search of the docs, and a list of clusters don't change your data.
 
-Write tools create, update, or delete. The AMP MCP Server waits for your confirmation on every write. When the client supports MCP elicitation, the server shows a dialog, and auto-approve doesn't skip it. When the client doesn't support elicitation, the server makes no change and tells the agent to ask you, then call the tool again with `confirm` set to true. The YugabyteDB MCP Server marks its write tool as destructive, and the client decides whether to prompt. A client set to auto-approve, or a tool you have already allowed, runs that write with no prompt. On that server, write queries also stay off until you enable them.
+Write tools create, update, or delete. The AMP MCP Server asks you to confirm every write. When the client supports MCP elicitation, the server shows a dialog, and auto-approve doesn't skip it. Otherwise, the client describes the request in the chat and sends it only after you agree. This relies on the client following the server's instructions, so don't set the client to auto-approve AMP tools. The YugabyteDB MCP Server marks its write tool as destructive, and the client decides whether to prompt. A client set to auto-approve, or a tool you have already allowed, runs that write with no prompt. On that server, write queries also stay off until you enable them.
 
 The credential limits the change: grant it only the access the task needs. A read-only database role can run the read tools. An Aeon API key with only Read permission can list resources and can't create, update, or delete.
 

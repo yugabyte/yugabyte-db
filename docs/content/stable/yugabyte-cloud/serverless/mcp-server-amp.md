@@ -10,13 +10,17 @@ menu:
     parent: aeon-serverless
     weight: 30
 type: docs
+tags:
+  feature: tech-preview
 ---
+
+{{< note title="Tech Preview" >}}
+The AMP MCP Server is in Tech Preview. Tool names, parameters, and behavior may change in later versions, including in ways that aren't backward compatible.
+{{< /note >}}
 
 The AMP MCP Server lets an AI client manage the [Serverless Postgres](../) clusters in your YugabyteDB Aeon organization. After you connect the client, you can ask it to list, create, update, and delete clusters, branches, and endpoints.
 
 To query a database on an endpoint, also connect the [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/) and install [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). The two servers are separate connections. To learn how to use them together, see [Query a Serverless Postgres endpoint](/stable/reference/mcp/#query-a-serverless-postgres-endpoint).
-
-The server is hosted at `https://cloud.yugabyte.com/mcp` and uses Streamable HTTP. Every request authenticates with a YugabyteDB Aeon [API key](../../managed-automation/managed-apikeys/), sent in an `Authorization: Bearer` header. Register the server under the name `amp`. Clients display it as **AMP MCP Server**.
 
 The server works only on your organization's [Serverless account](../../managed-security/manage-accounts/#serverless-account). A key created in any other account can't call the tools.
 
@@ -104,12 +108,17 @@ Use the key names your client documents. Some clients use `url` and omit `type`.
         "mcp-remote",
         "https://cloud.yugabyte.com/mcp",
         "--header",
-        "Authorization: Bearer <API key>"
-      ]
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer <API key>"
+      }
     }
   }
 }
 ```
+
+Keep `Authorization:${AUTH_HEADER}` as one argument, with no space after the colon. Claude Desktop on Windows doesn't escape spaces inside `args`, and neither does Cursor when it starts a local command, so `Authorization: Bearer <API key>` is split and the key never arrives. `mcp-remote` substitutes `${AUTH_HEADER}` from `env`, where the space is preserved. The remote HTTP entry in this configuration passes the header as JSON, and a space in that value stays intact.
 
 Configuration file locations:
 
@@ -159,7 +168,7 @@ Prompt:
 List the Serverless Postgres clusters in this account.
 ```
 
-The client lists the clusters in the Serverless account. You can ask it to include each cluster's branches and endpoints, the tasks for the account, or the extensions on a branch.
+The client lists the clusters in the Serverless account. You can ask it to include each cluster's branches and endpoints, the tasks for the account, or the extensions available in a region.
 
 ### Create a branch
 
@@ -169,7 +178,7 @@ Prompt:
 Create a branch named preview, forked from main.
 ```
 
-The server waits for your confirmation before it creates the branch, and it shows you the request, including the cluster and the parent branch. When the client supports MCP elicitation, that confirmation is a dialog, and auto-approve doesn't skip it. Otherwise the server makes no change until the tool is called again with your confirmation. A new branch has no endpoint until you add one.
+The server asks you to confirm before it creates the branch, and it shows you the request, including the cluster and the parent branch. When the client supports MCP elicitation, that confirmation is a dialog, and auto-approve doesn't skip it. Otherwise, the client describes the request in the chat and sends it only after you agree. This relies on the client following the server's instructions, so don't set the client to auto-approve AMP tools. A new branch has no endpoint until you add one.  
 
 Creating, updating, and deleting wait the same way. The API key's permissions still bound what the server can do. See [Read-only and write tools](/stable/reference/mcp/#read-only-and-write-tools).
 

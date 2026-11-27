@@ -36,7 +36,7 @@ To view API key details, select an API key in the list to display the **API Key 
 
 To create an API key:
 
-1. Switch to the account with the cluster or endpoint you want to connect to.
+1. Switch to the account whose resources the key will manage. For the AMP MCP Server, that's the Serverless account.
 
 1. Navigate to **Security > Access Control > API Keys**, and click **Create API Key**.
 
