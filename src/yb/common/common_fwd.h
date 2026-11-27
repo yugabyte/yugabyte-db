@@ -33,6 +33,7 @@ namespace yb {
 class ClockBase;
 class ColumnId;
 class ColumnSchema;
+class ConsistentReadPoint;
 class ConstContiguousRow;
 class DocHybridTime;
 class EncodedDocHybridTime;

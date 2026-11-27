@@ -100,15 +100,6 @@ class PrefixLogger {
   const pid_t pid_;
 };
 
-struct TabletReadTime {
-  TabletId tablet_id;
-  ReadHybridTime value;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(tablet_id, value);
-  }
-};
-
 inline TransactionErrorCode GetTransactionErrorCode(const Status& status) {
   return status.ok() ? TransactionErrorCode::kNone : TransactionError(status).value();
 }
@@ -197,7 +188,7 @@ void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms)
 Status HandleOperationResponse(uint64_t session_id,
                                const client::YBPgsqlOp& op,
                                PgPerformResponseMsg* resp,
-                               TabletReadTime* used_read_time);
+                               client::TabletReadTime* used_read_time);
 
 template <class TableProvider>
 Status GetTable(TableIdView table_id, TableProvider& provider, client::YBTablePtr* table) {

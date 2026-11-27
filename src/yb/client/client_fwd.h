@@ -96,6 +96,7 @@ class YBTableName;
 
 struct ChildTransactionData;
 struct TableSizeInfo;
+struct TabletReadTime;
 struct TabletServersInfo;
 struct VersionedTablePartitionList;
 struct YBTableInfo;
