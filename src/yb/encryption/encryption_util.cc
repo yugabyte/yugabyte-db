@@ -105,13 +105,17 @@ void EncryptionParams::ToEncryptionParamsPB(EncryptionParamsPB* encryption_heade
 
 Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
     const EncryptionParamsPB& encryption_header) {
-  auto encryption_params = std::make_unique<EncryptionParams>();
-  memcpy(encryption_params->key, encryption_header.data_key().c_str(),
-         encryption_header.data_key().size());
-  memcpy(encryption_params->nonce, encryption_header.nonce().c_str(), kBlockSize - 4);
-  encryption_params->counter = encryption_header.counter();
+  // The header comes from disk or the registry, so check sizes before copying into fixed buffers.
   auto size = encryption_header.data_key().size();
   RETURN_NOT_OK(IsValidKeySize(size));
+  auto encryption_params = std::make_unique<EncryptionParams>();
+  SCHECK_EQ(
+      encryption_header.nonce().size(), sizeof(encryption_params->nonce), Corruption,
+      "Unexpected nonce size");
+  memcpy(encryption_params->key, encryption_header.data_key().c_str(), size);
+  memcpy(encryption_params->nonce, encryption_header.nonce().c_str(),
+         sizeof(encryption_params->nonce));
+  encryption_params->counter = encryption_header.counter();
   encryption_params->key_size = narrow_cast<uint32_t>(size);
   encryption_params->openssl_compatible_counter_overflow =
       encryption_header.openssl_compatible_counter_overflow();
@@ -119,11 +123,16 @@ Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
 }
 
 Result<EncryptionParamsPtr> EncryptionParams::FromSlice(const Slice& s) {
+  if (s.size() < kUniverseKeyPrefixSize) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Expect at least $0 bytes of nonce and counter, found $1",
+        kUniverseKeyPrefixSize, s.size());
+  }
   auto params = std::make_unique<EncryptionParams>();
   Slice mutable_s(s);
   memcpy(params->nonce, s.data(), sizeof(params->nonce));
   memcpy(&params->counter, s.data() + sizeof(params->nonce), sizeof(params->counter));
-  mutable_s.remove_prefix(sizeof(params->nonce) + sizeof(params->counter));
+  mutable_s.RemovePrefix(kUniverseKeyPrefixSize);
   RETURN_NOT_OK(IsValidKeySize(mutable_s.size()));
   memcpy(params->key, mutable_s.data(), mutable_s.size());
   params->key_size = narrow_cast<uint32_t>(mutable_s.size());
