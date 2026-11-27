@@ -949,7 +949,7 @@ public class UniverseCRUDHandler {
       }
 
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
-      checkYbdbInbuiltYbcIsK8sOnly(c);
+      checkYbdbInbuiltYbcIsK8sOnly(c, c.userIntent);
       c.validate(
           !cloudEnabled,
           isAuthEnforced,
@@ -1536,7 +1536,9 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
       GFlagsUtil.validateGFlagValues(cluster.userIntent);
-      checkYbdbInbuiltYbcIsK8sOnly(cluster);
+      // checkTaskParamsForUpdate has rejected clusters the universe doesn't have.
+      checkYbdbInbuiltYbcIsK8sOnly(
+          cluster, u.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1601,11 +1603,19 @@ public class UniverseCRUDHandler {
   /**
    * Inbuilt YBC ships in the Kubernetes DB image, and only the Kubernetes-only toggle API can turn
    * it off again, so a VM universe that got it would be stuck with it (see V482).
+   *
+   * @param typeIntent the intent to read the provider type from. On edit it is the stored one, as
+   *     the request can omit providerType. An unknown or missing type is let through, as V482 leaves
+   *     those alone.
    */
-  private static void checkYbdbInbuiltYbcIsK8sOnly(Cluster cluster) {
+  @VisibleForTesting
+  static void checkYbdbInbuiltYbcIsK8sOnly(Cluster cluster, UserIntent typeIntent) {
+    List<Common.CloudType> types = typeIntent.getAllCloudTypes();
     if (cluster.clusterType == ClusterType.PRIMARY
         && cluster.userIntent.isUseYbdbInbuiltYbc()
-        && !Util.isKubernetesBased(cluster)) {
+        && !types.isEmpty()
+        && types.stream()
+            .noneMatch(t -> t == Common.CloudType.kubernetes || t == Common.CloudType.unknown)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "useYbdbInbuiltYbc is supported only for Kubernetes universes.");
     }

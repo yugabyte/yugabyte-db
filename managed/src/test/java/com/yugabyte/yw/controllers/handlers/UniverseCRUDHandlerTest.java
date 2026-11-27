@@ -935,4 +935,30 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     taskParams.clusters.add(cluster);
     return taskParams;
   }
+
+  // The requested intent has no providerType, as an edit request can omit it.
+  @Test
+  @Parameters({
+    "aws, true, true",
+    "kubernetes, true, false",
+    "unknown, true, false",
+    "aws, false, false"
+  })
+  public void testCheckYbdbInbuiltYbcIsK8sOnlyUsesTypeIntent(
+      Common.CloudType typeIntentType, boolean useYbdbInbuiltYbc, boolean rejected) {
+    UserIntent requested = new UserIntent();
+    requested.setUseYbdbInbuiltYbc(useYbdbInbuiltYbc);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, requested);
+    UserIntent typeIntent = new UserIntent();
+    typeIntent.providerType = typeIntentType;
+    if (rejected) {
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> UniverseCRUDHandler.checkYbdbInbuiltYbcIsK8sOnly(cluster, typeIntent));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    } else {
+      UniverseCRUDHandler.checkYbdbInbuiltYbcIsK8sOnly(cluster, typeIntent);
+    }
+  }
 }
