@@ -20,7 +20,8 @@ arguments after it go to hnsw_tool, and override the dataset's files or distance
 of them overridden, or --num_vectors_to_insert given, hnsw_tool computes the ground truth unless
 --ground_truth_path is given. For a dataset without ground truth, hnsw_tool computes it, and the
 script keeps it in the dataset's cache directory for later runs. The output of hnsw_tool is also
-written to a log file in --run_log_dir, with the command and git revision in its header.
+written to a log file in --run_log_dir, whose header gives the commands, the checkout revision and
+the modification time of hnsw_tool.
 
 Examples:
   bin/vi_benchmark.py --list_datasets
@@ -43,7 +44,7 @@ import sys
 import tarfile
 import zlib
 from dataclasses import dataclass
-from typing import BinaryIO, Dict, Iterable, List, Optional, Set
+from typing import BinaryIO, Dict, Iterable, List, NoReturn, Optional, Set
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -286,25 +287,43 @@ def git_revision() -> str:
         return 'unknown'
 
 
+def cannot_write_log(error: str) -> NoReturn:
+    sys.exit(f'Cannot write the run log: {error}; pass --run_log_dir or --no_run_log')
+
+
+def make_log_dir(log_dir: str) -> None:
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+    except OSError as e:
+        cannot_write_log(str(e))
+    if not os.access(log_dir, os.W_OK):
+        cannot_write_log(f'{log_dir} is not writable')
+
+
 def open_log(log_dir: str, dataset_name: str) -> BinaryIO:
     name = f'{datetime.datetime.now():%Y%m%d-%H%M%S}.{dataset_name}'
     suffix = ''
-    try:
-        os.makedirs(log_dir, exist_ok=True)
-        while True:
-            try:
-                return open(os.path.join(log_dir, f'{name}{suffix}.log'), 'xb')
-            except FileExistsError:
-                # Another run started in the same second.
-                suffix = f'.{int(suffix[1:] or 1) + 1}'
-    except OSError as e:
-        sys.exit(f'Cannot write the run log: {e}; pass --run_log_dir or --no_run_log')
+    while True:
+        try:
+            return open(os.path.join(log_dir, f'{name}{suffix}.log'), 'xb')
+        except FileExistsError:
+            # Another run started in the same second.
+            suffix = f'.{int(suffix[1:] or 1) + 1}'
+        except OSError as e:
+            cannot_write_log(str(e))
+
+
+def modification_time(path: str) -> str:
+    return datetime.datetime.fromtimestamp(os.path.getmtime(path)).isoformat(timespec='seconds')
 
 
 def run_logged(cmd: List[str], log: BinaryIO) -> int:
+    tool_path = shutil.which(cmd[0]) or cmd[0]
     header = [
         f'time: {datetime.datetime.now().isoformat(timespec="seconds")}',
-        f'git revision: {git_revision()}',
+        # hnsw_tool may be older than the checkout, or come from another one.
+        f'checkout revision: {git_revision()}',
+        f'hnsw_tool modified: {modification_time(tool_path)}',
         f'script command: {shlex.join(sys.argv)}',
         f'hnsw_tool command: {shlex.join(cmd)}',
     ]
@@ -399,12 +418,17 @@ def main() -> int:
     print('+ ' + shlex.join(cmd), flush=True)
     if args.dry_run:
         return 0
+    log_dir = None
+    if not args.no_run_log:
+        log_dir = args.run_log_dir or os.path.join(args.cache_dir, 'logs')
+        # Checked before the download, which can take long.
+        make_log_dir(log_dir)
     needed = [name for option, name in dataset_files.items() if option not in overridden]
     if needed:
         prepare(dataset, dataset_dir, needed)
-    if args.no_run_log:
+    if log_dir is None:
         return subprocess.call(cmd)
-    with open_log(args.run_log_dir or os.path.join(args.cache_dir, 'logs'), args.dataset) as log:
+    with open_log(log_dir, args.dataset) as log:
         try:
             return run_logged(cmd, log)
         finally:
