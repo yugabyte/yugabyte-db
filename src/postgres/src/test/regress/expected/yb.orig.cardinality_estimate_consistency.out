@@ -3,6 +3,7 @@
 set client_min_messages to warning;
 analyze r;
 analyze s;
+analyze rd;
 set yb_enable_cbo = on;
 set yb_enable_bitmapscan = on;
 set enable_bitmapscan = on;
@@ -69,7 +70,13 @@ insert into queries values
     (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$),
     (DEFAULT, $$select distinct a from r where a <= 500$$),
     (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33$$),
-    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$)
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$),
+    -- k = 5 implies s = 0 (rd_k_s).  The Index Scan and the Bitmap Index Scan
+    -- should both estimate the rows of the condition on k alone.
+    (DEFAULT, $$/*+ IndexScan(rd) */
+        select pk from rd where k = 5 and s = 0$$),
+    (DEFAULT, $$/*+ BitmapScan(rd) */
+        select pk from rd where k = 5 and s = 0$$)
 ;
 drop type if exists index_plan_rows cascade;
 create type index_plan_rows as (
@@ -123,7 +130,11 @@ select * from queries order by qid;
   25 | select distinct a from r where a <= 500
   26 | select distinct a from r where a <= 500 and a % 100 <= 33
   27 | select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500
-(27 rows)
+  28 | /*+ IndexScan(rd) */                                                                   +
+     |         select pk from rd where k = 5 and s = 0
+  29 | /*+ BitmapScan(rd) */                                                                  +
+     |         select pk from rd where k = 5 and s = 0
+(29 rows)
 
 -- Index Scan node estimates from each query's plan under the current
 -- settings.  workers = Gather's "Workers Planned", or 0 in a serial plan.
@@ -226,7 +237,9 @@ order by
  (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  19 |   1
  (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan        | r_pkey     |  13 |   1
  (b <= 500)  |                    |                                     |       500 |         8 | Index Scan               | i_r_b      |   4 |   1
-(30 rows)
+ (k = 5)     | (s = 0)            |                                     |      1235 |         1 | Bitmap Index Scan        | i_rd_k     |  29 |   1
+ (k = 5)     | (s = 0)            |                                     |      1235 |         2 | Index Scan               | i_rd_k     |  28 |   1
+(32 rows)
 
 -- Parallel scan shapes; also guards the comparison below from passing
 -- vacuously.
@@ -240,8 +253,9 @@ order by "Node Type", "Index Name", workers;
  Index Only Scan | i_r_a      |       2 |     6
  Index Only Scan | i_r_b      |       2 |     3
  Index Scan      | i_r_b      |       2 |     9
+ Index Scan      | i_rd_k     |       2 |     2
  Index Scan      | r_pkey     |       2 |     6
-(4 rows)
+(5 rows)
 
 -- Parallel scan row estimates should be the serial estimates divided by the
 -- parallel divisor per get_parallel_divisor(), allowing 1 row of slack for
