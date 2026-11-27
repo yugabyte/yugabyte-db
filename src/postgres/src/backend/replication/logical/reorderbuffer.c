@@ -109,6 +109,7 @@
 #include "utils/relfilenodemap.h"
 
 /* YB includes */
+#include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
@@ -2518,13 +2519,24 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				case YB_REORDER_BUFFER_CHANGE_DDL:
 					YBCInvalidateCachesForHistoricalReadContext();
 					/*
+					 * The relcache invalidation above does not cover the
+					 * catalog caches, so flush the one the DDL changed.
+					 * Otherwise a lookup keeps returning the row cached for a
+					 * change before the DDL.
+					 *
+					 * A DDL record with a table comes from a pg_class or
+					 * pg_attribute change. Output plugins such as
+					 * test_decoding look the table up in the pg_class cache
+					 * (get_rel_namespace), which keeps the old schema after
+					 * ALTER TABLE ... SET SCHEMA.
+					 *
 					 * A DDL record without a table comes from a pg_namespace
-					 * change such as ALTER SCHEMA ... RENAME TO. In such
-					 * cases, we need to invalidate the catalog cache,
-					 * otherwise the old cached schema name will be sent in
-					 * the RELATION message.
+					 * change such as ALTER SCHEMA ... RENAME TO, after which
+					 * the RELATION message would carry the old schema name.
 					 */
-					if (!OidIsValid(change->data.yb_ddl.table_oid))
+					if (OidIsValid(change->data.yb_ddl.table_oid))
+						CatalogCacheFlushCatalog(RelationRelationId);
+					else
 						CatalogCacheFlushCatalog(NamespaceRelationId);
 					/*
 					 * Inform the output plugin about the schema change so that
