@@ -22,6 +22,8 @@ import com.yugabyte.PGConnection;
 import com.yugabyte.replication.LogSequenceNumber;
 import com.yugabyte.replication.PGReplicationConnection;
 import com.yugabyte.replication.PGReplicationStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -2808,6 +2810,59 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
         insert("2", "two"),
         commitMessage());
     assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ALTER TABLE ... SET SCHEMA updates the table's pg_class row. test_decoding takes the schema
+  // name from the pg_class cache, so the row written before the move must not leave a stale entry
+  // behind for the rows after it, in the same transaction and in later ones.
+  @Test
+  public void setSchemaAfterInsertInsideTransactionWithTestDecoding() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE SCHEMA s2");
+      stmt.execute("CREATE TABLE t (k int primary key, v text)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t VALUES (1, 'before')");
+      stmt.execute("ALTER TABLE t SET SCHEMA s2");
+      stmt.execute("ALTER TABLE s2.t RENAME TO t2");
+      stmt.execute("INSERT INTO s2.t2 VALUES (2, 'after')");
+      stmt.execute("COMMIT");
+      stmt.execute("INSERT INTO s2.t2 VALUES (3, 'next txn')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName("test_slot")
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("include-xids", false)
+        .withSlotOption("skip-empty-xacts", true)
+        .start();
+
+    List<String> result = new ArrayList<>();
+    for (int i = 0; i < 7; i++) {
+      ByteBuffer buffer = stream.read();
+      result.add(new String(buffer.array(), buffer.arrayOffset(),
+          buffer.array().length - buffer.arrayOffset(), StandardCharsets.UTF_8));
+    }
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.t: INSERT: k[integer]:1 v[text]:'before'",
+        "table s2.t2: INSERT: k[integer]:2 v[text]:'after'",
+        "COMMIT",
+        "BEGIN",
+        "table s2.t2: INSERT: k[integer]:3 v[text]:'next txn'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
 
     stream.close();
     conn.close();
