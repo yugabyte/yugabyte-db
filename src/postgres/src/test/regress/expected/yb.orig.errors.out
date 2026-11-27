@@ -102,15 +102,23 @@ INSERT INTO test_temp_tab VALUES (3) RETURNING cmax;
     0
 (1 row)
 
-/* YB TODO: uncomment with issue #17154.
 -- Since xmin and xmax output can easily change, don't directly output them.
 WITH yb_with AS (
 INSERT INTO test_temp_tab VALUES (4) RETURNING xmin
 ) SELECT count(*) FROM yb_with;
+ count 
+-------
+     1
+(1 row)
+
 WITH yb_with AS (
 INSERT INTO test_temp_tab VALUES (5) RETURNING xmax
 ) SELECT count(*) FROM yb_with;
-*/
+ count 
+-------
+     1
+(1 row)
+
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab;
             QUERY PLAN             
 -----------------------------------
@@ -163,7 +171,9 @@ SELECT ctid FROM test_temp_tab;
  (0,1)
  (0,2)
  (0,3)
-(3 rows)
+ (0,4)
+ (0,5)
+(5 rows)
 
 SELECT cmin FROM test_temp_tab;
  cmin 
@@ -171,7 +181,9 @@ SELECT cmin FROM test_temp_tab;
     0
     0
     0
-(3 rows)
+    0
+    0
+(5 rows)
 
 SELECT cmax FROM test_temp_tab;
  cmax 
@@ -179,7 +191,9 @@ SELECT cmax FROM test_temp_tab;
     0
     0
     0
-(3 rows)
+    0
+    0
+(5 rows)
 
 -- Since xmin and xmax output can easily change, don't directly output them.
 WITH yb_with AS (
@@ -187,7 +201,7 @@ SELECT xmin FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
  count 
 -------
-     3
+     5
 (1 row)
 
 WITH yb_with AS (
@@ -195,7 +209,7 @@ SELECT xmax FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
  count 
 -------
-     3
+     5
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab WHERE id = 1;
@@ -273,7 +287,7 @@ SELECT xmin FROM test_temp_tab WHERE id = 4
 ) SELECT count(*) FROM yb_with;
  count 
 -------
-     0
+     1
 (1 row)
 
 WITH yb_with AS (
@@ -281,6 +295,6 @@ SELECT xmax FROM test_temp_tab WHERE id = 5
 ) SELECT count(*) FROM yb_with;
  count 
 -------
-     0
+     1
 (1 row)
 

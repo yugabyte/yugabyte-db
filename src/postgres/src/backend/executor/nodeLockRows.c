@@ -559,9 +559,6 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 				 errmsg("mixing Yugabyte relations and not Yugabyte "
 						"relations with row locks is not supported")));
 
-	if (row_lock_for_non_yb_rel_found)
-		YbSetTxnUsesTempRel();
-
 	/* Now we have the info needed to set up EPQ state */
 	EvalPlanQualInit(&lrstate->lr_epqstate, estate,
 					 outerPlan, epq_arowmarks, node->epqParam);

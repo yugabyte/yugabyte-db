@@ -47,7 +47,6 @@ CREATE temp TABLE test_temp_tab(id INT, PRIMARY KEY(id));
 INSERT INTO test_temp_tab VALUES (1) RETURNING ctid;
 INSERT INTO test_temp_tab VALUES (2) RETURNING cmin;
 INSERT INTO test_temp_tab VALUES (3) RETURNING cmax;
-/* YB TODO: uncomment with issue #17154.
 -- Since xmin and xmax output can easily change, don't directly output them.
 WITH yb_with AS (
 INSERT INTO test_temp_tab VALUES (4) RETURNING xmin
@@ -55,7 +54,6 @@ INSERT INTO test_temp_tab VALUES (4) RETURNING xmin
 WITH yb_with AS (
 INSERT INTO test_temp_tab VALUES (5) RETURNING xmax
 ) SELECT count(*) FROM yb_with;
-*/
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab;

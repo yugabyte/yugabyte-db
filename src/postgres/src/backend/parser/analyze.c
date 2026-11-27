@@ -55,11 +55,9 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "commands/dbcommands.h"
 #include "pg_yb_utils.h"
-
 
 /* Hook for plugins to get control at end of parse analysis */
 post_parse_analyze_hook_type post_parse_analyze_hook = NULL;
@@ -128,13 +126,6 @@ parse_analyze_fixedparams(RawStmt *parseTree, const char *sourceText,
 
 	query = transformTopLevelStmt(pstate, parseTree);
 
-	if (pstate->p_target_relation &&
-		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
-	{
-		YbSetTxnUsesTempRel();
-	}
-
 	if (IsQueryIdEnabled())
 		jstate = JumbleQuery(query, sourceText);
 
@@ -173,13 +164,6 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 	pstate->p_queryEnv = queryEnv;
 
 	query = transformTopLevelStmt(pstate, parseTree);
-
-	if (pstate->p_target_relation &&
-		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
-	{
-		YbSetTxnUsesTempRel();
-	}
 
 	/* make sure all is well with parameter types */
 	check_variable_parameters(pstate, query);
@@ -220,13 +204,6 @@ parse_analyze_withcb(RawStmt *parseTree, const char *sourceText,
 	(*parserSetup) (pstate, parserSetupArg);
 
 	query = transformTopLevelStmt(pstate, parseTree);
-
-	if (pstate->p_target_relation &&
-		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
-	{
-		YbSetTxnUsesTempRel();
-	}
 
 	if (IsQueryIdEnabled())
 		jstate = JumbleQuery(query, sourceText);

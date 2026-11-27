@@ -342,8 +342,6 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	/*
 	 * YB: Required to allow the creation for the temp table since we directly
 	 * call make_new_heap instead of going through DefineRelation.
-	 * For postgres xid cleanup, mark the current transaction as using
-	 * temp tables.
 	 *
 	 * Both concurrent and in-place refresh use temp tables. During a major
 	 * YSQL upgrade, catalog modifications are blocked unless
@@ -352,10 +350,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 * refresh_by_match_merge are allowed during upgrade.
 	 */
 	if (yb_in_place_refresh)
-	{
 		YBCDdlEnableForceCatalogModification();
-		YbSetTxnUsesTempRel();
-	}
 
 	/*
 	 * Create the transient table that will receive the regenerated data. Lock
