@@ -47,7 +47,8 @@ log "Generating $FROZEN_REQUIREMENTS_FILE"
 
 # Use LANG=C to force case-sensitive sorting.
 # https://stackoverflow.com/questions/10326933/case-sensitive-sort-unix-bash
-( set -x; run_pip freeze --all | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
+# pip is left out: the pex is built from this file, and nothing in it runs pip.
+( set -x; run_pip freeze --all | grep -v '^pip==' | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
 
 log_empty_line
 log "Contents of $FROZEN_REQUIREMENTS_FILE:"

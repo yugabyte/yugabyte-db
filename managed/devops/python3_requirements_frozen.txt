@@ -40,7 +40,6 @@ msrestazure==0.6.4.post1
 oauthlib==4.0.1
 oci==2.184.2
 paramiko==5.0.0
-pip==26.3
 protobuf==6.33.5
 psycopg2==2.9.12
 pyasn1==0.6.5

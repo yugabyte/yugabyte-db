@@ -122,6 +122,9 @@ RUN set -x; \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
     && python3 -m pip install --upgrade watchdog \
+    # Nothing uses pip after this point. The upgraded copy lands in /usr/local, where removing
+    # the pip package below would leave it behind.
+    && python3 -m pip uninstall -y pip \
     && if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
          yum remove --disableplugin=subscription-manager -y python3-pip; \
        else \
