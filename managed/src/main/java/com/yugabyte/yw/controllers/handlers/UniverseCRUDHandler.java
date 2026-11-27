@@ -1605,8 +1605,8 @@ public class UniverseCRUDHandler {
    * it off again, so a VM universe that got it would be stuck with it (see V482).
    *
    * @param typeIntent the intent to read the provider type from. On edit it is the stored one, as
-   *     the request can omit providerType. An unknown or missing type is let through, as V482 leaves
-   *     those alone.
+   *     the request can omit providerType. An unknown or missing type is let through, as V482
+   *     leaves those alone.
    */
   @VisibleForTesting
   static void checkYbdbInbuiltYbcIsK8sOnly(Cluster cluster, UserIntent typeIntent) {
