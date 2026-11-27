@@ -1235,7 +1235,8 @@ public class TaskExecutor {
         }
         String errorString =
             String.format(
-                "Failed to execute task %s, hit error:\n\n %s.",
+                "Failed to execute task %s %s, hit error:\n\n %s.",
+                taskInfo.getTaskType(),
                 StringUtils.abbreviate(redactedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
         taskError = new YBAError(Code.INTERNAL_ERROR, errorString, cause.getMessage());

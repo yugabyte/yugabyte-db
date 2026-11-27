@@ -212,6 +212,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return setupUniverse(universeCreateSpec, null);
   }
 
+  protected UUID setupGeoPartitionedUniverse(boolean multicloud) throws ApiException, IOException {
+    return setupUniverse(getUniverseCreateSpecV2Geo(multicloud), null);
+  }
+
   protected UUID setupUniverse(
       UniverseCreateSpec universeCreateSpec, Consumer<UniverseDefinitionTaskParams> paramsCallback)
       throws ApiException, IOException {

@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
@@ -136,7 +137,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     mockLocaleCheckResponse(mockNodeUniverseManager);
     when(mockNodeUniverseManager.runCommand(
-            any(), any(), eq(ImmutableList.of("cat", "/etc/fstab")), any()))
+            any(NodeUniverseContext.class), eq(ImmutableList.of("cat", "/etc/fstab"))))
         .thenReturn(
             ShellResponse.create(
                 0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "UUID=abc /mnt/d0 xfs defaults 0 0"));
@@ -297,7 +298,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     ArgumentCaptor<String> uploadedSourceCaptor = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager, atLeast(1))
         .uploadFileToNode(
-            any(), any(), uploadedSourceCaptor.capture(), anyString(), anyString(), any());
+            any(NodeUniverseContext.class),
+            uploadedSourceCaptor.capture(),
+            anyString(),
+            anyString());
     return uploadedSourceCaptor.getAllValues().stream()
         .map(
             path -> {
@@ -992,13 +996,13 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                argThat(n -> n != null && swappedNode.get().equals(n.nodeName)),
-                any(),
+                argThat(
+                    (NodeUniverseContext c) ->
+                        c != null && swappedNode.get().equals(c.getNode().nodeName)),
                 argThat(
                     (List<String> command) ->
                         command != null
-                            && command.stream().anyMatch(s -> s.contains("node-agent-provision"))),
-                any()))
+                            && command.stream().anyMatch(s -> s.contains("node-agent-provision")))))
         .thenAnswer(
             inv ->
                 failProvisioning.get()
@@ -1092,10 +1096,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                argThat(n -> n != null && nodeNames.contains(n.nodeName)),
-                any(),
-                eq(ImmutableList.of("cat", "/etc/fstab")),
-                any()))
+                argThat(
+                    (NodeUniverseContext c) ->
+                        c != null && nodeNames.contains(c.getNode().nodeName)),
+                eq(ImmutableList.of("cat", "/etc/fstab"))))
         .thenReturn(ShellResponse.create(1, "Permission denied (publickey)"));
   }
 

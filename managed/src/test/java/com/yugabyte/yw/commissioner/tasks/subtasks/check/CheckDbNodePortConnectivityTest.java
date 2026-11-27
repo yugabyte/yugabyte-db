@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.models.Universe;
@@ -82,7 +83,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(targetNode);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -90,7 +91,8 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.initialize(params);
     task.run();
 
-    verify(mockNodeUniverseManager, atLeastOnce()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, atLeastOnce())
+        .runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -102,7 +104,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(targetNode);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(1, "failure"));
 
     CheckDbNodePortConnectivity task =
@@ -112,7 +114,8 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     assertTrue(error.getMessage().contains("Port connectivity check failed (forward)"));
     assertTrue(error.getMessage().contains("10.10.10.2"));
     assertTrue(error.getMessage().contains("7100") || error.getMessage().contains("9100"));
-    verify(mockNodeUniverseManager, atLeastOnce()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, atLeastOnce())
+        .runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -144,7 +147,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
             + sourceNode.nodeName
             + " to target-node: 10.10.10.2; touch /tmp/pwned",
         error.getMessage());
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, never()).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -160,7 +163,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.initialize(params);
     IllegalArgumentException error = assertThrows(IllegalArgumentException.class, task::run);
     assertTrue(error.getMessage().contains("requires sourceNode to be set"));
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, never()).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -176,7 +179,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.initialize(params);
     IllegalArgumentException error = assertThrows(IllegalArgumentException.class, task::run);
     assertTrue(error.getMessage().contains("requires targetNodes to be non-empty"));
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, never()).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -200,7 +203,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Arrays.asList(targetNode, targetNode2);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -210,7 +213,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
 
     // Per target: 2 ports forward (source->target) + 2 ports reverse (target->source) = 4; 2
     // targets = 8
-    verify(mockNodeUniverseManager, times(8)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(8)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -222,7 +225,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(targetNode);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -231,7 +234,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.run();
 
     // 2 ports forward (source->target) + 2 ports reverse (target->source) = 4
-    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(4)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   /**
@@ -270,7 +273,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = cloudStyleNode;
     params.targetNodes = Collections.singletonList(cloudTargetNode);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -278,7 +281,8 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.initialize(params);
     task.run();
 
-    verify(mockNodeUniverseManager, atLeastOnce()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, atLeastOnce())
+        .runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   /**
@@ -295,7 +299,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(targetNode);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -307,7 +311,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     ArgumentCaptor<List<String>> commandCaptor =
         (ArgumentCaptor<List<String>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
-        .runCommand(any(), any(), commandCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), commandCaptor.capture());
     // First command is forward check from source to target IP:7100
     List<String> firstCommand = commandCaptor.getAllValues().get(0);
     assertEquals("bash", firstCommand.get(0));
@@ -336,7 +340,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(targetNode);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -348,7 +352,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     ArgumentCaptor<List<String>> commandCaptor =
         (ArgumentCaptor<List<String>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, times(4))
-        .runCommand(any(), any(), commandCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), commandCaptor.capture());
 
     List<List<String>> commands = commandCaptor.getAllValues();
     assertEquals("172.16.0.2", commands.get(0).get(4));
@@ -367,7 +371,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.targetNodes = Collections.singletonList(targetNode);
 
     // Forward checks succeed; reverse check fails (e.g. first reverse call returns exit 1)
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"))
         .thenReturn(ShellResponse.create(0, "ok"))
         .thenReturn(ShellResponse.create(1, "reverse failed"));
@@ -405,7 +409,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(hostnameTarget);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -414,7 +418,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.run();
 
     // 2 ports forward + 2 ports reverse = 4
-    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(4)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -436,7 +440,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Arrays.asList(targetNode, noIpTarget);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -445,7 +449,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.run();
 
     // Only targetNode is checked (4 calls); noIpTarget is skipped
-    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(4)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -473,7 +477,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     params.sourceNode = sourceNode;
     params.targetNodes = Collections.singletonList(dualNicTarget);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, "ok"));
 
     CheckDbNodePortConnectivity task =
@@ -485,7 +489,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     ArgumentCaptor<List<String>> commandCaptor =
         (ArgumentCaptor<List<String>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, times(4))
-        .runCommand(any(), any(), commandCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), commandCaptor.capture());
     assertEquals("172.16.0.3", commandCaptor.getAllValues().get(0).get(4));
   }
 }

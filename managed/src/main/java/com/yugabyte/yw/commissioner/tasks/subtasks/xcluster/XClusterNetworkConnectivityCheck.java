@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -184,7 +185,8 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
 
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(targetNode, targetUniverse, pingCommand, context);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(targetUniverse, targetNode, context), pingCommand);
       if (response.isSuccess()) {
         return new PingResult(true, response.getMessage());
       }
@@ -233,7 +235,8 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
         ShellProcessContext.builder().logCmdOutput(false).timeoutSecs(5).build();
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(targetNode, targetUniverse, ncCommand, context);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(targetUniverse, targetNode, context), ncCommand);
       return new MethodAttempt("nc", response.isSuccess(), response.getMessage());
     } catch (Exception e) {
       return new MethodAttempt("nc", false, e.getMessage());
@@ -248,7 +251,8 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
         ShellProcessContext.builder().logCmdOutput(false).timeoutSecs(5).build();
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(targetNode, targetUniverse, telnetCommand, context);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(targetUniverse, targetNode, context), telnetCommand);
       return new MethodAttempt("telnet", response.isSuccess(), response.getMessage());
     } catch (Exception e) {
       return new MethodAttempt("telnet", false, e.getMessage());
@@ -264,7 +268,8 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
         ShellProcessContext.builder().logCmdOutput(false).timeoutSecs(5).build();
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(targetNode, targetUniverse, bashCheckCommand, context);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(targetUniverse, targetNode, context), bashCheckCommand);
       return new MethodAttempt("bash:/dev/tcp", response.isSuccess(), response.getMessage());
     } catch (Exception e) {
       return new MethodAttempt("bash:/dev/tcp", false, e.getMessage());

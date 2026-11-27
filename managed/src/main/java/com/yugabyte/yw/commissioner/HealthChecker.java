@@ -1393,7 +1393,9 @@ public class HealthChecker {
     if (nodeInfo.isK8s() || nodeCheckContext.isDisableNodeAgentHealthChecker()) {
       ShellResponse response =
           nodeUniverseManager
-              .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
+              .runCommand(
+                  NodeUniverseContext.of(universe, nodeInfo.getNodeDetails(), context),
+                  commandToRun)
               .processErrors();
 
       return parseNodeReport(universe, nodeInfo, response.extractRunCommandOutput());
@@ -1507,28 +1509,24 @@ public class HealthChecker {
     if (!nodeInfo.isK8s()) {
       log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
       nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
+          NodeUniverseContext.of(universe, nodeInfo.nodeDetails, context),
           writeScript(
               "collect_metrics_" + universe.getUniverseUUID() + "_" + nodeInfo.nodeUuid,
               ".sh",
               collectMetricsScript),
           nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh",
-          SCRIPT_PERMISSIONS,
-          context);
+          SCRIPT_PERMISSIONS);
     }
 
     log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
     nodeUniverseManager.uploadFileToNode(
-        nodeInfo.nodeDetails,
-        universe,
+        NodeUniverseContext.of(universe, nodeInfo.nodeDetails, context),
         writeScript(
             "node_health_" + universe.getUniverseUUID() + "_" + nodeInfo.nodeUuid,
             ".py",
             nodeHealthScript.replace("{{SCRIPT_FINGERPRINT}}", fingerprint)),
         getNodeHealthScriptPath(nodeInfo),
-        SCRIPT_PERMISSIONS,
-        context);
+        SCRIPT_PERMISSIONS);
 
     // Only record the node as up to date after both uploads succeeded, so a failed upload is
     // retried on the next cycle.

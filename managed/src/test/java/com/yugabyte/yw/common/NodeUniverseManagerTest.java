@@ -172,7 +172,8 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
     ShellProcessContext context =
         ShellProcessContext.builder().redactedVals(Map.of(secret, "--password=REDACTED")).build();
 
-    nodeUniverseManager.runCommand(node, universe, List.of("/bin/tool", secret), context, false);
+    nodeUniverseManager.runCommand(
+        NodeUniverseContext.of(universe, node, context), List.of("/bin/tool", secret), false);
 
     verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
     List<String> sent = commandCaptor.getValue();

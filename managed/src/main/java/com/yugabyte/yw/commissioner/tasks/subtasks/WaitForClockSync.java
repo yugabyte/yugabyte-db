@@ -18,11 +18,14 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -36,6 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class WaitForClockSync extends NodeTaskBase {
+
+  private NodeUniverseContext context;
 
   private final Duration RETRY_WAIT_TIME = Duration.ofSeconds(10);
 
@@ -85,9 +90,15 @@ public class WaitForClockSync extends NodeTaskBase {
               + " not found in universe "
               + taskParams().getUniverseUUID());
     }
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    Common.CloudType providerType = cluster.getProviderCloudType(node);
-    if (providerType == Common.CloudType.local) {
+    context =
+        NodeUniverseContext.builder()
+            .universe(universe)
+            .node(node)
+            .shellProcessContext(ShellProcessContext.DEFAULT)
+            .userIntent(taskParams().userIntent)
+            .build();
+    Provider provider = Util.getProviderByAz(node.azUuid);
+    if (provider.getCloudCode() == Common.CloudType.local) {
       log.info("Skipping sync for local provider");
       return;
     }
@@ -122,8 +133,7 @@ public class WaitForClockSync extends NodeTaskBase {
   private boolean isChronycPresent(Universe universe, NodeDetails node) {
     ShellResponse response =
         nodeUniverseManager.runCommand(
-            node,
-            universe,
+            context,
             ImmutableList.of(
                 "command",
                 "-v",
@@ -155,8 +165,7 @@ public class WaitForClockSync extends NodeTaskBase {
     }
     ShellResponse waitsyncShellResponse =
         nodeUniverseManager.runCommand(
-            node,
-            universe,
+            context,
             ImmutableList.of(
                 "chronyc",
                 "waitsync",
@@ -238,7 +247,7 @@ public class WaitForClockSync extends NodeTaskBase {
   private long getCurrentClockSkewNs(Universe universe, NodeDetails node) {
     String chronyTrackingOutput =
         nodeUniverseManager
-            .runCommand(node, universe, ImmutableList.of("chronyc", "tracking"))
+            .runCommand(context, ImmutableList.of("chronyc", "tracking"))
             .processErrors("Running `chronyc tracking` failed")
             .extractRunCommandOutput();
 
@@ -274,7 +283,7 @@ public class WaitForClockSync extends NodeTaskBase {
           public String get() {
             try {
               return nodeUniverseManager
-                  .runCommand(node, universe, ImmutableList.of("clockbound-check"))
+                  .runCommand(context, ImmutableList.of("clockbound-check"))
                   .processErrors("'clockbound-check' failed")
                   .extractRunCommandOutput();
             } catch (Exception e) {

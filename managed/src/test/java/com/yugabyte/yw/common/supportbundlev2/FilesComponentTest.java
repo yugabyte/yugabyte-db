@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -148,7 +149,8 @@ public class FilesComponentTest extends FakeDBApplication {
               String scriptPathRelative = invocation.getArgument(3);
               List<String> params = invocation.getArgument(5);
               com.yugabyte.yw.common.ShellProcessContext ctx = invocation.getArgument(6);
-              return mockNodeUniverseManager.runScript(n, u, scriptPathRelative, params, ctx);
+              return mockNodeUniverseManager.runScript(
+                  NodeUniverseContext.of(u, n, ctx), scriptPathRelative, params);
             });
     // "/tmp" keeps a yugabyte spec's tar where the spec put it; tests that check the move pass
     // their own directory.
@@ -246,7 +248,9 @@ public class FilesComponentTest extends FakeDBApplication {
   /** Answers the node's existence check for any path. */
   private void stubFileExists(boolean exists) {
     when(mockNodeUniverseManager.runCommand(
-            any(), any(), argThat(FilesComponentTest::isFileExistsCheck), any(), eq(false)))
+            any(NodeUniverseContext.class),
+            argThat(FilesComponentTest::isFileExistsCheck),
+            eq(false)))
         .thenReturn(fileExistsOutput(exists));
   }
 
@@ -264,7 +268,7 @@ public class FilesComponentTest extends FakeDBApplication {
   private void mockCopyToProduceTar() throws Exception {
     org.mockito.Mockito.doAnswer(
             answer -> {
-              String localTargetPath = answer.getArgument(3);
+              String localTargetPath = answer.getArgument(2);
               Path targetTarGzPath = Paths.get(localTargetPath);
               Path tempFile =
                   Paths.get(createTempFile(fakeSourcePath, "collected.txt", "collected-content"));
@@ -273,12 +277,12 @@ public class FilesComponentTest extends FakeDBApplication {
               return null;
             })
         .when(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
   }
 
   @Test
   public void testDownloadComponentBetweenDatesSuccess() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(
             ShellResponse.create(0, "BUNDLE_STATUS=OK\nBUNDLE_PATH=/tmp/u-n1-files.tar.gz"));
     stubFileExists(true);
@@ -294,15 +298,14 @@ public class FilesComponentTest extends FakeDBApplication {
         new Date(Long.MAX_VALUE),
         node);
 
-    verify(mockNodeUniverseManager, times(1)).runScript(any(), any(), any(), any(), any());
     verify(mockNodeUniverseManager, times(1))
-        .copyFileFromNode(any(), any(), eq("/tmp/u-n1-files.tar.gz"), any(), any());
+        .runScript(any(NodeUniverseContext.class), any(), any());
+    verify(mockNodeUniverseManager, times(1))
+        .copyFileFromNode(any(NodeUniverseContext.class), eq("/tmp/u-n1-files.tar.gz"), any());
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             eq(Arrays.asList("rm", "-f", "/tmp/u-n1-files.tar.gz")),
-            any(),
             eq(false));
     // The intermediate tar should be removed and its content untarred into the bundle dir.
     assertTrue(new File(Paths.get(fakeBundlePath, "collected.txt").toString()).exists());
@@ -312,7 +315,7 @@ public class FilesComponentTest extends FakeDBApplication {
   /** On the storage path, outside the tree that gets zipped, and gone once untarred. */
   @Test
   public void testRemoteTarIsStagedOnTheStoragePathOutsideTheBundle() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     mockCopyToProduceTar();
@@ -333,7 +336,7 @@ public class FilesComponentTest extends FakeDBApplication {
 
     ArgumentCaptor<String> localTar = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), localTar.capture(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), localTar.capture());
     Path specDir = Paths.get(localTar.getValue()).getParent();
     assertEquals(stagingRoot, specDir.getParent());
     assertFalse(specDir.startsWith(Paths.get(fakeBundlePath)));
@@ -346,7 +349,7 @@ public class FilesComponentTest extends FakeDBApplication {
    */
   @Test
   public void testWithoutNodeAgentTheTarIsCopiedViaTmpdir() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     mockCopyToProduceTar();
@@ -363,7 +366,7 @@ public class FilesComponentTest extends FakeDBApplication {
 
     ArgumentCaptor<String> localTar = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), localTar.capture(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), localTar.capture());
     Path copied = Paths.get(localTar.getValue());
     assertEquals(Paths.get(System.getProperty("java.io.tmpdir")), copied.getParent());
     assertFalse("the temporary copy is removed", Files.exists(copied));
@@ -373,22 +376,22 @@ public class FilesComponentTest extends FakeDBApplication {
   /** A tar that fails to gunzip still leaves nothing in java.io.tmpdir. */
   @Test
   public void testWithoutNodeAgentACorruptTarLeavesNothingInTmpdir() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     org.mockito.Mockito.doAnswer(
             answer -> {
-              Files.writeString(Paths.get((String) answer.getArgument(3)), "not a gzip stream");
+              Files.writeString(Paths.get((String) answer.getArgument(2)), "not a gzip stream");
               return null;
             })
         .when(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
 
     collectBaseSpec();
 
     ArgumentCaptor<String> localTar = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), localTar.capture(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), localTar.capture());
     Path copied = Paths.get(localTar.getValue());
     assertEquals(Paths.get(System.getProperty("java.io.tmpdir")), copied.getParent());
     assertFalse("the temporary copy is removed", Files.exists(copied));
@@ -397,12 +400,12 @@ public class FilesComponentTest extends FakeDBApplication {
   /** A node archive can't write outside the bundle, and the rest of it is still extracted. */
   @Test
   public void testEntryOutsideTheBundleIsNotWritten() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     org.mockito.Mockito.doAnswer(
             answer -> {
-              Path localTar = Paths.get((String) answer.getArgument(3));
+              Path localTar = Paths.get((String) answer.getArgument(2));
               createTarGzipWithEntries(
                   List.of(
                       new String[] {"../escaped.txt", "x"},
@@ -411,7 +414,7 @@ public class FilesComponentTest extends FakeDBApplication {
               return null;
             })
         .when(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
 
     collectBaseSpec();
 
@@ -422,7 +425,7 @@ public class FilesComponentTest extends FakeDBApplication {
   /** A BUNDLE_PATH other than the requested path is never copied or deleted. */
   @Test
   public void testDifferentReportedBundlePathIsIgnored() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK\nBUNDLE_PATH=/etc/passwd"));
     stubFileExists(true);
     mockCopyToProduceTar();
@@ -438,22 +441,20 @@ public class FilesComponentTest extends FakeDBApplication {
             node);
 
     verify(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), eq("/tmp/u-n1-files.tar.gz"), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), eq("/tmp/u-n1-files.tar.gz"), any());
     verify(mockNodeUniverseManager)
         .runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             eq(Arrays.asList("rm", "-f", "/tmp/u-n1-files.tar.gz")),
-            any(),
             eq(false));
     verify(mockNodeUniverseManager, never())
-        .copyFileFromNode(any(), any(), eq("/etc/passwd"), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), eq("/etc/passwd"), any());
   }
 
   @Test
   public void testNodeNameSubstitutionUsesRemoteTarPathWhenNoBundlePath() throws Exception {
     // No BUNDLE_PATH in stdout, so the substituted remoteTarPath must be used.
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     mockCopyToProduceTar();
@@ -471,35 +472,35 @@ public class FilesComponentTest extends FakeDBApplication {
     // ${nodeName} resolved to the node name in both check and copy.
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             eq(SupportBundleNodeStaging.fileExistsCommand("/tmp/u-n1-files.tar.gz")),
-            any(),
             eq(false));
     verify(mockNodeUniverseManager, times(1))
-        .copyFileFromNode(any(), any(), eq("/tmp/u-n1-files.tar.gz"), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), eq("/tmp/u-n1-files.tar.gz"), any());
   }
 
   /** A failed run can still leave a partial tar, e.g. from a full disk or a timeout. */
   @Test
   public void testNonZeroExitRemovesTheRemoteTar() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(1, "tar: write error: No space left on device"));
 
     collectBaseSpec();
 
-    verify(mockNodeUniverseManager, never()).copyFileFromNode(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, never())
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
     verifyRemoteTarRemoved();
   }
 
   @Test
   public void testFailedStatusRemovesTheRemoteTar() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=FAILED"));
 
     collectBaseSpec();
 
-    verify(mockNodeUniverseManager, never()).copyFileFromNode(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, never())
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
     verifyRemoteTarRemoved();
   }
 
@@ -520,21 +521,19 @@ public class FilesComponentTest extends FakeDBApplication {
 
   /** Whatever the spec's timeout, the rm gets 60 s. */
   private void verifyRemoteTarRemoved() {
-    ArgumentCaptor<ShellProcessContext> rmContext =
-        ArgumentCaptor.forClass(ShellProcessContext.class);
+    ArgumentCaptor<NodeUniverseContext> rmContext =
+        ArgumentCaptor.forClass(NodeUniverseContext.class);
     verify(mockNodeUniverseManager)
         .runCommand(
-            any(),
-            any(),
-            eq(Arrays.asList("rm", "-f", "/tmp/u-n1-files.tar.gz")),
             rmContext.capture(),
+            eq(Arrays.asList("rm", "-f", "/tmp/u-n1-files.tar.gz")),
             eq(false));
-    assertEquals(60L, rmContext.getValue().getTimeoutSecs());
+    assertEquals(60L, rmContext.getValue().getShellProcessContext().getTimeoutSecs());
   }
 
   @Test
   public void testEmptyStatusSkipsCopy() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=EMPTY"));
 
     FilesComponent component = newComponent();
@@ -552,17 +551,15 @@ public class FilesComponentTest extends FakeDBApplication {
 
   @Test
   public void testEmptyStatusCopiesWhenRemoteTarExists() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(
             ShellResponse.create(
                 0,
                 "BUNDLE_STATUS=EMPTY\nBUNDLE_PATH=/tmp/u-n1-files.tar.gz\n"
                     + "no matching rows on this node"));
     when(mockNodeUniverseManager.runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             eq(SupportBundleNodeStaging.fileExistsCommand("/tmp/u-n1-files.tar.gz")),
-            any(),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
     mockCopyToProduceTar();
@@ -578,12 +575,12 @@ public class FilesComponentTest extends FakeDBApplication {
         node);
 
     verify(mockNodeUniverseManager, times(1))
-        .copyFileFromNode(any(), any(), eq("/tmp/u-n1-files.tar.gz"), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), eq("/tmp/u-n1-files.tar.gz"), any());
   }
 
   @Test
   public void testEmptyStatusSkipsCopyWhenTheNodeHasNoTar() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(
             ShellResponse.create(0, "BUNDLE_STATUS=EMPTY\nBUNDLE_PATH=/tmp/u-n1-files.tar.gz\n"));
     stubFileExists(false);
@@ -598,7 +595,8 @@ public class FilesComponentTest extends FakeDBApplication {
             new Date(Long.MAX_VALUE),
             node);
 
-    verify(mockNodeUniverseManager, never()).copyFileFromNode(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, never())
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
   }
 
   @Test
@@ -626,14 +624,14 @@ public class FilesComponentTest extends FakeDBApplication {
   private void mockCopyToProduceServerConfTar(String serverConfContent) throws Exception {
     org.mockito.Mockito.doAnswer(
             answer -> {
-              String localTargetPath = answer.getArgument(3);
+              String localTargetPath = answer.getArgument(2);
               Path targetTarGzPath = Paths.get(localTargetPath);
               Files.createDirectories(targetTarGzPath.getParent());
               createTarGzipWithEntry("master/conf/server.conf", serverConfContent, targetTarGzPath);
               return null;
             })
         .when(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
   }
 
   private static void createTarGzipWithEntry(String entryName, String content, Path output)
@@ -676,7 +674,7 @@ public class FilesComponentTest extends FakeDBApplication {
   /** Runs the GFlags spec and returns the untarred server.conf contents. */
   private String collectGFlagsServerConf(String scriptStdout, String serverConfContent)
       throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, scriptStdout));
     stubFileExists(true);
     mockCopyToProduceServerConfTar(serverConfContent);
@@ -708,7 +706,7 @@ public class FilesComponentTest extends FakeDBApplication {
 
   private List<String> runCapturingRedactionFailures(
       FilesComponentSpec spec, ShellResponse scriptResult, boolean expectCopy) throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(scriptResult);
     if (expectCopy) {
       stubFileExists(true);
@@ -780,8 +778,11 @@ public class FilesComponentTest extends FakeDBApplication {
     // Stops before even looking for the tar, so nothing past this point can copy it.
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(), any(), argThat(FilesComponentTest::isFileExistsCheck), any(), anyBoolean());
-    verify(mockNodeUniverseManager, never()).copyFileFromNode(any(), any(), any(), any(), any());
+            any(NodeUniverseContext.class),
+            argThat(FilesComponentTest::isFileExistsCheck),
+            anyBoolean());
+    verify(mockNodeUniverseManager, never())
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
     assertFalse(Files.exists(Paths.get(fakeBundlePath, "master/conf/server.conf")));
   }
 
@@ -795,7 +796,8 @@ public class FilesComponentTest extends FakeDBApplication {
             ShellResponse.create(0, "REDACTION_STATUS=NOT_APPLICABLE\nBUNDLE_STATUS=EMPTY"), false);
 
     assertEquals(List.of(), errors);
-    verify(mockNodeUniverseManager, never()).copyFileFromNode(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, never())
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
   }
 
   @Test
@@ -828,7 +830,7 @@ public class FilesComponentTest extends FakeDBApplication {
   public void testTarGoesInTheBundlesDirectoryOnTheNode() throws Exception {
     String bundleDir = "/data/tmp/yba-support-bundle-b-fake_ip";
     when(mockCgroupScriptExecutor.stagingDir(any(), any(), any(), any())).thenReturn(bundleDir);
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     mockCopyToProduceTar();
@@ -845,18 +847,21 @@ public class FilesComponentTest extends FakeDBApplication {
 
     String tarPath = bundleDir + "/u-n1-files.tar.gz";
     ArgumentCaptor<List<String>> params = ArgumentCaptor.forClass(List.class);
-    verify(mockNodeUniverseManager).runScript(any(), any(), any(), params.capture(), any());
+    verify(mockNodeUniverseManager)
+        .runScript(any(NodeUniverseContext.class), any(), params.capture());
     assertEquals(
         tarPath, params.getValue().get(params.getValue().indexOf("--remote_tar_path") + 1));
-    verify(mockNodeUniverseManager).copyFileFromNode(any(), any(), eq(tarPath), any(), any());
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(Arrays.asList("rm", "-f", tarPath)), any(), eq(false));
+        .copyFileFromNode(any(NodeUniverseContext.class), eq(tarPath), any());
+    verify(mockNodeUniverseManager)
+        .runCommand(
+            any(NodeUniverseContext.class), eq(Arrays.asList("rm", "-f", tarPath)), eq(false));
   }
 
   /** A file the node couldn't copy is logged at WARN, and the rest of the tar is collected. */
   @Test
   public void testCopyFailuresAreLoggedAndTheRestCollected() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(
             ShellResponse.create(
                 0,
@@ -912,7 +917,8 @@ public class FilesComponentTest extends FakeDBApplication {
     verify(mockServerConfRedactionSupport, never())
         .appendRedactionScriptParams(any(), any(), any(), any());
     verify(mockServerConfRedactionSupport, never()).appendDropServerConfScriptParam(any());
-    verify(mockNodeUniverseManager, times(1)).copyFileFromNode(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, times(1))
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
   }
 
   @Test
@@ -965,7 +971,8 @@ public class FilesComponentTest extends FakeDBApplication {
             + " redaction helper unavailable on this node; dropped from the bundle",
         errors.get(1));
     ArgumentCaptor<List> paramsCaptor = ArgumentCaptor.forClass(List.class);
-    verify(mockNodeUniverseManager).runScript(any(), any(), any(), paramsCaptor.capture(), any());
+    verify(mockNodeUniverseManager)
+        .runScript(any(NodeUniverseContext.class), any(), paramsCaptor.capture());
     assertTrue(paramsCaptor.getValue().contains(DROP_SERVER_CONF_PARAM));
     verify(mockServerConfRedactionSupport, never())
         .appendRedactionScriptParams(any(), any(), any(), any());
@@ -1006,21 +1013,22 @@ public class FilesComponentTest extends FakeDBApplication {
 
     assertEquals(1, errors.size());
     assertTrue(errors.get(0).contains("could not delete the unredacted copy"));
-    verify(mockNodeUniverseManager, never()).copyFileFromNode(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, never())
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
   }
 
   @Test
   public void testGFlagsSpecLeavesNoArchiveWhenExtractionThrows() throws Exception {
     // The second entry cannot be written - its parent is the regular file the first entry just
     // created - so unTar throws part-way. No archive may be left for Util.zipAndDeleteDir to ship.
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(
             ShellResponse.create(
                 0, "BUNDLE_STATUS=OK\nBUNDLE_PATH=/tmp/u-n1-gflags.tar.gz\nREDACTION_STATUS=NODE"));
     stubFileExists(true);
     org.mockito.Mockito.doAnswer(
             answer -> {
-              Path targetTarGzPath = Paths.get((String) answer.getArgument(3));
+              Path targetTarGzPath = Paths.get((String) answer.getArgument(2));
               Files.createDirectories(targetTarGzPath.getParent());
               createTarGzipWithEntries(
                   Arrays.asList(
@@ -1030,7 +1038,7 @@ public class FilesComponentTest extends FakeDBApplication {
               return null;
             })
         .when(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), any(), any(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), any(), any());
 
     FilesComponent component = newComponent();
     component.downloadComponentBetweenDates(
@@ -1062,7 +1070,7 @@ public class FilesComponentTest extends FakeDBApplication {
 
   @Test
   public void testNonRedactComponentNeverTouchesRedactionPath() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(
             ShellResponse.create(0, "BUNDLE_STATUS=OK\nBUNDLE_PATH=/tmp/u-n1-files.tar.gz"));
     stubFileExists(true);
@@ -1100,7 +1108,8 @@ public class FilesComponentTest extends FakeDBApplication {
                     node));
 
     assertTrue(Thread.interrupted());
-    verify(mockNodeUniverseManager, never()).runScript(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, never())
+        .runScript(any(NodeUniverseContext.class), any(), any());
   }
 
   /**
@@ -1108,7 +1117,7 @@ public class FilesComponentTest extends FakeDBApplication {
    */
   @Test
   public void testCancelledRunRemovesItsTarAndStopsTheComponent() {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenAnswer(
             invocation -> {
               Thread.currentThread().interrupt();
@@ -1116,10 +1125,8 @@ public class FilesComponentTest extends FakeDBApplication {
             });
     boolean[] interruptedDuringRemove = {true};
     when(mockNodeUniverseManager.runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             eq(Arrays.asList("rm", "-f", "/tmp/u-n1-files.tar.gz")),
-            any(),
             eq(false)))
         .thenAnswer(
             invocation -> {
@@ -1144,7 +1151,8 @@ public class FilesComponentTest extends FakeDBApplication {
 
     assertTrue(Thread.interrupted());
     assertFalse(interruptedDuringRemove[0]);
-    verify(mockNodeUniverseManager, times(1)).runScript(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, times(1))
+        .runScript(any(NodeUniverseContext.class), any(), any());
   }
 
   @Test
@@ -1153,8 +1161,9 @@ public class FilesComponentTest extends FakeDBApplication {
     // later spec on the node. The script keeps the ssh user it needs to read /var/log. The install
     // is keyed on the bundle, so the node is checked once per bundle.
     node.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    when(mockImageBundleUtil.findEffectiveSshUser(any(), any(), any())).thenReturn("ec2-user");
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockImageBundleUtil.findEffectiveSshUser(any(), any(), any(), any()))
+        .thenReturn("ec2-user");
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=EMPTY"));
     FilesComponentSpec spec = baseSpec();
     spec.setComponentName("SystemLogs");
@@ -1181,17 +1190,17 @@ public class FilesComponentTest extends FakeDBApplication {
             installContext.capture());
     assertEquals("yugabyte", installContext.getValue().getSshUser());
 
-    ArgumentCaptor<ShellProcessContext> runContext =
-        ArgumentCaptor.forClass(ShellProcessContext.class);
-    verify(mockNodeUniverseManager).runScript(any(), any(), any(), any(), runContext.capture());
-    assertEquals("ec2-user", runContext.getValue().getSshUser());
+    ArgumentCaptor<NodeUniverseContext> runContext =
+        ArgumentCaptor.forClass(NodeUniverseContext.class);
+    verify(mockNodeUniverseManager).runScript(runContext.capture(), any(), any());
+    assertEquals("ec2-user", runContext.getValue().getShellProcessContext().getSshUser());
     // ec2-user can't write the yugabyte-owned bundle directory, so its tar stays in /tmp.
     verify(mockCgroupScriptExecutor, never()).stagingDir(any(), any(), any(), any());
   }
 
   @Test
   public void testSpecWithoutATimeoutRunsWithTheScriptDefault() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=EMPTY"));
     FilesComponentSpec spec = baseSpec();
     spec.setTimeoutSecs(0);
@@ -1206,17 +1215,18 @@ public class FilesComponentTest extends FakeDBApplication {
             new Date(Long.MAX_VALUE),
             node);
 
-    ArgumentCaptor<ShellProcessContext> runContext =
-        ArgumentCaptor.forClass(ShellProcessContext.class);
-    verify(mockNodeUniverseManager).runScript(any(), any(), any(), any(), runContext.capture());
-    assertEquals(3600L, runContext.getValue().getTimeoutSecs());
+    ArgumentCaptor<NodeUniverseContext> runContext =
+        ArgumentCaptor.forClass(NodeUniverseContext.class);
+    verify(mockNodeUniverseManager).runScript(runContext.capture(), any(), any());
+    assertEquals(3600L, runContext.getValue().getShellProcessContext().getTimeoutSecs());
   }
 
   /** The script runs as runAs with the spec's timeout; setup runs as yugabyte, capped. */
   @Test
   public void testContextsForRunAsTheManifestsUserAndSetUpAsYugabyte() {
     node.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    when(mockImageBundleUtil.findEffectiveSshUser(any(), any(), any())).thenReturn("ec2-user");
+    when(mockImageBundleUtil.findEffectiveSshUser(any(), any(), any(), any()))
+        .thenReturn("ec2-user");
     SupportBundleRunAsSupport runAs =
         new SupportBundleRunAsSupport(
             mockImageBundleUtil, manifestLoaderFor(new File("devops").getAbsolutePath()));
@@ -1254,8 +1264,9 @@ public class FilesComponentTest extends FakeDBApplication {
             "      enabled: true",
             ""));
     node.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    when(mockImageBundleUtil.findEffectiveSshUser(any(), any(), any())).thenReturn("ec2-user");
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockImageBundleUtil.findEffectiveSshUser(any(), any(), any(), any()))
+        .thenReturn("ec2-user");
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=EMPTY"));
     FilesComponent component = newComponent(manifestLoaderFor(devopsHome.toString()));
     FilesComponentSpec systemLogs = baseSpec();
@@ -1274,12 +1285,13 @@ public class FilesComponentTest extends FakeDBApplication {
           node);
     }
 
-    ArgumentCaptor<ShellProcessContext> runContext =
-        ArgumentCaptor.forClass(ShellProcessContext.class);
-    verify(mockNodeUniverseManager, times(2))
-        .runScript(any(), any(), any(), any(), runContext.capture());
-    assertEquals("ec2-user", runContext.getAllValues().get(0).getSshUser());
-    assertEquals("yugabyte", runContext.getAllValues().get(1).getSshUser());
+    ArgumentCaptor<NodeUniverseContext> runContext =
+        ArgumentCaptor.forClass(NodeUniverseContext.class);
+    verify(mockNodeUniverseManager, times(2)).runScript(runContext.capture(), any(), any());
+    assertEquals(
+        "ec2-user", runContext.getAllValues().get(0).getShellProcessContext().getSshUser());
+    assertEquals(
+        "yugabyte", runContext.getAllValues().get(1).getShellProcessContext().getSshUser());
   }
 
   /**
@@ -1288,7 +1300,7 @@ public class FilesComponentTest extends FakeDBApplication {
    */
   @Test
   public void testAbortStopsAtTheRunningSpec() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenThrow(new RuntimeException(new InterruptedException("aborted")));
     FilesComponentSpec second = baseSpec();
     second.setComponentName("GFlags");
@@ -1317,7 +1329,8 @@ public class FilesComponentTest extends FakeDBApplication {
                                         new Date(Long.MIN_VALUE),
                                         new Date(Long.MAX_VALUE),
                                         node)))));
-    verify(mockNodeUniverseManager, times(1)).runScript(any(), any(), any(), any(), any());
+    verify(mockNodeUniverseManager, times(1))
+        .runScript(any(NodeUniverseContext.class), any(), any());
     assertTrue(Thread.interrupted());
     // Removed before the abort propagates.
     verifyRemoteTarRemoved();
@@ -1332,7 +1345,7 @@ public class FilesComponentTest extends FakeDBApplication {
   /** A spec that fails, rather than being cancelled, is an ERROR and logs no cancellation. */
   @Test
   public void testFailedSpecIsAnErrorNotACancellation() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenThrow(new RuntimeException("script failed"));
     SupportBundleTaskParams taskParams = paramsWithSpec(baseSpec());
 
@@ -1390,15 +1403,13 @@ public class FilesComponentTest extends FakeDBApplication {
   /** A tar the node fails to remove is logged at WARN with its path; nothing else removes it. */
   @Test
   public void testFailedTarRemovalIsLoggedAtWarn() throws Exception {
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runScript(any(NodeUniverseContext.class), any(), any()))
         .thenReturn(ShellResponse.create(0, "BUNDLE_STATUS=OK"));
     stubFileExists(true);
     mockCopyToProduceTar();
     when(mockNodeUniverseManager.runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             eq(Arrays.asList("rm", "-f", "/tmp/u-n1-files.tar.gz")),
-            any(),
             eq(false)))
         .thenReturn(ShellResponse.create(1, "rm: cannot remove: Permission denied"));
 

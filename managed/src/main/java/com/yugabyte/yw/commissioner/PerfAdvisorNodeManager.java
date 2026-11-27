@@ -2,6 +2,7 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
 import com.yugabyte.yw.common.ShellResponse;
@@ -49,10 +50,11 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
           response =
               nodeUniverseManager
                   .runCommand(
-                      universeConfig.getNodeDetails(),
-                      universe,
-                      commandArgList,
-                      universeConfig.getShellProcessContext())
+                      NodeUniverseContext.of(
+                          universe,
+                          universeConfig.getNodeDetails(),
+                          universeConfig.getShellProcessContext()),
+                      commandArgList)
                   .processErrors();
         } else if (command instanceof FileUploadCommand) {
           FileUploadCommand fileUpload = (FileUploadCommand) command;
@@ -66,12 +68,13 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
             tempPath = fileHelperService.createTempFile(prefix, ".py");
             Files.write(tempPath, pythonText.getBytes(StandardCharsets.UTF_8));
             nodeUniverseManager.uploadFileToNode(
-                universeConfig.getNodeDetails(),
-                universe,
+                NodeUniverseContext.of(
+                    universe,
+                    universeConfig.getNodeDetails(),
+                    universeConfig.getShellProcessContext()),
                 tempPath.toString(),
                 fileUpload.getDestFilePath(),
-                fileUpload.getFilePermissions(),
-                universeConfig.getShellProcessContext());
+                fileUpload.getFilePermissions());
           }
         }
       }

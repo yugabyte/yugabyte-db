@@ -145,7 +145,8 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     InstallNodeAgent.Params params = new InstallNodeAgent.Params();
     Provider provider = Util.getProviderForNode(nodeDetails, cluster);
-    params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, nodeDetails);
+    params.sshUser =
+        imageBundleUtil.findEffectiveSshUser(provider, universe, cluster.userIntent, nodeDetails);
     params.airgap = provider.getAirGapInstall();
     params.nodeName = nodeDetails.nodeName;
     params.customerUuid = customerUuid;

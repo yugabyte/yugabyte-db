@@ -1528,14 +1528,7 @@ public class UniverseCRUDHandler {
    */
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
-    validateFipsGFlagsForUpdate(u, taskParams);
-    checkTaskParamsForUpdate(u, taskParams);
-    // enforce user tags for cloud instances.
-    for (Cluster cluster : taskParams.clusters) {
-      validateUserTags(customer, cluster.userIntent);
-      GFlagsUtil.validateGFlagValues(cluster.userIntent);
-    }
-    validateOciInstanceTags(taskParams);
+    checkTaskParamsForUpdate(u, customer, taskParams, true);
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
@@ -1775,7 +1768,7 @@ public class UniverseCRUDHandler {
     return rootCA;
   }
 
-  private void checkCanEdit(Customer customer, Universe u) {
+  public void checkCanEdit(Customer customer, Universe u) {
     LOG.info(
         "Update universe {} [ {} ] customer {}.",
         u.getName(),
@@ -2941,13 +2934,15 @@ public class UniverseCRUDHandler {
     }
   }
 
-  // TODO This is used by calls originating from the UI that are not in swagger APIs. More
-  // validations may be needed later like checking the fields of all NodeDetails objects because
-  // the existing nodes in the universe are replaced by these nodes in the task params. UI sends
-  // all the nodes irrespective of the cluster. Only the cluster getting updated, is sent in the
-  // request.
-  private void checkTaskParamsForUpdate(
-      Universe universe, UniverseDefinitionTaskParams taskParams) {
+  // TODO More validations may be needed later like checking the fields of all NodeDetails objects
+  //  because the existing nodes in the universe are replaced by these nodes in the task params.
+  //  UI sends all the nodes irrespective of the cluster. Only the cluster getting updated,
+  //  is sent in the request.
+  public void checkTaskParamsForUpdate(
+      Universe universe,
+      Customer customer,
+      UniverseDefinitionTaskParams taskParams,
+      boolean checkUpdateOptions) {
 
     checkInstanceTypeConsistency(universe);
 
@@ -2991,30 +2986,33 @@ public class UniverseCRUDHandler {
               universe.getCluster(cluster.uuid).userIntent.getManagedLoadBalancer(),
               cluster.userIntent.getManagedLoadBalancer()));
     }
-
-    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
-        getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
-    if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
-        && !updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "No changes that could be applied by EditUniverse");
+    if (checkUpdateOptions) {
+      Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+          getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+      if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
+          && !updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No changes that could be applied by EditUniverse");
+      }
     }
+
+    validateFipsGFlagsForUpdate(universe, taskParams);
+    validateOciInstanceTags(taskParams);
 
     UniverseTaskParams.CommunicationPorts communicationPorts = taskParams.communicationPorts;
     if (communicationPorts != null
         && !Objects.equals(communicationPorts, universe.getUniverseDetails().communicationPorts)
-        && universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .getAllCloudTypes()
-            .contains(Common.CloudType.kubernetes)) {
+        && isK8s) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot change communication ports for k8s universe");
     }
     boolean rfChangeEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableRFChange);
 
     for (Cluster newCluster : taskParams.clusters) {
+      // enforce user tags for cloud instances.
+      validateUserTags(customer, newCluster.userIntent);
+      GFlagsUtil.validateGFlagValues(newCluster.userIntent);
+
       Cluster curCluster = universe.getCluster(newCluster.uuid);
       if (isK8s
           && !Objects.equals(
@@ -3043,24 +3041,35 @@ public class UniverseCRUDHandler {
           curCluster.userIntent.useNodeToNodeClientCerts;
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
+      Set<UUID> currentProviderUUIDs = new HashSet<>(curIntent.getAllProviderUUIDs());
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {
-        if (!Objects.equals(
-            newIntent.getImageBundleUUIDForProvider(providerUUID),
-            curIntent.getImageBundleUUIDForProvider(providerUUID))) {
+        UUID newBundleUuid = newIntent.getImageBundleUUIDForProvider(providerUUID);
+        // A provider added in this edit has no current bundle.
+        UUID curBundleUuid =
+            currentProviderUUIDs.contains(providerUUID)
+                ? curIntent.getImageBundleUUIDForProvider(providerUUID)
+                : null;
+        if (!Objects.equals(newBundleUuid, curBundleUuid)) {
           Provider provider = Provider.getOrBadRequest(providerUUID);
-          ImageBundle newBundle =
-              ImageBundle.getOrBadRequest(
-                  provider.getUuid(), newIntent.getImageBundleUUIDForProvider(providerUUID));
+          ImageBundle newBundle = ImageBundle.getOrBadRequest(provider.getUuid(), newBundleUuid);
           ImageBundleUtil.checkArchMatchesUniverse(universe, newBundle);
         }
       }
+      boolean newPartitioned = !CollectionUtils.isEmpty(newCluster.getPartitions());
+      boolean currentPartitioned = !CollectionUtils.isEmpty(curCluster.getPartitions());
 
-      if (CollectionUtils.isEmpty(newCluster.getPartitions())
-          != CollectionUtils.isEmpty(curCluster.getPartitions())) {
+      if (!newPartitioned && currentPartitioned) {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
-      if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
-        PlacementInfoUtil.validatePartitions(newCluster, curCluster);
+      if (newPartitioned) {
+        if (!currentPartitioned) {
+          PlacementInfoUtil.validatePartitions(newCluster, null);
+        } else {
+          PlacementInfoUtil.validatePartitions(newCluster, curCluster);
+        }
+      }
+      // Validating the case when both old and new have partitions.
+      if (newPartitioned && currentPartitioned) {
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =

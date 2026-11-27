@@ -533,15 +533,17 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
   private void createResizeNodeTasks(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
-    Set<NodeDetails> nodes = new LinkedHashSet<>();
-    nodes.addAll(masterNodes);
-    nodes.addAll(tServerNodes);
-
-    UserIntent currUserIntent =
+    Cluster primaryCluster =
         Universe.getOrBadRequest(taskParams().getUniverseUUID())
             .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent;
+            .getPrimaryCluster();
+    // This resize takes the new instance type and disk from the primary cluster, so it applies only
+    // to the primary cluster's nodes. Read replica nodes keep their own.
+    Set<NodeDetails> nodes = new LinkedHashSet<>();
+    masterNodes.stream().filter(n -> n.isInPlacement(primaryCluster.uuid)).forEach(nodes::add);
+    tServerNodes.stream().filter(n -> n.isInPlacement(primaryCluster.uuid)).forEach(nodes::add);
+
+    UserIntent currUserIntent = primaryCluster.userIntent;
 
     Integer currDiskSize = currUserIntent.deviceInfo.volumeSize;
 

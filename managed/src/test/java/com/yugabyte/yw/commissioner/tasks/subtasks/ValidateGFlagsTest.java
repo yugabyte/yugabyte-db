@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
@@ -97,7 +98,8 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     task.initialize(params);
     task.run();
 
-    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockNodeUniverseManager, times(4))
+        .runCommand(any(NodeUniverseContext.class), anyList(), eq(false));
     verify(mockGFlagsValidation, never())
         .validateGFlagsViaRpc(
             any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
@@ -143,7 +145,8 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     task.initialize(params);
     task.run();
 
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockNodeUniverseManager, never())
+        .runCommand(any(NodeUniverseContext.class), anyList(), eq(false));
     verify(mockGFlagsValidation, never())
         .validateGFlagsViaRpc(
             any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
@@ -159,7 +162,7 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(ShellResponse.create(1, "ERROR invalid gflag"));
 
     ValidateGFlags.Params params = new ValidateGFlags.Params();

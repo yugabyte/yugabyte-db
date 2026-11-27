@@ -5,10 +5,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,6 +19,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +61,9 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
      * source has IP). Ports are derived from each target's master/tserver RPC ports.
      */
     public List<NodeDetails> targetNodes = new ArrayList<>();
+
+    // Map by clusterUUID
+    public Map<UUID, UserIntent> userIntentMap;
   }
 
   @Inject
@@ -120,6 +127,8 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
       Universe universe,
       List<NodeDetails> targetNodes,
       boolean cloudEnabled) {
+    Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap =
+        getUserIntentMap(taskParams().userIntentMap);
     for (NodeDetails targetNode : targetNodes) {
       if (sourceNode.nodeName.equals(targetNode.nodeName)) {
         continue;
@@ -152,7 +161,8 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
             port,
             sourceNode.nodeName,
             targetNode.nodeName,
-            "forward")) {
+            "forward",
+            userIntentMap.get(sourceNode.placementUuid))) {
           throw new RuntimeException(
               String.format(
                   "Port connectivity check failed (forward) from %s (%s) to %s (%s) on port %d",
@@ -182,7 +192,8 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
                 port,
                 targetNode.nodeName,
                 sourceNode.nodeName,
-                "reverse")) {
+                "reverse",
+                userIntentMap.get(targetNode.placementUuid))) {
               throw new RuntimeException(
                   String.format(
                       "Port connectivity check failed (reverse) from %s (%s) to %s (%s) on port %d",
@@ -227,7 +238,8 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
       int port,
       String fromName,
       String toName,
-      String direction) {
+      String direction,
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
@@ -236,7 +248,8 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
     try {
       ShellResponse response =
           nodeUniverseManager.runCommand(
-              runOnNode, universe, buildPortReachabilityCommand(connectToIp, port), context);
+              NodeUniverseContext.of(universe, runOnNode, context, userIntent),
+              buildPortReachabilityCommand(connectToIp, port));
       if (response.isSuccess()) {
         return true;
       }

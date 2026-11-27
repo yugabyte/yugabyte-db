@@ -74,7 +74,7 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     List<Integer> ports =
-        getForwardedPorts(getUserIntent(), universe.getUniverseDetails().communicationPorts);
+        getForwardedPorts(getStoredUserIntent(), universe.getUniverseDetails().communicationPorts);
     LoadBalancerConfig lbConfig = taskParams().lbConfig;
     try {
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = getNodeIDs(lbConfig.getAzNodes());

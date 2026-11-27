@@ -8,6 +8,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -578,7 +579,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       // Not using bash since some gflag values may have complicated escaping needed for bash case
       ShellResponse response =
           nodeUniverseManager.runCommand(
-              node, universe, command, shellContext, false /* use bash */);
+              NodeUniverseContext.of(universe, node, shellContext), command, false /* use bash */);
       if (response.code != 0) {
         log.warn(
             "Shell response returned with non-zero exit code with message: {}",

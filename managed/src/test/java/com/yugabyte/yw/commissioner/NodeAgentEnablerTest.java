@@ -66,6 +66,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeAgentEnablerTest extends FakeDBApplication {
@@ -151,6 +152,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   private static class TestUniverseTaskBase extends UniverseTaskBase {
     private final NodeAgentEnabler nodeAgentEnabler;
     private final RunnableTask runnableTask;
+    private UUID universeUUID;
 
     public TestUniverseTaskBase(
         BaseTaskDependencies baseTaskDependencies, NodeAgentEnabler nodeAgentEnabler) {
@@ -158,6 +160,8 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
       this.nodeAgentEnabler = nodeAgentEnabler;
       runnableTask = mock(RunnableTask.class);
       taskParams = mock(UniverseTaskParams.class);
+      // The field is assigned per test after this constructor runs.
+      Mockito.when(taskParams().getUniverseUUID()).thenAnswer(invocation -> universeUUID);
     }
 
     @Override
@@ -283,15 +287,9 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
     // Node agent is disabled for provider1.
-    SubTaskGroup group1 =
-        universeTaskBase.createInstallNodeAgentTasks(
-            Universe.getOrBadRequest(universeUuid1),
-            Universe.getOrBadRequest(universeUuid1).getNodes());
+    SubTaskGroup group1 = createInstallNodeAgentTasks(Universe.getOrBadRequest(universeUuid1));
     // Node agent is enabled for provider2.
-    SubTaskGroup group2 =
-        universeTaskBase.createInstallNodeAgentTasks(
-            Universe.getOrBadRequest(universeUuid2),
-            Universe.getOrBadRequest(universeUuid2).getNodes());
+    SubTaskGroup group2 = createInstallNodeAgentTasks(Universe.getOrBadRequest(universeUuid2));
     universe1 = Universe.getOrBadRequest(universeUuid1);
     universe2 = Universe.getOrBadRequest(universeUuid2);
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
@@ -319,8 +317,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
             String.valueOf(useUniverseCertificates));
 
     Universe universe = Universe.getOrBadRequest(universeUuid1);
-    SubTaskGroup group =
-        universeTaskBase.createInstallNodeAgentTasks(universe, universe.getNodes());
+    SubTaskGroup group = createInstallNodeAgentTasks(universe);
     List<UUID> certificateUuids = getInstallNodeAgentCertificateUuids(group);
     UUID expectedCertificateUuid = useUniverseCertificates ? certificateInfo.getUuid() : null;
 
@@ -349,8 +346,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         .forProvider(provider1)
         .setValue(ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey(), "true");
 
-    SubTaskGroup group =
-        universeTaskBase.createInstallNodeAgentTasks(universe, universe.getNodes());
+    SubTaskGroup group = createInstallNodeAgentTasks(universe);
     List<UUID> certificateUuids = getInstallNodeAgentCertificateUuids(group);
 
     assertEquals(universe.getNodes().size(), certificateUuids.size());
@@ -779,5 +775,10 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
     universe = Universe.getOrBadRequest(universeUuid1);
     assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
+  }
+
+  private SubTaskGroup createInstallNodeAgentTasks(Universe universe) {
+    universeTaskBase.universeUUID = universe.getUniverseUUID();
+    return universeTaskBase.createInstallNodeAgentTasks(universe, universe.getNodes());
   }
 }

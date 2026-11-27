@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mockingDetails;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -26,11 +22,15 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.invocation.Invocation;
 
 /**
  * Pins the layering: a component download subtask collects, and nothing more. Staged remote scripts
@@ -67,20 +67,27 @@ public class SupportBundleComponentDownloadTest extends FakeDBApplication {
   public void testComponentDownloadDoesNotTearDownRemoteScripts() {
     runDownload();
 
-    verify(mockNodeUniverseManager, never())
-        .runCommand(
-            eq(node),
-            eq(universe),
-            argThat(cmd -> cmd != null && cmd.contains("rm") && cmd.contains("-rf")),
-            any(ShellProcessContext.class),
-            eq(false));
-    verify(mockNodeUniverseManager, never())
-        .runCommand(
-            eq(node),
-            eq(universe),
-            argThat(cmd -> cmd != null && String.join(" ", cmd).contains("systemctl")),
-            any(ShellProcessContext.class),
-            eq(false));
+    // Every runCommand overload, so a teardown can't slip through one that isn't verified.
+    List<List<String>> commands =
+        mockingDetails(mockNodeUniverseManager).getInvocations().stream()
+            .filter(inv -> inv.getMethod().getName().equals("runCommand"))
+            .map(SupportBundleComponentDownloadTest::commandOf)
+            .collect(Collectors.toList());
+    assertFalse(commands.stream().anyMatch(cmd -> cmd.contains("rm") && cmd.contains("-rf")));
+    assertFalse(commands.stream().anyMatch(cmd -> String.join(" ", cmd).contains("systemctl")));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<String> commandOf(Invocation invocation) {
+    for (Object arg : invocation.getArguments()) {
+      if (arg instanceof List) {
+        return (List<String>) arg;
+      }
+      if (arg instanceof String) {
+        return Collections.singletonList((String) arg);
+      }
+    }
+    return Collections.emptyList();
   }
 
   private void runDownload() {

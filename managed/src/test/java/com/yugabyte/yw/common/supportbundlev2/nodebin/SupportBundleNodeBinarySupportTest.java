@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.supportbundlev2.nodebin;
 
+import static com.yugabyte.yw.common.NodeUniverseContextMatchers.nodeContext;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -30,6 +31,7 @@ import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -185,10 +187,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
   /** Arch detection: uname -m on the node. A later stub in a test replaces the one from setUp. */
   private void stubNodeArch(String unameOutput) {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class)))
+            nodeContext(node, universe), eq(Arrays.asList("uname", "-m"))))
         .thenReturn(runCommandOutput(unameOutput));
   }
 
@@ -220,7 +219,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             SupportBundleNodeBinarySupport.UnverifiedNodeCopy.TRUST));
 
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
   }
 
   @Test
@@ -228,10 +227,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     // A node carrying a different build is the case presence checks alone would miss.
     stubRemoteChecksum("0123456789abcdef0123456789abcdef");
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
     stubMkdir();
@@ -256,10 +253,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     stubMkdir();
     stubRename();
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(fileExistsOutput(false));
 
@@ -273,26 +268,22 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     stubMkdir();
     org.mockito.Mockito.doThrow(new RuntimeException("connection reset"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
 
     assertFalse(deployBinary());
 
     ArgumentCaptor<String> tmpPath = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), tmpPath.capture(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), tmpPath.capture(), any());
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(Arrays.asList("rm", "-f", tmpPath.getValue())),
-            any(ShellProcessContext.class),
             eq(false));
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             argThat(cmd -> cmd != null && !cmd.isEmpty() && "mv".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false));
   }
 
@@ -301,10 +292,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     stubRemoteChecksum("");
     stubMkdir();
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && !cmd.isEmpty() && "mv".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(ShellResponse.create(1, "mv: No space left on device"));
 
@@ -312,13 +301,11 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
 
     ArgumentCaptor<String> tmpPath = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), tmpPath.capture(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), tmpPath.capture(), any());
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(Arrays.asList("rm", "-f", tmpPath.getValue())),
-            any(ShellProcessContext.class),
             eq(false));
   }
 
@@ -338,10 +325,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     // A file md5sum cannot read is a non-zero exit, which reads as an unknown checksum.
     stubRemoteChecksum("");
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
     stubMkdir();
@@ -377,13 +362,11 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
 
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(UNBUILT_REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false));
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
   }
 
   @Test
@@ -391,10 +374,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     // The other two helpers keep the old behaviour: a stale build costs accuracy, and refusing
     // would fail collect_cdc_state outright rather than protect anything.
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(UNBUILT_REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
 
@@ -415,10 +396,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     // when the yb home is not traversable by that user.
     ShellProcessContext context = ShellProcessContext.builder().sshUser("centos").build();
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe, context),
             eq(SupportBundleNodeStaging.fileExistsCommand(UNBUILT_REMOTE_PATH)),
-            eq(context),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
 
@@ -434,10 +413,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
 
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe, context),
             eq(SupportBundleNodeStaging.fileExistsCommand(UNBUILT_REMOTE_PATH)),
-            eq(context),
             eq(false));
   }
 
@@ -462,11 +439,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     }
 
     verify(mockNodeUniverseManager, times(1))
-        .runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class));
+        .runCommand(nodeContext(node, universe), eq(Arrays.asList("uname", "-m")));
 
     // A second bundle must decide for itself; the cache is scoped to one collection.
     assertTrue(
@@ -479,21 +452,14 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             "consequence",
             SupportBundleNodeBinarySupport.UnverifiedNodeCopy.TRUST));
     verify(mockNodeUniverseManager, times(2))
-        .runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class));
+        .runCommand(nodeContext(node, universe), eq(Arrays.asList("uname", "-m")));
   }
 
   /** A cancelled step aborts the deploy; it isn't cached as "not deployed" for the bundle. */
   @Test
   public void testCancelledDeployThrowsAndIsNotCached() throws Exception {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class)))
+            nodeContext(node, universe), eq(Arrays.asList("uname", "-m"))))
         .thenReturn(cancelledResponse(), runCommandOutput("x86_64"));
     stubRemoteChecksum(localChecksum());
     UUID bundle = UUID.randomUUID();
@@ -537,10 +503,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     CountDownLatch hung = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class)))
+            nodeContext(node, universe), eq(Arrays.asList("uname", "-m"))))
         .thenAnswer(
             invocation -> {
               hung.countDown();
@@ -548,17 +511,12 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
               return runCommandOutput("x86_64");
             });
     when(mockNodeUniverseManager.runCommand(
-            eq(other),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class)))
+            nodeContext(other, universe), eq(Arrays.asList("uname", "-m"))))
         .thenReturn(runCommandOutput("x86_64"));
     stubRemoteChecksum(localChecksum());
     when(mockNodeUniverseManager.runCommand(
-            eq(other),
-            eq(universe),
+            nodeContext(other, universe),
             argThat(cmd -> cmd != null && cmd.size() == 2 && "md5sum".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(runCommandOutput(localChecksum()));
     ShellProcessContext context = ShellProcessContext.builder().build();
@@ -605,10 +563,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     CountDownLatch hung = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class)))
+            nodeContext(node, universe), eq(Arrays.asList("uname", "-m"))))
         .thenAnswer(
             invocation -> {
               hung.countDown();
@@ -646,11 +601,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
       pool.shutdownNow();
     }
     verify(mockNodeUniverseManager, times(1))
-        .runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class));
+        .runCommand(nodeContext(node, universe), eq(Arrays.asList("uname", "-m")));
   }
 
   /** A node name whose deploy key lands in the same bin as {@code nodeName}'s in a 16-bin map. */
@@ -674,10 +625,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
   @Test
   public void testCancelledCheckOfAnUnbuiltHelperThrows() {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(UNBUILT_REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(cancelledResponse());
 
@@ -698,10 +647,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
   @Test
   public void testCancelledChecksumThrows() {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && cmd.size() == 2 && "md5sum".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(cancelledResponse());
 
@@ -718,7 +665,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
                 SupportBundleNodeBinarySupport.UnverifiedNodeCopy.TRUST));
     assertTrue(Thread.interrupted());
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
   }
 
   @Test
@@ -746,11 +693,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
         SupportBundleNodeBinarySupport.UnverifiedNodeCopy.TRUST);
 
     verify(mockNodeUniverseManager, times(2))
-        .runCommand(
-            eq(node),
-            eq(universe),
-            eq(Arrays.asList("uname", "-m")),
-            any(ShellProcessContext.class));
+        .runCommand(nodeContext(node, universe), eq(Arrays.asList("uname", "-m")));
   }
 
   @Test
@@ -785,13 +728,11 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             SupportBundleNodeBinarySupport.UnverifiedNodeCopy.TRUST));
 
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
     verify(mockNodeUniverseManager, times(2))
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && cmd.size() == 2 && "md5sum".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false));
   }
 
@@ -836,7 +777,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     // Lets the provider ssh user resolve; without it SystemLogs quietly runs as the default user.
     node.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     ImageBundleUtil imageBundleUtil = mock(ImageBundleUtil.class);
-    when(imageBundleUtil.findEffectiveSshUser(any(), any(), any())).thenReturn("ec2-user");
+    when(imageBundleUtil.findEffectiveSshUser(any(), any(), any(), any())).thenReturn("ec2-user");
     SupportBundleCgroupScriptExecutor scriptExecutor =
         mock(SupportBundleCgroupScriptExecutor.class);
     when(scriptExecutor.executeScript(
@@ -869,7 +810,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
         UUID.randomUUID());
 
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
     ArgumentCaptor<ShellProcessContext> runContext =
         ArgumentCaptor.forClass(ShellProcessContext.class);
     ArgumentCaptor<ShellProcessContext> stageContext =
@@ -918,7 +859,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     node.cloudInfo.private_ip = "10.0.0.1";
     node.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     ImageBundleUtil imageBundleUtil = mock(ImageBundleUtil.class);
-    when(imageBundleUtil.findEffectiveSshUser(any(), any(), any())).thenReturn("ec2-user");
+    when(imageBundleUtil.findEffectiveSshUser(any(), any(), any(), any())).thenReturn("ec2-user");
     SupportBundleCgroupScriptExecutor scriptExecutor =
         mock(SupportBundleCgroupScriptExecutor.class);
     when(scriptExecutor.executeScript(
@@ -987,69 +928,60 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
    */
   private void stubNodeWhereOnlyYugabyteReachesYbHome() {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && cmd.size() == 2 && "md5sum".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenAnswer(
             invocation -> {
-              ShellProcessContext context = invocation.getArgument(3);
+              NodeUniverseContext context = invocation.getArgument(0);
               if (!ownsYbHome(context) || nodeCopyMd5 == null) {
                 return ShellResponse.create(1, "md5sum: " + REMOTE_PATH + ": Permission denied");
               }
               return runCommandOutput(nodeCopyMd5 + "  " + REMOTE_PATH);
             });
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
-            argThat((List<String> cmd) -> cmd != null && cmd.contains("mkdir")),
-            any(ShellProcessContext.class)))
+            nodeContext(node, universe),
+            argThat((List<String> cmd) -> cmd != null && cmd.contains("mkdir"))))
         .thenAnswer(
             invocation ->
-                ownsYbHome(invocation.getArgument(3))
+                ownsYbHome(invocation.getArgument(0))
                     ? ShellResponse.create(0, "")
                     : ShellResponse.create(1, "mkdir: cannot create directory: Permission denied"));
     doAnswer(
             invocation -> {
-              if (ownsYbHome(invocation.getArgument(5))) {
+              if (ownsYbHome(invocation.getArgument(0))) {
                 uploadedTmpMd5 = localChecksum();
               }
               return null;
             })
         .when(mockNodeUniverseManager)
         .uploadFileToNode(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             any(),
             argThat((String path) -> path != null && path.startsWith(REMOTE_PATH + ".tmp.")),
-            any(),
             any());
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && !cmd.isEmpty() && "mv".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenAnswer(
             invocation -> {
-              if (!ownsYbHome(invocation.getArgument(3)) || uploadedTmpMd5 == null) {
+              if (!ownsYbHome(invocation.getArgument(0)) || uploadedTmpMd5 == null) {
                 return ShellResponse.create(1, "mv: Permission denied");
               }
               nodeCopyMd5 = uploadedTmpMd5;
               return ShellResponse.create(0, "");
             });
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand(REMOTE_PATH)),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenAnswer(invocation -> fileExistsOutput(nodeCopyMd5 != null));
   }
 
-  private static boolean ownsYbHome(ShellProcessContext context) {
-    return ShellProcessContext.DEFAULT_REMOTE_USER.equals(context.getSshUser());
+  private static boolean ownsYbHome(NodeUniverseContext context) {
+    return ShellProcessContext.DEFAULT_REMOTE_USER.equals(
+        context.getShellProcessContext().getSshUser());
   }
 
   private String localChecksum() throws Exception {
@@ -1066,20 +998,16 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
    */
   private void stubRemoteChecksum(String md5) {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && cmd.size() == 2 && "md5sum".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(runCommandOutput(md5));
   }
 
   private void stubRename() {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && !cmd.isEmpty() && "mv".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(ShellResponse.create(0, ""));
   }
@@ -1088,24 +1016,19 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
   private void verifyUploadedThenRenamed(String localPath, String remotePath) {
     ArgumentCaptor<String> tmpPath = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager)
-        .uploadFileToNode(
-            eq(node), eq(universe), eq(localPath), tmpPath.capture(), eq("755"), any());
+        .uploadFileToNode(nodeContext(node, universe), eq(localPath), tmpPath.capture(), eq("755"));
     assertTrue(tmpPath.getValue(), tmpPath.getValue().startsWith(remotePath + ".tmp."));
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(Arrays.asList("mv", "-f", tmpPath.getValue(), remotePath)),
-            any(ShellProcessContext.class),
             eq(false));
   }
 
   private void stubMkdir() {
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
-            argThat((List<String> cmd) -> cmd != null && cmd.contains("mkdir")),
-            any(ShellProcessContext.class)))
+            nodeContext(node, universe),
+            argThat((List<String> cmd) -> cmd != null && cmd.contains("mkdir"))))
         .thenReturn(ShellResponse.create(0, ""));
   }
 
@@ -1134,10 +1057,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     stubNodeArch("sparc64");
     when(mockNodeUniverseManager.getYbHomeDir(node, universe)).thenReturn("/home/yugabyte");
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand("/home/yugabyte/bin/yb-dump-cdc-state")),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
 
@@ -1149,7 +1070,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             ShellProcessContext.builder().description("test").build()));
 
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
   }
 
   @Test
@@ -1161,10 +1082,8 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     // Only the post-upload check: the node's copy is judged by checksum, which is unstubbed here
     // and so reads as unknown.
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             eq(SupportBundleNodeStaging.fileExistsCommand("/home/yugabyte/bin/yb-dump-cdc-state")),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(fileExistsOutput(true));
     stubMkdir();
@@ -1239,21 +1158,19 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             ShellProcessContext.builder().description("test").build()));
 
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
     // Not even probed: what the node has cannot change the answer.
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             argThat(SupportBundleNodeBinarySupportTest::isFileExistsCheck),
-            any(),
             anyBoolean());
   }
 
   /** The arch probe starts a deploy attempt; the upload of the local build finishes it. */
   private void assertDeployAttempted() throws Exception {
     verify(mockNodeUniverseManager)
-        .runCommand(eq(node), eq(universe), eq(Arrays.asList("uname", "-m")), any());
+        .runCommand(nodeContext(node, universe), eq(Arrays.asList("uname", "-m")));
 
     java.util.Optional<java.nio.file.Path> local =
         redactionSupport.resolveLocalBinaryPath(java.util.Optional.of("amd64"));
@@ -1268,12 +1185,10 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                eq(node),
-                eq(universe),
+                nodeContext(node, universe),
                 eq(
                     SupportBundleNodeStaging.fileExistsCommand(
                         "/home/yugabyte/bin/yb-redact-server-conf")),
-                any(ShellProcessContext.class),
                 eq(false)))
         .thenReturn(fileExistsOutput(false), fileExistsOutput(true));
     stubMkdir();
@@ -1297,12 +1212,10 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                eq(node),
-                eq(universe),
+                nodeContext(node, universe),
                 eq(
                     SupportBundleNodeStaging.fileExistsCommand(
                         "/home/yugabyte/bin/yb-redact-server-conf")),
-                any(ShellProcessContext.class),
                 eq(false)))
         .thenThrow(new RuntimeException("ssh blew up"))
         .thenReturn(fileExistsOutput(true));
@@ -1416,8 +1329,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
   }
 
   private Optional<String> callWith(ShellResponse response) {
-    when(mockNodeUniverseManager.runCommand(
-            any(), any(), anyList(), any(ShellProcessContext.class), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(response);
     return SupportBundleRemoteChecksum.remoteMd5(
         mockNodeUniverseManager,
@@ -1442,7 +1354,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
 
     ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), command.capture(), any(ShellProcessContext.class), eq(false));
+        .runCommand(any(NodeUniverseContext.class), command.capture(), eq(false));
 
     assertEquals(List.of("md5sum", CHECKSUM_REMOTE_PATH), command.getValue());
     String joined = String.join(" ", command.getValue());
@@ -1490,8 +1402,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
   /** A transport that throws must not take the caller down with it. */
   @Test
   public void testTransportFailureYieldsEmpty() {
-    when(mockNodeUniverseManager.runCommand(
-            any(), any(), anyList(), any(ShellProcessContext.class), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenThrow(new RuntimeException("node unreachable"));
 
     assertFalse(
@@ -1533,12 +1444,10 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
     stubMkdir();
     doThrow(new RuntimeException("disk full"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
     when(mockNodeUniverseManager.runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && cmd.size() == 3 && "rm".equals(cmd.get(0))),
-            any(ShellProcessContext.class),
             eq(false)))
         .thenReturn(ShellResponse.create(1, "Permission denied"));
 

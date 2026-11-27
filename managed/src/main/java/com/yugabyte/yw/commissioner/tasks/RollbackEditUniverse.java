@@ -3,13 +3,17 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
@@ -23,6 +27,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -148,6 +153,7 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
           universe.getUniverseUUID(),
           nodesToDestroy.size());
       if (!nodesToDestroy.isEmpty()) {
+        Universe lockedUniverse = universe;
         createSetNodeStateTasks(nodesToDestroy, NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         createDestroyServerTasks(
@@ -156,7 +162,9 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
                 forceDestroyOnlyOnOnprem(universe),
                 true /* deleteNode */,
                 true /* deleteRootVolumes */,
-                true /* skipDestroyPrecheck */)
+                true /* skipDestroyPrecheck */,
+                false /* skipUpdateNodeState */,
+                node -> getDestroyUserIntent(lockedUniverse, node))
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
@@ -220,6 +228,46 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
+  }
+
+  /**
+   * Intent for destroying an added node. The stored intent is used when it knows the node's
+   * provider. An edit that adds a provider and fails before {@code UpdateUniverseIntent} leaves the
+   * stored intent without that provider's specification, so the destroy would fail to find its
+   * access key and SSH user. The edit's target intent has it.
+   */
+  private UserIntent getDestroyUserIntent(Universe universe, NodeDetails node) {
+    Cluster stored = universe.getCluster(node.placementUuid);
+    Cluster targetCluster = target == null ? null : target.getClusterByUuid(node.placementUuid);
+    UUID providerUuid = node.azUuid == null ? null : Util.getProviderByAz(node.azUuid).getUuid();
+    return chooseDestroyUserIntent(
+        stored == null ? null : stored.userIntent,
+        targetCluster == null ? null : targetCluster.userIntent,
+        providerUuid);
+  }
+
+  /**
+   * Picks the stored intent unless it lacks {@code providerUuid} and the target intent has it.
+   *
+   * @throws IllegalStateException if neither intent is present
+   */
+  @VisibleForTesting
+  static UserIntent chooseDestroyUserIntent(
+      @Nullable UserIntent stored, @Nullable UserIntent target, @Nullable UUID providerUuid) {
+    if (stored == null) {
+      if (target == null) {
+        throw new IllegalStateException("No user intent for the node to destroy");
+      }
+      return target;
+    }
+    if (providerUuid == null
+        || target == null
+        || stored.getAllProviderUUIDs().contains(providerUuid)
+        || !target.getAllProviderUUIDs().contains(providerUuid)) {
+      return stored;
+    }
+    log.info("Destroying node of provider {} with the edit's target intent", providerUuid);
+    return target;
   }
 
   /**
