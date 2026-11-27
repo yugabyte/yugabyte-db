@@ -6,6 +6,7 @@ description: Logical replication in YugabyteDB.
 headcontent: PostgreSQL logical replication concepts
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/key-concepts/
+  - /stable/additional-features/change-data-capture/using-logical-replication/slot-behavior-by-version/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication
@@ -39,7 +40,7 @@ You can specify the type of LSN to use when you create a replication slot. Yugab
 
 A replication slot belongs to one database and is not tied to a publication. The client names the publication when it starts streaming (the `publication_names` option of `START_REPLICATION`), so the same slot can be started with different publications over time, as in PostgreSQL.
 
-When you create a slot, YugabyteDB takes a consistent snapshot of the database and starts retaining changes for every table in the database, not only for the tables in a publication. Tables created after the slot are added to the slot automatically. The publication only selects which of those tables are streamed to the client.
+When you create a slot, YugabyteDB establishes a [consistent point](#consistent-point) for the database and starts retaining changes for every table in the database, not only for the tables in a publication. Tables created after the slot are added to the slot automatically. The publication only selects which of those tables are streamed to the client.
 
 If the client starts streaming without naming a publication, YugabyteDB streams the changes of all tables in the database, as if a `FOR ALL TABLES` publication had been used. This applies to `test_decoding` and `wal2json`. `pgoutput` and `yboutput` require the `publication_names` option and fail without it, as in PostgreSQL.
 
@@ -92,9 +93,63 @@ A slot stops working in the following cases:
 - **Unqualified table in the publication.** A table that is [not of interest](#tables-of-interest) is in the publication, at start or added while streaming. Streaming fails unless the table is removed from the publication or `cdc_skip_unqualified_tables_for_polling` is set.
 - **Database dropped.** Dropping the database drops its slots.
 
-An expired slot can't be recovered. Drop the slot and create a new one. The new slot takes a fresh snapshot of the database, so the consumer must take a new initial snapshot as well.
+An expired slot can't be recovered. Drop the slot and create a new one. The new slot has a new [consistent point](#consistent-point), so the consumer must take a new [initial snapshot](#initial-snapshot) as well.
 
-For how this behavior has changed across releases and how it compares with PostgreSQL, see [Slot behavior by version](../slot-behavior-by-version/).
+#### Slot behavior by version
+
+The following table summarizes how slot behavior has changed across releases and how it compares with PostgreSQL 15, which YugabyteDB logical replication is based on.
+
+| Behavior | YugabyteDB | PostgreSQL 15 |
+| :--- | :--- | :--- |
+| Tables retained for a slot | **All versions:** All tables in the database, from slot creation. Tables created later are added automatically. | WAL, shared by all tables and databases. |
+| Streaming without a publication | **All versions:** All tables, for `test_decoding` and `wal2json`. `pgoutput` and `yboutput` require a publication. | Same. |
+| Publication changes while streaming | **v2024.2 to v2025.2:** Applied at the next [periodic refresh](../advanced-topic/#periodic-publication), every 15 minutes by default.<br>**v2026.1 and later:** Applied at commit time with [implicit publication](../advanced-topic/#implicit-publication). | Applied at commit time. |
+| Tables not of interest | **All versions:** A table not polled within 4 hours of slot creation becomes unqualified. Its changes are no longer retained for the slot, even if it is added to the publication later. The `cdc_skip_unqualified_tables_for_polling` flag lets the slot skip such tables instead of failing.<br>**v2024.2 to v2025.2:** Flag available from v2025.2.7.0.<br>**v2026.1 and later:** Flag available from v2026.1.2.0. | No equivalent. A slot retains WAL regardless of which tables are published. |
+| When the restart time advances | **All versions:** On acknowledgment, to the latest fully acknowledged commit. Every 60 seconds while idle, if everything sent has been acknowledged. | On acknowledgment, `restart_lsn` moves to the oldest WAL still needed to decode unacknowledged transactions. |
+| Retention while the client is disconnected | **All versions:** WAL, intents, and, for tables with replica identity `FULL` or `DEFAULT`, row history, from the restart time, for up to 8 hours since the last poll (`cdc_intent_retention_ms`, `cdc_wal_retention_time_secs`). | WAL from `restart_lsn`, without a time limit. `max_slot_wal_keep_size` (off by default) caps it by size. |
+| Resuming after reconnection | **All versions:** From the restart time. Transactions after it are re-sent in full with the same LSNs. | From `restart_lsn`. Transactions after `confirmed_flush_lsn` are re-sent in full. |
+| When a slot becomes unusable | **All versions:** After 8 hours without a poll (expired), or when the publication contains an unqualified table (unless `cdc_skip_unqualified_tables_for_polling` is set). The slot must be dropped and recreated. | When WAL beyond `max_slot_wal_keep_size` is removed. The slot must be dropped and recreated. |
+| Slot state in `pg_replication_slots` | **All versions:** `active` is true if the slot was consumed in the last 60 seconds. Includes `yb_stream_id` and `yb_restart_commit_ht`. From v2025.1, also `yb_lsn_type` and `yb_restart_time`, and `wal_status` is `lost` when no tablet of the slot was polled for 8 hours. | `active` is true while a process holds the slot. `wal_status` is `lost` for an invalidated slot. |
+
+### Initial snapshot
+
+A replication slot streams only the transactions committed after the slot was created. A client that also needs the rows that existed before that point takes an initial snapshot of the tables first, and then streams the changes from the slot. As in PostgreSQL, the snapshot is not part of the replication protocol. The client reads the tables with ordinary `SELECT` queries on a regular connection, and the database guarantees that the rows it reads and the changes it streams line up exactly.
+
+#### Consistent point
+
+When a slot is created, YB-Master chooses a hybrid time, the _consistent point_, that separates the snapshot from the stream for every table in the database:
+
+- Rows as they were at the consistent point belong to the snapshot.
+- Transactions with a commit time after the consistent point are streamed, in commit order.
+
+The consistent point is the slot's initial [restart time](#restart-time), reported as `yb_restart_commit_ht` in `pg_replication_slots`.
+
+`CREATE_REPLICATION_SLOT` returns the consistent point in the `snapshot_name` field as follows:
+
+- In v2025.2.2 and later, as an exported snapshot name (the default `EXPORT_SNAPSHOT` option).
+- In earlier releases, or with `USE_SNAPSHOT`, as the hybrid time itself.
+
+#### Taking the snapshot
+
+To read a table as of the consistent point, the client pins a transaction to that time and runs the snapshot `SELECT` in the same transaction, in one of two ways:
+
+- `SET TRANSACTION SNAPSHOT '<snapshot_name>'` in a `REPEATABLE READ` transaction, using the exported snapshot name returned by `CREATE_REPLICATION_SLOT`. As in PostgreSQL, the exported snapshot is valid only until the replication connection that created the slot runs its next command. Available from v2025.2.2.
+- `SET LOCAL yb_read_time TO '<hybrid time> ht'`, using the hybrid time from `yb_restart_commit_ht`, or from `snapshot_name` if the slot was created with `USE_SNAPSHOT`.
+
+    Set `yb_disable_catalog_version_check` to true in the session first; otherwise `yb_read_time` can't be set inside a transaction block. This is also how a client reads the snapshot of a slot that already exists, as long as the slot still [retains history](#retention-during-the-snapshot) at the consistent point. Requires superuser, or the setup in [Initial snapshot](../advanced-topic/#initial-snapshot).
+
+The query reads the table as it was at the consistent point. It takes no locks and does not block writes. Rows from transactions that committed after the consistent point are not returned; their changes arrive in the stream. Every table, and every connection that uses the same time, sees the same consistent state, so tables can be read on separate connections and in parallel. This differs from PostgreSQL, where Debezium holds table locks during the snapshot (`snapshot.locking.mode`).
+
+The YugabyteDB connector takes the [snapshot](../yugabytedb-connector/#snapshots) before it starts streaming, when `snapshot.mode` is `initial` (the default) or `initial_only`. It pins a read-only transaction as described above, and runs one `SELECT` per captured table, fetching rows in batches of `snapshot.fetch.size` and emitting a `READ` event for each row. Tables are read one at a time. The query is a plain full-table `SELECT`; `snapshot.select.statement.overrides` is the only way to filter rows. The snapshot is not resumable: if the connector restarts before the snapshot completes, it starts the snapshot again from the first table, as of the same consistent point. Streaming starts after the last table, from the consistent point. To snapshot and stream a large table with several tasks, see [Parallel streaming](../yugabytedb-connector/#parallel-streaming).
+
+#### Retention during the snapshot
+
+A snapshot can take a long time, and the slot is already retaining data while it runs:
+
+- Row versions as of the consistent point are retained on every tablet of the database, whatever the replica identity of the table, so that the snapshot query can read them. They are released when the slot's restart time moves past the consistent point, which happens when the client acknowledges streamed changes. This holds for slots created with `CREATE_REPLICATION_SLOT` using `EXPORT_SNAPSHOT` (the default) or `USE_SNAPSHOT`. A slot created with `NOEXPORT_SNAPSHOT`, or with the `pg_create_logical_replication_slot()` function, retains history only for tables whose replica identity needs before images. For its other tables, a snapshot query as of the consistent point is not guaranteed to succeed once older row versions are compacted away, after `timestamp_history_retention_interval_sec` (default 15 minutes).
+- WAL and transaction intents accumulate on every tablet from slot creation until the client starts streaming and acknowledges changes, as described in [Restart time](#restart-time).
+- The timeouts in [Tables of interest](#tables-of-interest) and [When a slot becomes unusable](#when-a-slot-becomes-unusable) count from slot creation, not from the start of streaming. Streaming must start within `cdcsdk_tablet_not_of_interest_timeout_secs` (default 4 hours) of slot creation, or every table becomes unqualified and the slot can't be used, and the slot expires after `cdc_intent_retention_ms` (default 8 hours) without a poll. If the snapshot is expected to take longer, raise these flags, and `cdc_wal_retention_time_secs` to match, before creating the slot.
+- Do not run DDL on the tables being snapshotted between slot creation and the end of the snapshot. Reading a table as of a time before a DDL on it is not supported.
 
 ### Publication
 
@@ -102,7 +157,7 @@ A publication is a set of changes generated from a table or a group of tables, a
 
 Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications may currently only contain tables. Objects must be added explicitly, except when a publication is created for ALL TABLES.
 
-Changing a publication while a slot is streaming takes effect at commit time with [implicit publication](../advanced-topic/#implicit-publication) (the default in v2026.1 and later), or at the next refresh with [periodic publication](../advanced-topic/#periodic-publication) (the only mode in earlier releases). The mode is recorded in the slot when it is created, based on the `ysql_yb_enable_implicit_dynamic_tables_logical_replication` flag, and doesn't change afterward. Slots created before upgrading to v2026.1 keep using periodic publication; to use implicit publication, create a new slot. See [Adding tables to publication](../advanced-topic/#adding-tables-to-publication) for details, and [Slot behavior by version](../slot-behavior-by-version/) for the versions.
+Changing a publication while a slot is streaming takes effect at commit time with [implicit publication](../advanced-topic/#implicit-publication) (the default in v2026.1 and later), or at the next refresh with [periodic publication](../advanced-topic/#periodic-publication) (the only mode in earlier releases). The mode is recorded in the slot when it is created, based on the `ysql_yb_enable_implicit_dynamic_tables_logical_replication` flag, and doesn't change afterward. Slots created before upgrading to v2026.1 keep using periodic publication; to use implicit publication, create a new slot. See [Adding tables to publication](../advanced-topic/#adding-tables-to-publication) for details, and [Slot behavior by version](#slot-behavior-by-version) for the versions.
 
 For more information, refer to [Publication](https://www.postgresql.org/docs/15/logical-replication-publication.html#LOGICAL-REPLICATION-PUBLICATION) in the PostgreSQL documentation.
 
