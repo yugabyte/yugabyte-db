@@ -284,6 +284,10 @@ class MemTable {
   // operations on the same MemTable (unless this Memtable is immutable).
   bool IsEmpty() const { return first_seqno_ == 0; }
 
+  // Returns if a flush would persist anything: entries, or frontiers, which a write without entries
+  // or UpdateFrontiers can set alone.
+  bool HasDataToFlush() const;
+
   // Returns the sequence number of the first element that was inserted
   // into the memtable.
   // REQUIRES: external synchronization to prevent simultaneous

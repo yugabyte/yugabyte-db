@@ -1121,7 +1121,7 @@ DBImpl::~DBImpl() {
 
     if (has_unpersisted_data_) {
       for (auto cfd : *versions_->GetColumnFamilySet()) {
-        if (!cfd->IsDropped() && !cfd->mem()->IsEmpty()) {
+        if (!cfd->IsDropped() && cfd->mem()->HasDataToFlush()) {
           cfd->Ref();
           mutex_.Unlock();
           if (disable_flush_on_shutdown_) {
@@ -3246,6 +3246,7 @@ Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
   auto* cfd = versions_->GetColumnFamilySet()->GetDefault();
   SCHECK(cfd, NotFound, "Column family not found");
   cfd->mem()->UpdateFrontiers(frontiers);
+  has_unpersisted_data_ = true;
   return Status::OK();
 }
 
@@ -3568,7 +3569,7 @@ FlushAbility DBImpl::GetFlushAbility() {
   if (cfd->imm()->NumNotFlushed() != 0) {
     return FlushAbility::kAlreadyFlushing;
   }
-  return cfd->mem()->IsEmpty() ? FlushAbility::kNoNewData : FlushAbility::kHasNewData;
+  return cfd->mem()->HasDataToFlush() ? FlushAbility::kHasNewData : FlushAbility::kNoNewData;
 }
 
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
@@ -3582,7 +3583,7 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
       return STATUS(AlreadyPresent, "Mem table already flushed");
     }
 
-    if (cfd->imm()->NumNotFlushed() == 0 && cfd->mem()->IsEmpty()) {
+    if (cfd->imm()->NumNotFlushed() == 0 && !cfd->mem()->HasDataToFlush()) {
       // Nothing to flush
       return Status::OK();
     }
@@ -6889,14 +6890,15 @@ yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds)
 }
 
 yb::storage::UserFrontierPtr DBImpl::GetMutableMemTableFrontier(
-    yb::storage::UpdateUserValueType type) {
+    yb::storage::UpdateUserValueType type, IncludeMemTableWithoutEntries include_without_entries) {
   InstrumentedMutexLock l(&mutex_);
   yb::storage::UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
     if (cfd) {
       const auto* mem = cfd->mem();
       if (mem) {
-        if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
+        auto has_data = include_without_entries ? mem->HasDataToFlush() : !mem->IsEmpty();
+        if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && has_data) {
           auto frontier = mem->GetFrontier(type);
           // Non-empty MemTable could have no (or stale) frontier if we've written to the MemTable,
           // but not yet updated frontiers (this happens in scope of WriteThread::Writer, but not
