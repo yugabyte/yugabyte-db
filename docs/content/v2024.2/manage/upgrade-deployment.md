@@ -47,6 +47,8 @@ For some xCluster setups, before upgrading, you should run a verification script
 
 - You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](/stable/manage/ysql-major-upgrade-yugabyted/).
 
+### Backups and point-in-time-recovery
+
 - Backups
 
   - Backups taken on a newer version cannot be restored to universes running a previous version.
