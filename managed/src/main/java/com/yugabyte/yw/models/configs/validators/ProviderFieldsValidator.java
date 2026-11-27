@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -90,13 +89,6 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     CloudInfoInterface info = CloudInfoInterface.get(provider);
     if (info == null || !info.isFederatedIamEnabled()) {
       return;
-    }
-    // OCI nodes are only federated once the operator has confirmed node-agent is new enough to
-    // understand them; saving the setting before then would leave it silently doing nothing.
-    if (provider.getCloudCode() == CloudType.oci
-        && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource)) {
-      throwBeanProviderValidatorError(
-          "FEDERATED_IAM", CrossCloudFederationTarget.ociSourceDisabledError(), null);
     }
     List<CrossCloudFederationTarget> targets = info.getEffectiveFederationTargets();
     if (targets.isEmpty()) {

@@ -1328,12 +1328,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         throw new PlatformServiceException(
             BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
       }
-      // Its nodes would all be skipped, so the task would report success having changed nothing.
-      if (!CloudInfoInterface.canFederateNodes(
-          provider, confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource))) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, CrossCloudFederationTarget.ociSourceDisabledError());
-      }
     }
     ManageCrossCloudFederationUniverse.Params params =
         new ManageCrossCloudFederationUniverse.Params();

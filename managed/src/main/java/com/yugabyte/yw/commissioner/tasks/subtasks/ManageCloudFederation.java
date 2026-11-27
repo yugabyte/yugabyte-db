@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeCloudDetector;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
@@ -100,16 +99,6 @@ public class ManageCloudFederation extends NodeTaskBase {
         providerCloud == CloudType.onprem
             ? detectAndPersistPhysicalCloud(universe, node)
             : providerCloud;
-    String ociSkipReason =
-        ociSourceSkipReason(
-            sourceCloud, confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource));
-    if (ociSkipReason != null) {
-      log.warn(
-          "Skipping cloud federation on {}: it runs on OCI but {}",
-          taskParams().nodeName,
-          ociSkipReason);
-      return;
-    }
     if (sourceCloud == CloudType.oci
         && !Util.areYbVersionsEqual(Util.getYbaVersion(), nodeAgent.getVersion(), true)) {
       // An older node-agent ignores the OCI source and reports success on credentials that fail.
@@ -149,21 +138,6 @@ public class ManageCloudFederation extends NodeTaskBase {
         nodeAgentRpcPayload.setupConfigureCloudFederationBits(
             universe, node, taskParams(), sourceCloud, target, nodeAgent),
         NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-  }
-
-  /**
-   * Why a node on OCI is left without federation, or null when it can be configured. It is left
-   * alone rather than failed, so turning the gate off does not break operations on a universe that
-   * already has OCI federation set up.
-   */
-  @Nullable
-  static String ociSourceSkipReason(@Nullable CloudType sourceCloud, boolean ociSourceEnabled) {
-    if (sourceCloud != CloudType.oci || ociSourceEnabled) {
-      return null;
-    }
-    return String.format(
-        "federated IAM from OCI nodes is not enabled (runtime config %s)",
-        GlobalConfKeys.enableOciFederationSource.getKey());
   }
 
   /**

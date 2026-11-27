@@ -186,28 +186,4 @@ public class ManageCloudFederationSelectTargetTest {
     assertTrue(e.getMessage(), e.getMessage().contains("more than one federated target"));
     assertTrue(e.getMessage(), e.getMessage().contains("gcp, gcp"));
   }
-
-  // --- the gate ---
-
-  /**
-   * While OCI is not enabled as a source, a node on OCI is left alone rather than failed, so
-   * turning the gate off does not break operations on a universe that already has OCI federation.
-   */
-  @Test
-  public void testOciNodeIsSkippedNotFailedWhileTheGateIsOff() {
-    assertNull(ManageCloudFederation.ociSourceSkipReason(CloudType.oci, true));
-
-    String gateOff = ManageCloudFederation.ociSourceSkipReason(CloudType.oci, false);
-    assertTrue(gateOff, gateOff.contains("yb.cross_cloud_federation.enable_oci_source"));
-  }
-
-  /** Only OCI is held back: every other node is judged by the direction rules alone. */
-  @Test
-  public void testOtherSourcesAreNeverHeldBackByTheOciGate() {
-    for (CloudType cloud :
-        new CloudType[] {CloudType.aws, CloudType.gcp, CloudType.onprem, CloudType.kubernetes}) {
-      assertNull(cloud.name(), ManageCloudFederation.ociSourceSkipReason(cloud, false));
-    }
-    assertNull(ManageCloudFederation.ociSourceSkipReason(null, false));
-  }
 }
