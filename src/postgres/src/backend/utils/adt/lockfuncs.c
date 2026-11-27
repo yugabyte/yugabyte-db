@@ -76,34 +76,68 @@ HandleStatusIgnoreSkipLocking(YbcStatus status)
 	return true;
 }
 
+static void
+YbConnMgrCountSessionAdvisoryLockAcquire(YbcStatus status)
+{
+	if (status)
+	{
+		uint32_t	err_code = YBCStatusPgsqlError(status);
+
+		/*
+		 * We are sure only in the case of some errors that the advisory
+		 * lock hasn't been granted. NotSupported is returned when advisory
+		 * locks are disabled, before any lock op. If we are not sure, we go
+		 * the conservative route & make the connection sticky.
+		 */
+		if (YBCStatusIsNotSupported(status) ||
+			err_code == ERRCODE_YB_TXN_SKIP_LOCKING ||
+			err_code == ERRCODE_YB_DEADLOCK ||
+			err_code == ERRCODE_YB_TXN_CONFLICT ||
+			err_code == ERRCODE_YB_TXN_ABORTED)
+			return;
+	}
+
+	yb_ysql_conn_mgr_sticky_lock_count++;
+	if (yb_conn_mgr_advisory_lock_permanent_sticky)
+		yb_ysql_conn_mgr_sticky_locks = true;
+}
+
+static void
+YbConnMgrCountSessionAdvisoryLockRelease(void)
+{
+	if (yb_ysql_conn_mgr_sticky_lock_count > 0)
+		yb_ysql_conn_mgr_sticky_lock_count--;
+}
+
 /*
  * YB: If Connection Manager is enabled, make the connection sticky for any
- * locks that were successfully acquired with a session-level scope.
+ * locks that were acquired with a session-level scope.
  */
 #define TryAcquireYBAdvisoryLock(tag, mode, session_level) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
 	{ \
-		bool yb_ret_status = HandleStatusIgnoreSkipLocking(YBCAcquireAdvisoryLock( \
-			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level)); \
-		if (yb_ret_status && YbIsClientYsqlConnMgr() && session_level) \
-			yb_ysql_conn_mgr_sticky_locks = true; \
-		PG_RETURN_BOOL(yb_ret_status); \
+		YbcStatus	yb_status = YBCAcquireAdvisoryLock( \
+			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level); \
+		if (session_level && YbIsClientYsqlConnMgr()) \
+			YbConnMgrCountSessionAdvisoryLockAcquire(yb_status); \
+		PG_RETURN_BOOL(HandleStatusIgnoreSkipLocking(yb_status)); \
 	} \
 } while(0)
 
 /*
  * YB: If Connection Manager is enabled, make the connection sticky for any
- * locks that were successfully acquired with a session-level scope.
+ * locks that were acquired with a session-level scope.
  */
 #define AcquireYBAdvisoryLock(tag, mode, session_level) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
 	{ \
-		HandleYBStatus(YBCAcquireAdvisoryLock( \
-			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level)); \
-		if (YbIsClientYsqlConnMgr() && session_level) \
-			yb_ysql_conn_mgr_sticky_locks = true; \
+		YbcStatus	yb_status = YBCAcquireAdvisoryLock( \
+			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level); \
+		if (session_level && YbIsClientYsqlConnMgr()) \
+			YbConnMgrCountSessionAdvisoryLockAcquire(yb_status); \
+		HandleYBStatus(yb_status); \
 		PG_RETURN_VOID(); \
 	} \
 } while(0)
@@ -111,8 +145,13 @@ do { \
 #define ReleaseYBAdvisoryLock(tag, mode) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
-		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound( \
-			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode), mode)); \
+	{ \
+		bool		yb_released = HandleStatusIgnoreLockNotFound( \
+			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode), mode); \
+		if (yb_released && YbIsClientYsqlConnMgr()) \
+			YbConnMgrCountSessionAdvisoryLockRelease(); \
+		PG_RETURN_BOOL(yb_released); \
+	} \
 } while(0)
 
 /*
@@ -1184,6 +1223,7 @@ pg_advisory_unlock_all(PG_FUNCTION_ARGS)
 	if (ShouldAcquireYBAdvisoryLocks())
 	{
 		HandleYBStatus(YBCReleaseAllAdvisoryLocks(MyDatabaseId));
+		yb_ysql_conn_mgr_sticky_lock_count = 0;
 		PG_RETURN_VOID();
 	}
 	LockReleaseSession(USER_LOCKMETHOD);

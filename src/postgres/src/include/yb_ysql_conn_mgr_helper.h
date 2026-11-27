@@ -65,11 +65,21 @@ extern int	ysql_conn_mgr_sticky_object_count;
 extern bool yb_ysql_conn_mgr_sticky_guc;
 
 /*
- * `yb_ysql_conn_mgr_sticky_locks` is used to denote stickiness of a connection
- * due to the setting of session-scoped advisory locks that cannot be directly
- * supported by Connection Manager.
+ * `yb_ysql_conn_mgr_sticky_locks` permanently latches a connection as sticky.
+ * It is set by the replication slot lock, and by session-level advisory locks
+ * when yb_conn_mgr_advisory_lock_permanent_sticky is on (on acquire, or on
+ * reload while locks are held). It is never cleared once set.
  */
 extern bool yb_ysql_conn_mgr_sticky_locks;
+
+/*
+ * `yb_ysql_conn_mgr_sticky_lock_count` is the number of session-level
+ * advisory locks currently held. The connection is sticky while it is
+ * non-zero.
+ */
+extern int	yb_ysql_conn_mgr_sticky_lock_count;
+
+extern bool yb_conn_mgr_advisory_lock_permanent_sticky;
 
 /*
  * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created

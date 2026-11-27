@@ -9140,8 +9140,8 @@ bool		yb_ysql_conn_mgr_sticky_guc = false;
 bool		yb_ysql_conn_mgr_superuser_existed = false;
 
 /*
- * `yb_ysql_conn_mgr_sticky_locks` denotes whether any session-scoped locks
- * are/were held by the current session.
+ * `yb_ysql_conn_mgr_sticky_locks` permanently latches the session as sticky.
+ * See yb_ysql_conn_mgr_helper.h for its setters.
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
 
@@ -9159,6 +9159,8 @@ bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
 
 bool		yb_ysql_conn_mgr_sticky_cursor = false;
 
+int			yb_ysql_conn_mgr_sticky_lock_count = 0;
+
 bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
 
 bool		yb_conn_mgr_prepare_permanent_sticky = false;
@@ -9166,6 +9168,8 @@ bool		yb_conn_mgr_prepare_permanent_sticky = false;
 bool		yb_conn_mgr_listen_permanent_sticky = false;
 
 bool		yb_conn_mgr_cursor_permanent_sticky = false;
+
+bool		yb_conn_mgr_advisory_lock_permanent_sticky = false;
 
 bool		yb_enable_mage = false;
 
@@ -9227,7 +9231,8 @@ YbIsStickyConnection(int *change)
 		 */
 		YbIsListening() ||
 		yb_ysql_conn_mgr_sticky_cursor ||
-		YbHasHoldablePortal();
+		YbHasHoldablePortal() ||
+		yb_ysql_conn_mgr_sticky_lock_count > 0;
 }
 
 void	  **

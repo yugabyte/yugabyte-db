@@ -327,6 +327,7 @@ static void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, 
 static void yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra);
 static void yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra);
 static void yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra);
+static void yb_assign_conn_mgr_advisory_lock_permanent_sticky(bool newval, void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -4486,6 +4487,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_conn_mgr_advisory_lock_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that acquires a "
+						 "session-level advisory lock sticky until disconnect "
+						 "instead of unsticking it once all such locks are released."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_advisory_lock_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_advisory_lock_permanent_sticky, NULL
+	},
+
+	{
 		{"yb_enable_mage", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the use of mage extension. "
 						 "NOTE: This is for internal use only."),
@@ -4892,6 +4907,16 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&ysql_conn_mgr_sticky_object_count,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_conn_mgr_sticky_lock_count", PGC_INTERNAL, CUSTOM_OPTIONS,
+			gettext_noop("Shows the count of session-level advisory locks held by this session that require a sticky connection."),
+			NULL
+		},
+		&yb_ysql_conn_mgr_sticky_lock_count,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
@@ -18679,6 +18704,18 @@ yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra)
 {
 	if (newval && YbHasHoldablePortal())
 		yb_ysql_conn_mgr_sticky_cursor = true;
+}
+
+/*
+ * If advisory locks are held when this GUC is set to true, make the connection
+ * permanently sticky here. This ensures that the connection stays sticky even
+ * after the GUC is set to false
+ */
+static void
+yb_assign_conn_mgr_advisory_lock_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && yb_ysql_conn_mgr_sticky_lock_count > 0)
+		yb_ysql_conn_mgr_sticky_locks = true;
 }
 
 static bool
