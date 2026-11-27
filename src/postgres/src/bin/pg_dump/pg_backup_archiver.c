@@ -155,6 +155,7 @@ static void StrictNamesCheck(RestoreOptions *ropt);
 
 /* YB declarations */
 static bool ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te);
+static bool ybRestoresStatisticsData(ArchiveHandle *AH);
 static void ybEmitStatsRestoreCatalogVersionIncrement(ArchiveHandle *AH);
 
 /* YB variables */
@@ -819,7 +820,7 @@ RestoreArchive(Archive *AHX)
 	}
 
 	/* YB: see ybEmitStatsRestoreCatalogVersionIncrement */
-	if (AH->public.dopt->include_yb_metadata && ropt->dumpStatistics)
+	if (AH->public.dopt->include_yb_metadata && ybRestoresStatisticsData(AH))
 		ybEmitStatsRestoreCatalogVersionIncrement(AH);
 
 	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
@@ -5402,6 +5403,9 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
  * column.  This increments it once at the end, for the current database, with
  * no invalidation messages (NULL), so that its backends refresh their whole
  * catalog cache instead of keeping statistics they read before the restore.
+ * It is only emitted when the script restores a STATISTICS DATA entry, so
+ * that the database of a script, or of a ysql_dumpall section, without any
+ * does not get a full catalog cache refresh for nothing.
  *
  * The increment only runs when the parameter is on: a server that does not
  * have the parameter already incremented the catalog version for each call,
@@ -5422,6 +5426,20 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
  * the row, which stays until they are enabled again; nothing reads it
  * meanwhile.
  */
+static bool
+ybRestoresStatisticsData(ArchiveHandle *AH)
+{
+	TocEntry   *te;
+
+	for (te = AH->toc->next; te != AH->toc; te = te->next)
+	{
+		if ((te->reqs & REQ_STATS) != 0 &&
+			strcmp(te->desc, "STATISTICS DATA") == 0)
+			return true;
+	}
+	return false;
+}
+
 static void
 ybEmitStatsRestoreCatalogVersionIncrement(ArchiveHandle *AH)
 {

@@ -422,16 +422,6 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \restrict test
 
 
--- YB: increment the catalog version once for the restored statistics
-DO $$
-BEGIN
-  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
-    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
-      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
-      false, NULL, 2147483647);
-  END IF;
-END $$;
-
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
 BEGIN
@@ -555,16 +545,6 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 \restrict test
 
-
--- YB: increment the catalog version once for the restored statistics
-DO $$
-BEGIN
-  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
-    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
-      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
-      false, NULL, 2147483647);
-  END IF;
-END $$;
 
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
@@ -744,16 +724,6 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 \restrict test
 
-
--- YB: increment the catalog version once for the restored statistics
-DO $$
-BEGIN
-  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
-    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
-      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
-      false, NULL, 2147483647);
-  END IF;
-END $$;
 
 --
 -- YSQL database dump complete
