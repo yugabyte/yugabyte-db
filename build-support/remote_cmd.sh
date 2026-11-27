@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Run the given command in the given directory and with the given PATH. This is invoked on a remote
-# host using ssh during the distributed C++ build.
+# host using ssh during the distributed C++ build. stdin holds the number of remaining arguments and
+# then the arguments, each followed by NUL.
 
 #
 # The following only applies to changes made to this file as part of YugabyteDB development.
@@ -33,26 +34,23 @@ fi
 export PATH=$2
 shift 2
 
-readonly ARG_SEPARATOR=$'=:\t:='
-
-args=()
-if [[ -z ${YB_ENCODED_REMOTE_CMD_LINE:-} ]]; then
-  echo "YB_ENCODED_REMOTE_CMD_LINE is not set" >&2
+if [[ -t 0 ]]; then
+  echo "stdin is a terminal, but remote_cmd.sh reads its arguments from stdin" >&2
   exit 1
 fi
 
-while [[ $YB_ENCODED_REMOTE_CMD_LINE == *$ARG_SEPARATOR ]]; do
-  args+=( "${YB_ENCODED_REMOTE_CMD_LINE%%"$ARG_SEPARATOR"*}" )
-  if [[ ${#args[@]} -gt 1000 ]]; then
-    echo "Too many args encoded in YB_ENCODED_REMOTE_CMD_LINE (${#args[@]}): ${args[*]}" >&2
-    exit 1
-  fi
-  YB_ENCODED_REMOTE_CMD_LINE=${YB_ENCODED_REMOTE_CMD_LINE#*"$ARG_SEPARATOR"}
+# The count comes first, so that a stream that ends early fails here instead of running the command
+# with only some of its arguments.  read returns an argument only once its NUL arrives, so a stream
+# cut inside the last argument also comes up short.  No argument can contain NUL, because each one
+# becomes a C string in the exec below.
+IFS= read -r -d '' expected_count || expected_count=
+args=()
+while IFS= read -r -d '' arg; do
+  args+=( "$arg" )
 done
-
-if [[ -n $YB_ENCODED_REMOTE_CMD_LINE ]]; then
-  echo "Got extra args in YB_ENCODED_REMOTE_CMD_LINE, could not unpack:" \
-       "'${YB_ENCODED_REMOTE_CMD_LINE}'" >&2
+if [[ ${#args[@]} != "$expected_count" ]]; then
+  echo "Expected ${expected_count:-an argument count and that many} arguments on stdin, got" \
+       "${#args[@]} complete ones" >&2
   exit 1
 fi
 

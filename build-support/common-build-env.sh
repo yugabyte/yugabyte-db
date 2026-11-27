@@ -1733,23 +1733,10 @@ debugging_remote_compilation() {
   [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]]
 }
 
-cmd_line_to_env_vars_for_remote_cmd() {
-  YB_ENCODED_REMOTE_CMD_LINE=""
-  # This must match the separator in remote_cmd.sh.
-  declare -r ARG_SEPARATOR=$'=:\t:='
-  for arg in "$@"; do
-    # The separator used here must match the separator used in remote_cmd.sh.
-    YB_ENCODED_REMOTE_CMD_LINE+=$arg$ARG_SEPARATOR
-  done
-  # This variable must be accessible to remote_cmd.sh on the other side of ssh.
-  export YB_ENCODED_REMOTE_CMD_LINE
-}
-
 run_remote_cmd() {
   local build_host=$1
   local executable=$2
   shift 2
-  cmd_line_to_env_vars_for_remote_cmd "$@"
   local ssh_args=(
     "$build_host"
     "$YB_BUILD_SUPPORT_DIR/remote_cmd.sh"
@@ -1757,11 +1744,14 @@ run_remote_cmd() {
     "$PATH"
     "$executable"
   )
-  if debugging_remote_compilation; then
-    ( set -x; ssh "${ssh_args[@]}" ) 2>&1
-  else
-    ssh "${ssh_args[@]}"
-  fi
+  # remote_cmd.sh reads the argument count and the arguments from stdin, each followed by NUL.
+  printf '%s\0' "$#" "$@" 2>/dev/null | (
+    if debugging_remote_compilation; then
+      exec 2>&1
+      set -x
+    fi
+    ssh -T "${ssh_args[@]}"
+  )
 }
 
 # Switches YB_SRC_ROOT and the build parent directories to the /net/<host>/... name of the source
