@@ -62,6 +62,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -690,6 +691,115 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertTrue(CollectionUtils.isEmpty(primary.getPartitionsSpec()));
     assertThat(
         primary.getPlacementSpec().getCloudList().get(0).getDefaultRegion(), is(defaultRegionUuid));
+  }
+
+  private void setOldGeoPartitioning() {
+    UUID defaultRegionUuid = Region.getByProvider(providerUuid).get(0).getUuid();
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
+          primary.placementInfo.cloudList.get(0).defaultRegion = defaultRegionUuid;
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+  }
+
+  private UniverseEditSpec getOldGeoPartitionedEditSpec(List<ClusterPartitionSpec> partitionsSpec)
+      throws ApiException {
+    ClusterSpec primary =
+        getPrimaryClusterSpec(
+            new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec());
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primary.getUuid()).partitionsSpec(partitionsSpec);
+    return new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+  }
+
+  // A single default partition turns the universe into a plain (non geo-partitioned) one.
+  private UniverseEditSpec getOldGeoPartitionedToPlainEditSpec() throws ApiException {
+    ClusterSpec primary =
+        getPrimaryClusterSpec(
+            new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec());
+    // default_region is the old geo-partitioning marker; partition placements never carry it.
+    primary.getPlacementSpec().getCloudList().forEach(c -> c.setDefaultRegion(null));
+    ClusterPartitionSpec partitionSpec =
+        new ClusterPartitionSpec()
+            .name("Default")
+            .defaultPartition(true)
+            .replicationFactor(primary.getReplicationFactor())
+            .placement(primary.getPlacementSpec());
+    return getOldGeoPartitionedEditSpec(List.of(partitionSpec));
+  }
+
+  @Test
+  public void testEditUniverseV2OldGeoPartitionedConversionDisabled() throws ApiException {
+    setOldGeoPartitioning();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    UniverseEditSpec universeEditSpec = getOldGeoPartitionedToPlainEditSpec();
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () ->
+                new UniverseApi().editUniverse(customer.getUuid(), universeUuid, universeEditSpec));
+    assertEquals(400, ex.getCode());
+    assertThat(ex.getResponseBody(), containsString("cannot be converted to plain universe"));
+    assertThat(
+        ex.getResponseBody(),
+        containsString(UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()));
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditUniverse), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testEditUniverseV2OldGeoPartitionedConversionEnabled() throws ApiException {
+    setOldGeoPartitioning();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()))
+        .thenReturn(true);
+    runEditUniverseV2(getOldGeoPartitionedToPlainEditSpec());
+  }
+
+  @Test
+  public void testEditUniverseV2OldGeoPartitionedToNewGeoPartitioned() throws ApiException {
+    setOldGeoPartitioning();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    // Conversion to new geo-partitioning is allowed without the runtime config.
+    runEditUniverseV2(
+        getOldGeoPartitionedEditSpec(
+            getUniverseCreateSpecV2Geo(false).getSpec().getClusters().get(0).getPartitionsSpec()));
+  }
+
+  @Test
+  public void testAddClusterV2OldGeoPartitionedConversionDisabled() throws ApiException {
+    setOldGeoPartitioning();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    PlacementInfo placement = rf3Placement(Region.getByProvider(providerUuid).get(0));
+    clusterAddSpec.setPartitionsSpec(
+        Collections.singletonList(
+            new ClusterPartitionSpec()
+                .name("default")
+                .defaultPartition(true)
+                .replicationFactor(3)
+                .placement(toPlacementSpec(placement))));
+    clusterAddSpec.setNumNodes(PlacementInfoUtil.getNodeCountInPlacement(placement));
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () -> new UniverseApi().addCluster(customer.getUuid(), universeUuid, clusterAddSpec));
+    assertEquals(400, ex.getCode());
+    assertThat(ex.getResponseBody(), containsString("cannot be converted to plain universe"));
+    assertThat(
+        ex.getResponseBody(),
+        containsString(UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()));
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.ReadOnlyClusterCreate), any(UniverseConfigureTaskParams.class));
   }
 
   @Test

@@ -2074,4 +2074,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " edit",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowOldGeoPartitionedConversion =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_old_geo_partitioned_conversion",
+          ScopeType.UNIVERSE,
+          "Allow converting old geo-partitioned universes to partitions",
+          "When true, the v2 edit universe and add cluster APIs accept partitions for a universe"
+              + " that is geo-partitioned through a default region, converting it to the"
+              + " partitions model",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -220,8 +220,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           initPartitions(cluster);
         }
       } else {
-        log.warn(
-            "Universe {} is old geo-partitioned," + "cannot convert it automatically",
+        log.debug(
+            "Universe {} is old geo-partitioned, cannot convert it automatically",
             universe.getUniverseUUID());
       }
     }
@@ -368,6 +368,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // persisted placement with the requested one. Anything read from dbUniverse after that point
     // reflects the request, not what is deployed.
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
+    boolean oldGeoPartitioned = isOldGeoPartitioned(dbUniverse.getUniverseDetails());
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // Inherit unset RR properties from primary (excludes placement, partitions, nodeSpec).
@@ -416,6 +417,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     if (isRREdited) {
       v1Params.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, v1Params);
+    }
+
+    if (oldGeoPartitioned) {
+      checkOldGeoPartitionedConversionAllowed(dbUniverse, v1Params);
     }
 
     Cluster primaryCluster = v1Params.getPrimaryCluster();
@@ -642,6 +647,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {
@@ -653,6 +659,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       }
     }
     universeCRUDHandler.configure(customer, v1Params);
+
+    if (oldGeoPartitioned) {
+      checkOldGeoPartitionedConversionAllowed(dbUniverse, v1Params);
+    }
+
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
@@ -1802,6 +1813,26 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Cluster primaryCluster = universe.getPrimaryCluster();
     return CollectionUtils.isEmpty(primaryCluster.getPartitions())
         && PlacementInfoUtil.getDefaultRegion(primaryCluster) != null;
+  }
+
+  private void checkOldGeoPartitionedConversionAllowed(
+      Universe universe, UniverseDefinitionTaskParams v1Params) {
+    boolean hasPartitions = hasPartitions(v1Params);
+    boolean newGeopartitioned = false;
+    if (v1Params.getPrimaryCluster() != null) {
+      newGeopartitioned = v1Params.getPrimaryCluster().isGeoPartitioned();
+    }
+    if (hasPartitions
+        && !newGeopartitioned
+        && !confGetter.getConfForScope(
+            universe, UniverseConfKeys.allowOldGeoPartitionedConversion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Universe is geo-partitioned using a default region and cannot be converted to"
+              + " plain universe. To allow the conversion, enable the runtime config "
+              + UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()
+              + " and retry this operation.");
+    }
   }
 
   private void initPartitions(Cluster cluster) {
