@@ -472,6 +472,16 @@ public class UpgradeUniverseHandler {
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
+      if (requestParams.masterGFlags == null && requestParams.tserverGFlags == null) {
+        // No PRIMARY in clusters and both top-level maps omitted.
+        // Would NPE in trimFlags.
+        throw new PlatformServiceException(
+            BAD_REQUEST, UpgradeWithGFlags.MISSING_PRIMARY_CLUSTER_GFLAGS_ERROR);
+      }
+      if (requestParams.masterGFlags == null || requestParams.tserverGFlags == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, UpgradeWithGFlags.PARTIAL_TOP_LEVEL_GFLAGS_ERROR);
+      }
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
