@@ -1482,7 +1482,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				retstatus = yb_frontend_throw_error(
 					relay, client, server, "08P01",
 					"invalid DESCRIBE message subtype %d",
-					(int)type);
+					(int)(unsigned char)type);
 				break;
 			}
 			if (type == KIWI_FE_DESCRIBE_PORTAL) {
