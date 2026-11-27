@@ -22,6 +22,7 @@ of them overridden, or --num_vectors_to_insert given, hnsw_tool computes the gro
 script keeps it in the dataset's cache directory for later runs.
 
 Examples:
+  bin/vi_benchmark.py --list_datasets
   bin/vi_benchmark.py siftsmall
   bin/vi_benchmark.py --cache_dir ~/vi_cache sift --ann_method kHnswlib --ef_values 64,128 --k 10
   bin/vi_benchmark.py deep10m --ann_method kHnswlib --k 10,100 --num_validation_queries 1000
@@ -30,7 +31,6 @@ Examples:
 import argparse
 import glob
 import gzip
-import math
 import os
 import re
 import shlex
@@ -59,7 +59,10 @@ DEFAULT_K = '10'
 class Dataset:
     base_file: str
     query_file: str
+    num_vectors: int
+    dimensions: int
     num_queries: int
+    source: str
     ground_truth_file: Optional[str] = None
     distance_kind: str = 'kL2Squared'
     # A .tar.gz archive with the files above, or else the URL of their directory.
@@ -70,35 +73,72 @@ class Dataset:
         return [name for name in (self.base_file, self.query_file, self.ground_truth_file) if name]
 
 
-def texmex(name: str, num_queries: int) -> Dataset:
+def texmex(name: str, num_vectors: int, dimensions: int, num_queries: int) -> Dataset:
     return Dataset(
         archive_url=f'ftp://ftp.irisa.fr/local/texmex/corpus/{name}.tar.gz',
         base_file=f'{name}_base.fvecs',
         query_file=f'{name}_query.fvecs',
+        num_vectors=num_vectors,
+        dimensions=dimensions,
         num_queries=num_queries,
+        source='TEXMEX (Inria)',
         ground_truth_file=f'{name}_groundtruth.ivecs')
 
 
-def big_ann(directory: str, num_queries: int, distance_kind: str) -> Dataset:
+def big_ann(directory: str, dimensions: int, num_queries: int, distance_kind: str) -> Dataset:
     return Dataset(
         files_url=f'https://storage.yandexcloud.net/yandex-research/ann-datasets/{directory}/',
         base_file='base.10M.fbin',
         query_file=f'query.public.{num_queries // 1000}K.fbin',
+        num_vectors=10_000_000,
+        dimensions=dimensions,
         num_queries=num_queries,
+        source=f'big-ann-benchmarks {directory} (Yandex)',
         distance_kind=distance_kind)
 
 
 DATASETS = {
-    # TEXMEX (Inria): siftsmall has 10K 128-dimensional base vectors, sift 1M, and gist 1M
-    # 960-dimensional ones.
-    'siftsmall': texmex('siftsmall', 100),
-    'sift': texmex('sift', 10_000),
-    'gist': texmex('gist', 1_000),
-    # big-ann-benchmarks (Yandex): 10M 96-dimensional DEEP vectors, and 10M 200-dimensional
-    # Text-to-Image ones.
-    'deep10m': big_ann('DEEP', 10_000, 'kL2Squared'),
-    't2i10m': big_ann('T2I', 100_000, 'kInnerProduct'),
+    'siftsmall': texmex('siftsmall', 10_000, 128, 100),
+    'sift': texmex('sift', 1_000_000, 128, 10_000),
+    'gist': texmex('gist', 1_000_000, 960, 1_000),
+    'deep10m': big_ann('DEEP', 96, 10_000, 'kL2Squared'),
+    't2i10m': big_ann('T2I', 200, 100_000, 'kInnerProduct'),
 }
+
+
+def fbin_size(num_vectors: int, dimensions: int) -> int:
+    # An .fbin file starts with the number of vectors and their dimensions as uint32, followed by
+    # the float32 coordinates.
+    return 8 + 4 * num_vectors * dimensions
+
+
+def base_file_size(dataset: Dataset) -> int:
+    if dataset.base_file.endswith('.fvecs'):
+        # .fvecs prefixes each vector with its dimensions as int32.
+        return dataset.num_vectors * 4 * (1 + dataset.dimensions)
+    if dataset.base_file.endswith('.fbin'):
+        return fbin_size(dataset.num_vectors, dataset.dimensions)
+    raise ValueError(f'Unknown format of {dataset.base_file}')
+
+
+def format_size(size: int) -> str:
+    for unit, scale in (('GB', 1e9), ('MB', 1e6)):
+        if size >= scale:
+            return f'{size / scale:.1f} {unit}'
+    return f'{size / 1e3:.1f} KB'
+
+
+def list_datasets() -> None:
+    rows = [('dataset', 'vectors', 'dimensions', 'queries', 'distance', 'base file', 'source')]
+    for name, dataset in DATASETS.items():
+        rows.append((name, f'{dataset.num_vectors:,}', str(dataset.dimensions),
+                     f'{dataset.num_queries:,}', dataset.distance_kind,
+                     format_size(base_file_size(dataset)), dataset.source))
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+    numeric = (1, 2, 3, 5)
+    for row in rows:
+        print('  '.join(cell.rjust(width) if i in numeric else cell.ljust(width)
+                        for i, (cell, width) in enumerate(zip(row, widths))).rstrip())
 
 
 def default_tool() -> Optional[str]:
@@ -154,12 +194,10 @@ def cached_ground_truth(dataset: Dataset, dataset_dir: str, tool_args: List[str]
 
 
 def check_fbin_size(path: str, url: str) -> None:
-    # An .fbin file starts with the number of vectors and their dimensions as uint32, followed by
-    # the float32 coordinates.
     with open(path, 'rb') as f:
         header = f.read(8)
     size = os.path.getsize(path)
-    if len(header) < 8 or size != 8 + 4 * math.prod(struct.unpack('<II', header)):
+    if len(header) < 8 or size != fbin_size(*struct.unpack('<II', header)):
         os.remove(path)
         sys.exit(f'The size of {url}, {size} bytes, does not fit its header; deleted it, '
                  'rerun to download it again')
@@ -247,7 +285,9 @@ def main() -> int:
     parser.add_argument('--tool', help='hnsw_tool binary (default: the newest release build).')
     parser.add_argument('--dry_run', action='store_true',
                         help='Print the hnsw_tool command without downloading or running anything.')
-    parser.add_argument('dataset', help=f'One of {", ".join(sorted(DATASETS))}.')
+    parser.add_argument('--list_datasets', action='store_true',
+                        help='Print the datasets with their sizes and distance kinds.')
+    parser.add_argument('dataset', nargs='?', help=f'One of {", ".join(sorted(DATASETS))}.')
     parser.add_argument('tool_args', nargs=argparse.REMAINDER,
                         help='Arguments for hnsw_tool benchmark.')
     # Unknown options before the dataset name are returned, not taken as hnsw_tool arguments.
@@ -256,8 +296,13 @@ def main() -> int:
         parser.error(f'{misplaced[0]}: hnsw_tool arguments go after the dataset name')
     # hnsw_tool has no options with these names.
     for name in [arg.split('=', 1)[0] for arg in args.tool_args]:
-        if name in ('--cache_dir', '--tool', '--dry_run'):
+        if name in ('--cache_dir', '--tool', '--dry_run', '--list_datasets'):
             parser.error(f'{name}: options of this script go before the dataset name')
+    if args.list_datasets:
+        list_datasets()
+        return 0
+    if args.dataset is None:
+        parser.error('the dataset name is required')
     dataset = DATASETS.get(args.dataset)
     if dataset is None:
         parser.error(f'unknown dataset {args.dataset}; use one of {", ".join(sorted(DATASETS))}')
