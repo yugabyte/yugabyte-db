@@ -50,4 +50,6 @@ typedef FormData_yb_pg_catalog_version *Form_yb_pg_catalog_version;
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_yb_catalog_version_db_oid_index, 8012, YBCatalogVersionDbOidIndexId, pg_yb_catalog_version, btree(db_oid oid_ops));
 
+DECLARE_OID_DEFINING_MACRO(YbDdlConcurrencyLockOid, 8129);
+
 #endif							/* PG_YB_CATALOG_VERSION_H */

@@ -36,6 +36,15 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to update\n", formatter.RedColor))
 		}
+		if cmd.Flags().Changed("ssh-port") {
+			sshPort, err := cmd.Flags().GetInt("ssh-port")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if _, err := providerutil.SSHPort(sshPort); err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
@@ -231,6 +240,12 @@ var updateOnpremProviderCmd = &cobra.Command{
 
 		removeZones, err := cmd.Flags().GetStringArray("remove-zone")
 		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		if err := providerutil.ValidateUpdateAddZoneRegions(
+			addRegions, addZones, providerRegions,
+		); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 

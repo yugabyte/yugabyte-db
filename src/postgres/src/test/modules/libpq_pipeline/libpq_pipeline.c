@@ -24,7 +24,7 @@
 
 
 static void exit_nicely(PGconn *conn);
-pg_noreturn static void pg_fatal_impl(int line, const char *fmt,...)
+pg_noreturn static void pg_fatal_impl(int line, const char *fmt, ...)
 			pg_attribute_printf(2, 3);
 static bool process_result(PGconn *conn, PGresult *res, int results,
 						   int numsent);
@@ -72,7 +72,7 @@ exit_nicely(PGconn *conn)
  */
 #define pg_fatal(...) pg_fatal_impl(__LINE__, __VA_ARGS__)
 pg_noreturn static void
-pg_fatal_impl(int line, const char *fmt,...)
+pg_fatal_impl(int line, const char *fmt, ...)
 {
 	va_list		args;
 
@@ -452,6 +452,52 @@ test_cancel(PGconn *conn)
 
 	PQcancelFinish(cancelConn);
 	PQfinish(monitorConn);
+
+	fprintf(stderr, "ok\n");
+}
+
+/*
+ * Test Describe of a prepared FETCH statement after the cursor it
+ * references has been closed.
+ */
+static void
+test_describe_fetch(PGconn *conn)
+{
+	PGresult   *res;
+
+	fprintf(stderr, "test cursor describe and fetch... ");
+
+	res = PQexec(conn, "BEGIN");
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		pg_fatal("BEGIN failed: %s", PQerrorMessage(conn));
+	PQclear(res);
+
+	res = PQexec(conn, "DECLARE fetch_cursor CURSOR FOR SELECT 1");
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		pg_fatal("DECLARE CURSOR failed: %s", PQerrorMessage(conn));
+	PQclear(res);
+
+	/* prepare while the cursor exists, so that it caches a result desc */
+	res = PQprepare(conn, "fetch_one", "FETCH 1 FROM fetch_cursor", 0, NULL);
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		pg_fatal("PQprepare failed: %s", PQerrorMessage(conn));
+	PQclear(res);
+
+	res = PQexec(conn, "CLOSE fetch_cursor");
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		pg_fatal("CLOSE failed: %s", PQerrorMessage(conn));
+	PQclear(res);
+
+	/* describe fails after the cursor has been closed */
+	res = PQdescribePrepared(conn, "fetch_one");
+	if (PQresultStatus(res) != PGRES_FATAL_ERROR)
+		pg_fatal("expected FATAL_ERROR, got %s", PQresStatus(PQresultStatus(res)));
+	PQclear(res);
+
+	res = PQexec(conn, "ROLLBACK");
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		pg_fatal("ROLLBACK failed: %s", PQerrorMessage(conn));
+	PQclear(res);
 
 	fprintf(stderr, "ok\n");
 }
@@ -1363,7 +1409,7 @@ test_protocol_version(PGconn *conn)
 	Assert(max_protocol_version_index >= 0);
 
 	/*
-	 * Test default protocol_version (GREASE - should negotiate down to 3.2)
+	 * Test default protocol_version
 	 */
 	vals[max_protocol_version_index] = "";
 	conn = PQconnectdbParams(keywords, vals, false);
@@ -1373,8 +1419,8 @@ test_protocol_version(PGconn *conn)
 				 PQerrorMessage(conn));
 
 	protocol_version = PQfullProtocolVersion(conn);
-	if (protocol_version != 30002)
-		pg_fatal("expected 30002, got %d", protocol_version);
+	if (protocol_version != 30000)
+		pg_fatal("expected 30000, got %d", protocol_version);
 
 	PQfinish(conn);
 
@@ -2117,6 +2163,7 @@ static void
 print_test_list(void)
 {
 	printf("cancel\n");
+	printf("describe_fetch\n");
 	printf("disallowed_in_pipeline\n");
 	printf("multi_pipelines\n");
 	printf("nosync\n");
@@ -2223,6 +2270,8 @@ main(int argc, char **argv)
 
 	if (strcmp(testname, "cancel") == 0)
 		test_cancel(conn);
+	else if (strcmp(testname, "describe_fetch") == 0)
+		test_describe_fetch(conn);
 	else if (strcmp(testname, "disallowed_in_pipeline") == 0)
 		test_disallowed_in_pipeline(conn);
 	else if (strcmp(testname, "multi_pipelines") == 0)

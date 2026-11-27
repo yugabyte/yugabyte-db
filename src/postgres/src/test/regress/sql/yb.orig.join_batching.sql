@@ -1704,3 +1704,38 @@ SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
                       INTERSECT ALL SELECT k1 FROM bnl_uniq) d
   JOIN bnl_uniq t ON t.k1 = d.k1;
 RESET yb_bnl_enable_hashing;
+
+-- #36711: a sorted BNL under the LIMIT of a correlated subquery returns the
+-- smallest matching key on each of the three executions of the subquery.
+-- With enable_sort off the BNL takes the bound of the LIMIT, not a Sort
+-- above the BNL.
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+EXPLAIN (COSTS OFF)
+SELECT o.a, (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+             WHERE ss1.a = ss2.a AND ss1.a > o.a ORDER BY ss1.a LIMIT 1)
+  FROM (VALUES (0), (1), (2)) o(a);
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+SELECT o.a, (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+             WHERE ss1.a = ss2.a AND ss1.a > o.a ORDER BY ss1.a LIMIT 1)
+  FROM (VALUES (0), (1), (2)) o(a);
+
+-- #36889: the LIMIT of the lateral subquery changes from one execution to
+-- the next. It is 5, then 3 on an execution that finds no rows, then 10.
+-- The three executions must return 5, 0 and 10 rows.
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+EXPLAIN (COSTS OFF)
+SELECT o.n, o.lo, s.a
+  FROM (VALUES (5, 0), (3, 10), (10, 0)) o(n, lo),
+       LATERAL (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+                WHERE ss1.a = ss2.a AND ss1.a > o.lo
+                ORDER BY ss1.a LIMIT o.n) s;
+/*+ Leading((ss1 ss2)) YbBatchedNL(ss1 ss2) Set(yb_bnl_batch_size 3)
+    Set(enable_sort off) */
+SELECT o.n, o.lo, s.a
+  FROM (VALUES (5, 0), (3, 10), (10, 0)) o(n, lo),
+       LATERAL (SELECT ss1.a FROM rk1 ss1, rk2 ss2
+                WHERE ss1.a = ss2.a AND ss1.a > o.lo
+                ORDER BY ss1.a LIMIT o.n) s;

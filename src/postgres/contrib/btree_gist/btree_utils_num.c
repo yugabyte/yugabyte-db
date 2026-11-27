@@ -165,8 +165,8 @@ gbt_num_fetch(GISTENTRY *entry, const gbtree_ninfo *tinfo)
 
 
 /*
-** The GiST union method for numerical values
-*/
+ * The GiST union method for numerical values
+ */
 
 void *
 gbt_num_union(GBT_NUMKEY *out, const GistEntryVector *entryvec, const gbtree_ninfo *tinfo, FmgrInfo *flinfo)
@@ -205,8 +205,8 @@ gbt_num_union(GBT_NUMKEY *out, const GistEntryVector *entryvec, const gbtree_nin
 
 
 /*
-** The GiST same method for numerical values
-*/
+ * The GiST same method for numerical values
+ */
 
 bool
 gbt_num_same(const GBT_NUMKEY *a, const GBT_NUMKEY *b, const gbtree_ninfo *tinfo, FmgrInfo *flinfo)
@@ -297,8 +297,19 @@ gbt_num_consistent(const GBT_NUMKEY_R *key,
 			retval = tinfo->f_le(query, key->upper, flinfo);
 			break;
 		case BtreeGistNotEqualStrategyNumber:
-			retval = (!(tinfo->f_eq(query, key->lower, flinfo) &&
-						tinfo->f_eq(query, key->upper, flinfo)));
+			if (is_leaf)
+				retval = !(tinfo->f_eq(query, key->lower, flinfo));
+			else
+			{
+				/*
+				 * If the upper/lower bounds are equal, then all entries below
+				 * this node must have exactly that value.  So we can avoid
+				 * descending if the query equals both bounds.  In all other
+				 * cases, we must descend.
+				 */
+				retval = !(tinfo->f_eq(query, key->lower, flinfo) &&
+						   tinfo->f_eq(query, key->upper, flinfo));
+			}
 			break;
 		default:
 			retval = false;
@@ -309,8 +320,8 @@ gbt_num_consistent(const GBT_NUMKEY_R *key,
 
 
 /*
-** The GiST distance method (for KNN-Gist)
-*/
+ * The GiST distance method (for KNN-Gist)
+ */
 
 float8
 gbt_num_distance(const GBT_NUMKEY_R *key,

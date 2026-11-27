@@ -432,6 +432,8 @@ static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
 static HeapTuple make_tuple_from_row(PLpgSQL_execstate *estate,
 									 PLpgSQL_row *row,
 									 TupleDesc tupdesc);
+static void check_record_tupdescs_match(ExpandedRecordHeader *srcerh,
+										ExpandedRecordHeader *dsterh);
 static TupleDesc deconstruct_composite_datum(Datum value,
 											 HeapTupleData *tmptup);
 static void exec_move_row_from_datum(PLpgSQL_execstate *estate,
@@ -890,8 +892,7 @@ coerce_function_result_tuple(PLpgSQL_execstate *estate, TupleDesc tupdesc)
 			resultsize = EOH_get_flat_size(&erh->hdr);
 			tuphdr = (HeapTupleHeader) SPI_palloc(resultsize);
 			EOH_flatten_into(&erh->hdr, tuphdr, resultsize);
-			HeapTupleHeaderSetTypeId(tuphdr, tupdesc->tdtypeid);
-			HeapTupleHeaderSetTypMod(tuphdr, tupdesc->tdtypmod);
+			heap_datum_update_type(tuphdr, tupdesc);
 			estate->retval = PointerGetDatum(tuphdr);
 		}
 		else
@@ -1207,6 +1208,13 @@ plpgsql_exec_event_trigger(PLpgSQL_function *func, EventTriggerData *trigdata)
 	 */
 	estate.err_text = gettext_noop("during initialization of execution state");
 	copy_plpgsql_datums(&estate, func);
+
+	estate.err_text = gettext_noop("during function entry");
+
+	/*
+	 * Set the magic variable FOUND to false
+	 */
+	exec_set_found(&estate, false);
 
 	/*
 	 * Let the instrumentation plugin peek at this function
@@ -3483,6 +3491,13 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 					tuple = expanded_record_get_tuple(rec->erh);
 					if (tupmap)
 						tuple = execute_attr_map_tuple(tuple, tupmap);
+					else
+					{
+						/*
+						 * Expanded records should always have valid contents,
+						 * so we don't need a version check here.
+						 */
+					}
 					tuplestore_puttuple(estate->tuple_store, tuple);
 					MemoryContextSwitchTo(oldcontext);
 				}
@@ -3546,6 +3561,14 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 													gettext_noop("returned record type does not match expected record type"));
 				if (tupmap)
 					tuple = execute_attr_map_tuple(tuple, tupmap);
+				else
+				{
+					/*
+					 * No need to check the version here, due to
+					 * deconstruct_composite_datum() already having checked.
+					 */
+				}
+
 				tuplestore_puttuple(estate->tuple_store, tuple);
 				ReleaseTupleDesc(retvaldesc);
 				MemoryContextSwitchTo(oldcontext);
@@ -4383,11 +4406,13 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 
 			if (row->nfields == 1)
 			{
+				/* OK, there is a single target variable */
 				ErrorContextCallback plerrcontext;
 				Datum		value;
 				bool		isnull;
 				Oid			valtype;
 				int32		valtypmod;
+				bool		simple;
 
 				/*
 				 * Setup error traceback support for ereport().  This is so
@@ -4399,13 +4424,15 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 				plerrcontext.previous = error_context_stack;
 				error_context_stack = &plerrcontext;
 
-				/* If first time through, create a plan for this expression */
-				if (expr->plan == NULL)
-					exec_prepare_plan(estate, expr, 0);
-
-				/* And evaluate the expression */
-				value = exec_eval_expr(estate, expr,
-									   &isnull, &valtype, &valtypmod);
+				/*
+				 * Evaluate the already-planned expression.  This fails if the
+				 * expression is busy, or if replanning occurs and we find it
+				 * is no longer simple.  In such cases, fall through to the
+				 * SPI code below.
+				 */
+				simple = exec_eval_simple_expr(estate, expr,
+											   &value, &isnull,
+											   &valtype, &valtypmod);
 
 				/*
 				 * Pop the error context stack: the code below would not use
@@ -4413,20 +4440,23 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 				 */
 				error_context_stack = plerrcontext.previous;
 
-				/* Assign the result to the INTO target */
-				exec_assign_value(estate, estate->datums[row->varnos[0]],
-								  value, isnull, valtype, valtypmod);
-				exec_eval_cleanup(estate);
+				if (simple)
+				{
+					/* Success; assign the result to the INTO target */
+					exec_assign_value(estate, estate->datums[row->varnos[0]],
+									  value, isnull, valtype, valtypmod);
+					exec_eval_cleanup(estate);
 
-				/*
-				 * We must duplicate the other effects of the code below, as
-				 * well.  We know that exactly one row was returned, so it
-				 * doesn't matter whether the INTO was STRICT or not.
-				 */
-				exec_set_found(estate, true);
-				estate->eval_processed = 1;
+					/*
+					 * We must duplicate the other effects of the code below,
+					 * as well.  We know that exactly one row was returned, so
+					 * it doesn't matter whether the INTO was STRICT or not.
+					 */
+					exec_set_found(estate, true);
+					estate->eval_processed = 1;
 
-				return PLPGSQL_RC_OK;
+					return PLPGSQL_RC_OK;
+				}
 			}
 		}
 	}
@@ -5434,13 +5464,6 @@ exec_assign_value(PLpgSQL_execstate *estate,
 					recfield->rectupledescid = erh->er_tupdesc_id;
 				}
 
-				/* We don't support assignments to system columns. */
-				if (recfield->finfo.fnumber <= 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot assign to system column \"%s\"",
-									recfield->fieldname)));
-
 				/* Cast the new value to the right type, if needed. */
 				value = exec_cast_value(estate,
 										value,
@@ -5450,7 +5473,41 @@ exec_assign_value(PLpgSQL_execstate *estate,
 										recfield->finfo.ftypeid,
 										recfield->finfo.ftypmod);
 
-				/* And assign it. */
+				/*
+				 * Edge case: the cast step can run user-defined code, which
+				 * could call the current plpgsql function recursively, and
+				 * potentially change the recfield datum underneath us.  If we
+				 * see the tupdesc ID change, repeat the lookup, and allow it
+				 * so long as the field datatype didn't change.
+				 */
+				if (unlikely(recfield->rectupledescid != erh->er_tupdesc_id))
+				{
+					ExpandedRecordFieldInfo save_finfo = recfield->finfo;
+
+					if (!expanded_record_lookup_field(erh,
+													  recfield->fieldname,
+													  &recfield->finfo))
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_COLUMN),
+								 errmsg("record \"%s\" has no field \"%s\"",
+										rec->refname, recfield->fieldname)));
+					recfield->rectupledescid = erh->er_tupdesc_id;
+					if (save_finfo.ftypeid != recfield->finfo.ftypeid ||
+						save_finfo.ftypmod != recfield->finfo.ftypmod)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("record \"%s\" field \"%s\" changed type during assignment",
+										rec->refname, recfield->fieldname)));
+				}
+
+				/* We don't support assignments to system columns. */
+				if (recfield->finfo.fnumber <= 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot assign to system column \"%s\"",
+									recfield->fieldname)));
+
+				/* All OK, assign it. */
 				expanded_record_set_field(erh, recfield->finfo.fnumber,
 										  value, isNull, !estate->atomic);
 				break;
@@ -7740,6 +7797,7 @@ static TupleDesc
 deconstruct_composite_datum(Datum value, HeapTupleData *tmptup)
 {
 	HeapTupleHeader td;
+	TupleDesc	tupdesc;
 	Oid			tupType;
 	int32		tupTypmod;
 
@@ -7756,7 +7814,52 @@ deconstruct_composite_datum(Datum value, HeapTupleData *tmptup)
 	/* Extract rowtype info and find a tupdesc */
 	tupType = HeapTupleHeaderGetTypeId(td);
 	tupTypmod = HeapTupleHeaderGetTypMod(td);
-	return lookup_rowtype_tupdesc(tupType, tupTypmod);
+	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
+	/*
+	 * The tuple might have a different version than the tupledesc. We could
+	 * check this in all callers instead, but duplicating the check doesn't
+	 * make a whole lot of sense.
+	 *
+	 * XXX: It'd be much better if we had a core API that wrapped all this,
+	 * there are many copies of this around our tree and extensions.
+	 */
+	if (HeapTupleHeaderIsVersionedDatum(td))
+		heap_datum_check(td, tupdesc);
+
+	return tupdesc;
+}
+
+/*
+ * Verify that the tuple held by srcerh may be copied directly into dsterh.
+ *
+ * It's possible that the tupledescs for the source and target have been built
+ * at different times. If so, check if they're incompatible - in that case we
+ * have no choice but to error out.
+ *
+ * XXX: It'd be nicer to do this in the ERH layer, but that'd require a few
+ * more changes and would make it harder to emit a somewhat understandable
+ * error message.
+ */
+static void
+check_record_tupdescs_match(ExpandedRecordHeader *srcerh, ExpandedRecordHeader *dsterh)
+{
+	Assert(srcerh->er_typeid == dsterh->er_typeid);
+
+	/* very common fastpath */
+	if (srcerh->er_tupdesc_id == dsterh->er_tupdesc_id)
+		return;
+
+	/*
+	 * Note that we intentionally don't use equalTupleDescs() here, since that
+	 * flags even harmless differences between the descriptors.
+	 */
+	if (!compatible_tupdescs(expanded_record_get_tupdesc(srcerh),
+							 expanded_record_get_tupdesc(dsterh)))
+		ereport(ERROR,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("assigned value is incompatible with the variable's type"),
+				errdetail("A variable can retain the type definition established when it was first used."));
 }
 
 /*
@@ -7837,6 +7940,16 @@ exec_move_row_from_datum(PLpgSQL_execstate *estate,
 				 (erh->er_typmod == rec->erh->er_typmod &&
 				  erh->er_typmod >= 0)))
 			{
+				/*
+				 * Check if the tuple descriptors are compatible. It may seem
+				 * tempting to just not enter the surrounding "if" if the
+				 * er_tupdesc_id doesn't match, but the fieldwise-assignment
+				 * path differs behaviorally, due to not copying the ctid
+				 * along. As the er_tupdesc_id can increment due to
+				 * invalidation processing, that would lead to unpredictable
+				 * behavior.
+				 */
+				check_record_tupdescs_match(erh, rec->erh);
 				expanded_record_set_tuple(rec->erh, erh->fvalue,
 										  true, !estate->atomic);
 				return;
@@ -7860,6 +7973,8 @@ exec_move_row_from_datum(PLpgSQL_execstate *estate,
 				(rec->rectypeid == RECORDOID ||
 				 rec->rectypeid == erh->er_typeid))
 			{
+				/* check comment above previous call */
+				check_record_tupdescs_match(erh, newerh);
 				expanded_record_set_tuple(newerh, erh->fvalue,
 										  true, !estate->atomic);
 				assign_record_var(estate, rec, newerh);
@@ -8240,12 +8355,20 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 		 * If there's no cast path according to the parser, fall back to using
 		 * an I/O coercion; this is semantically dubious but matches plpgsql's
 		 * historical behavior.  We would need something of the sort for
-		 * UNKNOWN literals in any case.  (This is probably now only reachable
-		 * in the case where srctype is UNKNOWN/RECORD.)
+		 * UNKNOWN literals in any case.  The only case we reject is casting
+		 * to/from INTERNAL.  (Other than that case, this is probably now only
+		 * reachable in the case where srctype is UNKNOWN/RECORD.)
 		 */
 		if (cast_expr == NULL)
 		{
 			CoerceViaIO *iocoerce = makeNode(CoerceViaIO);
+
+			if (srctype == INTERNALOID || dsttype == INTERNALOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_CANNOT_COERCE),
+						 errmsg("cannot cast type %s to %s",
+								format_type_be(srctype),
+								format_type_be(dsttype))));
 
 			iocoerce->arg = (Expr *) placeholder;
 			iocoerce->resulttype = dsttype;

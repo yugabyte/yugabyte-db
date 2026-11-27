@@ -74,6 +74,12 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	F_TS_MATCH_TT,
 	F_TS_MATCH_TQ,
 
+	/*
+	 * age(timestamptz, timestamptz) is marked IMMUTABLE upstream, but its
+	 * result depends on the session TimeZone, which DocDB does not have.
+	 */
+	F_AGE_TIMESTAMPTZ_TIMESTAMPTZ,
+
 	/* Crypto hash functions require resource owner */
 	F_MD5_BYTEA,
 	F_MD5_TEXT,
@@ -227,6 +233,11 @@ const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
 	F_SUBSTRING_TEXT_INT4_INT4,
 };
 
+/*
+ * postgres_fdw reads this list too.  For a federated YugabyteDB server it
+ * ships a stable function listed here to the remote as a query parameter, so
+ * a function added here must also be safe to push down on that path.
+ */
 const uint32 yb_pushdown_funcs_to_constify[] = {
 	F_NOW
 };

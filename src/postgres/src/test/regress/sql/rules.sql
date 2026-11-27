@@ -1087,6 +1087,7 @@ SELECT * FROM rule_v1;
 ALTER RULE InsertRule ON rule_v1 RENAME TO NewInsertRule; -- doesn't exist
 ALTER RULE NewInsertRule ON rule_v1 RENAME TO "_RETURN"; -- already exists
 ALTER RULE "_RETURN" ON rule_v1 RENAME TO abc; -- ON SELECT rule cannot be renamed
+ALTER RULE rtest_t4_ins1 ON rtest_t4 RENAME TO "_RETURN"; -- also disallowed
 
 DROP VIEW rule_v1;
 DROP TABLE rule_t1;

@@ -144,22 +144,22 @@ static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
 /* non-export function prototypes */
 static bool CopyReadLine(CopyFromState cstate, bool is_csv);
-static pg_attribute_always_inline bool CopyReadLineText(CopyFromState cstate,
-														bool is_csv);
+static pg_always_inline bool CopyReadLineText(CopyFromState cstate,
+											  bool is_csv);
 static int	CopyReadAttributesText(CopyFromState cstate);
 static int	CopyReadAttributesCSV(CopyFromState cstate);
 static Datum CopyReadBinaryAttribute(CopyFromState cstate, FmgrInfo *flinfo,
 									 Oid typioparam, int32 typmod,
 									 bool *isnull);
-static pg_attribute_always_inline bool CopyFromTextLikeOneRow(CopyFromState cstate,
-															  ExprContext *econtext,
-															  Datum *values,
-															  bool *nulls,
-															  bool is_csv);
-static pg_attribute_always_inline bool NextCopyFromRawFieldsInternal(CopyFromState cstate,
-																	 char ***fields,
-																	 int *nfields,
-																	 bool is_csv);
+static pg_always_inline bool CopyFromTextLikeOneRow(CopyFromState cstate,
+													ExprContext *econtext,
+													Datum *values,
+													bool *nulls,
+													bool is_csv);
+static pg_always_inline bool NextCopyFromRawFieldsInternal(CopyFromState cstate,
+														   char ***fields,
+														   int *nfields,
+														   bool is_csv);
 
 
 /* Low-level communications functions */
@@ -167,7 +167,7 @@ static int	CopyGetData(CopyFromState cstate, void *databuf,
 						int minread, int maxread);
 static inline bool CopyGetInt32(CopyFromState cstate, int32 *val);
 static inline bool CopyGetInt16(CopyFromState cstate, int16 *val);
-static void CopyLoadInputBuf(CopyFromState cstate);
+static void CopyLoadInputBuf(CopyFromState cstate, bool speculative);
 static int	CopyReadBinaryData(CopyFromState cstate, char *dest, int nbytes);
 
 void
@@ -654,11 +654,30 @@ CopyLoadRawBuf(CopyFromState cstate)
  *
  * If INPUT_BUF_BYTES(cstate) > 0, the unprocessed bytes are moved to the start
  * of the buffer and then we load more data after that.
+ *
+ * If "speculative" is true, this function skips reporting any encoding or
+ * conversion errors, provided there are still data for the caller to process.
+ * It also won't read past a backslash in text mode, since that might begin an
+ * end-of-copy marker (in which case there's no point in waiting for more data,
+ * which might not materialize anyway).  Such callers must be prepared for this
+ * function to return without loading anything.
  */
 static void
-CopyLoadInputBuf(CopyFromState cstate)
+CopyLoadInputBuf(CopyFromState cstate, bool speculative)
 {
 	int			nbytes = INPUT_BUF_BYTES(cstate);
+
+	/*
+	 * If "speculative" is true and we're in text mode, refuse to wait for
+	 * more input if there's a backslash in the buffer that the caller still
+	 * needs to process.  That might be the start of an end-of-copy marker. If
+	 * it _is_ an end-of-copy marker, we don't need any more data, and more
+	 * data might not show up, anyway (e.g., from a pipe that was left open).
+	 */
+	if (speculative && cstate->opts.format == COPY_FORMAT_TEXT &&
+		memchr(cstate->input_buf + cstate->input_buf_index, '\\',
+			   nbytes) != NULL)
+		return;
 
 	/*
 	 * The caller has updated input_buf_index to indicate how much of the
@@ -684,10 +703,16 @@ CopyLoadInputBuf(CopyFromState cstate)
 		/*
 		 * If we reached an invalid byte sequence, or we're at an incomplete
 		 * multi-byte character but there is no more raw input data, report
-		 * conversion error.
+		 * conversion error.  As an exception, if "speculative" is true and
+		 * there are still data for the caller to process, just return
+		 * instead.
 		 */
 		if (cstate->input_reached_error)
+		{
+			if (speculative && INPUT_BUF_BYTES(cstate) > 0)
+				return;
 			CopyConversionError(cstate);
+		}
 
 		/* no more input, and everything has been converted */
 		if (cstate->input_reached_eof)
@@ -772,11 +797,11 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
  *
  * NOTE: force_not_null option are not applied to the returned fields.
  *
- * We use pg_attribute_always_inline to reduce function call overhead
+ * We use pg_always_inline to reduce function call overhead
  * and to help compilers to optimize away the 'is_csv' condition when called
  * by internal functions such as CopyFromTextLikeOneRow().
  */
-static pg_attribute_always_inline bool
+static pg_always_inline bool
 NextCopyFromRawFieldsInternal(CopyFromState cstate, char ***fields, int *nfields, bool is_csv)
 {
 	int			fldct;
@@ -965,10 +990,10 @@ CopyFromCSVOneRow(CopyFromState cstate, ExprContext *econtext, Datum *values,
 /*
  * Workhorse for CopyFromTextOneRow() and CopyFromCSVOneRow().
  *
- * We use pg_attribute_always_inline to reduce function call overhead
+ * We use pg_always_inline to reduce function call overhead
  * and to help compilers to optimize away the 'is_csv' condition.
  */
-static pg_attribute_always_inline bool
+static pg_always_inline bool
 CopyFromTextLikeOneRow(CopyFromState cstate, ExprContext *econtext,
 					   Datum *values, bool *nulls, bool is_csv)
 {
@@ -1164,9 +1189,15 @@ CopyFromTextLikeOneRow(CopyFromState cstate, ExprContext *econtext,
 			}
 
 			if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+			{
+				/* The return below skips the clear at the bottom of the loop */
+				cstate->cur_attname = NULL;
+				cstate->cur_attval = NULL;
+
 				return true;
-			else if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
-				continue;
+			}
+
+			/* SET_NULL falls through to the clear at the bottom of the loop */
 		}
 
 		cstate->cur_attname = NULL;
@@ -1400,7 +1431,7 @@ CopyReadLineTextSIMDHelper(CopyFromState cstate, bool is_csv,
 		{
 			REFILL_LINEBUF;
 
-			CopyLoadInputBuf(cstate);
+			CopyLoadInputBuf(cstate, true);
 			/* update our local variables */
 			*hit_eof_p = cstate->input_reached_eof;
 			input_buf_ptr = cstate->input_buf_index;
@@ -1482,7 +1513,7 @@ CopyReadLineTextSIMDHelper(CopyFromState cstate, bool is_csv,
 /*
  * CopyReadLineText - inner loop of CopyReadLine for text mode
  */
-static pg_attribute_always_inline bool
+static pg_always_inline bool
 CopyReadLineText(CopyFromState cstate, bool is_csv)
 {
 	char	   *copy_input_buf;
@@ -1585,7 +1616,7 @@ CopyReadLineText(CopyFromState cstate, bool is_csv)
 		{
 			REFILL_LINEBUF;
 
-			CopyLoadInputBuf(cstate);
+			CopyLoadInputBuf(cstate, false);
 			/* update our local variables */
 			hit_eof = cstate->input_reached_eof;
 			input_buf_ptr = cstate->input_buf_index;

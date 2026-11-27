@@ -74,6 +74,21 @@ SELECT '1&(2&(4&(5&6)))'::query_int;
 SELECT '1&2&4&5&6'::query_int;
 SELECT '1&(2&(4&(5|6)))'::query_int;
 SELECT '1&(2&(4&(5|!6)))'::query_int;
+SELECT '010'::query_int;  -- decimal, not octal
+SELECT '-'::query_int;  -- syntax error
+
+-- Test for overflow of the int16 "left" field in findoprnd().
+-- This query uses a balanced binary tree to avoid using too much stack.
+DO $$
+DECLARE
+  e text := '1';
+BEGIN
+  FOR i IN 1..15 LOOP
+    e := '(' || e || '&' || e || ')';
+  END LOOP;
+  PERFORM ('0|' || e)::query_int;
+END;
+$$;
 
 -- test non-error-throwing input
 

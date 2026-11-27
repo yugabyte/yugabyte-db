@@ -152,6 +152,17 @@ SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITH UNIQUE RETURNING 
 SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITHOUT UNIQUE RETURNING jsonb);
 SELECT JSON_OBJECT(1: 1, '2': NULL, '3': 1, 4: NULL, '5': 'a' ABSENT ON NULL WITH UNIQUE RETURNING jsonb);
 
+-- the RETURNING coercion must not pick up the test value of an enclosing CASE
+SELECT CASE 'x' WHEN JSON_OBJECT('a': 'b' RETURNING text) THEN 1 ELSE 0 END;
+
+-- the RETURNING coercion must not prevent inlining of a SQL function
+CREATE FUNCTION json_object_inline_test(text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$ SELECT $1 || '!' $$;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT json_object_inline_test(JSON_OBJECT('a': 'b' RETURNING text));
+SELECT json_object_inline_test(JSON_OBJECT('a': 'b' RETURNING text));
+DROP FUNCTION json_object_inline_test(text);
+
 -- BUG: https://postgr.es/m/CADXhmgTJtJZK9A3Na_ry%2BXrq-ghjcejBRhcRMzWZvbd__QdgJA%40mail.gmail.com
 -- datum_to_jsonb_internal() didn't catch keys that are casts instead of a simple scalar
 CREATE TYPE mood AS ENUM ('happy', 'sad', 'neutral');
@@ -193,6 +204,7 @@ SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' RETURNING text));
 SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' FORMAT JSON RETURNING text));
 SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' FORMAT JSON RETURNING text) FORMAT JSON);
 
+-- JSON_ARRAY(subquery)
 SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i));
 SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i));
 SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i) RETURNING jsonb);
@@ -200,6 +212,25 @@ SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL)
 --SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i) NULL ON NULL RETURNING jsonb);
 SELECT JSON_ARRAY(SELECT i FROM (VALUES (3), (1), (NULL), (2)) foo(i) ORDER BY i);
 SELECT JSON_ARRAY(WITH x AS (SELECT 1) VALUES (TRUE));
+
+-- JSON_ARRAY(subquery) with empty result set
+SELECT JSON_ARRAY(SELECT 1 WHERE FALSE);
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) WHERE i > 4);
+
+-- JSON_ARRAY(subquery) with a correlated subquery in the WHERE clause
+SELECT * FROM (VALUES (1), (2), (NULL), (4)) t1(a)
+WHERE JSON_ARRAY(
+    SELECT b FROM (VALUES (1), (2), (3)) t2(b) WHERE b = t1.a
+    RETURNING jsonb
+) = '[]'::jsonb;
+
+-- JSON_ARRAY(subquery) RETURNING with a length-restricted output type
+-- Should fail
+SELECT JSON_ARRAY(SELECT 1 RETURNING varchar(1));
+SELECT JSON_ARRAY(SELECT 1 WHERE FALSE RETURNING varchar(1));
+-- Should work
+SELECT JSON_ARRAY(SELECT 1 RETURNING varchar(3));
+SELECT JSON_ARRAY(SELECT 1 WHERE FALSE RETURNING varchar(2));
 
 -- Should fail
 SELECT JSON_ARRAY(SELECT FROM (VALUES (1)) foo(i));
@@ -384,96 +415,52 @@ SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING 
 
 \sv json_array_subquery_view
 
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) ORDER BY i LIMIT 3 RETURNING jsonb);
+
+CREATE OR REPLACE VIEW json_array_subquery_view AS
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) ORDER BY i LIMIT 3 RETURNING jsonb);
+
+\sv json_array_subquery_view
+
 DROP VIEW json_array_subquery_view;
 
--- Test mutability of JSON_OBJECTAGG, JSON_ARRAYAGG, JSON_ARRAY, JSON_OBJECT
-create type comp1 as (a int, b date);
-create domain d_comp1 as comp1;
-create domain mydomain as timestamptz;
-create type mydomainrange as range(subtype=mydomain);
-create type comp3 as (a int, b mydomainrange);
-create table test_mutability(
-	a text[], b timestamp, c timestamptz,
-	d date, f1 comp1[], f2 timestamp[],
-	f3 d_comp1[],
-	f4 mydomainrange[],
-	f5 comp3,
-	f6 mydomainmultirange);
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM (VALUES (1), (2), (NULL), (4)) t1(a)
+WHERE JSON_ARRAY(
+    SELECT b FROM (VALUES (1), (2), (3)) t2(b) WHERE b = t1.a
+    RETURNING jsonb
+) = '[]'::jsonb;
 
--- JSON_OBJECTAGG, JSON_ARRAYAGG are aggregate functions, cannot be used in index
-create index xx on test_mutability(json_objectagg(a: b absent on null with unique keys returning jsonb));
-create index xx on test_mutability(json_objectagg(a: b absent on null with unique keys returning json));
-create index xx on test_mutability(json_arrayagg(a returning jsonb));
-create index xx on test_mutability(json_arrayagg(a returning json));
+CREATE VIEW json_array_subquery_view AS
+SELECT * FROM (VALUES (1), (2), (NULL), (4)) t1(a)
+WHERE JSON_ARRAY(
+    SELECT b FROM (VALUES (1), (2), (3)) t2(b) WHERE b = t1.a
+    RETURNING jsonb
+) = '[]'::jsonb;
 
--- jsonb: create expression index via json_array
-create index on test_mutability(json_array(a returning jsonb)); -- ok
-create index on test_mutability(json_array(b returning jsonb)); -- error
-create index on test_mutability(json_array(c returning jsonb)); -- error
-create index on test_mutability(json_array(d returning jsonb)); -- error
-create index on test_mutability(json_array(f1 returning jsonb)); -- error
-create index on test_mutability(json_array(f2 returning jsonb)); -- error
-create index on test_mutability(json_array(f3 returning jsonb)); -- error
-create index on test_mutability(json_array(f4 returning jsonb)); -- error
-create index on test_mutability(json_array(f5 returning jsonb)); -- error
-create index on test_mutability(json_array(f6 returning jsonb)); -- error
+\sv json_array_subquery_view
 
--- jsonb: create expression index via json_object
-create index on test_mutability(json_object('hello' value a returning jsonb)); -- ok
-create index on test_mutability(json_object('hello' value b returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value c returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value d returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value f1 returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value f2 returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value f3 returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value f4 returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value f5 returning jsonb)); -- error
-create index on test_mutability(json_object('hello' value f6 returning jsonb)); -- error
+DROP VIEW json_array_subquery_view;
 
--- data type json doesn't have a default operator class for access method "btree" so
--- we use a generated column to test whether the JSON_ARRAY expression is
--- immutable
-alter table test_mutability add column f10 json generated always as (json_array(a returning json)); -- ok
-alter table test_mutability add column f11 json generated always as (json_array(b returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(c returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(d returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(f1 returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(f2 returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(f3 returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(f4 returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(f5 returning json)); -- error
-alter table test_mutability add column f11 json generated always as (json_array(f6 returning json)); -- error
+-- JSON_ARRAY(subquery) with RETURNING text
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING text);
 
--- data type json doesn't have a default operator class for access method "btree" so
--- we use a generated column to test whether the JSON_OBJECT expression is
--- immutable
-alter table test_mutability add column f11 json generated always as (json_object('hello' value a returning json)); -- ok
-alter table test_mutability add column f12 json generated always as (json_object('hello' value b returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value c returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value d returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value f1 returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value f2 returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value f3 returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value f4 returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value f5 returning json)); -- error
-alter table test_mutability add column f12 json generated always as (json_object('hello' value f6 returning json)); -- error
+CREATE VIEW json_array_subquery_view AS
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING text);
 
-drop table test_mutability;
-drop domain d_comp1;
-drop type comp3;
-drop type mydomainrange;
-drop domain mydomain;
-drop type comp1;
+\sv json_array_subquery_view
 
--- Range/multirange with immutable subtype should be considered immutable
-create type range_int as range(subtype=int);
-create table test_range_immutable(r range_int, m multirange_int);
-create index on test_range_immutable(json_array(r returning jsonb)); -- ok
-create index on test_range_immutable(json_array(m returning jsonb)); -- ok
-create index on test_range_immutable(json_object('key' value r returning jsonb)); -- ok
-create index on test_range_immutable(json_object('key' value m returning jsonb)); -- ok
-drop table test_range_immutable;
-drop type range_int;
+DROP VIEW json_array_subquery_view;
+
+-- JSON_ARRAY(subquery) with an input FORMAT clause
+CREATE VIEW json_array_subquery_view AS
+SELECT JSON_ARRAY(SELECT '{"a": 1}'::text FORMAT JSON);
+
+\sv json_array_subquery_view
+
+DROP VIEW json_array_subquery_view;
 
 -- IS JSON predicate
 SELECT NULL IS JSON;
@@ -501,6 +488,28 @@ SELECT NULL::jd5 IS JSON WITH UNIQUE KEYS; -- error
 
 -- domain constraint violation during cast
 SELECT a::jd2 IS JSON WITH UNIQUE KEYS as col1 FROM (VALUES('{"a": 1, "a": 2}')) s(a); -- error
+
+-- A user-defined string-category type with no implicit cast to text must
+-- produce a clean error rather than crash for IS JSON / JSON() input
+-- (per bug #19491).
+CREATE FUNCTION sqljson_mystr_in(cstring) RETURNS sqljson_mystr
+	AS 'textin' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION sqljson_mystr_out(sqljson_mystr) RETURNS cstring
+	AS 'textout' LANGUAGE internal IMMUTABLE STRICT;
+CREATE TYPE sqljson_mystr (
+	INPUT = sqljson_mystr_in,
+	OUTPUT = sqljson_mystr_out,
+	LIKE = text,
+	CATEGORY = 'S'
+);
+SELECT '{"a":1}'::sqljson_mystr IS JSON;                -- error
+SELECT JSON('{"a":1}'::sqljson_mystr WITH UNIQUE KEYS); -- error
+-- An implicit cast to text lets the same query work normally.
+CREATE CAST (sqljson_mystr AS text) WITHOUT FUNCTION AS IMPLICIT;
+SELECT '{"a":1}'::sqljson_mystr IS JSON;
+\set VERBOSITY terse
+DROP TYPE sqljson_mystr CASCADE;
+\set VERBOSITY default
 
 -- view creation and deparsing with domain IS JSON
 CREATE VIEW domain_isjson AS
@@ -627,3 +636,44 @@ SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': stable_one() RETURNING text) FORMAT 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': 1 RETURNING text) FORMAT JSON);
 SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': 1 RETURNING text) FORMAT JSON);
 DROP FUNCTION volatile_one, stable_one;
+
+-- Test deparsing of JSON aggregates that are computed below a WindowAgg
+-- node.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT i % 2 AS g,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING jsonb) AS ja,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING text) AS ja_text,
+	JSON_ARRAYAGG(i ORDER BY i NULL ON NULL RETURNING jsonb) AS ja_null,
+	JSON_OBJECTAGG(i: i ABSENT ON NULL RETURNING jsonb) AS jo_absent,
+	JSON_OBJECTAGG(i: i WITH UNIQUE RETURNING jsonb) AS jo_unique,
+	row_number() OVER (ORDER BY i % 2) AS rn
+FROM generate_series(1, 3) i
+GROUP BY i % 2;
+SELECT i % 2 AS g,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING jsonb) AS ja,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING text) AS ja_text,
+	JSON_ARRAYAGG(i ORDER BY i NULL ON NULL RETURNING jsonb) AS ja_null,
+	JSON_OBJECTAGG(i: i ABSENT ON NULL RETURNING jsonb) AS jo_absent,
+	JSON_OBJECTAGG(i: i WITH UNIQUE RETURNING jsonb) AS jo_unique,
+	row_number() OVER (ORDER BY i % 2) AS rn
+FROM generate_series(1, 3) i
+GROUP BY i % 2;
+
+-- The same, but with the JSON aggregate used as a window function that is
+-- computed below another WindowAgg node.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAYAGG(i NULL ON NULL RETURNING jsonb) OVER (ORDER BY i DESC) AS ja,
+	row_number() OVER (ORDER BY i) AS rn
+FROM generate_series(1, 3) i;
+SELECT JSON_ARRAYAGG(i NULL ON NULL RETURNING jsonb) OVER (ORDER BY i DESC) AS ja,
+	row_number() OVER (ORDER BY i) AS rn
+FROM generate_series(1, 3) i;
+
+-- The same, but with the expression containing the JSON aggregate postponed
+-- to above the final sort due to being volatile.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT i % 2 AS g,
+	   JSON_ARRAYAGG(i RETURNING text) || random()::text AS ja
+FROM generate_series(1, 3) i
+GROUP BY i % 2
+ORDER BY count(*);

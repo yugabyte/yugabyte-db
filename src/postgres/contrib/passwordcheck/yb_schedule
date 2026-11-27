@@ -2,3 +2,4 @@
 
 test: yb.port.passwordcheck
 test: yb.port.passwordcheck_extra
+test: yb.orig.passwordcheck

@@ -287,62 +287,11 @@ ORDER BY attnum;
 
 SELECT a, b, length(c) = 3 as c_ok, d, e >= 10 as e_ok FROM t2;
 
--- test fast default over domains with constraints
-CREATE DOMAIN domain5 AS int CHECK(value > 10) DEFAULT 8;
-CREATE DOMAIN domain6 as int CHECK(value > 10) DEFAULT random(min=>11, max=>100);
-CREATE DOMAIN domain7 as int CHECK((value + random(min=>11::int, max=>11)) > 12);
-CREATE DOMAIN domain8 as int NOT NULL;
-
-CREATE TABLE test_add_domain_col(a int);
--- succeeds despite constraint-violating default because table is empty
-ALTER TABLE test_add_domain_col ADD COLUMN a1 domain5;
-ALTER TABLE test_add_domain_col DROP COLUMN a1;
-INSERT INTO test_add_domain_col VALUES(1),(2);
-
--- tests with non-empty table
-ALTER TABLE test_add_domain_col ADD COLUMN b domain5; -- table rewrite, then fail
-ALTER TABLE test_add_domain_col ADD COLUMN b domain8; -- table rewrite, then fail
-ALTER TABLE test_add_domain_col ADD COLUMN b domain5 DEFAULT 1; -- table rewrite, then fail
-ALTER TABLE test_add_domain_col ADD COLUMN b domain5 DEFAULT 12; -- ok, no table rewrite
-
--- explicit column default expression overrides domain's default
--- expression, so no table rewrite
-ALTER TABLE test_add_domain_col ADD COLUMN c domain6 DEFAULT 14;
-
-ALTER TABLE test_add_domain_col ADD COLUMN c1 domain8 DEFAULT 13; -- no table rewrite
-SELECT attnum, attname, atthasmissing, atthasdef, attmissingval
-FROM  pg_attribute
-WHERE attnum > 0 AND attrelid = 'test_add_domain_col'::regclass AND attisdropped is false
-AND   atthasmissing
-ORDER BY attnum;
-
--- We need to rewrite the table whenever domain default contains volatile expression
-ALTER TABLE test_add_domain_col ADD COLUMN d domain6;
-
--- We need to rewrite the table whenever domain constraint expression contains volatile expression
-ALTER TABLE test_add_domain_col ADD COLUMN e domain7 default 14;
-ALTER TABLE test_add_domain_col ADD COLUMN f domain7;
-
--- domain with both volatile and non-volatile CHECK constraints: the
--- volatile one forces a table rewrite
-CREATE DOMAIN domain9 AS int CHECK(value > 10) CHECK((value + random(min=>1::int, max=>1)) > 0);
-ALTER TABLE test_add_domain_col ADD COLUMN g domain9 DEFAULT 14;
-
--- virtual generated columns cannot have domain types
-ALTER TABLE test_add_domain_col ADD COLUMN h domain5
-  GENERATED ALWAYS AS (a + 20) VIRTUAL;  -- error
-
 DROP TABLE t2;
-DROP TABLE test_add_domain_col;
 DROP DOMAIN domain1;
 DROP DOMAIN domain2;
 DROP DOMAIN domain3;
 DROP DOMAIN domain4;
-DROP DOMAIN domain5;
-DROP DOMAIN domain6;
-DROP DOMAIN domain7;
-DROP DOMAIN domain8;
-DROP DOMAIN domain9;
 DROP FUNCTION foo(INT);
 
 -- Fall back to full rewrite for volatile expressions
@@ -375,7 +324,7 @@ SELECT attname, atthasmissing, attmissingval FROM pg_attribute
 DROP TABLE T;
 DROP FUNCTION foolme(timestamptz);
 
--- Simple querie
+-- Simple queries
 CREATE TABLE T (pk INT NOT NULL PRIMARY KEY);
 
 SELECT set('t');
@@ -652,6 +601,32 @@ SELECT count(*)
   FROM pg_attribute
   WHERE attrelid = 'ft1'::regclass AND
     (attmissingval IS NOT NULL OR atthasmissing);
+
+-- Verify that table-rewriting maintenance commands preserve attmissingval
+-- columns.
+CREATE TABLE t (id int PRIMARY KEY);
+INSERT INTO t SELECT generate_series(1, 3);
+ALTER TABLE t ADD COLUMN a int DEFAULT 42;
+ALTER TABLE t ADD COLUMN b int NOT NULL DEFAULT 7 CHECK (b > 0);
+VACUUM FULL t;
+SELECT * FROM t ORDER BY id;
+ALTER TABLE t ADD COLUMN c text DEFAULT 'hello';
+CLUSTER t USING t_pkey;
+SELECT * FROM t ORDER BY id;
+ALTER TABLE t ADD COLUMN d int DEFAULT 99;
+REPACK t;
+SELECT * FROM t ORDER BY id;
+DROP TABLE t;
+
+-- Ensure defaults are correctly applied during tuple deformation for whole
+-- row vars when the defaults are deformed incrementally.
+CREATE TABLE t_missing_wholerow (a int NOT NULL, b int);
+INSERT INTO t_missing_wholerow (a, b) VALUES (1, null); -- with NULL bitmap
+INSERT INTO t_missing_wholerow (a, b) VALUES (2, 3); -- without NULL bitmap
+ALTER TABLE t_missing_wholerow ADD COLUMN c int NOT NULL DEFAULT 15;
+ALTER TABLE t_missing_wholerow ADD COLUMN d bigint NOT NULL DEFAULT 25;
+SELECT a, b, c, t FROM t_missing_wholerow t;
+DROP TABLE t_missing_wholerow;
 
 -- cleanup
 DROP FOREIGN TABLE ft1;

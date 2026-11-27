@@ -2470,7 +2470,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "REASSIGN OWNED BY CURRENT_USER TO new_user",
-            PERMISSION_DENIED
+            "must be able to SET ROLE \"new_user\""
         );
 
         // Reassign fails because "some_group" does not have schema permissions.

@@ -391,7 +391,11 @@ eqsel_internal(PG_FUNCTION_ARGS, bool negate)
 
 		if (yb_is_batched)
 		{
+			YbBatchedExpr *yb_bexpr = (YbBatchedExpr *) other;
+
 			selec *= yb_batch_expr_size(root, varRelid, other);
+			if (yb_bexpr->rows_scale > 0)
+				selec *= yb_bexpr->rows_scale;
 			CLAMP_PROBABILITY(selec);
 		}
 	}
@@ -711,7 +715,8 @@ scalarineqsel(PlannerInfo *root, Oid operator, bool isgt, bool iseq,
 		 * make an estimate based on comparing the constant to the table size.
 		 */
 		if (vardata->var && IsA(vardata->var, Var) &&
-			((Var *) vardata->var)->varattno == SelfItemPointerAttributeNumber)
+			((Var *) vardata->var)->varattno == SelfItemPointerAttributeNumber &&
+			consttype == TIDOID)
 		{
 			ItemPointer itemptr;
 			double		block;
@@ -2307,6 +2312,18 @@ estimate_array_length(PlannerInfo *root, Node *arrayexpr)
 		AttStatsSlot sslot;
 		double		nelem = 0;
 
+		/*
+		 * Skip calling examine_variable for Var with varno 0, which has no
+		 * valid relation entry and would error in find_base_rel.  Such a Var
+		 * can appear when a nested set operation's output type doesn't match
+		 * the parent's expected type, because recurse_set_operations builds a
+		 * projection target list using generate_setop_tlist with varno 0, and
+		 * if the required type coercion involves an ArrayCoerceExpr, we can
+		 * be called on that Var.
+		 */
+		if (IsA(arrayexpr, Var) && ((Var *) arrayexpr)->varno == 0)
+			return 10;			/* default guess, should match scalararraysel */
+
 		examine_variable(root, arrayexpr, 0, &vardata);
 		if (HeapTupleIsValid(vardata.statsTuple))
 		{
@@ -2507,7 +2524,9 @@ eqjoinsel(PG_FUNCTION_ARGS)
 		 * hash functions for the join operator.
 		 */
 		if ((sslot1.nvalues + sslot2.nvalues) >= EQJOINSEL_MCV_HASH_THRESHOLD)
-			(void) get_op_hash_functions(operator, &hashLeft, &hashRight);
+			(void) get_op_hash_functions_ext(operator,
+											 exprType((Node *) linitial(args)),
+											 &hashLeft, &hashRight);
 	}
 	else
 		memset(&eqproc, 0, sizeof(eqproc)); /* silence uninit-var warnings */
@@ -5670,6 +5689,14 @@ convert_string_datum(Datum value, Oid typid, Oid collid, bool *failure)
 			return NULL;
 	}
 
+	/*
+	 * If we don't have a collation, act as though it's "C".  This would
+	 * normally happen only for the "char" type, but perhaps there are other
+	 * cases.
+	 */
+	if (!OidIsValid(collid))
+		return val;
+
 	mylocale = pg_newlocale_from_collation(collid);
 
 	if (!mylocale->collate_is_c)
@@ -6347,7 +6374,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 /*
  * strip_all_phvs_deep
  *		Deeply strip all PlaceHolderVars in an expression.
-
+ *
  * As a performance optimization, we first use a lightweight walker to check
  * for the presence of any PlaceHolderVars.  The expensive mutator is invoked
  * only if a PlaceHolderVar is found, avoiding unnecessary memory allocation
@@ -7725,12 +7752,22 @@ get_quals_from_indexclauses(List *indexclauses)
 	return result;
 }
 
-int
+/*
+ * yb_batch_expr_size
+ *	  The number of outer values a batched clause probes its scan with per
+ *	  rescan: the batch size capped by the outer rows, or the share of it the
+ *	  expression carries when the clause shares its batch with others
+ *	  (yb_batched_clauses).
+ */
+double
 yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
 {
-	Assert(IsA(batched_expr, YbBatchedExpr));
-	Node	   *batched_operand = (Node *) castNode(YbBatchedExpr,
-													batched_expr)->orig_expr;
+	YbBatchedExpr *bexpr = castNode(YbBatchedExpr, batched_expr);
+
+	if (bexpr->share > 0)
+		return bexpr->share;
+
+	Node	   *batched_operand = (Node *) bexpr->orig_expr;
 	Relids		other_varnos = pull_varnos(root, batched_operand);
 	Relids		batched_relids = root->yb_cur_batched_relids;
 

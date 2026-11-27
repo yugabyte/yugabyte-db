@@ -25,6 +25,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -77,6 +81,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -86,6 +91,7 @@ import org.mockito.ArgumentCaptor;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -1485,6 +1491,80 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals("true", ((Map<String, Object>) gflags.get("tserver")).get("openssl_require_fips"));
   }
 
+  private static final String LDAP_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+
+  private KubernetesCommandExecutor helmInstallTask(Map<String, Object> universeOverrides) {
+    when(kubernetesManager.helmShowValues(any(), any())).thenReturn("tls:\n  enabled: false\n");
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides = universeOverrides;
+    kubernetesCommandExecutor.initialize(params);
+    return kubernetesCommandExecutor;
+  }
+
+  private static List<ILoggingEvent> captureTraceLogs(Runnable runnable) {
+    Logger logger = (Logger) LoggerFactory.getLogger(KubernetesCommandExecutor.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.TRACE);
+    try {
+      runnable.run();
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    return appender.list;
+  }
+
+  private static void assertNoLogMentions(List<ILoggingEvent> events, String secret) {
+    for (ILoggingEvent event : events) {
+      assertFalse(event.getFormattedMessage(), event.getFormattedMessage().contains(secret));
+    }
+  }
+
+  @Test
+  public void testHelmInstallTraceLogsNoOverrideSecrets() {
+    KubernetesCommandExecutor task = helmInstallTask(HelmUtils.convertYamlToMap(LDAP_OVERRIDES));
+    List<ILoggingEvent> events = captureTraceLogs(task::run);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+    assertTrue(
+        events.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Running validations on merged")));
+    assertNoLogMentions(events, "dummy-bind-pass");
+  }
+
+  @Test
+  public void testUnserializableOverridesErrorLogsNoOverrideSecrets() {
+    Map<String, Object> universeOverrides =
+        new HashMap<>(HelmUtils.convertYamlToMap(LDAP_OVERRIDES));
+    // Jackson can't serialize a plain Object, so the overrides fail to convert.
+    universeOverrides.put("unserializable", new Object());
+    KubernetesCommandExecutor task = helmInstallTask(universeOverrides);
+    List<ILoggingEvent> events =
+        captureTraceLogs(() -> assertThrows(RuntimeException.class, task::run));
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
+    assertTrue(
+        events.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Error in writing overrides map")));
+    assertNoLogMentions(events, "dummy-bind-pass");
+  }
+
   @Test
   public void testHelmInstallOverridesCannotDisableClientCerts() throws IOException {
     // Provider overrides aren't validated, so the generated values must put the client cert
@@ -2480,6 +2560,77 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertTrue(
         "query receiver 'filelog/query_logs_ysql' must be present, yaml=" + overridesYaml,
         overridesYaml.contains("filelog/query_logs_ysql"));
+  }
+
+  @Test
+  public void testHelmInstallQueryLogPgConfWinsOverUserPgConf() throws IOException {
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig ysqlQueryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(
+        com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig queryExporter =
+        new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
+    queryExporter.setExporterUuid(tp.getUuid());
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
+
+    createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .queryLogConfig(queryLogConfig)
+                .build())
+        .run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    List<String> pgConfLines =
+        overridesYaml
+            .lines()
+            .filter(line -> line.contains(GFlagsUtil.YSQL_PG_CONF_CSV))
+            .collect(Collectors.toList());
+    assertTrue(
+        "tserver ysql_pg_conf_csv must take log_statement from the query log config, yaml="
+            + overridesYaml,
+        pgConfLines.stream().anyMatch(line -> line.contains("log_statement=MOD")));
+    assertTrue(
+        "user log_statement must be replaced, yaml=" + overridesYaml,
+        pgConfLines.stream().noneMatch(line -> line.contains("log_statement=ddl")));
   }
 
   @Test

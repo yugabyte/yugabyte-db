@@ -161,7 +161,11 @@ PACK_MIN_KNOWN_RATIO = 0.9
 # the most.
 PACK_MAX_TESTS = 1000
 
-# How long to wait for the Spark master's status page when asking how many cores are free.
+# How many tasks, running and waiting, the cluster scaling daemon counts per node when it sizes a
+# Linux Spark cluster, where a node has one core (see plan_spark_tasks).
+SCALING_DAEMON_TASKS_PER_NODE = 25
+
+# How long to wait for the Spark master's status page when asking who holds the cluster's cores.
 SPARK_MASTER_UI_TIMEOUT_SEC = 10
 
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
@@ -1639,21 +1643,23 @@ def load_test_durations(path: str) -> Dict[str, float]:
     return durations
 
 
-# The cores of the cluster's alive workers that no application holds, as the Spark master reports
+# The cores of the cluster that applications other than this one hold, as the Spark master reports
 # them, or None when the master's web UI is not known or does not answer. A worker has one core
-# here, so this is the number of tasks the cluster can start now without growing. Executors this
-# application still holds from an earlier job count as used, which errs toward not packing.
-def get_free_cluster_cores() -> Optional[int]:
+# here, so this is the number of executors other applications have on the cluster now.
+def get_cores_of_other_apps() -> Optional[int]:
     import urllib.request
     if not g_spark_master_ui_url:
         return None
     status_url = g_spark_master_ui_url.rstrip('/') + '/json/'
     try:
+        own_app_id = getattr(spark_context, 'applicationId', None)
         with urllib.request.urlopen(status_url, timeout=SPARK_MASTER_UI_TIMEOUT_SEC) as response:
             status = json.loads(response.read().decode('utf-8'))
-        return max(0, int(status['cores']) - int(status['coresused']))
+        return sum(
+            int(app['cores']) for app in status['activeapps'] if app['id'] != own_app_id)
     except Exception as ex:
-        logging.warning("Could not read the free cores of the cluster from %s: %s", status_url, ex)
+        logging.warning(
+            "Could not read the cores other applications hold from %s: %s", status_url, ex)
         return None
 
 
@@ -1709,12 +1715,17 @@ def pack_tests(
 #   - A job is packed only if at least PACK_MIN_KNOWN_RATIO of its tests have an expected run time.
 #   - Two attempts of one test never share a task (pack_tests), so repetitions of a test keep being
 #     spread over executors the way separate tasks are.
-#   - A job is packed only if the cluster has a free core for each of its tasks now. The cluster
-#     scaling daemon adds nodes by the number of tasks running and waiting, at a fixed number of
-#     tasks per node that assumes one test per task. A packed job that needs the cluster to grow
-#     would get far too few nodes; one test per task is what the daemon sizes correctly. A job
-#     that shares the Spark context with another one (shares_context) counts half the free cores
-#     as its own.
+#   - A job is packed only if other applications hold enough of the cluster's cores now: one for
+#     each of the job's tasks, and as many as the nodes the cluster scaling daemon would give the
+#     job by itself with one test per task (SCALING_DAEMON_TASKS_PER_NODE tests a node, at least
+#     one). The daemon sizes a cluster by the number of tasks running and waiting, which assumes
+#     one test per task, so a packed job that needed the cluster to grow would get far too few
+#     nodes. Cores that other applications hold belong to a cluster that is in use: the job waits
+#     for them to come free and takes one per task. Cores nobody holds do not count, nor do the
+#     ones this application holds from an earlier job: the daemon removes idle workers within a
+#     pass or two, and every worker once no task is running or waiting on the cluster. A job that
+#     shares the Spark context with another one (shares_context) counts half of those cores as
+#     its own.
 #
 # What a packed task changes when its executor is lost (a worker can go away under a running task):
 # Spark runs the task again, as it does for a task of one, but the results of the tests that had
@@ -1756,21 +1767,25 @@ def plan_spark_tasks(
     if len(known_sec) < PACK_MIN_KNOWN_RATIO * num_tests:
         return not_packed("only %d of them have an expected run time" % len(known_sec))
 
-    free_cores = get_free_cluster_cores()
-    if free_cores is None:
-        return not_packed("the free cores of the cluster are not known")
+    other_cores = get_cores_of_other_apps()
+    if other_cores is None:
+        return not_packed("the cores other applications hold on the cluster are not known")
     if shares_context:
-        free_cores //= 2
+        other_cores //= 2
 
+    # The nodes the scaling daemon would give this job by itself with one test per task.
+    unpacked_nodes = max(1, num_tests // SCALING_DAEMON_TASKS_PER_NODE)
     packs = pack_tests(test_descriptors, g_expected_test_time_sec, g_pack_target_sec)
-    if len(packs) > free_cores:
-        return not_packed("%d tasks of %d sec would be more than the %d free cores it can have" %
-                          (len(packs), g_pack_target_sec, free_cores))
+    if max(len(packs), unpacked_nodes) > other_cores:
+        return not_packed(
+            "%d tasks of %d sec, or the %d nodes it would get with one test per task, are more "
+            "than the %d cores of other applications it can count on" %
+            (len(packs), g_pack_target_sec, unpacked_nodes, other_cores))
     logging.info(
         "Job %s: %d tests packed into %d task(s) of at most %d sec of expected run time each "
-        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d free cores "
-        "of the cluster to run on)", job_group, num_tests, len(packs), g_pack_target_sec,
-        sum(known_sec), len(known_sec), num_tests - len(known_sec), free_cores)
+        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d cores of "
+        "other applications to count on)", job_group, num_tests, len(packs), g_pack_target_sec,
+        sum(known_sec), len(known_sec), num_tests - len(known_sec), other_cores)
     return packs
 
 
@@ -2650,8 +2665,8 @@ def main() -> None:
                              'the main pass.')
     parser.add_argument('--spark_master_ui_url',
                         help='URL of the Spark master\'s web UI, e.g. http://host:8080. '
-                             '--pack_target_sec asks it for the free cores of the cluster, and '
-                             'packs a job only if there is one for each of its tasks.')
+                             '--pack_target_sec asks it for the cores other applications hold '
+                             'on the cluster, and packs a job only if they are enough for it.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')

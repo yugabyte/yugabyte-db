@@ -18,6 +18,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -39,12 +40,17 @@ import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -57,6 +63,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
@@ -529,5 +536,48 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
         assertPlatformException(
             () -> doRequestWithAuthToken("GET", baseUrl + "?limit=0", authToken));
     assertEquals(play.mvc.Http.Status.BAD_REQUEST, badResult.status());
+  }
+
+  @Test
+  @Parameters({"all", "delta", "source", "target"})
+  public void testStateTransitionRedactsLdapGFlags(String state) {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    Universe u = createUniverse(customer.getId());
+    UniverseDefinitionTaskParams before = withLdapGFlags(u, "dummy-old-pass");
+    UniverseDefinitionTaskParams target = withLdapGFlags(u, "dummy-new-pass");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(before, target, new NodeDetailsArrayComparator());
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> univ.setStateTransitionDetails(new StateTransitionDetails(true, delta)));
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/state_transition"
+            + (state.equals("all") ? "" : "?state=" + state);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-old-pass"));
+    assertFalse(body, body.contains("dummy-new-pass"));
+    assertTrue(body, body.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
+  }
+
+  private static UniverseDefinitionTaskParams withLdapGFlags(Universe u, String password) {
+    UniverseDefinitionTaskParams details =
+        Json.fromJson(Json.toJson(u.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    details.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Map.of(),
+            Map.of(
+                "ycql_ldap_bind_passwd",
+                password,
+                GFlagsUtil.YSQL_HBA_CONF_CSV,
+                "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + password));
+    return details;
   }
 }

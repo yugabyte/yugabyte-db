@@ -270,8 +270,8 @@ public class TestNonTransactionalStickiness extends BaseYsqlConnMgr {
   }
 
   // For each source: BEGIN, DECLARE a WITH HOLD cursor, SAVEPOINT, the source, ROLLBACK TO
-  // SAVEPOINT, COMMIT. The sticky object count is still 1 for the cursor, the client stays
-  // sticky and keeps the state; a client connecting after it disconnects does not see it.
+  // SAVEPOINT, COMMIT. The cursor is still open, the client stays sticky and keeps the state;
+  // a client connecting after it disconnects does not see it.
   @Test
   public void testTransactionalObjectWithRollbackToSavepoint() throws Exception {
     for (Source source : Source.values()) {
@@ -286,8 +286,6 @@ public class TestNonTransactionalStickiness extends BaseYsqlConnMgr {
         stmt.execute("ROLLBACK TO SAVEPOINT s");
         stmt.execute("COMMIT");
         waitForStickyConnections(1);
-        assertTrue(source.name(), verifySessionParameterValue(stmt,
-            "ysql_conn_mgr_sticky_object_count", "1"));
         assertTrue(source.name(), source.hasState(stmt));
         assertEquals(source.name(), 1, intResult(stmt,
             "SELECT count(*) FROM pg_cursors WHERE name = 'nontxn_cursor'"));

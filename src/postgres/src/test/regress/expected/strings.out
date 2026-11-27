@@ -2810,6 +2810,10 @@ SELECT decode('AQ', 'base64url');    -- \x01
  \x01
 (1 row)
 
+-- Make sure the same 1 byte input isn't accepted as base64
+SELECT decode('AQ', 'base64');    -- \x01
+ERROR:  invalid base64 end sequence
+HINT:  Input data is missing padding, is truncated, or is otherwise corrupted.
 -- 2 byte input
 SELECT encode('\x0102'::bytea, 'base64url');  -- AQI
  encode 

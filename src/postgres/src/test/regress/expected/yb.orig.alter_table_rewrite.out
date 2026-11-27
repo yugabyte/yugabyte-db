@@ -935,7 +935,7 @@ CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
 CREATE VIEW test_view AS SELECT c2 FROM test_table;
 ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
 ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view test_view depends on column "c2"
+DETAIL:  rule _RETURN on view test_view depends on column "c2".
 ALTER TABLE test_table ALTER c3 TYPE varchar(1);
 CREATE TABLE dummy_table (c3 varchar);
 CREATE RULE "_RETURN" AS
@@ -1495,3 +1495,55 @@ ORDER BY m.relname;
  idx_inh_parent | relfilenode reused | OID reused
 (2 rows)
 
+-- ADD COLUMN ... DEFAULT with a VOLATILE SQL function that planning inlines
+-- to a constant (#37663).  PG stores a missing value instead of rewriting, so
+-- DocDB must get the same missing value, or existing rows read NULL.
+CREATE FUNCTION add_col_default_fn() RETURNS int LANGUAGE sql AS 'SELECT 42';
+CREATE TABLE add_col_default_test (id int PRIMARY KEY);
+INSERT INTO add_col_default_test VALUES (1), (2), (3);
+CREATE TEMP TABLE add_col_default_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'add_col_default_test';
+ALTER TABLE add_col_default_test
+    ADD COLUMN c1 int NOT NULL DEFAULT add_col_default_fn();
+ALTER TABLE add_col_default_test ADD COLUMN c2 int DEFAULT add_col_default_fn() + 1;
+-- no rewrite: DocDB serves the missing values.
+SELECT CASE WHEN m.relfilenode = c.relfilenode THEN 'relfilenode reused'
+            ELSE 'relfilenode changed' END
+FROM add_col_default_info m, pg_class c
+WHERE c.relname = 'add_col_default_test';
+        case        
+--------------------
+ relfilenode reused
+(1 row)
+
+INSERT INTO add_col_default_test (id) VALUES (4);
+SELECT * FROM add_col_default_test ORDER BY id;
+ id | c1 | c2 
+----+----+----
+  1 | 42 | 43
+  2 | 42 | 43
+  3 | 42 | 43
+  4 | 42 | 43
+(4 rows)
+
+CREATE INDEX add_col_default_test_c1_idx ON add_col_default_test (c1);
+-- the index build also sees the missing values.
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using add_col_default_test_c1_idx on add_col_default_test
+         Index Cond: (c1 = 42)
+         Partial Aggregate: true
+(4 rows)
+
+SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
+ count 
+-------
+     4
+(1 row)
+
+RESET enable_seqscan;
+DROP TABLE add_col_default_test;
+DROP FUNCTION add_col_default_fn();

@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "fmgr.h"
+#include "miscadmin.h"
 #include "plperl.h"
 #include "utils/fmgrprotos.h"
 #include "utils/jsonb.h"
@@ -13,7 +14,7 @@ PG_MODULE_MAGIC_EXT(
 );
 
 static SV  *Jsonb_to_SV(JsonbContainer *jsonb);
-static void SV_to_JsonbValue(SV *obj, JsonbInState *ps, bool is_elem);
+static void SV_to_JsonbValue(SV *in, JsonbInState *jsonb_state, bool is_elem);
 
 
 static SV  *
@@ -65,6 +66,9 @@ Jsonb_to_SV(JsonbContainer *jsonb)
 	JsonbValue	v;
 	JsonbIterator *it;
 	JsonbIteratorToken r;
+
+	/* this can recurse via JsonbValue_to_SV() */
+	check_stack_depth();
 
 	it = JsonbIteratorInit(jsonb);
 	r = JsonbIteratorNext(&it, &v, true);
@@ -131,12 +135,18 @@ static void
 AV_to_JsonbValue(AV *in, JsonbInState *jsonb_state)
 {
 	dTHX;
-	SSize_t		pcount = av_len(in) + 1;
-	SSize_t		i;
+	Size_t		pcount;
+
+	/* Hold a reference on the array while we scan it */
+	ENTER;
+	SAVETMPS;
+	sv_2mortal(newRV((SV *) in));
+
+	pcount = av_count(in);
 
 	pushJsonbValue(jsonb_state, WJB_BEGIN_ARRAY, NULL);
 
-	for (i = 0; i < pcount; i++)
+	for (Size_t i = 0; i < pcount; i++)
 	{
 		SV		  **value = av_fetch(in, i, FALSE);
 
@@ -145,6 +155,10 @@ AV_to_JsonbValue(AV *in, JsonbInState *jsonb_state)
 	}
 
 	pushJsonbValue(jsonb_state, WJB_END_ARRAY, NULL);
+
+	/* release our reference on the array */
+	FREETMPS;
+	LEAVE;
 }
 
 static void
@@ -155,6 +169,11 @@ HV_to_JsonbValue(HV *obj, JsonbInState *jsonb_state)
 	SV		   *val;
 	char	   *kstr;
 	I32			klen;
+
+	/* Hold a reference on the hash while we scan it */
+	ENTER;
+	SAVETMPS;
+	sv_2mortal(newRV((SV *) obj));
 
 	key.type = jbvString;
 
@@ -171,6 +190,10 @@ HV_to_JsonbValue(HV *obj, JsonbInState *jsonb_state)
 	}
 
 	pushJsonbValue(jsonb_state, WJB_END_OBJECT, NULL);
+
+	/* release our reference on the hash */
+	FREETMPS;
+	LEAVE;
 }
 
 static void
@@ -179,89 +202,109 @@ SV_to_JsonbValue(SV *in, JsonbInState *jsonb_state, bool is_elem)
 	dTHX;
 	JsonbValue	out;			/* result */
 
+	/* this can recurse via AV_to_JsonbValue() or HV_to_JsonbValue() */
+	check_stack_depth();
+
 	/* Dereference references recursively. */
-	while (SvROK(in))
-		in = SvRV(in);
-
-	switch (SvTYPE(in))
+	plperl_materialize_sv(in);
+	while (in && SvROK(in))
 	{
-		case SVt_PVAV:
-			AV_to_JsonbValue((AV *) in, jsonb_state);
-			return;
+		/*
+		 * It's possible for circular references to make this an infinite
+		 * loop.  Checking for such a situation seems like much more trouble
+		 * than it's worth, but let's provide a way to break out of the loop.
+		 */
+		CHECK_FOR_INTERRUPTS();
+		in = SvRV(in);
+		plperl_materialize_sv(in);
+	}
 
-		case SVt_PVHV:
-			HV_to_JsonbValue((HV *) in, jsonb_state);
-			return;
+	if (!in)
+	{
+		out.type = jbvNull;
+	}
+	else
+	{
+		switch (SvTYPE(in))
+		{
+			case SVt_PVAV:
+				AV_to_JsonbValue((AV *) in, jsonb_state);
+				return;
 
-		default:
-			if (!SvOK(in))
-			{
-				out.type = jbvNull;
-			}
-			else if (SvUOK(in))
-			{
-				/*
-				 * If UV is >=64 bits, we have no better way to make this
-				 * happen than converting to text and back.  Given the low
-				 * usage of UV in Perl code, it's not clear it's worth working
-				 * hard to provide alternate code paths.
-				 */
-				const char *strval = SvPV_nolen(in);
+			case SVt_PVHV:
+				HV_to_JsonbValue((HV *) in, jsonb_state);
+				return;
 
-				out.type = jbvNumeric;
-				out.val.numeric =
-					DatumGetNumeric(DirectFunctionCall3(numeric_in,
-														CStringGetDatum(strval),
-														ObjectIdGetDatum(InvalidOid),
-														Int32GetDatum(-1)));
-			}
-			else if (SvIOK(in))
-			{
-				IV			ival = SvIV(in);
+			default:
+				if (!SvOK(in))
+				{
+					out.type = jbvNull;
+				}
+				else if (SvUOK(in))
+				{
+					/*
+					 * If UV is >=64 bits, we have no better way to make this
+					 * happen than converting to text and back.  Given the low
+					 * usage of UV in Perl code, it's not clear it's worth
+					 * working hard to provide alternate code paths.
+					 */
+					const char *strval = SvPV_nolen(in);
 
-				out.type = jbvNumeric;
-				out.val.numeric = int64_to_numeric(ival);
-			}
-			else if (SvNOK(in))
-			{
-				double		nval = SvNV(in);
+					out.type = jbvNumeric;
+					out.val.numeric =
+						DatumGetNumeric(DirectFunctionCall3(numeric_in,
+															CStringGetDatum(strval),
+															ObjectIdGetDatum(InvalidOid),
+															Int32GetDatum(-1)));
+				}
+				else if (SvIOK(in))
+				{
+					IV			ival = SvIV(in);
 
-				/*
-				 * jsonb doesn't allow infinity or NaN (per JSON
-				 * specification), but the numeric type that is used for the
-				 * storage accepts those, so we have to reject them here
-				 * explicitly.
-				 */
-				if (isinf(nval))
+					out.type = jbvNumeric;
+					out.val.numeric = int64_to_numeric(ival);
+				}
+				else if (SvNOK(in))
+				{
+					double		nval = SvNV(in);
+
+					/*
+					 * jsonb doesn't allow infinity or NaN (per JSON
+					 * specification), but the numeric type that is used for
+					 * the storage accepts those, so we have to reject them
+					 * here explicitly.
+					 */
+					if (isinf(nval))
+						ereport(ERROR,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								 errmsg("cannot convert infinity to jsonb")));
+					if (isnan(nval))
+						ereport(ERROR,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								 errmsg("cannot convert NaN to jsonb")));
+
+					out.type = jbvNumeric;
+					out.val.numeric =
+						DatumGetNumeric(DirectFunctionCall1(float8_numeric,
+															Float8GetDatum(nval)));
+				}
+				else if (SvPOK(in))
+				{
+					out.type = jbvString;
+					out.val.string.val = sv2cstr(in);
+					out.val.string.len = strlen(out.val.string.val);
+				}
+				else
+				{
+					/*
+					 * XXX It might be nice if we could include the Perl type
+					 * in the error message.
+					 */
 					ereport(ERROR,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							 errmsg("cannot convert infinity to jsonb")));
-				if (isnan(nval))
-					ereport(ERROR,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							 errmsg("cannot convert NaN to jsonb")));
-
-				out.type = jbvNumeric;
-				out.val.numeric =
-					DatumGetNumeric(DirectFunctionCall1(float8_numeric,
-														Float8GetDatum(nval)));
-			}
-			else if (SvPOK(in))
-			{
-				out.type = jbvString;
-				out.val.string.val = sv2cstr(in);
-				out.val.string.len = strlen(out.val.string.val);
-			}
-			else
-			{
-				/*
-				 * XXX It might be nice if we could include the Perl type in
-				 * the error message.
-				 */
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot transform this Perl type to jsonb")));
-			}
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot transform this Perl type to jsonb")));
+				}
+		}
 	}
 
 	if (jsonb_state->parseState)

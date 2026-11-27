@@ -412,7 +412,6 @@ typedef struct WritebackContext
 /* in buf_init.c */
 extern PGDLLIMPORT BufferDescPadded *BufferDescriptors;
 extern PGDLLIMPORT ConditionVariableMinimallyPadded *BufferIOCVArray;
-extern PGDLLIMPORT WritebackContext BackendWritebackContext;
 
 /* in localbuf.c */
 extern PGDLLIMPORT BufferDesc *LocalBufferDescriptors;
@@ -463,12 +462,13 @@ UnlockBufHdr(BufferDesc *desc)
 }
 
 /*
- * Unlock the buffer header, while atomically adding the flags in set_bits,
- * unsetting the ones in unset_bits and changing the refcount by
- * refcount_change.
+ * Unlock the buffer header, while atomically unsetting the ones in
+ * unset_bits, adding the flags in set_bits, and changing the refcount by
+ * refcount_change. If a flag is both cleared and added, it will end up being
+ * set.
  *
- * Note that this approach would not work for usagecount, since we need to cap
- * the usagecount at BM_MAX_USAGE_COUNT.
+ * Note that this approach would not trivially work for usagecount, since we
+ * need to cap the usagecount at BM_MAX_USAGE_COUNT.
  */
 static inline uint64
 UnlockBufHdrExt(BufferDesc *desc, uint64 old_buf_state,
@@ -481,8 +481,12 @@ UnlockBufHdrExt(BufferDesc *desc, uint64 old_buf_state,
 
 		Assert(buf_state & BM_LOCKED);
 
-		buf_state |= set_bits;
+		/*
+		 * Set bits after clearing bits, so that a cleared and re-added flag
+		 * survives.
+		 */
 		buf_state &= ~unset_bits;
+		buf_state |= set_bits;
 		buf_state &= ~BM_LOCKED;
 
 		if (refcount_change != 0)

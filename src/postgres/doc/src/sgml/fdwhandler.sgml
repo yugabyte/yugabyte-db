@@ -1430,7 +1430,7 @@ ImportForeignStatistics(Relation relation,
      If the function imports the statistics successfully, it should return
      <literal>true</literal>.  Otherwise, return <literal>false</literal>, in
      which case <function>AnalyzeForeignTable</function> callback function is
-     called on the foreign table to collect statistics locally, if supported.
+     called on the foreign table to generate statistics locally, if supported.
     </para>
 
     <para>
@@ -1438,8 +1438,9 @@ ImportForeignStatistics(Relation relation,
      <productname>PostgreSQL</productname> is found in
      <filename>src/backend/command/analyze.c</filename>.
      It's recommended to import table-level and column-level statistics for the
-     foreign table using <function>pg_restore_relation_stats</function> and
-     <function>pg_restore_attribute_stats</function>, respectively.
+     foreign table using <function>import_relation_statistics</function>,
+     <function>import_attribute_statistics</function>, and
+     <function>delete_attribute_statistics</function>.
     </para>
 
     <para>

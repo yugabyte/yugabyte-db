@@ -507,8 +507,8 @@ ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *clause)
  * The first equality index clause on index column indexcol, or NULL if there
  * is none.
  */
-static Expr *
-ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
+Expr *
+yb_equality_index_clause(IndexOptInfo *index, List *indexclauses, int indexcol)
 {
 	ListCell   *lc;
 
@@ -541,8 +541,8 @@ static bool
 ybIsSingleValueStreamCol(IndexOptInfo *index, List *indexclauses,
 						 int indexcol, Expr **clause)
 {
-	Expr	   *eq_clause = ybEqualityIndexClause(index, indexclauses,
-												  indexcol);
+	Expr	   *eq_clause = yb_equality_index_clause(index, indexclauses,
+													 indexcol);
 
 	if (clause)
 		*clause = eq_clause;

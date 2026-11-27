@@ -91,9 +91,11 @@ void		pg_logging_set_level(enum pg_log_level new_level);
 void		pg_logging_increase_verbosity(void);
 void		pg_logging_set_pre_callback(void (*cb) (void));
 void		pg_logging_set_locus_callback(void (*cb) (const char **filename, uint64 *lineno));
+void		pg_logging_set_logfile(FILE *logfile);
+void		pg_logging_unset_logfile(void);
 
 void		pg_log_generic(enum pg_log_level level, enum pg_log_part part,
-						   const char *pg_restrict fmt,...)
+						   const char *pg_restrict fmt, ...)
 			pg_attribute_printf(3, 4);
 void		pg_log_generic_v(enum pg_log_level level, enum pg_log_part part,
 							 const char *pg_restrict fmt, va_list ap)

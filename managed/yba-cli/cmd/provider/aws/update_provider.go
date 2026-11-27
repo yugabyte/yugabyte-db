@@ -215,6 +215,12 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := providerutil.ValidateUpdateAddZoneRegions(
+			addRegions, addZones, providerRegions,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		providerRegions = removeAWSRegions(removeRegions, providerRegions)
 
 		providerRegions = editAWSRegions(
@@ -262,12 +268,26 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerImageBundles = removeAWSImageBundles(removeImageBundles, providerImageBundles)
+		if err := providerutil.ValidateImageBundleEdits(
+			removeImageBundles, editImageBundles, editImageBundleRegionOverride,
+			providerImageBundles,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
-		providerImageBundles = editAWSImageBundles(
+		providerImageBundles, err = providerutil.RemoveImageBundles(
+			removeImageBundles, providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles, err = editAWSImageBundles(
 			editImageBundles,
 			editImageBundleRegionOverride,
 			providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		providerImageBundles = addAWSImageBundles(
 			addImageBundles,
@@ -636,39 +656,21 @@ func addAWSZones(
 	return zones
 }
 
-func removeAWSImageBundles(
-	removeImageBundles []string,
-	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
-	if len(removeImageBundles) == 0 {
-		return providerImageBundles
-	}
-
-	for _, ib := range removeImageBundles {
-		for i, pIb := range providerImageBundles {
-			if strings.Compare(pIb.GetUuid(), ib) == 0 {
-				providerImageBundles = util.RemoveComponentFromSlice(
-					providerImageBundles, i,
-				).([]ybaclient.ImageBundle)
-			}
-		}
-	}
-
-	return providerImageBundles
-}
-
 func editAWSImageBundles(
 	editImageBundles, editImageBundlesRegionOverrides []string,
 	providerImageBundles []ybaclient.ImageBundle,
-) []ybaclient.ImageBundle {
+) ([]ybaclient.ImageBundle, error) {
 
 	for i, ib := range providerImageBundles {
 		bundleUUID := ib.GetUuid()
 		details := ib.GetDetails()
-		imageBundleRegionOverrides := details.GetRegions()
-		imageBundleRegionOverrides = editAWSImageBundleRegionOverrides(
+		imageBundleRegionOverrides, err := editAWSImageBundleRegionOverrides(
 			bundleUUID,
 			editImageBundlesRegionOverrides,
-			imageBundleRegionOverrides)
+			details.GetRegions())
+		if err != nil {
+			return nil, err
+		}
 		details.SetRegions(imageBundleRegionOverrides)
 		if len(editImageBundles) != 0 {
 			for _, imageBundleString := range editImageBundles {
@@ -683,16 +685,11 @@ func editAWSImageBundles(
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
 					if len(imageBundle["ssh-port"]) != 0 {
-						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						sshPort, err := providerutil.ImageBundleSSHPort(imageBundle)
 						if err != nil {
-							errMessage := err.Error() +
-								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-							logrus.Errorln(
-								formatter.Colorize(errMessage, formatter.YellowColor),
-							)
-							sshPort = 22
+							logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 						}
-						details.SetSshPort(int32(sshPort))
+						details.SetSshPort(sshPort)
 					}
 					if len(imageBundle["imdsv2"]) != 0 {
 						useIMDSv2, err := strconv.ParseBool(imageBundle["imdsv2"])
@@ -727,17 +724,17 @@ func editAWSImageBundles(
 		}
 		providerImageBundles[i] = ib
 	}
-	return providerImageBundles
+	return providerImageBundles, nil
 }
 
 func editAWSImageBundleRegionOverrides(
 	bundleUUID string,
 	editImageBundleRegionOverrides []string,
 	imageBundleRegionOverrides map[string]ybaclient.BundleInfo,
-) map[string]ybaclient.BundleInfo {
+) (map[string]ybaclient.BundleInfo, error) {
 
 	if len(editImageBundleRegionOverrides) == 0 {
-		return imageBundleRegionOverrides
+		return imageBundleRegionOverrides, nil
 	}
 
 	for _, imageBundleString := range editImageBundleRegionOverrides {
@@ -745,19 +742,23 @@ func editAWSImageBundleRegionOverrides(
 			imageBundleString,
 			"edit",
 		)
-		if strings.Compare(override["uuid"], bundleUUID) == 0 {
-			for k, v := range override {
-				if _, ok := imageBundleRegionOverrides[k]; ok {
-					imageBundleRegionOverrides[k] = ybaclient.BundleInfo{
-						YbImage: util.GetStringPointer(v),
-					}
-				}
-			}
+		if strings.Compare(override["uuid"], bundleUUID) != 0 {
+			continue
 		}
-
+		regionName := override["region-name"]
+		info, ok := imageBundleRegionOverrides[regionName]
+		if !ok {
+			return nil, fmt.Errorf(
+				"region %s in --edit-image-bundle-region-override is not a region of image bundle %s",
+				regionName, bundleUUID)
+		}
+		if machineImage, ok := override["machine-image"]; ok {
+			info.SetYbImage(machineImage)
+			imageBundleRegionOverrides[regionName] = info
+		}
 	}
 
-	return imageBundleRegionOverrides
+	return imageBundleRegionOverrides, nil
 }
 
 func addAWSImageBundles(
@@ -782,14 +783,9 @@ func addAWSImageBundles(
 			))
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

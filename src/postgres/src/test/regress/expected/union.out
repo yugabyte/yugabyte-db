@@ -1355,7 +1355,7 @@ ORDER BY 1;
          Output: tenk1.two
 (5 rows)
 
--- Try a mixed setop case.  Ensure the right-hand UNION child gets removed.
+-- Try mixed setop cases.  Ensure the right-hand UNION child gets removed.
 EXPLAIN (COSTS OFF, VERBOSE)
 SELECT two FROM tenk1 t1
 EXCEPT
@@ -1376,6 +1376,104 @@ SELECT ten FROM tenk1 dummy WHERE 1=2;
                ->  Seq Scan on public.tenk1 t2
                      Output: t2.four
 (11 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT two FROM tenk1 t1 WHERE two = 1
+INTERSECT ALL
+SELECT four FROM tenk1 t2 WHERE four = 1
+UNION
+SELECT ten FROM tenk1 dummy WHERE 1=2;
+               QUERY PLAN                
+-----------------------------------------
+ HashAggregate
+   Output: t1.two
+   Group Key: t1.two
+   ->  HashSetOp Intersect All
+         Output: t1.two
+         ->  Seq Scan on public.tenk1 t1
+               Output: t1.two
+               Filter: (t1.two = 1)
+         ->  Seq Scan on public.tenk1 t2
+               Output: t2.four
+               Filter: (t2.four = 1)
+(11 rows)
+
+-- As above, but with sorting: ensure we do not get confused by child pathkeys
+SET enable_hashagg = off;
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT two FROM tenk1 t1 WHERE two = 1
+INTERSECT ALL
+SELECT four FROM tenk1 t2 WHERE four = 1
+UNION
+SELECT ten FROM tenk1 dummy WHERE 1=2;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Unique
+   Output: t1.two
+   ->  Sort
+         Output: t1.two
+         Sort Key: t1.two
+         ->  SetOp Intersect All
+               Output: t1.two
+               ->  Sort
+                     Output: t1.two
+                     Sort Key: t1.two
+                     ->  Seq Scan on public.tenk1 t1
+                           Output: t1.two
+                           Filter: (t1.two = 1)
+               ->  Sort
+                     Output: t2.four
+                     Sort Key: t2.four
+                     ->  Seq Scan on public.tenk1 t2
+                           Output: t2.four
+                           Filter: (t2.four = 1)
+(19 rows)
+
+-- also check case where the upper op is EXCEPT
+EXPLAIN (COSTS OFF, VERBOSE)
+(SELECT two FROM tenk1 t1 WHERE two = 1
+ INTERSECT
+ SELECT four FROM tenk1 t2 WHERE four = 1)
+EXCEPT ALL
+SELECT ten FROM tenk1 dummy WHERE 1=2;
+               QUERY PLAN                
+-----------------------------------------
+ SetOp Intersect
+   Output: t1.two
+   ->  Sort
+         Output: t1.two
+         Sort Key: t1.two
+         ->  Seq Scan on public.tenk1 t1
+               Output: t1.two
+               Filter: (t1.two = 1)
+   ->  Sort
+         Output: t2.four
+         Sort Key: t2.four
+         ->  Seq Scan on public.tenk1 t2
+               Output: t2.four
+               Filter: (t2.four = 1)
+(14 rows)
+
+RESET enable_hashagg;
+-- Ensure EXPLAIN can show a dummy set operation whose output is coerced
+-- to another type by the parent set operation.
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT two::numeric FROM tenk1 t1
+EXCEPT
+(SELECT four FROM tenk1 dummy WHERE 1=2
+ EXCEPT ALL
+ SELECT ten FROM tenk1 t2);
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ HashSetOp Except
+   Output: ((t1.two)::numeric)
+   ->  Seq Scan on public.tenk1 t1
+         Output: (t1.two)::numeric
+   ->  Result
+         Output: unnamed_subquery.four
+         Replaces: Aggregate on unnamed_subquery, unnamed_subquery_1
+         One-Time Filter: false
+(8 rows)
 
 -- Test constraint exclusion of UNION ALL subqueries
 explain (costs off)
@@ -1660,4 +1758,21 @@ on true limit 1;
                ->  Index Only Scan using tenk2_hundred on tenk2 t2
                ->  Result
 (6 rows)
+
+-- Test handling of Vars with varno 0 in estimate_array_length
+explain (verbose, costs off)
+select null::int[] union all select null::int[] union all select null::bigint[];
+                 QUERY PLAN                  
+---------------------------------------------
+ Append
+   ->  Result
+         Output: (NULL::integer[])
+         ->  Append
+               ->  Result
+                     Output: NULL::integer[]
+               ->  Result
+                     Output: NULL::integer[]
+   ->  Result
+         Output: NULL::bigint[]
+(10 rows)
 

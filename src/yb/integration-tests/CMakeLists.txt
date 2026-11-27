@@ -183,6 +183,7 @@ ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(cdcsdk_gflag-test)
 ADD_YB_TEST(stateful_services/stateful_service-itest)
 ADD_YB_TEST(master_heartbeat-itest)
+ADD_YB_TEST(tier_migration-itest)
 
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
@@ -325,6 +326,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_audit_event_trigger-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_passwordcheck-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_stats_import-test)
 ADD_YB_TEST(conflict_resolve_keys_verification/conflict_resolve_keys_verification-itest)

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <future>
 #include <boost/assign.hpp>
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
@@ -629,6 +630,19 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithRemoveKey) {
   ASSERT_FALSE(entry_opt->snapshot_key.has_value());
   ASSERT_EQ(*entry_opt->active_time, active_time_1);
   ASSERT_EQ(*entry_opt->cdc_sdk_safe_time, cdc_sdk_safe_time_1);
+}
+
+// A write that fails before it is flushed, here because the client is unavailable, must return the
+// error instead of aborting the process.
+TEST_F(CDCStateTableTest, TestWritesReturnErrorWhenClientUnavailable) {
+  std::promise<client::YBClient*> client_promise;
+  client_promise.set_value(nullptr);
+  CDCStateTable cdc_state_table(client_promise.get_future().share());
+
+  const std::vector<CDCStateTableEntry> entries{
+      CDCStateTableEntry("tablet", xrepl::StreamId::GenerateRandom())};
+  ASSERT_TRUE(cdc_state_table.UpsertEntries(entries).IsShutdownInProgress());
+  ASSERT_TRUE(cdc_state_table.InsertEntries(entries).IsShutdownInProgress());
 }
 
 }  // namespace cdc

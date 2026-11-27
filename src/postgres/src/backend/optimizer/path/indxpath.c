@@ -39,6 +39,7 @@
 /* YB includes */
 #include "access/table.h"
 #include "access/yb_cost.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -707,6 +708,14 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	/* Skip non-YB indexes */
 	if (!IsYBRelationById(index->indexoid))
+		return false;
+
+	/*
+	 * A batched clause becomes "col = ANY (ARRAY[...])" at plan creation,
+	 * which an index scan can execute only if the access method supports
+	 * ScalarArrayOpExpr natively.  ybgin does not.
+	 */
+	if (!index->amsearcharray)
 		return false;
 
 	for (size_t i = 0; i < INDEX_MAX_KEYS && batched_clauseset->nonempty; i++)
@@ -1969,7 +1978,7 @@ typedef struct
 	Oid			inputcollid;	/* OID of the OpClause input collation */
 	int			argindex;		/* index of the clause in the list of
 								 * arguments */
-	int			groupindex;		/* value of argindex for the fist clause in
+	int			groupindex;		/* value of argindex for the first clause in
 								 * the group of similar clauses */
 } OrArgIndexMatch;
 
@@ -4140,6 +4149,10 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		if (index->relam == LSM_AM_OID &&
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{
@@ -5216,16 +5229,19 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 				 * The condition's equality operator must be a member of the
 				 * index opfamily, else it is not asserting the right kind of
 				 * equality behavior for this index.  We check this first
-				 * since it's probably cheaper than match_index_to_operand().
+				 * since it's probably the cheapest test.
 				 */
 				if (!list_member_oid(rinfo->mergeopfamilies, ind->opfamily[c]))
 					continue;
 
 				/*
-				 * XXX at some point we may need to check collations here too.
-				 * For the moment we assume all collations reduce to the same
-				 * notion of equality.
+				 * The index's collation must agree with the clause's input
+				 * collation on equality, else the index's uniqueness does not
+				 * imply uniqueness under the clause's equality semantics.
 				 */
+				if (!collations_agree_on_equality(ind->indexcollations[c],
+												  exprInputCollation((Node *) rinfo->clause)))
+					continue;
 
 				/* OK, see if the condition operand matches the index key */
 				if (rinfo->outer_is_left)
@@ -5757,15 +5773,28 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		Expr	   *generation_expr = NULL;
 		AttrNumber	attnum = index->indexkeys[i];
 		List	   *rinfos = NIL;
+		Node	   *index_expr = NULL;
+
+		/* An expression key takes the next index expression. */
+		if (attnum == InvalidAttrNumber)
+		{
+			Assert(expr_lc != NULL);
+			index_expr = (Node *) lfirst(expr_lc);
+			expr_lc = lnext(index->indexprs, expr_lc);
+		}
+
+		/*
+		 * If there is an existing equality condition on the key, we won't
+		 * derive another condition for it.
+		 */
+		if (yb_equality_index_clause(index, clauseset->indexclauses[i], i))
+			continue;
 
 		if (attnum == InvalidAttrNumber)
 		{
 			/* expression index */
-			Assert(expr_lc != NULL);
-			Node	   *index_expr = copyObject(lfirst(expr_lc));
-
+			index_expr = copyObject(index_expr);
 			ChangeVarNodes(index_expr, 1, rel->relid, 0);
-			expr_lc = lnext(index->indexprs, expr_lc);
 
 			/*
 			 * A constant index expression (no Vars) would yield a trivial

@@ -52,6 +52,9 @@ static void InitPgFdwOptions(void);
 static bool is_valid_option(const char *keyword, Oid context);
 static bool is_libpq_option(const char *keyword);
 
+/* YB declarations */
+static void yb_pgfdw_init(void);
+
 #include "miscadmin.h"
 
 /*
@@ -121,7 +124,8 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 			strcmp(def->defname, "parallel_commit") == 0 ||
 			strcmp(def->defname, "parallel_abort") == 0 ||
 			strcmp(def->defname, "keep_connections") == 0 ||
-			strcmp(def->defname, "restore_stats") == 0)
+			strcmp(def->defname, "import_stats") == 0 ||
+			strcmp(def->defname, "use_scram_passthrough") == 0)
 		{
 			/* these accept only boolean values */
 			(void) defGetBoolean(def);
@@ -291,9 +295,9 @@ InitPgFdwOptions(void)
 		/* sampling is available on both server and table */
 		{"analyze_sampling", ForeignServerRelationId, false},
 		{"analyze_sampling", ForeignTableRelationId, false},
-		/* restore_stats is available on both server and table */
-		{"restore_stats", ForeignServerRelationId, false},
-		{"restore_stats", ForeignTableRelationId, false},
+		/* import_stats is available on both server and table */
+		{"import_stats", ForeignServerRelationId, false},
+		{"import_stats", ForeignTableRelationId, false},
 
 		{"use_scram_passthrough", ForeignServerRelationId, false},
 		{"use_scram_passthrough", UserMappingRelationId, false},
@@ -609,5 +613,33 @@ _PG_init(void)
 							   NULL,
 							   NULL);
 
+	/*
+	 * YB: Must run before MarkGUCPrefixReserved, which would otherwise discard
+	 * a value of a YB GUC SET in the session before this library was loaded.
+	 */
+	yb_pgfdw_init();
+
 	MarkGUCPrefixReserved("postgres_fdw");
+}
+
+bool		yb_enable_global_views_stable_func_pushdown = true;
+
+/*
+ * YB additions to the module load callback.
+ */
+static void
+yb_pgfdw_init(void)
+{
+	DefineCustomBoolVariable("postgres_fdw.yb_enable_global_views_stable_func_pushdown",
+							 "Push allowlisted stable functions (e.g. now()) and SQL value functions "
+							 "(e.g. CURRENT_TIMESTAMP, CURRENT_USER) down to remote tservers in "
+							 "global-view queries.",
+							 NULL,
+							 &yb_enable_global_views_stable_func_pushdown,
+							 true,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
 }

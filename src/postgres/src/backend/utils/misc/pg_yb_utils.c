@@ -93,6 +93,7 @@
 #include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/prepare.h"
 #include "commands/trigger.h"
 #include "commands/yb_cmds.h"
 #include "commands/yb_tablegroup.h"
@@ -127,6 +128,7 @@
 #include "replication/slot.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -141,6 +143,7 @@
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
+#include "utils/portal.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/snapmgr.h"
@@ -238,13 +241,16 @@ static bool YBIsCurrentStmtCreateFunction();
 static uint64_t function_cache_generation = 0;
 
 /*
- * Set while YBCommitTransactionContainingDDL commits a transaction block that
- * ran DDL. The DDL transaction state is cleared before the commit RPC, so this
- * is what tells YBCAbortTransaction that a failed commit rolled back DDL.
+ * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block). A DDL statement sets that state,
+ * and so does YBAddDdlTxnState for a catalog change made without one, such as
+ * by the statistics restore functions or the pg_hint_plan hint table trigger.
+ * The DDL transaction state is cleared before the commit RPC, so this is what
+ * tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
 static bool ddl_txn_block_commit_in_progress = false;
 
-static void yb_maybe_test_fail_ddl(void);
+static void yb_maybe_test_fail_ddl(bool before_commit_rpc);
 static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
 
 uint64_t
@@ -843,9 +849,9 @@ YBIsReadCommittedSupported()
 	{
 
 #ifdef NDEBUG
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
-#else
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
 #endif
 	}
 	return cached_value;
@@ -2886,6 +2892,19 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 /*
+ * True while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block), which a DDL statement or a
+ * catalog change registered through YBAddDdlTxnState sets: from just before it
+ * clears that state and sends the commit RPC, until that RPC succeeds or the
+ * transaction is aborted.
+ */
+bool
+YBIsDdlTxnBlockCommitInProgress()
+{
+	return ddl_txn_block_commit_in_progress;
+}
+
+/*
  * Whether the current transaction takes object locks. pggate decides it, for
  * the locks it sends and for this. A transaction without locks does not refresh
  * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
@@ -2955,6 +2974,37 @@ YbTrackAlteredTableId(Oid relid)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/*
+ * YbLockDatabaseToBlockDdlConcurrency
+ *
+ * ysql_enable_concurrent_ddl takes effect only in a transaction with global
+ * object locks. Turning it off is a guardrail that reduces DDL concurrency:
+ * the DDL transactions in one database that increment the catalog version
+ * then run one at a time, even on unrelated objects. Each takes this lock in
+ * EXCLUSIVE mode on its own database and holds it until it ends. With the
+ * flag on, no DDL takes the lock, and object locks alone order DDLs.
+ *
+ * With the flag off, these still run concurrently with other DDLs:
+ * - A DDL whose mode does not increment the catalog version, such as CREATE
+ *   TEMP TABLE. A later DDL of its transaction that does takes the lock then.
+ * - An ANALYZE from the auto-analyze service, so that background statistics
+ *   collection never holds up the DDLs in its database.
+ * - A DDL in another database. A global DDL, one that changes a shared
+ *   catalog and increments the catalog version of every database, takes the
+ *   lock only in the database it runs in, so it does not wait for the DDLs in
+ *   other databases.
+ */
+void
+YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode)
+{
+	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl &&
+		YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+		!(yb_use_internal_auto_analyze_service_conn && CheckIsAnalyzeDDL()))
+		LockDatabaseObject(YbDdlConcurrencyLockOid, InvalidOid, 0,
+						   ExclusiveLock);
+}
+
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
@@ -2995,10 +3045,40 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
+/*
+ * YBAddDdlTxnState
+ *
+ * Makes the current transaction a DDL transaction of the given mode. Call it
+ * before a statement, or a step of one, writes the catalog: the mode decides
+ * what the transaction does at commit, such as incrementing the catalog
+ * version. With ysql_enable_concurrent_ddl off, a mode that increments the
+ * catalog version also takes the database DDL lock here. A caller that waits
+ * for lockers right after this uses YBAddDdlTxnStateExtended instead.
+ */
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
+	YBAddDdlTxnStateExtended(mode, true /* block_ddl_concurrency_in_db */ );
+}
+
+/*
+ * YBAddDdlTxnStateExtended
+ *
+ * block_ddl_concurrency_in_db is false for a DDL transaction that waits for
+ * lockers right after it enters DDL state: the second transaction of DETACH
+ * PARTITION CONCURRENTLY. The wait is registered under the session's
+ * transaction, while the lock belongs to the DDL's transaction, so a writer
+ * the wait waits for, running a DDL that queues on a lock the DDL already
+ * held, would block with it until a timeout, with no deadlock reported. Such
+ * a caller takes the lock with YbLockDatabaseToBlockDdlConcurrency after its wait.
+ */
+void
+YBAddDdlTxnStateExtended(YbDdlMode mode, bool block_ddl_concurrency_in_db)
+{
 	Assert(YBIsDdlTransactionBlockEnabled());
+
+	if (block_ddl_concurrency_in_db)
+		YbLockDatabaseToBlockDdlConcurrency(mode);
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -3036,19 +3116,25 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * This is the first DDL statement in the transaction block. We need to set
 	 * the DDL state in the PGGate and also initialize ddl_transaction_state.
 	 *
+	 * Set the PGGate state first: it flushes the writes still buffered or in
+	 * flight, and a conflict of one of them must surface before any DDL
+	 * state is set here, so that nothing is left half set and
+	 * yb_is_retry_possible can still retry the statement. After, it refuses
+	 * the retry unless the statement runs in a READ COMMITTED transaction
+	 * block (#39047).
+	 *
 	 * Restart counting the number of committed PG transactions during
 	 * this YB DDL transaction.
 	 */
+	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.num_committed_pg_txns = 0;
 	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(TopTransactionContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
-	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
-	YbMaybeLockMasterCatalogVersion();
 	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
 }
 
@@ -3062,9 +3148,18 @@ YBMergeDdlTxnState()
 									has_change);
 }
 
+/*
+ * YBAddModificationAspects
+ *
+ * Adds aspects to the mode of a DDL transaction that already entered DDL
+ * state. If they include a catalog version increment, the transaction takes
+ * the database DDL lock here, as it would have on entering DDL state with
+ * them (see YbLockDatabaseToBlockDdlConcurrency).
+ */
 void
 YBAddModificationAspects(YbDdlMode mode)
 {
+	YbLockDatabaseToBlockDdlConcurrency(mode);
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
@@ -3528,7 +3623,7 @@ YBCommitTransactionContainingDDL()
 									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
-	yb_maybe_test_fail_ddl();
+	yb_maybe_test_fail_ddl(false /* before_commit_rpc */ );
 
 	if (yb_test_delay_next_ddl > 0)
 	{
@@ -3738,6 +3833,7 @@ YBCommitTransactionContainingDDL()
 
 	if (use_regular_txn_block)
 	{
+		yb_maybe_test_fail_ddl(true /* before_commit_rpc */ );
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
 		ddl_txn_block_commit_in_progress = false;
 		/*
@@ -8997,11 +9093,8 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 }
 
 /*
- * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
- * that requires the sticky connection
- * These objects are
- * 1. WITH HOLD CURSORS
- * 2. TEMP TABLE
+ * ```ysql_conn_mgr_sticky_object_count``` is the count of TEMP TABLEs, the only
+ * database objects counted towards a sticky connection.
  */
 int			ysql_conn_mgr_sticky_object_count = 0;
 
@@ -9030,9 +9123,21 @@ bool		yb_ysql_conn_mgr_sticky_locks = false;
  */
 bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
 
+bool		yb_ysql_conn_mgr_sticky_prepare = false;
+
+bool		yb_ysql_conn_mgr_sticky_listen = false;
+
 bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
 
+bool		yb_ysql_conn_mgr_sticky_cursor = false;
+
 bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
+
+bool		yb_conn_mgr_prepare_permanent_sticky = false;
+
+bool		yb_conn_mgr_listen_permanent_sticky = false;
+
+bool		yb_conn_mgr_cursor_permanent_sticky = false;
 
 bool		yb_enable_mage = false;
 
@@ -9084,7 +9189,17 @@ YbIsStickyConnection(int *change)
 		yb_ysql_conn_mgr_sticky_locks ||
 		yb_ysql_conn_mgr_sticky_nontxn_object ||
 		yb_ysql_conn_mgr_sticky_replication_origin ||
-		YbHasReplicationOriginSetup();
+		YbHasReplicationOriginSetup() ||
+		yb_ysql_conn_mgr_sticky_prepare ||
+		YbHasSqlPreparedStatement() ||
+		yb_ysql_conn_mgr_sticky_listen ||
+		/*
+		 * Unsticking a listener makes it miss its notifications, and the next
+		 * client on this backend receives them.
+		 */
+		YbIsListening() ||
+		yb_ysql_conn_mgr_sticky_cursor ||
+		YbHasHoldablePortal();
 }
 
 void	  **
@@ -9711,19 +9826,10 @@ YbResetTransactionReadPoint(bool is_catalog_snapshot)
 	};
 
 	/*
-	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
-	 *
-	 * TODO(#29272): Ensure that this logic of not resetting the read point works fine even when there
-	 * are multiple snapshots being used by Pg.
+	 * Flush all earlier operations so that they complete on the previous snapshot.
 	 */
-	if (!YBCIsRestartReadPointRequested())
-	{
-		/*
-		 * Flush all earlier operations so that they complete on the previous snapshot.
-		 */
-		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
-		HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
-	}
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
+	HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
 
 	if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot)
 		return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
@@ -10763,14 +10869,21 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
 
 /*
  * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
- * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash, 5 = conflict,
+ * 6 = deadlock, all raised at the start of YBCommitTransactionContainingDDL.
+ * 7 = conflict and 8 = deadlock are raised just before the commit RPC
+ * (before_commit_rpc), standing in for an error from that RPC.  That point is
+ * reached only when a transaction with DDL transaction state commits through a
+ * regular transaction block (transactional DDL); until then they stay set.
  * Resets to 0 after triggering.
  */
 static void
-yb_maybe_test_fail_ddl(void)
+yb_maybe_test_fail_ddl(bool before_commit_rpc)
 {
 	int fail_mode = yb_test_fail_next_ddl;
-	if (fail_mode == 0)
+	bool		commit_rpc_mode = (fail_mode == 7 || fail_mode == 8);
+
+	if (fail_mode == 0 || commit_rpc_mode != before_commit_rpc)
 		return;
 	yb_test_fail_next_ddl = 0;
 	if (YbIsClientYsqlConnMgr())
@@ -10798,6 +10911,21 @@ yb_maybe_test_fail_ddl(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_YB_TXN_CONFLICT),
 					 errmsg("failed DDL operation with conflict as requested")));
+			break;
+		case 6:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL operation with deadlock as requested")));
+			break;
+		case 7:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_TXN_CONFLICT),
+					 errmsg("failed DDL commit with conflict as requested")));
+			break;
+		case 8:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL commit with deadlock as requested")));
 			break;
 		default:
 			break;
@@ -10974,6 +11102,32 @@ YBHasSkippedIntentsWrite()
 }
 
 /*
+ * Whether the relation is new in this transaction:
+ * 1. rd_createSubid: The logical table was created in this txn.
+ * 2. rd_newRelfilelocatorSubid: The physical storage was swapped/created
+ * in this txn (typical for ALTER TABLE / REINDEX).
+ */
+static bool
+YbIsRelationNewInTxn(Relation rel)
+{
+	return rel->rd_createSubid != InvalidSubTransactionId ||
+		rel->rd_newRelfilelocatorSubid != InvalidSubTransactionId;
+}
+
+static bool
+YbIsIndexedTableNewInTxn(Relation index)
+{
+	Relation	table = RelationIdGetRelation(index->rd_index->indrelid);
+	bool		result;
+
+	if (!RelationIsValid(table))
+		return false;
+	result = YbIsRelationNewInTxn(table);
+	RelationClose(table);
+	return result;
+}
+
+/*
  * Decides both halves of the skip intents optimization for one operation on rel. See
  * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
  * read_at_in_txn_limit and hold for the whole transaction, while the transaction-state checks
@@ -10985,13 +11139,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	/*
-	 * 1. rd_createSubid: The logical table was created in this txn.
-	 * 2. rd_newRelfilelocatorSubid: The physical storage was swapped/created
-	 * in this txn (typical for ALTER TABLE / REINDEX).
-	 */
-	if (rel->rd_createSubid == InvalidSubTransactionId &&
-		rel->rd_newRelfilelocatorSubid == InvalidSubTransactionId)
+	if (!YbIsRelationNewInTxn(rel))
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
@@ -11020,6 +11168,20 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	if (YbGetTableDistribution(rel) == YB_COLOCATED)
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
+		return info;
+	}
+
+	/*
+	 * A read through an index takes its decision from the table (see YbNewSelect), so an index
+	 * must not be written past the intents db unless its table is read at in_txn_limit too.
+	 * Otherwise the rows of an index built on a table that existed before the transaction
+	 * would be above the read time of the transaction's later statements.
+	 *
+	 * TODO(#38494): decide every read of an index from the index relation too, and drop this.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsIndexedTableNewInTxn(rel))
+	{
+		elog(DEBUG2, "Skip intents not applicable: the table of index %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
 	}
 

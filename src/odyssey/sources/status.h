@@ -39,7 +39,7 @@ static inline char *od_frontend_status_to_str(od_frontend_status_t status)
 	case OD_SKIP:
 		return "OD_SKIP";
 	case OD_ATTACH:
-		return "OD_UNDEF";
+		return "OD_ATTACH";
 	case OD_DETACH:
 		return "OD_DETACH";
 	case OD_WAIT_SYNC:

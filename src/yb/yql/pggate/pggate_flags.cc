@@ -163,9 +163,9 @@ DEFINE_NON_RUNTIME_uint32(yb_max_recursion_depth, 2000,
     "for regex functions. ");
 
 #ifdef NDEBUG
-constexpr bool kEnableReadCommitted = true;
-#else
 constexpr bool kEnableReadCommitted = false;
+#else
+constexpr bool kEnableReadCommitted = true;
 #endif
 DEFINE_NON_RUNTIME_bool(yb_enable_read_committed_isolation, kEnableReadCommitted,
     "Defines how READ COMMITTED (which is our default SQL-layer isolation) and READ UNCOMMITTED "

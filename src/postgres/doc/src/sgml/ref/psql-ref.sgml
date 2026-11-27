@@ -1293,7 +1293,7 @@ SELECT $1 \parse stmt1
 
         <listitem>
         <para>
-        For each relation (table, view, materialized view, index, property graph, sequence,
+        For each relation (table, view, materialized view, index, sequence,
         or foreign table)
         or composite type matching the
         <replaceable class="parameter">pattern</replaceable>, show all
@@ -1333,17 +1333,20 @@ SELECT $1 \parse stmt1
         <para>
         If <command>\d</command> is used without a
         <replaceable class="parameter">pattern</replaceable> argument, it is
-        equivalent to <command>\dtvmsEG</command> which will show a list of
-        all visible tables, views, materialized views, sequences,
-        foreign tables, and property graphs.
+        equivalent to <command>\dtvmsE</command> which will show a list of
+        all visible tables, views, materialized views, sequences and
+        foreign tables.
         This is purely a convenience measure.
         </para>
         <para>
         As with many other commands, if <literal>x</literal> is appended to
-        the command name, the results are displayed in expanded mode, but note
-        that this only applies when <command>\d</command> is used without a
-        <replaceable class="parameter">pattern</replaceable> argument, and
-        the <literal>x</literal> modifier cannot appear immediately after the
+        the command name, the results are displayed in expanded mode for this
+        command only, but note that this only applies when <command>\d</command>
+        is used without a <replaceable class="parameter">pattern</replaceable>
+        argument or to describe a sequence.
+        The same limitation on expanded output applies to
+        <command>\x on</command> and <command>\x auto</command>.
+        The <literal>x</literal> modifier cannot appear immediately after the
         <command>\d</command> (because <command>\dx</command> is a different
         command); the <literal>x</literal> modifier may only appear after an
         <literal>S</literal> or <literal>+</literal> modifier. For example,
@@ -1643,7 +1646,6 @@ SELECT $1 \parse stmt1
 
       <varlistentry id="app-psql-meta-command-de">
         <term><literal>\dE[Sx+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
-        <term><literal>\dG[Sx+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\di[Sx+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\dm[Sx+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\ds[Sx+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
@@ -1652,10 +1654,10 @@ SELECT $1 \parse stmt1
 
         <listitem>
         <para>
-        In this group of commands, the letters <literal>E</literal>, <literal>G</literal>,
+        In this group of commands, the letters <literal>E</literal>,
         <literal>i</literal>, <literal>m</literal>, <literal>s</literal>,
         <literal>t</literal>, and <literal>v</literal>
-        stand for foreign table, index, property graph, materialized view,
+        stand for foreign table, index, materialized view,
         sequence, table, and view,
         respectively.
         You can specify any or all of
@@ -2817,8 +2819,9 @@ SELECT
         are displayed in expanded mode.
         If <literal>+</literal> is appended to the command name, database
         sizes, default tablespaces, and descriptions are also displayed.
-        (Size information is only available for databases that the current
-        user can connect to.)
+        Size information is available for databases on which the current user has
+        <literal>CONNECT</literal> privilege, or if the current user is a superuser
+        or has privileges of the <literal>pg_read_all_stats</literal> role.
         </para>
         </listitem>
       </varlistentry>
@@ -3858,6 +3861,11 @@ SELECT 1 \bind \sendpipeline
         <application>pg_dumpall</application>, and
         <application>pg_restore</application>, but it may be useful elsewhere.
         </para>
+        <para>
+        Unlike most other meta-commands, the entire remainder of the line is
+        always taken to be the argument of <command>\unrestrict</command>, and
+        neither variable interpolation nor backquote expansion are performed.
+        </para>
         </listitem>
       </varlistentry>
 
@@ -4679,15 +4687,6 @@ bar
         <listitem>
         <para>
         The service name, if applicable.
-        </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry id="app-psql-variables-servicefile">
-        <term><varname>SERVICEFILE</varname></term>
-        <listitem>
-        <para>
-        The service file name, if applicable.
         </para>
         </listitem>
       </varlistentry>

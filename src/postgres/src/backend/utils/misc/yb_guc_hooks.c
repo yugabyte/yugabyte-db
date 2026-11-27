@@ -28,6 +28,8 @@
 
 #include "access/parallel.h"
 #include "access/xact.h"
+#include "commands/async.h"
+#include "commands/prepare.h"
 #include "guc_internal.h"
 #include "optimizer/cost.h"
 #include "pg_yb_utils.h"
@@ -36,6 +38,7 @@
 #include "tcop/pquery.h"
 #include "utils/guc_hooks.h"
 #include "utils/guc_tables.h"
+#include "utils/portal.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -361,8 +364,9 @@ check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
 	/*
 	 * ysql_pg_conf_csv is applied in file order, as PGC_S_FILE and the other
 	 * sources below PGC_S_CLIENT. Rejecting a conflicting pair there keeps the
-	 * postmaster from starting. CREATE and ALTER ROLE still refuse it, as do
-	 * SET and the ALTER ROLE validation pass.
+	 * postmaster from starting. SET and the ALTER ROLE validation pass still
+	 * refuse it; where both end up on anyway, ALTER ROLE refuses a role's own
+	 * pre-hashed password.
 	 */
 	if (*newVal &&
 		source >= PGC_S_CLIENT &&
@@ -442,7 +446,7 @@ yb_password_policy_source_allowed(GucSource source)
  * Mutual exclusion with yb_allow_prehashed_passwords is enforced on the
  * ALTER ROLE validation pass. A conflicting value in the configuration file
  * is not rejected here, so it cannot keep a backend from starting;
- * CREATE/ALTER ROLE still refuses the combination.
+ * ALTER ROLE then refuses a role's own pre-hashed password.
  */
 bool
 check_yb_password_reuse(int *newVal, void **extra, GucSource source)
@@ -470,6 +474,10 @@ check_yb_password_reuse(int *newVal, void **extra, GucSource source)
  *
  * Do not allow users to set yb_read_after_commit_visibility
  * from within a txn block.
+ *
+ * ConnMgr can't replay a GUC that uses this hook, since the replay runs
+ * inside a transaction block. Such a GUC must also be marked
+ * GUC_YB_CONN_MGR_STICKY.
  */
 bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
@@ -482,17 +490,6 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	{
 		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
-	}
-
-	/*
-	 * If YSQL Connection Manager is enabled, make the connection sticky
-	 * for any variables that can only be set outside the context of an
-	 * explicit transaction block.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Making connection sticky for non-transactional GUC variable");
-		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
 }
@@ -696,6 +693,27 @@ yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra)
 {
 	if (newval && YbHasReplicationOriginSetup())
 		yb_ysql_conn_mgr_sticky_replication_origin = true;
+}
+
+void
+yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasSqlPreparedStatement())
+		yb_ysql_conn_mgr_sticky_prepare = true;
+}
+
+void
+yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbIsListening())
+		yb_ysql_conn_mgr_sticky_listen = true;
+}
+
+void
+yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasHoldablePortal())
+		yb_ysql_conn_mgr_sticky_cursor = true;
 }
 
 bool

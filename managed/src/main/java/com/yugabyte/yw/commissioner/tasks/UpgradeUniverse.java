@@ -471,8 +471,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               }
 
               CreateRootVolumes.Params params = new CreateRootVolumes.Params();
-              UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-              fillCreateParamsForNode(params, userIntent, node);
+              Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+              fillCreateParamsForNode(
+                  cluster.getProviderUUIDForNode(node), params, cluster.userIntent, node);
               params.numVolumes = numVolumes;
               params.setMachineImage(machineImage);
               params.bootDisksPerNodePerZone = replacementRootVolumes;
@@ -1005,16 +1006,17 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               })
           .setSubTaskGroupType(subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
-      Map<String, String> gflags = new HashMap<>();
-      gflags.put(
-          "allow_insecure_connections",
-          upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
+      Universe universe = getUniverse();
       createSetFlagInMemoryTasks(
               nodes,
               processType,
               (node, params) -> {
                 params.force = true;
-                params.gflags = gflags;
+                params.gflags = new HashMap<>();
+                params.gflags.put(
+                    "allow_insecure_connections",
+                    upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
+                addUserYsqlPgConfCsv(params.gflags, universe, node, processType);
               })
           .setSubTaskGroupType(subGroupType);
     }

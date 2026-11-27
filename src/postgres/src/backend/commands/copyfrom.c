@@ -496,6 +496,9 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 																	 NULL,
 																	 &inserted);
 
+			/* XXX See the comment in ExecBatchInsert() */
+			inserted = Min(inserted, size);
+
 			sent += size;
 
 			/* No need to do anything if there are no inserted rows */
@@ -1038,6 +1041,10 @@ CopyFrom(CopyFromState cstate)
 	 * 3. When the target is a partitioned table. The checks here only see the
 	 *    partitioned table itself, but each partition can have its own foreign
 	 *    keys, triggers, indexes and colocation.
+	 * 4. When a row can get other than one entry in a secondary index, as with
+	 *    a partial index or an index not yet ready for inserts. The batch size
+	 *    set below assumes one entry per index, so a batch could otherwise end
+	 *    between a row and its index entries.
 	 */
 	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
@@ -1046,7 +1053,8 @@ CopyFrom(CopyFromState cstate)
 		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 		resultRelInfo->ri_RelationDesc->rd_rel->relkind != RELKIND_PARTITIONED_TABLE &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
-		!has_rule_or_trigger && !IsTransactionBlock())
+		!has_rule_or_trigger && !IsTransactionBlock() &&
+		YbSecondaryIndicesGetOneEntryPerRow(resultRelInfo))
 	{
 		elog(LOG, "using non-txn for copy from colocated table, yb_disable_transactional_writes=%d",
 			 yb_disable_transactional_writes);
@@ -1968,8 +1976,6 @@ BeginCopyFrom(ParseState *pstate,
 
 	if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
 	{
-		int			attr_count = list_length(cstate->attnumlist);
-
 		/*
 		 * When data type conversion fails and ON_ERROR is SET_NULL, we need
 		 * ensure that the input column allow null values.  ExecConstraints()
@@ -1978,15 +1984,13 @@ BeginCopyFrom(ParseState *pstate,
 		 * check must be performed during the initial string-to-datum
 		 * conversion (see CopyFromTextLikeOneRow()).
 		 */
-		cstate->domain_with_constraint = palloc0_array(bool, attr_count);
+		cstate->domain_with_constraint = palloc0_array(bool, num_phys_attrs);
 
 		foreach_int(attno, cstate->attnumlist)
 		{
-			int			i = foreach_current_index(attno);
-
 			Form_pg_attribute att = TupleDescAttr(tupDesc, attno - 1);
 
-			cstate->domain_with_constraint[i] = DomainHasConstraints(att->atttypid, NULL);
+			cstate->domain_with_constraint[attno - 1] = DomainHasConstraints(att->atttypid, NULL);
 		}
 	}
 

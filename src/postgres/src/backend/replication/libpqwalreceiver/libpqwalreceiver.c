@@ -30,6 +30,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "pqexpbuffer.h"
+#include "replication/slotsync.h"
 #include "replication/walreceiver.h"
 #include "storage/latch.h"
 #include "utils/builtins.h"
@@ -63,7 +64,8 @@ static char *libpqrcv_get_conninfo(WalReceiverConn *conn);
 static void libpqrcv_get_senderinfo(WalReceiverConn *conn,
 									char **sender_host, int *sender_port);
 static char *libpqrcv_identify_system(WalReceiverConn *conn,
-									  TimeLineID *primary_tli);
+									  TimeLineID *primary_tli,
+									  XLogRecPtr *server_lsn);
 static char *libpqrcv_get_dbname_from_conninfo(const char *connInfo);
 static char *libpqrcv_get_option_from_conninfo(const char *connInfo,
 											   const char *keyword);
@@ -116,7 +118,7 @@ static WalReceiverFunctionsType PQWalReceiverFunctions = {
 };
 
 /* Prototypes for private functions */
-static char *stringlist_to_identifierstr(PGconn *conn, List *strings);
+static char *stringlist_to_identifierstr(List *strings);
 
 /*
  * Module initialization function
@@ -138,11 +140,11 @@ _PG_init(void)
  *
  * If an error occurs, this function will normally return NULL and set *err
  * to a palloc'ed error message. However, if must_use_password is true and
- * the connection fails to use the password, this function will ereport(ERROR).
- * We do this because in that case the error includes a detail and a hint for
- * consistency with other parts of the system, and it's not worth adding the
- * machinery to pass all of those back to the caller just to cover this one
- * case.
+ * the connection fails to use the password, or if the connection string
+ * contains disallowed options, this function will ereport(ERROR). We do this
+ * because in that case the error includes a detail and a hint for consistency
+ * with other parts of the system, and it's not worth adding the machinery to
+ * pass all of those back to the caller just to cover this one case.
  */
 static WalReceiverConn *
 libpqrcv_connect(const char *conninfo, bool replication, bool logical,
@@ -153,6 +155,7 @@ libpqrcv_connect(const char *conninfo, bool replication, bool logical,
 	const char *vals[6];
 	int			i = 0;
 	char	   *options_val = NULL;
+	bool		allow_unsafe_opts = false;
 
 	/*
 	 * Re-validate connection string. The validation already happened at DDL
@@ -162,6 +165,33 @@ libpqrcv_connect(const char *conninfo, bool replication, bool logical,
 	 * PGPASSWORD.
 	 */
 	libpqrcv_check_conninfo(conninfo, must_use_password);
+
+	if (!must_use_password)
+	{
+		/*
+		 * CVE-2026-14661: Generally speaking, we want to protect any callers
+		 * of walrcv_connect() from connection options that could allow
+		 * elevation of privileges. But we also want to avoid restricting
+		 * primary_conninfo, which the DBA should have broad control over.
+		 *
+		 * For back branches, we detect that case in two ways: either the
+		 * conninfo pointer we were given is literally the primary_conninfo
+		 * GUC variable, or the WAL receiver is starting physical replication.
+		 *
+		 * This exception isn't granted if must_use_password is true, since we
+		 * don't know if unsafe options might allow that restriction to be
+		 * bypassed in other ways. (At time of writing, there are no callers
+		 * in core Postgres that use PrimaryConnInfo in combination with
+		 * must_use_password.)
+		 */
+		if (conninfo == PrimaryConnInfo ||
+			(AmWalReceiverProcess() && replication && !logical))
+			allow_unsafe_opts = true;
+	}
+
+	/* Final security check on the proxied connection options. */
+	if (!allow_unsafe_opts)
+		libpqsrv_check_proxy_conninfo(conninfo);
 
 	/*
 	 * We use the expand_dbname parameter to process the connection string (or
@@ -223,9 +253,12 @@ libpqrcv_connect(const char *conninfo, bool replication, bool logical,
 
 	conn = palloc0_object(WalReceiverConn);
 	conn->streamConn =
-		libpqsrv_connect_params(keys, vals,
-								 /* expand_dbname = */ true,
-								WAIT_EVENT_LIBPQWALRECEIVER_CONNECT);
+		libpqsrv_connect_params_start(keys, vals,
+									   /* expand_dbname = */ true);
+	PQsetNoticeReceiver(conn->streamConn, libpqsrv_notice_receiver,
+						"received message via replication");
+	libpqsrv_connect_complete(conn->streamConn,
+							  WAIT_EVENT_LIBPQWALRECEIVER_CONNECT);
 
 	if (options_val != NULL)
 		pfree(options_val);
@@ -244,9 +277,6 @@ libpqrcv_connect(const char *conninfo, bool replication, bool logical,
 				 errdetail("Non-superuser cannot connect if the server does not request a password."),
 				 errhint("Target server's authentication method must be changed, or set password_required=false in the subscription parameters.")));
 	}
-
-	PQsetNoticeReceiver(conn->streamConn, libpqsrv_notice_receiver,
-						"received message via replication");
 
 	/*
 	 * Set always-secure search path for the cases where the connection is
@@ -291,6 +321,10 @@ bad_connection:
  * an error. If must_use_password is true, the function raises an error
  * if no password is provided in the connection string. In any other case
  * it successfully completes.
+ *
+ * CVE-2026-14661: We don't check for unsafe options here; instead we defer to
+ * libpqrcv_connect() to keep dump/restore from failing. That's not the
+ * greatest UX, and it'd be good to improve this after the initial fix lands.
  */
 static void
 libpqrcv_check_conninfo(const char *conninfo, bool must_use_password)
@@ -421,7 +455,8 @@ libpqrcv_get_senderinfo(WalReceiverConn *conn, char **sender_host,
  * timeline ID of the primary.
  */
 static char *
-libpqrcv_identify_system(WalReceiverConn *conn, TimeLineID *primary_tli)
+libpqrcv_identify_system(WalReceiverConn *conn, TimeLineID *primary_tli,
+						 XLogRecPtr *server_lsn)
 {
 	PGresult   *res;
 	char	   *primary_sysid;
@@ -452,6 +487,21 @@ libpqrcv_identify_system(WalReceiverConn *conn, TimeLineID *primary_tli)
 						   PQntuples(res), PQnfields(res), 1, 3)));
 	primary_sysid = pstrdup(PQgetvalue(res, 0, 0));
 	*primary_tli = pg_strtoint32(PQgetvalue(res, 0, 1));
+
+	/* Column 2 is the server's current WAL flush position */
+	if (server_lsn)
+	{
+		uint32		hi,
+					lo;
+
+		if (sscanf(PQgetvalue(res, 0, 2), "%X/%X", &hi, &lo) != 2)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("could not parse WAL location \"%s\"",
+							PQgetvalue(res, 0, 2))));
+		*server_lsn = ((uint64) hi) << 32 | lo;
+	}
+
 	PQclear(res);
 
 	return primary_sysid;
@@ -523,6 +573,32 @@ libpqrcv_get_option_from_conninfo(const char *connInfo, const char *keyword)
 }
 
 /*
+ * Append a suitably-quoted identifier or string literal to buf.
+ * "quote" should be either a double-quote or single-quote character.
+ *
+ * Caution: this quoting logic is sufficient for identifiers and literals
+ * in the replication grammar, but not always in regular SQL.  Specifically,
+ * it'd fail for a string literal if standard_conforming_strings is off.
+ */
+static void
+appendQuotedString(StringInfo buf, const char *str, char quote)
+{
+	appendStringInfoChar(buf, quote);
+	while (*str)
+	{
+		char		c = *str++;
+
+		if (c == quote)
+			appendStringInfoChar(buf, c);
+		appendStringInfoChar(buf, c);
+	}
+	appendStringInfoChar(buf, quote);
+}
+
+#define appendQuotedIdentifier(b, s)	appendQuotedString(b, s, '"')
+#define appendQuotedLiteral(b, s)		appendQuotedString(b, s, '\'')
+
+/*
  * Start streaming WAL data from given streaming options.
  *
  * Returns true if we switched successfully to copy-both mode. False
@@ -547,8 +623,10 @@ libpqrcv_startstreaming(WalReceiverConn *conn,
 	/* Build the command. */
 	appendStringInfoString(&cmd, "START_REPLICATION");
 	if (options->slotname != NULL)
-		appendStringInfo(&cmd, " SLOT \"%s\"",
-						 options->slotname);
+	{
+		appendStringInfoString(&cmd, " SLOT ");
+		appendQuotedIdentifier(&cmd, options->slotname);
+	}
 
 	if (options->logical)
 		appendStringInfoString(&cmd, " LOGICAL");
@@ -563,7 +641,6 @@ libpqrcv_startstreaming(WalReceiverConn *conn,
 	{
 		char	   *pubnames_str;
 		List	   *pubnames;
-		char	   *pubnames_literal;
 
 		appendStringInfoString(&cmd, " (");
 
@@ -571,8 +648,10 @@ libpqrcv_startstreaming(WalReceiverConn *conn,
 						 options->proto.logical.proto_version);
 
 		if (options->proto.logical.streaming_str)
-			appendStringInfo(&cmd, ", streaming '%s'",
-							 options->proto.logical.streaming_str);
+		{
+			appendStringInfoString(&cmd, ", streaming ");
+			appendQuotedLiteral(&cmd, options->proto.logical.streaming_str);
+		}
 
 		if (options->proto.logical.twophase &&
 			PQserverVersion(conn->streamConn) >= 150000)
@@ -580,25 +659,15 @@ libpqrcv_startstreaming(WalReceiverConn *conn,
 
 		if (options->proto.logical.origin &&
 			PQserverVersion(conn->streamConn) >= 160000)
-			appendStringInfo(&cmd, ", origin '%s'",
-							 options->proto.logical.origin);
+		{
+			appendStringInfoString(&cmd, ", origin ");
+			appendQuotedLiteral(&cmd, options->proto.logical.origin);
+		}
 
 		pubnames = options->proto.logical.publication_names;
-		pubnames_str = stringlist_to_identifierstr(conn->streamConn, pubnames);
-		if (!pubnames_str)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),	/* likely guess */
-					 errmsg("could not start WAL streaming: %s",
-							pchomp(PQerrorMessage(conn->streamConn)))));
-		pubnames_literal = PQescapeLiteral(conn->streamConn, pubnames_str,
-										   strlen(pubnames_str));
-		if (!pubnames_literal)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),	/* likely guess */
-					 errmsg("could not start WAL streaming: %s",
-							pchomp(PQerrorMessage(conn->streamConn)))));
-		appendStringInfo(&cmd, ", publication_names %s", pubnames_literal);
-		PQfreemem(pubnames_literal);
+		pubnames_str = stringlist_to_identifierstr(pubnames);
+		appendStringInfoString(&cmd, ", publication_names ");
+		appendQuotedLiteral(&cmd, pubnames_str);
 		pfree(pubnames_str);
 
 		if (options->proto.logical.binary &&
@@ -899,7 +968,8 @@ libpqrcv_create_slot(WalReceiverConn *conn, const char *slotname,
 
 	initStringInfo(&cmd);
 
-	appendStringInfo(&cmd, "CREATE_REPLICATION_SLOT \"%s\"", slotname);
+	appendStringInfoString(&cmd, "CREATE_REPLICATION_SLOT ");
+	appendQuotedIdentifier(&cmd, slotname);
 
 	if (temporary)
 		appendStringInfoString(&cmd, " TEMPORARY");
@@ -980,6 +1050,14 @@ libpqrcv_create_slot(WalReceiverConn *conn, const char *slotname,
 				 errmsg("could not create replication slot \"%s\": %s",
 						slotname, pchomp(PQerrorMessage(conn->streamConn)))));
 
+	/* CREATE_REPLICATION_SLOT returns a single row with four columns */
+	if (PQnfields(res) != 4 || PQntuples(res) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid response from primary server"),
+				 errdetail("Could not create replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields.",
+						   slotname, PQntuples(res), PQnfields(res), 1, 4)));
+
 	if (lsn)
 		*lsn = DatumGetLSN(DirectFunctionCall1Coll(pg_lsn_in, InvalidOid,
 												   CStringGetDatum(PQgetvalue(res, 0, 1))));
@@ -1005,8 +1083,9 @@ libpqrcv_alter_slot(WalReceiverConn *conn, const char *slotname,
 	PGresult   *res;
 
 	initStringInfo(&cmd);
-	appendStringInfo(&cmd, "ALTER_REPLICATION_SLOT %s ( ",
-					 quote_identifier(slotname));
+	appendStringInfoString(&cmd, "ALTER_REPLICATION_SLOT ");
+	appendQuotedIdentifier(&cmd, slotname);
+	appendStringInfoString(&cmd, " ( ");
 
 	if (failover)
 		appendStringInfo(&cmd, "FAILOVER %s",
@@ -1203,10 +1282,10 @@ libpqrcv_exec(WalReceiverConn *conn, const char *query,
  *
  * This is essentially the reverse of SplitIdentifierString.
  *
- * The caller should free the result.
+ * The caller should pfree the result.
  */
 static char *
-stringlist_to_identifierstr(PGconn *conn, List *strings)
+stringlist_to_identifierstr(List *strings)
 {
 	ListCell   *lc;
 	StringInfoData res;
@@ -1217,21 +1296,12 @@ stringlist_to_identifierstr(PGconn *conn, List *strings)
 	foreach(lc, strings)
 	{
 		char	   *val = strVal(lfirst(lc));
-		char	   *val_escaped;
 
 		if (first)
 			first = false;
 		else
 			appendStringInfoChar(&res, ',');
-
-		val_escaped = PQescapeIdentifier(conn, val, strlen(val));
-		if (!val_escaped)
-		{
-			free(res.data);
-			return NULL;
-		}
-		appendStringInfoString(&res, val_escaped);
-		PQfreemem(val_escaped);
+		appendQuotedIdentifier(&res, val);
 	}
 
 	return res.data;

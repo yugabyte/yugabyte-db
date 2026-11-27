@@ -192,7 +192,7 @@ SetHintBitsExt(HeapTupleHeader tuple, Buffer buffer,
 }
 
 /*
- * Simple wrapper around SetHintBitExt(), use when operating on a single
+ * Simple wrapper around SetHintBitsExt(), use when operating on a single
  * tuple.
  */
 static inline void
@@ -1178,6 +1178,8 @@ HeapTupleSatisfiesVacuumHorizon(HeapTuple htup, Buffer buffer, TransactionId *de
 			if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetUpdateXid(tuple)))
 				return HEAPTUPLE_DELETE_IN_PROGRESS;
 			/* deleting subtransaction must have aborted */
+			SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
+						InvalidTransactionId);
 			return HEAPTUPLE_INSERT_IN_PROGRESS;
 		}
 		else if (TransactionIdIsInProgress(HeapTupleHeaderGetRawXmin(tuple)))
@@ -1671,7 +1673,7 @@ HeapTupleSatisfiesHistoricMVCC(HeapTuple htup, Snapshot snapshot,
 }
 
 /*
- * Perform HeaptupleSatisfiesMVCC() on each passed in tuple. This is more
+ * Perform HeapTupleSatisfiesMVCC() on each passed in tuple. This is more
  * efficient than doing HeapTupleSatisfiesMVCC() one-by-one.
  *
  * To be checked tuples are passed via BatchMVCCState->tuples. Each tuple's

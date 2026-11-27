@@ -93,6 +93,8 @@ extern bool check_multixact_member_buffers(int *newval, void **extra,
 extern bool check_multixact_offset_buffers(int *newval, void **extra,
 										   GucSource source);
 extern bool check_notify_buffers(int *newval, void **extra, GucSource source);
+extern bool check_output_plugin_libraries(char **newval, void **extra,
+										  GucSource source);
 extern bool check_primary_slot_name(char **newval, void **extra,
 									GucSource source);
 extern bool check_random_seed(double *newval, void **extra, GucSource source);
@@ -237,6 +239,12 @@ extern void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													   void *extra);
 extern void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval,
 																   void *extra);
+extern void yb_assign_conn_mgr_prepare_permanent_sticky(bool newval,
+														void *extra);
+extern void yb_assign_conn_mgr_listen_permanent_sticky(bool newval,
+													   void *extra);
+extern void yb_assign_conn_mgr_cursor_permanent_sticky(bool newval,
+													   void *extra);
 extern bool yb_check_neg_catcache_ids(char **newval, void **extra,
 									  GucSource source);
 extern bool yb_check_no_txn(int *newval, void **extra, GucSource source);

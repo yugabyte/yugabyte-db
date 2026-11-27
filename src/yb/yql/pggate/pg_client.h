@@ -275,6 +275,10 @@ class PgClient {
 
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
+  Result<tserver::PgRestartTransactionForRetryResponsePB> RestartTransactionForRetry(
+      tserver::PgPerformOptionsPB* options,
+      tserver::PgRestartTransactionForRetryRequestPB::Kind kind);
+
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
@@ -323,6 +327,9 @@ class PgClient {
       docdb::ObjectLockFastpathLockType lock_type);
 
   bool TryReleaseAllObjectLocksInSharedMemory();
+
+  // Whether the session's object lock shared state is usable and enabled for a transaction.
+  bool IsObjectLockSharedStateEnabled();
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,

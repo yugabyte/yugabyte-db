@@ -149,12 +149,12 @@ static void make_directory(const char *dir);
 static void test_status_print(bool ok, const char *testname, double runtime, bool parallel);
 static void test_status_ok(const char *testname, double runtime, bool parallel);
 static void test_status_failed(const char *testname, double runtime, bool parallel);
-static void bail_out(bool noatexit, const char *fmt,...) pg_attribute_printf(2, 3);
-static void emit_tap_output(TAPtype type, const char *fmt,...) pg_attribute_printf(2, 3);
+static void bail_out(bool noatexit, const char *fmt, ...) pg_attribute_printf(2, 3);
+static void emit_tap_output(TAPtype type, const char *fmt, ...) pg_attribute_printf(2, 3);
 static void emit_tap_output_v(TAPtype type, const char *fmt, va_list argp) pg_attribute_printf(2, 0);
 
 static StringInfo psql_start_command(void);
-static void psql_add_command(StringInfo buf, const char *query,...) pg_attribute_printf(2, 3);
+static void psql_add_command(StringInfo buf, const char *query, ...) pg_attribute_printf(2, 3);
 static void psql_end_command(StringInfo buf, const char *database);
 
 /* YB */
@@ -164,7 +164,7 @@ static void yb_postprocess_output(const char *filename);
  * Convenience macros for printing TAP output with a more shorthand syntax
  * aimed at making the code more readable.
  */
-#define plan(x)				emit_tap_output(PLAN, "1..%i", (x))
+#define plan(x)				emit_tap_output(PLAN, "1..%d", (x))
 #define note(...)			emit_tap_output(NOTE, __VA_ARGS__)
 #define note_detail(...)	emit_tap_output(NOTE_DETAIL, __VA_ARGS__)
 #define diag(...)			emit_tap_output(DIAG, __VA_ARGS__)
@@ -260,7 +260,7 @@ split_to_stringlist(const char *s, const char *delim, _stringlist **listhead)
  * exit handlers, thus avoid any risk of bottomless recursion calls to exit.
  */
 static void
-bail_out(bool noatexit, const char *fmt,...)
+bail_out(bool noatexit, const char *fmt, ...)
 {
 	va_list		ap;
 
@@ -336,7 +336,7 @@ test_status_failed(const char *testname, double runtime, bool parallel)
 
 
 static void
-emit_tap_output(TAPtype type, const char *fmt,...)
+emit_tap_output(TAPtype type, const char *fmt, ...)
 {
 	va_list		argp;
 
@@ -495,7 +495,7 @@ signal_remove_temp(SIGNAL_ARGS)
 {
 	remove_temp();
 
-	pqsignal(postgres_signal_arg, SIG_DFL);
+	pqsignal(postgres_signal_arg, PG_SIG_DFL);
 	raise(postgres_signal_arg);
 }
 
@@ -1143,7 +1143,7 @@ psql_start_command(void)
 }
 
 static void
-psql_add_command(StringInfo buf, const char *query,...)
+psql_add_command(StringInfo buf, const char *query, ...)
 {
 	StringInfoData cmdbuf;
 	const char *cmdptr;
@@ -1544,31 +1544,33 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	 */
 
 	difffile = fopen(difffilename, "a");
-	if (difffile)
-	{
-		startpos = ftell(difffile);
+	if (!difffile)
+		bail("could not open file \"%s\" for writing: %m", difffilename);
+	startpos = ftell(difffile);
 
-		/* Write diff header */
-		fprintf(difffile,
-				"diff %s %s %s\n",
-				pretty_diff_opts, best_expect_file, resultsfile);
-		fclose(difffile);
+	/* Write diff header */
+	fprintf(difffile,
+			"diff %s %s %s\n",
+			pretty_diff_opts, best_expect_file, resultsfile);
+	fclose(difffile);
 
-		/* Run diff */
-		snprintf(cmd, sizeof(cmd),
-				 "diff %s \"%s\" \"%s\" >> \"%s\"",
-				 pretty_diff_opts, best_expect_file, resultsfile, difffilename);
-		run_diff(cmd, difffilename);
+	/* Run diff */
+	snprintf(cmd, sizeof(cmd),
+			 "diff %s \"%s\" \"%s\" >> \"%s\"",
+			 pretty_diff_opts, best_expect_file, resultsfile, difffilename);
+	run_diff(cmd, difffilename);
 
-		/*
-		 * Reopen the file for reading to emit the diff as TAP diagnostics. We
-		 * can't keep the file open while diff appends to it, because on
-		 * Windows the file lock prevents diff from writing.
-		 */
-		difffile = fopen(difffilename, "r");
-	}
-
-	if (difffile)
+	/*
+	 * Emit the diff output as TAP diagnostics
+	 *
+	 * Reopen the file for reading. We can't keep the file open while diff
+	 * appends to it, because on Windows the file lock prevents diff from
+	 * writing.
+	 */
+	difffile = fopen(difffilename, "r");
+	if (!difffile)
+		bail("could not open file \"%s\" for reading: %m", difffilename);
+	else
 	{
 		/*
 		 * In case of a crash the diff can be huge and all of the subsequent

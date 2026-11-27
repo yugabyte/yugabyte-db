@@ -93,6 +93,10 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
   // read otherwise accumulates on the long-lived request arena.
   void PrepareAggregateResults(size_t size);
 
+  // Discards running aggregate values by nulling each slot in place. The arena and slot vector
+  // are retained so the next PrepareAggregateResults() is a no-op when size is unchanged.
+  void ResetAggregateResults();
+
   ThreadSafeArenaPtr aggr_result_arena_;
   std::vector<qlexpr::LWExprResult> aggr_result_;
   size_t aggr_invocations_since_reset_ = 0;

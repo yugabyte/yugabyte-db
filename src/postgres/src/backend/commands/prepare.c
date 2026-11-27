@@ -54,14 +54,20 @@
  */
 static HTAB *prepared_queries = NULL;
 
+static int	yb_sql_prepared_stmt_count = 0;
+
 static void InitQueryHashTable(void);
 static ParamListInfo EvaluateParams(ParseState *pstate,
 									PreparedStatement *pstmt, List *params,
 									EState *estate);
 static Datum build_regtype_array(Oid *param_types, int num_params);
+
+/* YB: Helper functions used by ConnMgr */
 static inline bool
 			YbConnMgrShouldRetainCachedQuery(PreparedStatement *prep_stmt);
 static void YbConnMgrSendCloseComplete(PreparedStatement *entry);
+static void YbCountSqlPreparedStatementStore(PreparedStatement *entry);
+static void YbCountSqlPreparedStatementDrop(PreparedStatement *entry);
 
 /*
  * Implements the 'PREPARE' utility statement.
@@ -147,19 +153,6 @@ PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 	StorePreparedStatement(stmt->name,
 						   plansource,
 						   true);
-
-	if (YbIsClientYsqlConnMgr())
-	{
-		/*
-		 * PREPARE statements (do not consider protocol-level prepared statements)
-		 * are not tracked by ysql connection manager.
-		 * EXECUTE statement should be forwarded on the same connection on
-		 * which PREPARE statement is executed, therefore the connection should be
-		 * made sticky.
-		 */
-		yb_ysql_conn_mgr_sticky_nontxn_object = true;
-		elog(LOG, "Making connection sticky for prepared statement %s", stmt->name);
-	}
 }
 
 /*
@@ -445,6 +438,9 @@ StorePreparedStatement(const char *stmt_name,
 	entry->from_sql = from_sql;
 	entry->prepare_time = cur_ts;
 
+	/* YB: Count SQL Prep statements for ConnMgr stickiness */
+	YbCountSqlPreparedStatementStore(entry);
+
 	/* Now it's safe to move the CachedPlanSource to permanent memory */
 	SaveCachedPlan(plansource);
 }
@@ -568,6 +564,8 @@ DropPreparedStatement(const char *stmt_name, bool showError)
 			/* YB: Send close complete packet if connection manager is used */
 			YbConnMgrSendCloseComplete(entry);
 
+			YbCountSqlPreparedStatementDrop(entry);
+
 			/* Now we can remove the hash table entry */
 			hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
 		}
@@ -599,6 +597,8 @@ DropAllPreparedStatements(void)
 
 		/* YB: Send close complete packet if connection manager is used */
 		YbConnMgrSendCloseComplete(entry);
+
+		YbCountSqlPreparedStatementDrop(entry);
 
 		/* Now we can remove the hash table entry */
 		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
@@ -818,6 +818,8 @@ YbForceDropPreparedStatement(PreparedStatement *entry)
 	/* YB: Send close complete packet if connection manager is used */
 	YbConnMgrSendCloseComplete(entry);
 
+	YbCountSqlPreparedStatementDrop(entry);
+
 	/* Now we can remove the hash table entry */
 	hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
 }
@@ -856,4 +858,68 @@ YbConnMgrSendCloseComplete(PreparedStatement *entry)
 
 	if (!entry->from_sql && whereToSendOutput == DestRemote)
 		pq_puttextmessage('5', entry->stmt_name);
+}
+
+static void
+YbCountSqlPreparedStatementStore(PreparedStatement *entry)
+{
+	if (!YbIsClientYsqlConnMgr() || !entry->from_sql)
+		return;
+
+	yb_sql_prepared_stmt_count++;
+	if (yb_conn_mgr_prepare_permanent_sticky)
+		yb_ysql_conn_mgr_sticky_prepare = true;
+}
+
+static void
+YbCountSqlPreparedStatementDrop(PreparedStatement *entry)
+{
+	if (!YbIsClientYsqlConnMgr() || !entry->from_sql)
+		return;
+
+	Assert(yb_sql_prepared_stmt_count > 0);
+	if (yb_sql_prepared_stmt_count == 0)
+	{
+		ereport(WARNING,
+				(errmsg("SQL prepared statement count is already 0 while dropping prepared statement \"%s\"",
+						entry->stmt_name),
+				 errhint("This is a bug. Add \"prepare\" to the "
+						 "ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag to keep connections with SQL prepared statements "
+						 "sticky until disconnect.")));
+		return;
+	}
+
+	yb_sql_prepared_stmt_count--;
+}
+
+/* YB: assertion-only helper counting the SQL prepared statements in the hash */
+#ifdef USE_ASSERT_CHECKING
+static int
+YbCountSqlPreparedStatementsInHash(void)
+{
+	HASH_SEQ_STATUS seq;
+	PreparedStatement *entry;
+	int			count = 0;
+
+	if (!prepared_queries)
+		return 0;
+
+	hash_seq_init(&seq, prepared_queries);
+	while ((entry = hash_seq_search(&seq)) != NULL)
+	{
+		if (entry->from_sql)
+			count++;
+	}
+
+	return count;
+}
+#endif
+
+bool
+YbHasSqlPreparedStatement(void)
+{
+	Assert(!YbIsClientYsqlConnMgr() ||
+		   YbCountSqlPreparedStatementsInHash() == yb_sql_prepared_stmt_count);
+	return yb_sql_prepared_stmt_count > 0;
 }

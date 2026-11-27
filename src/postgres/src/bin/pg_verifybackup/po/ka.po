@@ -1,14 +1,14 @@
 # Georgian message translation file for pg_verifybackup
 # Copyright (C) 2022 PostgreSQL Global Development Group
 # This file is distributed under the same license as the pg_verifybackup (PostgreSQL) package.
-# Temuri Doghonadze <temuri.doghonadze@gmail.com>, 2022.
+# Temuri Doghonadze <temuri.doghonadze@gmail.com>, 2022-2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_verifybackup (PostgreSQL) 18\n"
+"Project-Id-Version: pg_verifybackup (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2025-05-02 22:18+0000\n"
-"PO-Revision-Date: 2025-05-03 01:22+0200\n"
+"POT-Creation-Date: 2026-10-17 15:18+0000\n"
+"PO-Revision-Date: 2026-10-18 06:24+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
 "Language: ka\n"
@@ -16,55 +16,55 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.5\n"
+"X-Generator: Poedit 3.10\n"
 
-#: ../../../src/common/logging.c:279
+#: ../../../src/common/logging.c:293 ../../../src/common/logging.c:295
 #, c-format
 msgid "error: "
 msgstr "შეცდომა: "
 
-#: ../../../src/common/logging.c:286
+#: ../../../src/common/logging.c:302 ../../../src/common/logging.c:304
 #, c-format
 msgid "warning: "
 msgstr "გაფრთხილება: "
 
-#: ../../../src/common/logging.c:297
+#: ../../../src/common/logging.c:315 ../../../src/common/logging.c:317
 #, c-format
 msgid "detail: "
 msgstr "დეტალები: "
 
-#: ../../../src/common/logging.c:304
+#: ../../../src/common/logging.c:324 ../../../src/common/logging.c:326
 #, c-format
 msgid "hint: "
 msgstr "მინიშნება: "
 
-#: ../../common/controldata_utils.c:97
+#: ../../common/controldata_utils.c:98
 #, c-format
 msgid "could not open file \"%s\" for reading: %m"
 msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:110 pg_verifybackup.c:440
-#: pg_verifybackup.c:478 pg_verifybackup.c:1025 pg_verifybackup.c:1144
+#: ../../common/controldata_utils.c:111 pg_verifybackup.c:455
+#: pg_verifybackup.c:493 pg_verifybackup.c:1051 pg_verifybackup.c:1170
 #, c-format
 msgid "could not read file \"%s\": %m"
 msgstr "ფაილის (%s) წაკითხვის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:119
+#: ../../common/controldata_utils.c:120
 #, c-format
 msgid "could not read file \"%s\": read %d of %zu"
 msgstr "\"%s\"-ის წაკითხვის შეცდომა: წაკითხულია %d %zu-დან"
 
-#: ../../common/controldata_utils.c:132 ../../common/controldata_utils.c:280
-#: pg_verifybackup.c:1030 pg_verifybackup.c:1150
+#: ../../common/controldata_utils.c:133 ../../common/controldata_utils.c:281
+#: pg_verifybackup.c:1056 pg_verifybackup.c:1176
 #, c-format
 msgid "could not close file \"%s\": %m"
 msgstr "ფაილის (%s) დახურვის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:168
+#: ../../common/controldata_utils.c:169
 msgid "byte ordering mismatch"
 msgstr "ბაიტების მიმდევრობა არ ემთხვევა"
 
-#: ../../common/controldata_utils.c:170
+#: ../../common/controldata_utils.c:171
 #, c-format
 msgid ""
 "possible byte ordering mismatch\n"
@@ -76,24 +76,24 @@ msgstr ""
 "ბაიტების მიმდევრობა შესაძლოა არ ემთხვეოდეს ამ პროგრამის მიერ გამოყენებულს. ამ შემთხვევაში  ქვემოთ \n"
 "მოცემული შედეგები არასწორი იქნება და PostgreSQL ეს აგება ამ მონაცემთა საქაღალდესთან შეუთავსებელი იქნება."
 
-#: ../../common/controldata_utils.c:230 pg_verifybackup.c:408
-#: pg_verifybackup.c:1005 pg_verifybackup.c:1113
+#: ../../common/controldata_utils.c:231 pg_verifybackup.c:423
+#: pg_verifybackup.c:1031 pg_verifybackup.c:1139
 #, c-format
 msgid "could not open file \"%s\": %m"
 msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:249
+#: ../../common/controldata_utils.c:250
 #, c-format
 msgid "could not write file \"%s\": %m"
 msgstr "ფაილში (%s) ჩაწერის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:268
+#: ../../common/controldata_utils.c:269
 #, c-format
 msgid "could not fsync file \"%s\": %m"
 msgstr "ფაილის (%s) fsync-ის შეცდომა: %m"
 
 #: ../../common/cryptohash.c:261 ../../common/cryptohash_openssl.c:356
-#: ../../common/jsonapi.c:2407 ../../common/parse_manifest.c:157
+#: ../../common/jsonapi.c:2459 ../../common/parse_manifest.c:157
 #: ../../common/parse_manifest.c:852
 #, c-format
 msgid "out of memory"
@@ -112,114 +112,124 @@ msgstr "სამიზნე ბუფერი ძალიან პატა
 msgid "OpenSSL failure"
 msgstr "OpenSSL -ის სეცდომა"
 
-#: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
-#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:161
+#: ../../common/fe_memutils.c:41 ../../common/fe_memutils.c:81
+#: ../../common/fe_memutils.c:104 ../../common/fe_memutils.c:167
 #, c-format
 msgid "out of memory\n"
 msgstr "არასაკმარისი მეხსიერება\n"
 
-#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:153
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:159
 #, c-format
 msgid "cannot duplicate null pointer (internal error)\n"
 msgstr "ნულოვანი მაჩვენებლის დუბლირება შეუძლებელია (შიდა შეცდომა)\n"
 
-#: ../../common/jsonapi.c:2432
+#: ../../common/fe_memutils.c:209
+#, c-format
+msgid "invalid memory allocation request size %zu + %zu\n"
+msgstr "არასწორი მეხსიერების გამოყოფის მოთხოვნის ზომა %zu + %zu\n"
+
+#: ../../common/fe_memutils.c:228
+#, c-format
+msgid "invalid memory allocation request size %zu * %zu\n"
+msgstr "არასწორი მეხსიერების გამოყოფის მოთხოვნის ზომა %zu * %zu\n"
+
+#: ../../common/jsonapi.c:2484
 msgid "Recursive descent parser cannot use incremental lexer."
 msgstr "რეკურსიულ დაღმავალ დამმუშავებელს ინკრემენტული lexer-ის გამოყენება არ შეუძლია."
 
-#: ../../common/jsonapi.c:2434
+#: ../../common/jsonapi.c:2486
 msgid "Incremental parser requires incremental lexer."
 msgstr "ინკრემენტულ დამმუშავებელს ინკრემენტული lexer სჭირდება."
 
-#: ../../common/jsonapi.c:2436
+#: ../../common/jsonapi.c:2488
 msgid "JSON nested too deep, maximum permitted depth is 6400."
 msgstr "JSON მეტისმეტად ღრმადაა ერთმანეთში ჩალაგებული. მაქსიმალური დასაშვები სიღრმეა 6400."
 
-#: ../../common/jsonapi.c:2438
+#: ../../common/jsonapi.c:2490
 #, c-format
 msgid "Escape sequence \"\\%.*s\" is invalid."
 msgstr "სპეციალური მიმდევრობა \"\\%.*s\" არასწორია."
 
-#: ../../common/jsonapi.c:2442
+#: ../../common/jsonapi.c:2494
 #, c-format
 msgid "Character with value 0x%02x must be escaped."
 msgstr "სიმბოლო კოდით 0x%02x აუცილებლად ეკრანირებული უნდა იყოს."
 
-#: ../../common/jsonapi.c:2446
+#: ../../common/jsonapi.c:2498
 #, c-format
 msgid "Expected end of input, but found \"%.*s\"."
 msgstr "მოველოდი შეყვანის დასასრულს, მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2449
+#: ../../common/jsonapi.c:2501
 #, c-format
 msgid "Expected array element or \"]\", but found \"%.*s\"."
 msgstr "მოველოდი მასივის ელემენტს ან \"]\", მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2452
+#: ../../common/jsonapi.c:2504
 #, c-format
 msgid "Expected \",\" or \"]\", but found \"%.*s\"."
 msgstr "მოველოდი \",\" ან \"]\", მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2455
+#: ../../common/jsonapi.c:2507
 #, c-format
 msgid "Expected \":\", but found \"%.*s\"."
 msgstr "მოველოდი \":\", მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2458
+#: ../../common/jsonapi.c:2510
 #, c-format
 msgid "Expected JSON value, but found \"%.*s\"."
 msgstr "მოველოდი JSON მნიშვნელობას. მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2461
+#: ../../common/jsonapi.c:2513
 msgid "The input string ended unexpectedly."
 msgstr "შეყვანის სტრიქონი მოულოდნელად დასრულდა."
 
-#: ../../common/jsonapi.c:2463
+#: ../../common/jsonapi.c:2515
 #, c-format
 msgid "Expected string or \"}\", but found \"%.*s\"."
 msgstr "მოველოდი სტრიქონს ან \"}\", მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2466
+#: ../../common/jsonapi.c:2518
 #, c-format
 msgid "Expected \",\" or \"}\", but found \"%.*s\"."
 msgstr "მოველოდი \",\", ან \"}\", მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2469
+#: ../../common/jsonapi.c:2521
 #, c-format
 msgid "Expected string, but found \"%.*s\"."
 msgstr "მოველოდი სტრიქონს, მაგრამ მივიღე \"%.*s\"."
 
-#: ../../common/jsonapi.c:2472
+#: ../../common/jsonapi.c:2524
 #, c-format
 msgid "Token \"%.*s\" is invalid."
 msgstr "კოდი \"%.*s\" არასწორია."
 
-#: ../../common/jsonapi.c:2478
+#: ../../common/jsonapi.c:2530
 msgid "\\u0000 cannot be converted to text."
 msgstr "\\u0000 ტექსტად ვერ გარდაიქმნება."
 
-#: ../../common/jsonapi.c:2480
+#: ../../common/jsonapi.c:2532
 msgid "\"\\u\" must be followed by four hexadecimal digits."
 msgstr "\"\\u\" ს თექვსმეტობითი ციფრები უნდა მოჰყვებოდეს."
 
-#: ../../common/jsonapi.c:2483
+#: ../../common/jsonapi.c:2535
 msgid "Unicode escape values cannot be used for code point values above 007F when the encoding is not UTF8."
 msgstr "უნიკოდის სპეციალური კოდების გამოყენება კოდის წერტილის მნიშვნელობებად 007F-ის ზემოთ შეუძლებელია, თუ კოდირება UTF-8 არაა."
 
-#: ../../common/jsonapi.c:2492
+#: ../../common/jsonapi.c:2544
 #, c-format
 msgid "Unicode escape value could not be translated to the server's encoding %s."
 msgstr "უნიკოდის სპეციალური სიმბოლოს მნიშვნელობის თარგმნა სერვერის კოდირებაში %s შეუძლებელია."
 
-#: ../../common/jsonapi.c:2499
+#: ../../common/jsonapi.c:2551
 msgid "Unicode high surrogate must not follow a high surrogate."
 msgstr "უნიკოდის მაღალ სუროგატს მაღალი სუროგატი არ უნდა მოსდევდეს."
 
-#: ../../common/jsonapi.c:2501
+#: ../../common/jsonapi.c:2553
 msgid "Unicode low surrogate must follow a high surrogate."
 msgstr "უნიკოდის დაბალი სუროგატი მაღალ სუროგატს უნდა მისდევდეს."
 
-#: ../../common/jsonapi.c:2523
+#: ../../common/jsonapi.c:2575
 msgid "out of memory while constructing error description"
 msgstr "არასაკმარისი მეხსიერება შეცდომის აღწერის აგებისას"
 
@@ -380,111 +390,138 @@ msgstr "მანიფესტის საკონტროლო ჯამ�
 msgid "could not parse backup manifest: %s"
 msgstr "მარქაფის მანიფესტის დამუშავების შეცრომა: %s"
 
-#: ../../fe_utils/astreamer_gzip.c:115
+#: ../../fe_utils/astreamer_gzip.c:116
 #, c-format
 msgid "could not create compressed file \"%s\": %m"
 msgstr "ვერ შექმნა შეკუმშული ფაილი \"%s\": %m"
 
-#: ../../fe_utils/astreamer_gzip.c:127
+#: ../../fe_utils/astreamer_gzip.c:128
 #, c-format
 msgid "could not duplicate stdout: %m"
 msgstr "stdout-ის დუბლირების შეცდომა: %m"
 
-#: ../../fe_utils/astreamer_gzip.c:131
+#: ../../fe_utils/astreamer_gzip.c:132
 #, c-format
 msgid "could not open output file: %m"
 msgstr "გამოტანის ფაილის გახსნის შეცდომა: %m"
 
-#: ../../fe_utils/astreamer_gzip.c:135
+#: ../../fe_utils/astreamer_gzip.c:136
 #, c-format
 msgid "could not set compression level %d: %s"
 msgstr "შეკუმშვის დონის დაყენების შეცდომა %d: %s"
 
-#: ../../fe_utils/astreamer_gzip.c:140 ../../fe_utils/astreamer_gzip.c:273
-#: ../../fe_utils/astreamer_lz4.c:102 ../../fe_utils/astreamer_lz4.c:300
-#: ../../fe_utils/astreamer_zstd.c:133 ../../fe_utils/astreamer_zstd.c:288
+#: ../../fe_utils/astreamer_gzip.c:141 ../../fe_utils/astreamer_gzip.c:277
+#: ../../fe_utils/astreamer_lz4.c:103 ../../fe_utils/astreamer_lz4.c:304
+#: ../../fe_utils/astreamer_zstd.c:131 ../../fe_utils/astreamer_zstd.c:287
 #, c-format
 msgid "this build does not support compression with %s"
 msgstr "ამ აგებაში %s-ით შეკუმშვის მხარდაჭრა არ არსებობს"
 
-#: ../../fe_utils/astreamer_gzip.c:167
+#: ../../fe_utils/astreamer_gzip.c:168
 #, c-format
 msgid "could not write to compressed file \"%s\": %s"
 msgstr "შეკუმშული ფაილში (\"%s\") ჩაწერის შეცდომა: %s"
 
-#: ../../fe_utils/astreamer_gzip.c:191
+#: ../../fe_utils/astreamer_gzip.c:192
 #, c-format
 msgid "could not close compressed file \"%s\": %m"
 msgstr "შეკუმშული ფაილის (\"%s\") დახურვის შეცდომა: %m"
 
-#: ../../fe_utils/astreamer_gzip.c:269
+#: ../../fe_utils/astreamer_gzip.c:272
 #, c-format
 msgid "could not initialize compression library"
 msgstr "შეკუმშვის ბიბლიოთეკის ინიციალიზაციის შეცდომა"
 
-#: ../../fe_utils/astreamer_gzip.c:320 ../../fe_utils/astreamer_lz4.c:356
-#: ../../fe_utils/astreamer_zstd.c:333
+#: ../../fe_utils/astreamer_gzip.c:328 ../../fe_utils/astreamer_lz4.c:360
+#: ../../fe_utils/astreamer_zstd.c:332 ../../fe_utils/astreamer_zstd.c:374
 #, c-format
 msgid "could not decompress data: %s"
 msgstr "მონაცემების გაშლის შეცდომა: %s"
 
-#: ../../fe_utils/astreamer_lz4.c:97
+#: ../../fe_utils/astreamer_gzip.c:349
+#, c-format
+msgid "could not reset compression stream"
+msgstr "შეკუმშვის ნაკადის თავიდან დაწყების შეცდომა"
+
+#: ../../fe_utils/astreamer_gzip.c:364 ../../fe_utils/astreamer_lz4.c:407
+#: ../../fe_utils/astreamer_zstd.c:385
+#, c-format
+msgid "could not decompress data: compressed stream is empty"
+msgstr "მონაცემების დეკომპრესია შეუძლებელია: შეკუმშული ნაკადი ცარიელია"
+
+#: ../../fe_utils/astreamer_gzip.c:366 ../../fe_utils/astreamer_lz4.c:409
+#: ../../fe_utils/astreamer_zstd.c:387
+#, c-format
+msgid "could not decompress data: compressed stream is incomplete"
+msgstr "მონაცემების დეკომპრესია შეუძლებელია: შეკუმშული ნაკადი დაუსრულებელია"
+
+#: ../../fe_utils/astreamer_lz4.c:98
 #, c-format
 msgid "could not create lz4 compression context: %s"
 msgstr "lz4 შეკუმშვის კონტექსტის შექმნის შეცდომა: %s"
 
-#: ../../fe_utils/astreamer_lz4.c:142
+#: ../../fe_utils/astreamer_lz4.c:143
 #, c-format
 msgid "could not write lz4 header: %s"
 msgstr "lz4 თავსართის ჩაწერის შეცდოა: %s"
 
-#: ../../fe_utils/astreamer_lz4.c:191 ../../fe_utils/astreamer_zstd.c:185
-#: ../../fe_utils/astreamer_zstd.c:227
+#: ../../fe_utils/astreamer_lz4.c:192 ../../fe_utils/astreamer_zstd.c:183
+#: ../../fe_utils/astreamer_zstd.c:225
 #, c-format
 msgid "could not compress data: %s"
 msgstr "მონაცემების შეკუმშვა შეუძლებელია: %s"
 
-#: ../../fe_utils/astreamer_lz4.c:243
+#: ../../fe_utils/astreamer_lz4.c:244
 #, c-format
 msgid "could not end lz4 compression: %s"
 msgstr "lz4 შეკუმშვის დასრულების შეცდომა: %s"
 
-#: ../../fe_utils/astreamer_lz4.c:295
+#: ../../fe_utils/astreamer_lz4.c:298
 #, c-format
 msgid "could not initialize compression library: %s"
 msgstr "შეკუმშვის ბიბლიოთეკის ინიციალიზება ვერ მოხერხდა: %s"
 
-#: ../../fe_utils/astreamer_tar.c:244
-#, c-format
-msgid "tar file trailer exceeds 2 blocks"
-msgstr "tar ფაილის ბოლოსართი 2 ბლოკს სცდება"
-
-#: ../../fe_utils/astreamer_tar.c:249 astreamer_verify.c:130
+#: ../../fe_utils/astreamer_tar.c:254 astreamer_verify.c:130
 #, c-format
 msgid "unexpected state while parsing tar archive"
 msgstr "მოულოდნელი მდგომარეობა tar არქივის დამუშავებისას"
 
-#: ../../fe_utils/astreamer_tar.c:292
+#: ../../fe_utils/astreamer_tar.c:300
+#, c-format
+msgid "input file does not appear to be a valid tar archive"
+msgstr "შეყვანის ფაილი სწორ tar არქივს არ ჰგავს"
+
+#: ../../fe_utils/astreamer_tar.c:307
 #, c-format
 msgid "tar member has empty name"
 msgstr "tar-ის წევრს ცარიელი სახელი აქვს"
 
-#: ../../fe_utils/astreamer_tar.c:326
+#: ../../fe_utils/astreamer_tar.c:309
+#, c-format
+msgid "tar member has unsafe path name: \"%s\""
+msgstr "tar-ის წევრის ბილიკის სახელი სახიფათოა: '%s'"
+
+#: ../../fe_utils/astreamer_tar.c:332
+#, c-format
+msgid "pax extensions to tar format are not supported"
+msgstr "pax გაფართოებები tar ფორმატისთვის მხარდაჭერილი არაა"
+
+#: ../../fe_utils/astreamer_tar.c:361
 #, c-format
 msgid "COPY stream ended before last file was finished"
 msgstr "COPY-ის ნაკადი ბოლო ფაილის დასრულებამდე დასრულდა"
 
-#: ../../fe_utils/astreamer_zstd.c:89
+#: ../../fe_utils/astreamer_zstd.c:90
 #, c-format
 msgid "could not create zstd compression context"
 msgstr "zstd შეკუმშვის კონტექსტის შექმნის შეცდომა"
 
-#: ../../fe_utils/astreamer_zstd.c:95
+#: ../../fe_utils/astreamer_zstd.c:96
 #, c-format
 msgid "could not set zstd compression level to %d: %s"
 msgstr "zstd შეკუმშვის დონის %d-ზე დაყენების შეცდომა: %s"
 
-#: ../../fe_utils/astreamer_zstd.c:109
+#: ../../fe_utils/astreamer_zstd.c:110
 #, c-format
 msgid "could not set compression worker count to %d: %s"
 msgstr "შეკუმშვის დამხმარე პროცესების რიცხვის %d-ზე დაყენების შეცდომა: %s"
@@ -494,7 +531,7 @@ msgstr "შეკუმშვის დამხმარე პროცეს�
 msgid "could not enable long-distance mode: %s"
 msgstr "long-distance რეჟიმი ვერ ჩავრთე: %s"
 
-#: ../../fe_utils/astreamer_zstd.c:279
+#: ../../fe_utils/astreamer_zstd.c:277
 #, c-format
 msgid "could not create zstd decompression context"
 msgstr "zstd გაშლის კონტექსტის შექმნის შეცდომა"
@@ -514,7 +551,7 @@ msgstr "ფაილის \"%s\" ზომაა %llu არქივში \"%
 msgid "%s: could not initialize checksum of file \"%s\""
 msgstr "%s: ფაილის (\"%s\") საკონტროლო ჯამის ინიციალიზაციის შეცდომა"
 
-#: astreamer_verify.c:274 pg_verifybackup.c:1133
+#: astreamer_verify.c:274 pg_verifybackup.c:1159
 #, c-format
 msgid "could not update checksum of file \"%s\""
 msgstr "ფაილის (\"%s\") საკონტროლო ჯამის განახლების შეცდომა"
@@ -524,7 +561,7 @@ msgstr "ფაილის (\"%s\") საკონტროლო ჯამი�
 msgid "file \"%s\" in archive \"%s\" should contain %<PRIu64> bytes, but %<PRIu64> bytes were read"
 msgstr "ფაილი \"%s\" არქივში \"%s\" უნდა შეიცავდეს %<PRIu64> ბაიტს მაგრამ წაკითხულია %<PRIu64> ბაიტი"
 
-#: astreamer_verify.c:312 pg_verifybackup.c:1179
+#: astreamer_verify.c:312 pg_verifybackup.c:1205
 #, c-format
 msgid "could not finalize checksum of file \"%s\""
 msgstr "ფაილის (\"%s\") საკონტროლო ჯამის დასრულების შეცდომა"
@@ -559,174 +596,174 @@ msgstr "%s: %s: მოულოდნელი საკონტროლო �
 msgid "%s: %s: manifest system identifier is %<PRIu64>, but control file has %<PRIu64>"
 msgstr "%s: %s: მანიფესტის სისტემური იდენტიფიკატორია %<PRIu64>, მაგრამ კონტროლის ფაილი შეიცავს %<PRIu64>-ს"
 
-#: pg_verifybackup.c:208
+#: pg_verifybackup.c:215
 #, c-format
 msgid "invalid backup format \"%s\", must be \"plain\" or \"tar\""
 msgstr "მარქაფის არასწორი ფორმატი \"%s\". უნდა იყოს: \"plain\" ან \"tar\""
 
-#: pg_verifybackup.c:229 pg_verifybackup.c:238 pg_verifybackup.c:249
+#: pg_verifybackup.c:236 pg_verifybackup.c:245 pg_verifybackup.c:256
 #, c-format
 msgid "Try \"%s --help\" for more information."
 msgstr "მეტი ინფორმაციისთვის სცადეთ '%s --help'."
 
-#: pg_verifybackup.c:237
+#: pg_verifybackup.c:244
 #, c-format
 msgid "no backup directory specified"
 msgstr "მარქაფის საქაღალდე მითითებული არაა"
 
-#: pg_verifybackup.c:247
+#: pg_verifybackup.c:254
 #, c-format
 msgid "too many command-line arguments (first is \"%s\")"
 msgstr "მეტისმეტად ბევრი ბრძანების-სტრიქონის არგუმენტი (პირველია \"%s\")"
 
-#: pg_verifybackup.c:255
+#: pg_verifybackup.c:262
 #, c-format
 msgid "cannot specify both %s and %s"
 msgstr "ორივე, %s და %s ერთად მითითება შეუძლებელია"
 
-#: pg_verifybackup.c:275
+#: pg_verifybackup.c:282
 #, c-format
 msgid "program \"%s\" is needed by %s but was not found in the same directory as \"%s\""
 msgstr "პროგრამა \"%s\" სჭირდება \"%s\"-ს, მაგრამ იგივე საქაღალდეში, სადაც \"%s\", ნაპოვნი არაა"
 
-#: pg_verifybackup.c:278
+#: pg_verifybackup.c:285
 #, c-format
 msgid "program \"%s\" was found by \"%s\" but was not the same version as %s"
 msgstr "პროგრამა „%s“ ნაპოვნია „%s“-ის მიერ, მაგრამ ვერსია, იგივეა არაა, რაც %s"
 
-#: pg_verifybackup.c:304 pg_verifybackup.c:625
+#: pg_verifybackup.c:307 pg_verifybackup.c:640
 #, c-format
 msgid "could not open directory \"%s\": %m"
 msgstr "საქაღალდის (%s) გახსნის შეცდომა: %m"
 
-#: pg_verifybackup.c:323 pg_verifybackup.c:412
+#: pg_verifybackup.c:326 pg_verifybackup.c:427
 #, c-format
 msgid "could not stat file \"%s\": %m"
 msgstr "ფაილი \"%s\" არ არსებობს: %m"
 
-#: pg_verifybackup.c:340
+#: pg_verifybackup.c:379
 #, c-format
-msgid "pg_waldump cannot read tar files"
-msgstr "pg_waldump-ს tar ფაილების წაკითხვა არ შეუძლია"
+msgid "WAL archive not found"
+msgstr "WAL არქივი აღმოჩენილი არაა"
 
-#: pg_verifybackup.c:341
+#: pg_verifybackup.c:380
 #, c-format
-msgid "You must use -n/--no-parse-wal when verifying a tar-format backup."
-msgstr "Tar-ის ფორმატში არსებული მარქაფების გადამოწმებისას უნდა გამოიყენოთ პარამეტრი -n ან --no-parse-wal."
+msgid "Specify the correct path using the option -w/--wal-path.  Or you must use -n/--no-parse-wal when verifying a tar-format backup."
+msgstr "მიუთითეთ სწორი ბილიკი პარამეტრით -w/--wal-path.  ან, თუ იყენებთ tar-ის ფორმატის მარქაფს, უნდა გამოიყენოთ -n/--no-parse-wal."
 
-#: pg_verifybackup.c:383
+#: pg_verifybackup.c:398
 #, c-format
 msgid "backup successfully verified\n"
 msgstr "მარქაფი წარმატებით შემოწმდა\n"
 
-#: pg_verifybackup.c:442
+#: pg_verifybackup.c:457
 #, c-format
 msgid "could not read file \"%s\": read %d of %lld"
 msgstr "ფაილის \"%s\" წაკითხვა შეუძლებელია: წაკითხულია %d %lld-დან"
 
-#: pg_verifybackup.c:480
+#: pg_verifybackup.c:495
 #, c-format
 msgid "could not read file \"%s\": read %lld of %lld"
 msgstr "ფაილის \"%s\" წაკითხვა შეუძლებელია: წაკითხულია %lld %lld-დან"
 
-#: pg_verifybackup.c:563
+#: pg_verifybackup.c:578
 #, c-format
 msgid "duplicate path name in backup manifest: \"%s\""
 msgstr "მარქაფს მანიფესტში მითითებული ბილიკის სახელი დუბლირებულია: %s"
 
-#: pg_verifybackup.c:657 pg_verifybackup.c:827
+#: pg_verifybackup.c:672 pg_verifybackup.c:844
 #, c-format
 msgid "could not close directory \"%s\": %m"
 msgstr "საქაღალდის %s-ზე დახურვის შეცდომა: %m"
 
-#: pg_verifybackup.c:678 pg_verifybackup.c:897
+#: pg_verifybackup.c:693 pg_verifybackup.c:918
 #, c-format
 msgid "could not stat file or directory \"%s\": %m"
 msgstr "ფაილის ან საქაღალდის \"%s\" პოვნა შეუძლებელია: %m"
 
-#: pg_verifybackup.c:701
+#: pg_verifybackup.c:716
 #, c-format
 msgid "\"%s\" is not a regular file or directory"
 msgstr "\"%s\" არც ჩვეულებრივი ფაილია, არც საქაღალდე"
 
-#: pg_verifybackup.c:711
+#: pg_verifybackup.c:726
 #, c-format
 msgid "\"%s\" is present on disk but not in the manifest"
 msgstr "\"%s\" დისკზე არსებობს, მაგრამ არა მანიფესტში"
 
-#: pg_verifybackup.c:723
+#: pg_verifybackup.c:738
 #, c-format
 msgid "\"%s\" has size %llu on disk but size %llu in the manifest"
 msgstr "დისკზე \"%s\"-ის ზომაა %llu, მაგრამ მანიფესტში მითითებული ზომაა %llu"
 
-#: pg_verifybackup.c:765
+#: pg_verifybackup.c:780
 #, c-format
 msgid "%s: CRC is incorrect"
 msgstr "%s: CRC არასწორია"
 
-#: pg_verifybackup.c:769
+#: pg_verifybackup.c:784
 #, c-format
 msgid "%s: unexpected control file version"
 msgstr "%s: მოულოდნელი საკონტროლო ფაილის ვერსია"
 
-#: pg_verifybackup.c:774
+#: pg_verifybackup.c:789
 #, c-format
 msgid "%s: manifest system identifier is %<PRIu64>, but control file has %<PRIu64>"
 msgstr "%s: მანიფესტის სისტემის იდენტიფიკატორია %<PRIu64>, მაგრამ კონტროლის ფაილი შეიცავს %<PRIu64>-ს"
 
-#: pg_verifybackup.c:906
+#: pg_verifybackup.c:927
 #, c-format
 msgid "file \"%s\" is not a regular file"
 msgstr "ფაილ \"%s\" ჩვეულებრივი ფაილი არაა"
 
-#: pg_verifybackup.c:936 pg_verifybackup.c:957
+#: pg_verifybackup.c:963 pg_verifybackup.c:978
 #, c-format
 msgid "file \"%s\" is not expected in a tar format backup"
 msgstr "ფაილი \"%s\" მოულოდნელია tar ფორმატის მარქაფში"
 
-#: pg_verifybackup.c:1049
+#: pg_verifybackup.c:1075
 #, c-format
 msgid "\"%s\" is present in the manifest but not on disk"
 msgstr "\"%s\" არსებობს მანიფესტში, მაგრამ არა დისკზე"
 
-#: pg_verifybackup.c:1121
+#: pg_verifybackup.c:1147
 #, c-format
 msgid "could not initialize checksum of file \"%s\""
 msgstr "ფაილის (\"%s\") საკონტროლო ჯამის ინიციალიზაციის შეცდომა"
 
-#: pg_verifybackup.c:1169
+#: pg_verifybackup.c:1195
 #, c-format
 msgid "file \"%s\" should contain %<PRIu64> bytes, but read %<PRIu64>"
 msgstr "ფაილი \"%s\" უნდა შეიცავდეს %<PRIu64> ბაიტს მაგრამ წაკითხულია %<PRIu64> ბაიტი"
 
-#: pg_verifybackup.c:1187
+#: pg_verifybackup.c:1213
 #, c-format
 msgid "file \"%s\" has checksum of length %d, but expected %d"
 msgstr "ფაილის \"%s\" საკონტროლო ჯამის სიგრძეა %d, მოველოდით %d"
 
-#: pg_verifybackup.c:1191
+#: pg_verifybackup.c:1217
 #, c-format
 msgid "checksum mismatch for file \"%s\""
 msgstr "არასწორი საკონტროლო ჯამი ფაილისთვის \"%s\""
 
-#: pg_verifybackup.c:1217
+#: pg_verifybackup.c:1243
 #, c-format
 msgid "WAL parsing failed for timeline %u"
 msgstr "WAL-ის დამუშავების შეცდომა დროის ხაზისთვის %u"
 
-#: pg_verifybackup.c:1351
+#: pg_verifybackup.c:1377
 #, c-format
 msgid "%*s/%s kB (%d%%) verified"
 msgstr "%*s/%s კბ (%d%%) გადამოწმდა"
 
-#: pg_verifybackup.c:1368
+#: pg_verifybackup.c:1394
 #, c-format
 msgid ""
 "%s verifies a backup against the backup manifest.\n"
 "\n"
 msgstr "%s მარქაფს მის მანიფესტს შეადარებს\n"
 
-#: pg_verifybackup.c:1369
+#: pg_verifybackup.c:1395
 #, c-format
 msgid ""
 "Usage:\n"
@@ -737,91 +774,81 @@ msgstr ""
 "  %s [პარამეტრი]... მარქაფისსაქაღალდე\n"
 "\n"
 
-#: pg_verifybackup.c:1370
+#: pg_verifybackup.c:1396
 #, c-format
 msgid "Options:\n"
 msgstr "პარამეტრები:\n"
 
-#: pg_verifybackup.c:1371
+#: pg_verifybackup.c:1397
 #, c-format
 msgid "  -e, --exit-on-error         exit immediately on error\n"
 msgstr "  -e, --exit-on-error         დაუყოვნებლივი გამოსვლა შეცდომის შემთხვევაში\n"
 
-#: pg_verifybackup.c:1372
+#: pg_verifybackup.c:1398
 #, c-format
 msgid "  -F, --format=p|t            backup format (plain, tar)\n"
 msgstr "  -F, --format=p|t       მარქაფის ფორმატი (plain, tar)\n"
 
-#: pg_verifybackup.c:1373
+#: pg_verifybackup.c:1399
 #, c-format
 msgid "  -i, --ignore=RELATIVE_PATH  ignore indicated path\n"
 msgstr "  -i, --ignore=შედარებითი_ბილიკ  ბითითებული ბილიკის იგნორი\n"
 
-#: pg_verifybackup.c:1374
+#: pg_verifybackup.c:1400
 #, c-format
 msgid "  -m, --manifest-path=PATH    use specified path for manifest\n"
 msgstr "  -m, --manifest-path=ბილიკი    მანიფესტისთვის მითითებული ბილიკის გამოყენება\n"
 
-#: pg_verifybackup.c:1375
+#: pg_verifybackup.c:1401
 #, c-format
 msgid "  -n, --no-parse-wal          do not try to parse WAL files\n"
 msgstr "  -n, --no-parse-wal          WAL ფაილები არ დამუშავდება\n"
 
-#: pg_verifybackup.c:1376
+#: pg_verifybackup.c:1402
 #, c-format
 msgid "  -P, --progress              show progress information\n"
 msgstr "  -P, --progress                  მიმდინარეობის ინფორმაციის ჩვენება\n"
 
-#: pg_verifybackup.c:1377
+#: pg_verifybackup.c:1403
 #, c-format
 msgid "  -q, --quiet                 do not print any output, except for errors\n"
 msgstr "  -q, --quiet            შეცდომების გარდა ეკრანზე არაფერი გამოჩნდება\n"
 
-#: pg_verifybackup.c:1378
+#: pg_verifybackup.c:1404
 #, c-format
 msgid "  -s, --skip-checksums        skip checksum verification\n"
 msgstr "  -s, --skip-checksums        საკონტროლო ჯამების შემოწმების გამოტოვება\n"
 
-#: pg_verifybackup.c:1379
+#: pg_verifybackup.c:1405
 #, c-format
-msgid "  -w, --wal-directory=PATH    use specified path for WAL files\n"
-msgstr "  -w, --wal-directory=ბილიკი    WAL ფაილებისთვის მითითებული ბილიკის გამოყენება\n"
+msgid "  -w, --wal-path=PATH         use specified path for WAL files\n"
+msgstr "  -w, --wal-path=ბილიკი    WAL ფაილებისთვის მითითებული ბილიკის გამოყენება\n"
 
-#: pg_verifybackup.c:1380
+#: pg_verifybackup.c:1406
+#, c-format
+msgid "      --wal-directory=PATH    (same as --wal-path, deprecated)\n"
+msgstr "      --wal-directory=PATH    (იგივე, რაც --wal-path. მოძველებულია)\n"
+
+#: pg_verifybackup.c:1407
 #, c-format
 msgid "  -V, --version               output version information, then exit\n"
 msgstr "  -V, --version            ვერსიის ინფორმაციის გამოტანა და გასვლა\n"
 
-#: pg_verifybackup.c:1381
+#: pg_verifybackup.c:1408
 #, c-format
 msgid "  -?, --help                  show this help, then exit\n"
 msgstr "  -?, --help     ამ დახმარების ჩვენება და გასვლა\n"
 
-#: pg_verifybackup.c:1382
+#: pg_verifybackup.c:1409
 #, c-format
 msgid ""
 "\n"
 "Report bugs to <%s>.\n"
 msgstr ""
 "\n"
-"შეცდომების შესახებ მიწერეთ: %s\n"
+"შეცდომების შესახებ მიწერეთ: <%s>.\n"
 
-#: pg_verifybackup.c:1383
+#: pg_verifybackup.c:1410
 #, c-format
 msgid "%s home page: <%s>\n"
 msgstr "%s-ის საწყისი გვერდია: <%s>\n"
-
-#, c-format
-#~ msgid "\"%s\" is not a plain file"
-#~ msgstr "\"%s\" უბრალო ფაილი არაა"
-
-#~ msgid "parsing failed"
-#~ msgstr "დამუშავების შეცდომა"
-
-#, c-format
-#~ msgid "unexpected json parse error type: %d"
-#~ msgstr "მოულოდნელი json-ის დამუშავების შეცდომის ტიპი: %d"
-
-#, c-format
-#~ msgid "unexpected state while parsing tar file"
-#~ msgstr "მოულოდნელი მდგომარეობა tar არქივის დამუშავებისას"

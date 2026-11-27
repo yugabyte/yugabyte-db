@@ -507,6 +507,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return InitFrontiers(split_generation);
   }
 
+  void StartDestroy() override {
+    lsm_.StartDestroy();
+  }
+
   Status Destroy() override {
     return lsm_.Destroy();
   }
@@ -558,7 +562,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     const auto limit = options.max_num_results;
     const size_t max_search_limit = limit == 0 ? 0 : limit + std::min<size_t>(
         FLAGS_vector_index_max_extra_tied_results, std::numeric_limits<size_t>::max() - limit);
-    auto search_options = options;
+    auto search_options = VERIFY_RESULT(LsmSearchOptions(options));
     search_options.max_num_results = limit < max_search_limit ? limit + 1 : limit;
     typename LSM::SearchResults entries;
     for (;;) {
@@ -745,6 +749,27 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& LogPrefix() const {
     return lsm_.LogPrefix();
+  }
+
+  // Checks that the query has a tenant of the index, see PgVectorReadOptionsPB::tenant.
+  Result<vector_index::SearchOptions> LsmSearchOptions(vector_index::SearchOptions options) const {
+    const auto num_components = options_.tenant_hash_group_and_range_components();
+    if (!num_components) {
+      options.tenant = Slice();
+      return options;
+    }
+    SCHECK(
+        !options.tenant.empty(), InvalidArgument,
+        Format("Search of a vector index with tenants got no tenant. Postgres passes it from "
+               "pushed down conditions that compare each of the first $0 primary key components, "
+               "all hash columns counting as one, with a single value", num_components));
+    auto tenant_size = VERIFY_RESULT(dockv::DocKey::EncodedHashGroupAndRangeComponentsSize(
+        options.tenant, num_components));
+    SCHECK(
+        tenant_size == options.tenant.size(), InvalidArgument,
+        Format("Tenant $0 does not have $1 hash group and range components",
+               options.tenant.ToDebugHexString(), num_components));
+    return options;
   }
 
   Result<typename LSM::SearchResults> SearchWithinKeyBounds(
@@ -999,8 +1024,8 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
 DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entity)
     : convert_us(METRIC_vector_index_convert_us.Instantiate(metric_entity)),
       filter_checked(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_accepted(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_removed(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_accepted(METRIC_vector_index_filter_accepted.Instantiate(metric_entity)),
+      filter_removed(METRIC_vector_index_filter_removed.Instantiate(metric_entity)),
       read_data_us(METRIC_vector_index_read_data_us.Instantiate(metric_entity)),
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),

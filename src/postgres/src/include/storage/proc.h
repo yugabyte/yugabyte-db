@@ -624,8 +624,10 @@ extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
 extern int	yb_max_query_layer_retries;
-extern void YbRemoveLockGroupLeader(PGPROC *proc);
-extern void YbReleaseProcToFreeList(PGPROC *proc);
+extern void YbRemoveLockGroupLeader(PGPROC *proc, PGPROC **leader_out,
+									bool *push_leader, bool *push_self);
+extern void YbReleaseProcToFreeList(PGPROC *proc, PGPROC *leader,
+									bool push_leader, bool push_self);
 extern bool YbIsAuxiliaryProc(PGPROC *proc);
 
 #endif							/* _PROC_H_ */

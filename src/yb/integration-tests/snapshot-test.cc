@@ -16,8 +16,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_value.h"
@@ -53,6 +57,8 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -225,6 +231,16 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     controller_.Reset();
     controller_.set_timeout(10s);
     return &controller_;
+  }
+
+  // Setup returns once each tablet has elected a leader, but that leader may not be ready yet.
+  Result<MiniTabletServer*> WaitForReadyLeader(const TabletId& tablet_id) {
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(
+        cluster_.get(), tablet_id, CoarseMonoClock::Now() + 30s * kTimeMultiplier,
+        RequireLeaderIsReady::kTrue));
+    auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
+    SCHECK_NOTNULL(leader);
+    return leader;
   }
 
   uint64_t ActiveFlushes(MiniTabletServer* server) {
@@ -698,8 +714,7 @@ TEST_F(SnapshotTest, UnavailablePreflushReplicaDoesNotBlockQuorumWrites) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
-  auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
-  ASSERT_NE(leader, nullptr);
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
   auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
   follower->Shutdown();
   auto restart = ScopeExit([&] {
@@ -732,11 +747,7 @@ TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
-  // Workload setup does not wait for the tablet leader election to finish.
-  ASSERT_OK(WaitUntilTabletHasLeader(
-      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s, RequireLeaderIsReady::kTrue));
-  auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
-  ASSERT_NE(leader, nullptr);
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
   auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
   auto consensus = ASSERT_RESULT(leader_peer->GetConsensus());
   const auto original_term = consensus->LeaderTerm();
@@ -806,12 +817,7 @@ TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 6);
   const auto snapshot_tablet_id = peers.front()->tablet_id();
-  // Setup returns once each tablet has elected a leader, but that leader may not be ready yet.
-  ASSERT_OK(WaitUntilTabletHasLeader(
-      cluster_.get(), snapshot_tablet_id, CoarseMonoClock::Now() + 30s,
-      RequireLeaderIsReady::kTrue));
-  auto* leader = GetLeaderForTablet(cluster_.get(), snapshot_tablet_id);
-  ASSERT_NE(leader, nullptr);
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(snapshot_tablet_id));
   // Occupy the leader's only flush slot with a different tablet hosted on the same server.
   tablet::TabletPtr other;
   for (const auto& peer : peers) {
@@ -891,8 +897,7 @@ TEST_F(SnapshotTest, FollowerAdminFlushesDoNotDelayPreflight) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3 * (num_admin_workers + 1));
   const auto snapshot_tablet_id = peers.front()->tablet_id();
-  auto* leader = GetLeaderForTablet(cluster_.get(), snapshot_tablet_id);
-  ASSERT_NE(leader, nullptr);
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(snapshot_tablet_id));
   auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
   // Every other tablet has a replica on the follower; hold one admin flush per worker there.
   std::vector<tablet::TabletPtr> held;
@@ -965,8 +970,7 @@ TEST_F(SnapshotTest, BootstrappingPeerDelaysPreflight) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
-  auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
-  ASSERT_NE(leader, nullptr);
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
   ASSERT_OK(cluster_->AddTabletServer());
   auto* joining = cluster_->mini_tablet_server(3);
   auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
@@ -1019,12 +1023,7 @@ TEST_F(SnapshotTest, MissingFollowerTabletIsRetryable) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
-  // No writes precede this, so the tablet may not have elected a leader yet.
-  ASSERT_OK(WaitUntilTabletHasLeader(
-      cluster_.get(), tablet_id, CoarseMonoClock::now() + 30s * kTimeMultiplier,
-      RequireLeaderIsReady::kTrue));
-  auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
-  ASSERT_NE(leader, nullptr);
+  auto* leader = ASSERT_RESULT(WaitForReadyLeader(tablet_id));
   auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
   auto restore_bootstrap = ScopeExit([&] {
@@ -1867,6 +1866,95 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
   }
 
   workload.StopAndJoin();
+}
+
+// Followers postpone the snapshot operation until a large transaction committed before the snapshot
+// hybrid time is written to regular DB. Both followers are killed meanwhile, so bootstrap replays
+// the snapshot operation before apply tasks are started, and has to finish the apply.
+// One follower is flushed before the kill, so its apply is loaded from regular DB, while the other
+// one replays it from WAL.
+TEST_F_EX(SnapshotTest, LargeTransactionApplyingOnKilledFollowers,
+          SnapshotExternalMiniClusterTest) {
+  constexpr int kNumKeys = 500;
+  constexpr auto kTimeout = 60s * kTimeMultiplier;
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("txn_max_apply_batch_records", "5"));
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = ASSERT_RESULT(snapshot_util.InitWithCluster(cluster_.get()));
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      kTableName.namespace_name(), kTableName.namespace_type()));
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, /* num_tablets= */ 1, client.get(), &table, kTableName));
+
+  TabletId tablet_id;
+  std::vector<ExternalTabletServer*> followers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    followers.clear();
+    bool has_leader = false;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->tablet_server(i);
+      for (const auto& entry : VERIFY_RESULT(cluster_->GetTablets(ts))) {
+        if (entry.table_name() != kTableName.table_name()) {
+          continue;
+        }
+        tablet_id = entry.tablet_id();
+        if (entry.is_leader()) {
+          has_leader = true;
+        } else {
+          followers.push_back(ts);
+        }
+      }
+    }
+    return has_leader && followers.size() == 2;
+  }, kTimeout, "Wait for tablet leader"));
+
+  // Keeps followers applying the transaction much longer than the test needs to kill them.
+  for (auto* ts : followers) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_inject_sleep_before_applying_intents_ms", "200"));
+  }
+
+  server::ClockPtr clock(new server::HybridClock());
+  ASSERT_OK(clock->Init());
+  client::TransactionManager txn_manager(client.get(), clock, client::LocalTabletFilter());
+  auto txn = std::make_shared<client::YBTransaction>(&txn_manager);
+  ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto session = client->NewSession(kTimeout);
+  session->SetTransaction(txn);
+  for (int key = 0; key != kNumKeys; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(
+        &table, session, key, key, client::WriteOpType::INSERT, client::Flush::kFalse));
+  }
+  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(txn->CommitFuture().get());
+
+  std::vector<std::unique_ptr<LogWaiter>> postponed;
+  for (auto* ts : followers) {
+    postponed.push_back(std::make_unique<LogWaiter>(ts, "Postpone applying SNAPSHOT_OP"));
+  }
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
+  for (auto& waiter : postponed) {
+    ASSERT_OK(waiter->WaitFor(kTimeout));
+  }
+  ASSERT_OK(followers[0]->FlushTablets({tablet_id}));
+  for (auto* ts : followers) {
+    ts->Shutdown();
+  }
+  // Followers knew that the snapshot operation is committed, but their WAL might not record it.
+  for (auto* ts : followers) {
+    ASSERT_OK(ts->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {{"TEST_play_pending_uncommitted_entries", "true"}}));
+  }
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  // Each replica restores its own checkpoint, so replica checksums differ if one is incomplete.
+  ClusterVerifier cluster_verifier(cluster_.get());
+  cluster_verifier.SetVerificationTimeout(kTimeout);
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY, kNumKeys));
 }
 
 } // namespace yb

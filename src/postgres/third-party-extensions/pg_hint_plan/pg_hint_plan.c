@@ -74,6 +74,7 @@
 #include "utils/inval.h"
 #include "utils/plancache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include <sys/stat.h>
 
 PG_MODULE_MAGIC_EXT(
 					.name = "pg_hint_plan",
@@ -676,6 +677,7 @@ static bool yb_enable_internal_hint_test = false;
 static bool yb_internal_hint_test_fail = false;
 static bool yb_use_generated_hints_for_plan = false;
 static bool yb_enable_hint_table_cache = true;
+static char *yb_test_hint_cache_invalidate_wait_file = NULL;
 
 static int	plpgsql_recurse_level = 0;	/* PLpgSQL recursion level            */
 static int	recurse_level = 0;	/* recursion level incl. direct SPI calls */
@@ -1010,6 +1012,18 @@ _PG_init(void)
 							NULL,
 							NULL,
 							NULL);
+
+	DefineCustomStringVariable("pg_hint_plan.yb_test_hint_cache_invalidate_wait_file",
+							   "Test only: at the start of the hint table's cache "
+							   "invalidation trigger, wait until this file exists.",
+							   NULL,
+							   &yb_test_hint_cache_invalidate_wait_file,
+							   "",
+							   PGC_SUSET,
+							   GUC_NOT_IN_SAMPLE,
+							   NULL,
+							   NULL,
+							   NULL);
 
 	EmitWarningsOnPlaceholders("pg_hint_plan");
 
@@ -3975,6 +3989,28 @@ yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 		/* DDL operations are not allowed during extension upgrade */
 		elog(DEBUG3, "Skipping hint cache invalidation during extension upgrade");
 		PG_RETURN_DATUM(PointerGetDatum(NULL));
+	}
+
+	if (yb_test_hint_cache_invalidate_wait_file[0] != '\0')
+	{
+		struct stat st;
+
+		/*
+		 * Poll the file system only: a DocDB request here would flush the
+		 * statement's buffered write.
+		 */
+		elog(LOG, "waiting for file %s in hint cache invalidation",
+			 yb_test_hint_cache_invalidate_wait_file);
+		while (stat(yb_test_hint_cache_invalidate_wait_file, &st) != 0)
+		{
+			if (errno != ENOENT)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file \"%s\": %m",
+								yb_test_hint_cache_invalidate_wait_file)));
+			CHECK_FOR_INTERRUPTS();
+			pg_usleep(10000L);
+		}
 	}
 
 	/*

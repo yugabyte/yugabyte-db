@@ -8,9 +8,11 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.models.Users;
 import io.ebean.DB;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -100,13 +103,30 @@ public class RedactSecretsFromAuditTest extends FakeDBApplication {
         Audit.getFromTaskUUID(otherTask).getAdditionalDetails());
   }
 
+  /** The job isn't scheduled before the release sensitive gflag paths are registered. */
+  @Test
+  public void testSchedulesOnceSensitiveGFlagPathsRegistered() {
+    PlatformScheduler scheduler = mock(PlatformScheduler.class);
+    CompletableFuture<Void> registered = new CompletableFuture<>();
+    newJob(scheduler).start(registered);
+    verify(scheduler, never())
+        .schedule(anyString(), any(Duration.class), any(Duration.class), any(Runnable.class));
+
+    registered.complete(null);
+    verify(scheduler)
+        .schedule(anyString(), eq(Duration.ZERO), any(Duration.class), any(Runnable.class));
+  }
+
+  private RedactSecretsFromAudit newJob(PlatformScheduler scheduler) {
+    return new RedactSecretsFromAudit(
+        scheduler,
+        app.injector().instanceOf(RedactingService.class),
+        app.injector().instanceOf(RuntimeConfGetter.class));
+  }
+
   private void runRedaction() {
     PlatformScheduler scheduler = mock(PlatformScheduler.class);
-    new RedactSecretsFromAudit(
-            scheduler,
-            app.injector().instanceOf(RedactingService.class),
-            app.injector().instanceOf(RuntimeConfGetter.class))
-        .start();
+    newJob(scheduler).start(CompletableFuture.completedFuture(null));
     ArgumentCaptor<Runnable> runner = ArgumentCaptor.forClass(Runnable.class);
     verify(scheduler)
         .schedule(anyString(), any(Duration.class), any(Duration.class), runner.capture());

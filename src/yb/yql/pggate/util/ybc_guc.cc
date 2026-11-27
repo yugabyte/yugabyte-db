@@ -71,6 +71,8 @@ bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
 bool yb_cdcsdk_allow_dml_without_pk = false;
 
+bool yb_enable_replication_slot_transactional_ddl = true;
+
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
 int ysql_session_max_batch_size = 0;

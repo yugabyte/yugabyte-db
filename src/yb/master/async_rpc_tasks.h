@@ -349,6 +349,34 @@ class AsyncBackfillDone : public AsyncAlterTable {
   const uint64_t birth_time_;
 };
 
+// Finalizes a nonconcurrently-built index: sends a change-metadata RPC that sets the index's
+// birth_time and marks IndexInfoPB.birth_time_state final on the tablet. This is the nonconcurrent
+// counterpart of AsyncBackfillDone (which finalizes the online-backfill path).
+class AsyncMarkNonConcurrentIndexDone : public AsyncAlterTable {
+ public:
+  AsyncMarkNonConcurrentIndexDone(Master* master,
+                         ThreadPool* callback_pool,
+                         const TabletInfoPtr& tablet,
+                         const std::string& table_id,
+                         LeaderEpoch epoch,
+                         uint64_t birth_time)
+    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+      table_id_(table_id),
+      birth_time_(birth_time) {}
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kMarkNonConcurrentIndexDone;
+  }
+
+  std::string type_name() const override { return "Mark non-concurrent index done."; }
+
+ private:
+  bool SendRequest(int attempt) override;
+
+  const std::string table_id_;
+  const uint64_t birth_time_;
+};
+
 class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
  public:
   // For colocated alters, `table` should be the table we are modifying (ie not the parent table).
@@ -693,6 +721,42 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
 
   tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
+};
+
+// Tiered storage: tells one replica which storage tier its SSTs belong on (AlterTabletTier).
+// Started by the cluster balancer, one task per replica, addressed to that replica's tserver:
+// tiering is per replica and nothing goes through Raft. The reply means "intent persisted, first
+// pass queued": the tserver's reconciler finishes the move and the tablet report carries the
+// outcome, so the task completes on the reply and nothing polls.
+class AsyncAlterTabletTier : public RetrySpecificTSRpcTaskWithTable {
+ public:
+  AsyncAlterTabletTier(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const TabletServerId& ts_uuid, std::string target_tier, LeaderEpoch epoch,
+      std::string reason);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kAlterTabletTier;
+  }
+
+  std::string type_name() const override { return "Alter Tablet Tier"; }
+
+  std::string description() const override;
+
+  bool started_by_lb() const override { return true; }
+
+  TabletId tablet_id() const override;
+  const TabletServerId& ts_uuid() const { return permanent_uuid_; }
+  const std::string& target_tier() const { return target_tier_; }
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  const TabletInfoPtr tablet_;
+  const std::string target_tier_;
+  const std::string reason_;
+  tserver::AlterTabletTierResponsePB resp_;
 };
 
 class AsyncTsTestRetry : public RetrySpecificTSRpcTask {

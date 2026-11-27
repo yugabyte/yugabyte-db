@@ -197,7 +197,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 		switch (bnlstate->bnl_currentstatus)
 		{
 			case BNL_INIT:
-				if (bnlstate->bnl_needs_sorting)
+				if (batchnl->numSortCols > 0)
 				{
 					TupleTableSlot *result = ProcessSorting(bnlstate);
 
@@ -374,7 +374,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 static void
 EndSorting(YbBatchedNestLoopState *bnlstate)
 {
-	if (!bnlstate->bnl_needs_sorting)
+	if (((YbBatchedNestLoop *) bnlstate->js.ps.plan)->numSortCols == 0)
 		return;
 
 	Tuplesortstate *sorter = bnlstate->bnl_tuple_sort;
@@ -409,11 +409,10 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 {
 	TupleTableSlot *result_slot = bnlstate->js.ps.ps_ResultTupleSlot;
 	Tuplesortstate *sorter = bnlstate->bnl_tuple_sort;
-
-	if (!bnlstate->bnl_needs_sorting)
-		return NULL;
-
 	YbBatchedNestLoop *batchnl_plan = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
+
+	if (batchnl_plan->numSortCols == 0)
+		return NULL;
 
 	if (sorter)
 	{
@@ -437,6 +436,15 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 	if (!bnlstate->bnl_tuple_sort)
 	{
 		TupleDesc	result_desc = result_slot->tts_tupleDescriptor;
+		int			sortopt = TUPLESORT_NONE;
+
+		/*
+		 * tuplesort_set_bound requires TUPLESORT_ALLOWBOUNDED. An unbounded
+		 * sort gets a cheaper tuple context, so only ask for it when a bound
+		 * is set.
+		 */
+		if (bnlstate->bound)
+			sortopt |= TUPLESORT_ALLOWBOUNDED;
 
 		sorter = tuplesort_begin_heap(result_desc,
 									  batchnl_plan->numSortCols,
@@ -446,7 +454,7 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 									  batchnl_plan->nullsFirst,
 									  work_mem,
 									  NULL,
-									  false);
+									  sortopt);
 
 		if (bnlstate->bound)
 			tuplesort_set_bound(sorter, bnlstate->bound);
@@ -1161,7 +1169,6 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	bnlstate->bnl_outerdone = false;
 
 	/* Initialize sorting structures. */
-	bnlstate->bnl_needs_sorting = plan->numSortCols > 0;
 	bnlstate->bnl_is_sorted = false;
 	bnlstate->bnl_tuple_sort = NULL;
 

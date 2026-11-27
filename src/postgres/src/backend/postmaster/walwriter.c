@@ -60,6 +60,7 @@
 #include "storage/procsignal.h"
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 #include "utils/wait_event.h"
@@ -101,18 +102,18 @@ WalWriterMain(const void *startup_data, size_t startup_data_len)
 	 * Properly accept or ignore signals the postmaster might send us
 	 */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGINT, SIG_IGN);	/* no query to cancel */
+	pqsignal(SIGINT, PG_SIG_IGN);	/* no query to cancel */
 	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
-	pqsignal(SIGALRM, SIG_IGN);
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGALRM, PG_SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
-	pqsignal(SIGUSR2, SIG_IGN); /* not used */
+	pqsignal(SIGUSR2, PG_SIG_IGN);	/* not used */
 
 	/*
 	 * Reset some signals that are accepted by postmaster but not here
 	 */
-	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGCHLD, PG_SIG_DFL);
 
 	/*
 	 * Create a memory context that we will do all our work in.  We do this so
@@ -239,6 +240,8 @@ WalWriterMain(const void *startup_data, size_t startup_data_len)
 
 		/* Process any signals received recently */
 		ProcessMainLoopInterrupts();
+
+		INJECTION_POINT("walwriter-before-background-flush", NULL);
 
 		/*
 		 * Do what we're here for; then, if XLogBackgroundFlush() found useful

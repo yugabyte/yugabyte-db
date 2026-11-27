@@ -141,12 +141,13 @@ int			client_connection_check_interval = 0;
 int			restrict_nonsystem_relation_kind;
 
 /*
- * Include signal sender PID/UID as errdetail when available (SA_SIGINFO).
- * The caller must supply the (already-captured) pid and uid values.
+ * Include signal sender PID/UID in the server log when available
+ * (SA_SIGINFO). The caller must supply the already-captured pid and uid
+ * values.
  */
 #define ERRDETAIL_SIGNAL_SENDER(pid, uid) \
 	((pid) == 0 ? 0 : \
-	 errdetail("Signal sent by PID %d, UID %d.", (int) (pid), (int) (uid)))
+	 errdetail_log("Signal sent by PID %d, UID %d.", (int) (pid), (int) (uid)))
 
 /* ----------------
  *		private typedefs etc
@@ -1218,6 +1219,11 @@ YbCollectCommitStats(DestReceiver *receiver, int16 *format)
 	/* Finally, destroy the receiver */
 	receiver->rDestroy(receiver);
 
+	/*
+	 * PortalDrop() refuses portals that are still being set up, and this one
+	 * never goes through PortalStart(). Mark it ready so it can be dropped.
+	 */
+	yb_portal->status = PORTAL_READY;
 	PortalDrop(yb_portal, false);
 
 	/* Commit the no-op transaction */
@@ -2260,6 +2266,8 @@ exec_bind_message(StringInfo input_message)
 	else
 		portal = CreatePortal(portal_name, false, false);
 
+	INJECTION_POINT("bind-portal-created", NULL);
+
 	/*
 	 * Prepare to copy stuff into the portal's memory context.  We do all this
 	 * copying first, because it could possibly fail (out-of-memory) and we
@@ -2532,6 +2540,8 @@ exec_bind_message(StringInfo input_message)
 					  psrc->commandTag,
 					  cplan->stmt_list,
 					  cplan);
+
+	INJECTION_POINT("bind-portal-defined", NULL);
 
 	/* Portal is defined, set the plan ID based on its contents. */
 	foreach(lc, portal->stmts)
@@ -3647,6 +3657,17 @@ die(SIGNAL_ARGS)
 	{
 		InterruptPending = true;
 		ProcDiePending = true;
+
+		/*
+		 * Record who sent the signal.  Will be 0 on platforms without
+		 * SA_SIGINFO, which is fine -- ProcessInterrupts() checks for that.
+		 * Only set on the first SIGTERM so we report the original sender.
+		 */
+		if (ProcDieSenderPid == 0)
+		{
+			ProcDieSenderPid = pg_siginfo->pid;
+			ProcDieSenderUid = pg_siginfo->uid;
+		}
 	}
 
 	if (IsYugaByteEnabled())
@@ -3706,7 +3727,7 @@ void
 YbCriticalSignalHandler(SIGNAL_ARGS)
 {
 	/* reset to default handler */
-	pqsignal(postgres_signal_arg, SIG_DFL);
+	pqsignal(postgres_signal_arg, PG_SIG_DFL);
 
 	ereport(LOG,
 			(errcode(ERRCODE_INTERNAL_ERROR),
@@ -5933,6 +5954,59 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
+	/*
+	 * With transactional DDL, a statement whose transaction changed the catalog
+	 * can't be retried, except in READ COMMITTED within a transaction block.
+	 * That is a statement whose transaction has DDL transaction state: a DDL,
+	 * a statement that runs one (such as a DO block or a function call), or
+	 * one that registers a catalog change through YBAddDdlTxnState without a
+	 * DDL statement (such as the statistics restore functions, or a write to
+	 * the hint table, whose trigger bumps the catalog version).
+	 *
+	 * Outside a transaction block in any isolation level, and in a REPEATABLE
+	 * READ or SERIALIZABLE block, the retry (yb_restart_transaction) starts a
+	 * new DocDB transaction without aborting the PG-side transaction, and no
+	 * internal subtransaction is open for it to roll back. So nothing discards
+	 * the relcache and catcache entries built from the failed attempt's catalog
+	 * changes, which DocDB has discarded, and the re-run can write inconsistent
+	 * catalog entries (#37717) or fail on other state the failed attempt left
+	 * behind. In a READ COMMITTED block, the statement runs in an internal
+	 * subtransaction, and both retry paths roll it back first
+	 * (yb_restart_current_stmt, and YBCRestartWriteTransaction in
+	 * yb_restart_transaction), which discards the statement's own PG-side
+	 * state; a commit-time error there comes from a COMMIT statement, which is
+	 * never retried. Catalog changes from an earlier statement of a READ
+	 * COMMITTED block are not covered when kDeadlock or kAborted restarts the
+	 * whole transaction, a case refused above only once output has been sent
+	 * (#37930).
+	 *
+	 * YBIsCurrentStmtDdl() is not enough: it is cleared once the DDL statement
+	 * finishes, before the rest of the statement and before the commit, and
+	 * the error may come from either. Nor is
+	 * YBGetDdlUseRegularTransactionBlock() alone: the DDL transaction state is
+	 * cleared before the commit RPC, so it misses an error from that RPC;
+	 * YBIsDdlTxnBlockCommitInProgress() covers that window.
+	 *
+	 * Like the skipped-intents check above, this is a property of the
+	 * transaction, so it comes after the statement's own reasons.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() &&
+		!(IsYBReadCommitted() && IsTransactionBlock()) &&
+		(YBGetDdlUseRegularTransactionBlock() ||
+		 YBIsDdlTxnBlockCommitInProgress()))
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the statement changed the catalog (for "
+								 "example, it ran DDL), and retrying it would "
+								 "redo that without aborting the failed "
+								 "attempt");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
 	return true;
 }
 
@@ -6463,6 +6537,9 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 	 */
 	YbResetRetryCounts();
 
+	if (IsYugaByteEnabled())
+		YBCPgResetRetryReadLimitCaps();
+
 	/*
 	 * Reset the flag that tracks whether a non-atomic (in-procedure) COMMIT
 	 * has been executed. This flag is set in _SPI_commit() and checked in
@@ -6773,9 +6850,9 @@ PostgresMain(const char *dbname, const char *username)
 		 * returns to outer loop.  This seems safer than forcing exit in the
 		 * midst of output during who-knows-what operation...
 		 */
-		pqsignal(SIGPIPE, SIG_IGN);
+		pqsignal(SIGPIPE, PG_SIG_IGN);
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
-		pqsignal(SIGUSR2, SIG_IGN);
+		pqsignal(SIGUSR2, PG_SIG_IGN);
 		pqsignal(SIGFPE, FloatExceptionHandler);
 		pqsignal(SIGSEGV, YbCriticalSignalHandler);
 		pqsignal(SIGABRT, YbCriticalSignalHandler);
@@ -6783,8 +6860,8 @@ PostgresMain(const char *dbname, const char *username)
 		 * Reset some signals that are accepted by postmaster but not by
 		 * backend
 		 */
-		pqsignal(SIGCHLD, SIG_DFL); /* system() requires this on some
-									 * platforms */
+		pqsignal(SIGCHLD, PG_SIG_DFL);	/* system() requires this on some
+										 * platforms */
 	}
 
 	/* Early initialization */

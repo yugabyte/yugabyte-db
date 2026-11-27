@@ -94,6 +94,8 @@ set(DOCDB_SRCS
         object_lock_manager.cc
         object_lock_shared_state_manager.cc
         pgsql_operation.cc
+        pgsql_read_request_ybctid_provider.cc
+        pgsql_read_result.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
@@ -172,6 +174,9 @@ ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
 ADD_YB_TEST(non_transactional_batch_writer-test)
+ADD_YB_TEST(pgsql_operation_grouped_aggregate-test)
+ADD_YB_TEST(pgsql_read_request_ybctid_provider-test)
+ADD_YB_TEST(pgsql_read_result-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)

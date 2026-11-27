@@ -698,7 +698,7 @@ How often, in milliseconds, the connector sends a heartbeat record to the heartb
 
 Starting with connector version `dz.2.5.2.yb.2026.1.2.0.1`, the connector flushes LSNs based on the offsets that Kafka Connect has committed, so records that are filtered out no longer advance the flush LSN. If you filter records, or if the captured tables change infrequently, enable heartbeats, and make sure that no single message transformation (SMT) drops the heartbeat records; otherwise, the replication slot can stop advancing and YugabyteDB retains WAL.
 
-Sending heartbeats while streaming changes requires connector version [`dz.2.5.2.yb.2026.1`](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1) (the first release in the v2026.1 series) or later. Earlier releases, such as `dz.2.5.2.yb.2025.2.3`, don't send heartbeats while streaming changes.
+Sending heartbeats while streaming changes requires connector version [dz.2.5.2.yb.2026.1](/stable/releases/cdc-connector/logical-replication/#dz.2.5.2.yb.2026.1) (the first release in the v2026.1 series) or later. Earlier releases, such as `dz.2.5.2.yb.2025.2.3`, don't send heartbeats while streaming changes.
 
 Default: 0
 
@@ -720,7 +720,7 @@ Records whose value is already binary are still written unchanged; the delegate 
 
 A query that the connector runs on the source database each time it sends a heartbeat record. For example, you can set it to `INSERT INTO heartbeat_table (ts) VALUES (now())`, where `heartbeat_table` is a table included in the publication, so that the connector receives a change at every heartbeat even when the other captured tables are idle.
 
-Applies only when `heartbeat.interval.ms` is greater than `0`, and requires connector version [`dz.2.5.2.yb.2026.1`](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1) or later.
+Applies only when `heartbeat.interval.ms` is greater than `0`, and requires connector version [dz.2.5.2.yb.2026.1](/stable/releases/cdc-connector/logical-replication/#dz.2.5.2.yb.2026.1) or later.
 
 No default
 

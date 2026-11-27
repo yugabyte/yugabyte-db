@@ -60,5 +60,6 @@ extern bool YbHasActiveOrPendingListen(void);
 
 extern int	YbPendingNotifiesMark(void);
 extern void YbRollbackPendingNotifiesTo(int mark);
+extern bool YbIsListening(void);
 
 #endif							/* ASYNC_H */

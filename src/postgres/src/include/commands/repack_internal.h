@@ -39,10 +39,8 @@ typedef char ConcurrentChangeKind;
  */
 typedef struct RepackDecodingState
 {
-#ifdef	USE_ASSERT_CHECKING
 	/* The relation whose changes we're decoding. */
 	Oid			relid;
-#endif
 
 	/* Per-change memory context. */
 	MemoryContext change_cxt;
@@ -97,6 +95,10 @@ typedef struct DecodingWorkerShared
 	/* Role to connect as. */
 	Oid			roleid;
 
+	/* Timeouts to use in the worker */
+	int			lock_timeout;
+	int			transaction_timeout;
+
 	/* Relation from which data changes to decode. */
 	Oid			relid;
 
@@ -104,10 +106,8 @@ typedef struct DecodingWorkerShared
 	ConditionVariable cv;
 
 	/* Info to signal the backend. */
-	PGPROC	   *backend_proc;
 	pid_t		backend_pid;
 	ProcNumber	backend_proc_number;
-	dsm_segment *dsm_seg;
 
 	/*
 	 * Memory the queue is located in.

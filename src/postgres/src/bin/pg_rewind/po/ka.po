@@ -1,14 +1,14 @@
 # Georgian message translation file for pg_rewind
 # Copyright (C) 2022 PostgreSQL Global Development Group
 # This file is distributed under the same license as the pg_rewind (PostgreSQL) package.
-# Temuri Doghonadze <temuri.doghonadze@gmail.com>, 2022.
+# Temuri Doghonadze <temuri.doghonadze@gmail.com>, 2022-2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_rewind (PostgreSQL) 18\n"
+"Project-Id-Version: pg_rewind (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2025-03-29 21:24+0000\n"
-"PO-Revision-Date: 2025-03-30 01:31+0100\n"
+"POT-Creation-Date: 2026-07-04 00:26+0000\n"
+"PO-Revision-Date: 2026-07-04 07:34+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
 "Language: ka\n"
@@ -16,55 +16,55 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.5\n"
+"X-Generator: Poedit 3.9\n"
 
-#: ../../../src/common/logging.c:279
+#: ../../../src/common/logging.c:293 ../../../src/common/logging.c:295
 #, c-format
 msgid "error: "
 msgstr "შეცდომა: "
 
-#: ../../../src/common/logging.c:286
+#: ../../../src/common/logging.c:302 ../../../src/common/logging.c:304
 #, c-format
 msgid "warning: "
 msgstr "გაფრთხილება: "
 
-#: ../../../src/common/logging.c:297
+#: ../../../src/common/logging.c:315 ../../../src/common/logging.c:317
 #, c-format
 msgid "detail: "
 msgstr "დეტალები: "
 
-#: ../../../src/common/logging.c:304
+#: ../../../src/common/logging.c:324 ../../../src/common/logging.c:326
 #, c-format
 msgid "hint: "
 msgstr "მინიშნება: "
 
-#: ../../common/controldata_utils.c:97 file_ops.c:326 file_ops.c:330
+#: ../../common/controldata_utils.c:98 file_ops.c:349
 #, c-format
 msgid "could not open file \"%s\" for reading: %m"
 msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:110 file_ops.c:341 local_source.c:102
+#: ../../common/controldata_utils.c:111 file_ops.c:364 local_source.c:102
 #: local_source.c:161 parsexlog.c:371
 #, c-format
 msgid "could not read file \"%s\": %m"
 msgstr "ფაილის (%s) წაკითხვის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:119 file_ops.c:344 parsexlog.c:373
+#: ../../common/controldata_utils.c:120 file_ops.c:367 parsexlog.c:373
 #, c-format
 msgid "could not read file \"%s\": read %d of %zu"
 msgstr "\"%s\"-ის წაკითხვის შეცდომა: წაკითხულია %d %zu-დან"
 
-#: ../../common/controldata_utils.c:132 ../../common/controldata_utils.c:280
+#: ../../common/controldata_utils.c:133 ../../common/controldata_utils.c:281
 #: local_source.c:119 local_source.c:170
 #, c-format
 msgid "could not close file \"%s\": %m"
 msgstr "ფაილის (%s) დახურვის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:168
+#: ../../common/controldata_utils.c:169
 msgid "byte ordering mismatch"
 msgstr "ბაიტების მიმდევრობა არ ემთხვევა"
 
-#: ../../common/controldata_utils.c:170
+#: ../../common/controldata_utils.c:171
 #, c-format
 msgid ""
 "possible byte ordering mismatch\n"
@@ -76,7 +76,7 @@ msgstr ""
 "ბაიტების მიმდევრობა შესაძლოა არ ემთხვეოდეს ამ პროგრამის მიერ გამოყენებულს. ამ შემთხვევაში  ქვემოთ \n"
 "მოცემული შედეგები არასწორი იქნება და PostgreSQL ეს აგება ამ მონაცემთა საქაღალდესთან შეუთავსებელი იქნება."
 
-#: ../../common/controldata_utils.c:230 ../../common/file_utils.c:69
+#: ../../common/controldata_utils.c:231 ../../common/file_utils.c:69
 #: ../../common/file_utils.c:370 ../../common/file_utils.c:428
 #: ../../common/file_utils.c:502 ../../fe_utils/recovery_gen.c:141
 #: parsexlog.c:333
@@ -84,27 +84,37 @@ msgstr ""
 msgid "could not open file \"%s\": %m"
 msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:249 file_ops.c:117
+#: ../../common/controldata_utils.c:250 file_ops.c:120
 #, c-format
 msgid "could not write file \"%s\": %m"
 msgstr "ფაილში (%s) ჩაწერის შეცდომა: %m"
 
-#: ../../common/controldata_utils.c:268 ../../common/file_utils.c:440
+#: ../../common/controldata_utils.c:269 ../../common/file_utils.c:440
 #: ../../common/file_utils.c:510
 #, c-format
 msgid "could not fsync file \"%s\": %m"
 msgstr "ფაილის (%s) fsync-ის შეცდომა: %m"
 
-#: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
-#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:161
+#: ../../common/fe_memutils.c:41 ../../common/fe_memutils.c:81
+#: ../../common/fe_memutils.c:104 ../../common/fe_memutils.c:167
 #, c-format
 msgid "out of memory\n"
 msgstr "არასაკმარისი მეხსიერება\n"
 
-#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:153
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:159
 #, c-format
 msgid "cannot duplicate null pointer (internal error)\n"
 msgstr "ნულოვანი მაჩვენებლის დუბლირება შეუძლებელია (შიდა შეცდომა)\n"
+
+#: ../../common/fe_memutils.c:209
+#, c-format
+msgid "invalid memory allocation request size %zu + %zu\n"
+msgstr "არასწორი მეხსიერების გამოყოფის მოთხოვნის ზომა %zu + %zu\n"
+
+#: ../../common/fe_memutils.c:228
+#, c-format
+msgid "invalid memory allocation request size %zu * %zu\n"
+msgstr "არასწორი მეხსიერების გამოყოფის მოთხოვნის ზომა %zu * %zu\n"
 
 #: ../../common/file_utils.c:75
 #, c-format
@@ -112,7 +122,7 @@ msgid "could not synchronize file system for file \"%s\": %m"
 msgstr "შეუძლებელია ფაილური სისტემის სინქრონიზაცია ფაილისთვის \"%s\": %m"
 
 #: ../../common/file_utils.c:123 ../../common/file_utils.c:588
-#: ../../fe_utils/archive.c:86 file_ops.c:417
+#: ../../fe_utils/archive.c:86 file_ops.c:353 file_ops.c:440
 #, c-format
 msgid "could not stat file \"%s\": %m"
 msgstr "ფაილი \"%s\" არ არსებობს: %m"
@@ -123,12 +133,12 @@ msgstr "ფაილი \"%s\" არ არსებობს: %m"
 msgid "this build does not support sync method \"%s\""
 msgstr "ამ აგებას სინქრონიზაციის მეთოდის \"%s\" მხარდაჭერა არ გააჩნია"
 
-#: ../../common/file_utils.c:156 ../../common/file_utils.c:304 file_ops.c:388
+#: ../../common/file_utils.c:156 ../../common/file_utils.c:304 file_ops.c:411
 #, c-format
 msgid "could not open directory \"%s\": %m"
 msgstr "საქაღალდის (%s) გახსნის შეცდომა: %m"
 
-#: ../../common/file_utils.c:174 ../../common/file_utils.c:338 file_ops.c:462
+#: ../../common/file_utils.c:174 ../../common/file_utils.c:338 file_ops.c:485
 #, c-format
 msgid "could not read directory \"%s\": %m"
 msgstr "საქაღალდის (%s) წაკითხვის შეცდომა: %m"
@@ -218,6 +228,11 @@ msgstr "%s არაა საზღვრებში %d-დან %d-მდე
 msgid "unrecognized sync method: %s"
 msgstr "უცნობი სინქრონიზაციის მეთოდი: \"%s\""
 
+#: ../../fe_utils/option_utils.c:139
+#, c-format
+msgid "options %s and %s cannot be used together"
+msgstr "პარამეტრებს %s და -%s ერთად ვერ გამოიყენებთ"
+
 #: ../../fe_utils/recovery_gen.c:40 ../../fe_utils/recovery_gen.c:51
 #: ../../fe_utils/recovery_gen.c:90 ../../fe_utils/recovery_gen.c:110
 #: ../../fe_utils/recovery_gen.c:169 ../../fe_utils/recovery_gen.c:230
@@ -235,122 +250,157 @@ msgstr "ფაილში (%s) ჩაწერის შეცდომა: %m"
 msgid "could not create file \"%s\": %m"
 msgstr "ფაილის (%s) შექმნის შეცდომა: %m"
 
-#: ../../fe_utils/recovery_gen.c:215 pg_rewind.c:311
+#: ../../fe_utils/recovery_gen.c:215 pg_rewind.c:316
 #, c-format
 msgid "%s"
 msgstr "%s"
 
-#: ../../fe_utils/string_utils.c:587
+#: ../../fe_utils/string_utils.c:585
 #, c-format
 msgid "shell command argument contains a newline or carriage return: \"%s\"\n"
 msgstr "გარსის ბრძანების არგუმენტი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
 
-#: ../../fe_utils/string_utils.c:760
+#: ../../fe_utils/string_utils.c:758
 #, c-format
 msgid "database name contains a newline or carriage return: \"%s\"\n"
 msgstr "მონაცემთა ბაზის სახელი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
 
-#: file_ops.c:67
+#: file_ops.c:52
+#, c-format
+msgid "target file path is unsafe for open: \"%s\""
+msgstr "სამიზნე ფაილის ბილიკი გასახსნელად სახიფათოა: '%s'"
+
+#: file_ops.c:70
 #, c-format
 msgid "could not open target file \"%s\": %m"
 msgstr "სამიზნე ფაილის (%s) გახსნის შეცდომა: %m"
 
-#: file_ops.c:81
+#: file_ops.c:84
 #, c-format
 msgid "could not close target file \"%s\": %m"
 msgstr "სამიზნე ფაილის (%s) დახურვის შეცდომა: %m"
 
-#: file_ops.c:101
+#: file_ops.c:104
 #, c-format
 msgid "could not seek in target file \"%s\": %m"
 msgstr "სამიზნე ფაილში (%s) გადახვევის შეცდომა: %m"
 
-#: file_ops.c:150 file_ops.c:177
+#: file_ops.c:153 file_ops.c:180
 #, c-format
 msgid "undefined file type for \"%s\""
 msgstr "%s: ფაილის არასწორი ტიპი"
 
-#: file_ops.c:173
+#: file_ops.c:176
 #, c-format
 msgid "invalid action (CREATE) for regular file"
 msgstr "არასწორი ქმედება (CREATE) ჩვეულებრივი ფაილისთვის"
 
-#: file_ops.c:200
+#: file_ops.c:195
+#, c-format
+msgid "target file path is unsafe for removal: \"%s\""
+msgstr "სამიზნე ფაილის ბილიკი წასაშლელად სახიფათოა: '%s'"
+
+#: file_ops.c:206
 #, c-format
 msgid "could not remove file \"%s\": %m"
 msgstr "ფაილის წაშლის შეცდომა \"%s\": %m"
 
 #: file_ops.c:218
 #, c-format
+msgid "target file path is unsafe for truncation: \"%s\""
+msgstr "სამიზნე ფაილის ბილიკი წასაკვეთად სახიფათოა: '%s'"
+
+#: file_ops.c:227
+#, c-format
 msgid "could not open file \"%s\" for truncation: %m"
 msgstr "წასაკვეთი ფაილის (%s) გახსნის შეცდომა: %m"
 
-#: file_ops.c:222
+#: file_ops.c:231
 #, c-format
 msgid "could not truncate file \"%s\" to %u: %m"
 msgstr "ფაილის (%s) %u-მდე მოკვეთის შეცდომა: %m"
 
-#: file_ops.c:238
+#: file_ops.c:243
+#, c-format
+msgid "target directory path is unsafe for directory creation: \"%s\""
+msgstr "სამიზნე საქაღალდის ბილიკი საქაღალდის შესაქმნელად სახიფათოა: '%s'"
+
+#: file_ops.c:251
 #, c-format
 msgid "could not create directory \"%s\": %m"
 msgstr "საქაღალდის (%s) შექმნის შეცდომა: %m"
 
-#: file_ops.c:252
+#: file_ops.c:261
+#, c-format
+msgid "target directory path is unsafe for directory removal: \"%s\""
+msgstr "სამიზნე საქაღალდის ბილიკი საქაღალდის წასაშლელად სახიფათოა: '%s'"
+
+#: file_ops.c:269
 #, c-format
 msgid "could not remove directory \"%s\": %m"
 msgstr "საქაღალდის (\"%s\") წაშლის შეცდომა: %m"
 
-#: file_ops.c:266
+#: file_ops.c:279
+#, c-format
+msgid "target symlink path is unsafe for creation: \"%s\""
+msgstr "სამიზნე სიმბმულის ბილიკი შესაქმნელად სახიფათოა: '%s'"
+
+#: file_ops.c:286
 #, c-format
 msgid "could not create symbolic link at \"%s\": %m"
 msgstr "სიმბმულის შექმნის შეცდომა %s: %m"
 
-#: file_ops.c:280
+#: file_ops.c:296
+#, c-format
+msgid "target symlink path is unsafe for removal: \"%s\""
+msgstr "სამიზნე სიმბმულის ბილიკი წასაშლელად სახიფათოა: '%s'"
+
+#: file_ops.c:303
 #, c-format
 msgid "could not remove symbolic link \"%s\": %m"
 msgstr "სიმბმულის წაშლის შეცდომა %s: %m"
 
-#: file_ops.c:441
+#: file_ops.c:464
 #, c-format
 msgid "could not read symbolic link \"%s\": %m"
 msgstr "სიმბოლური ბმის \"%s\" წაკითხვის შეცდომა: %m"
 
-#: file_ops.c:444
+#: file_ops.c:467
 #, c-format
 msgid "symbolic link \"%s\" target is too long"
 msgstr "%s: სიმბმული ძალიან გრძელია"
 
-#: file_ops.c:466
+#: file_ops.c:489
 #, c-format
 msgid "could not close directory \"%s\": %m"
 msgstr "საქაღალდის %s-ზე დახურვის შეცდომა: %m"
 
-#: filemap.c:297
+#: filemap.c:298
 #, c-format
 msgid "data file \"%s\" in source is not a regular file"
 msgstr "წყაროში არსებული მონაცემების ფალი \"%s\" ჩვეულებრივი ფაილი არაა"
 
-#: filemap.c:302 filemap.c:335
+#: filemap.c:303 filemap.c:336
 #, c-format
 msgid "duplicate source file \"%s\""
 msgstr "დუბლირებული საწყისი ფაილი : \"%s\""
 
-#: filemap.c:390
+#: filemap.c:391
 #, c-format
 msgid "unexpected page modification for non-regular file \"%s\""
 msgstr "არაჩვეულებრივი ფაილის (%s) გვერდების მოულოდნელი ცვლილება"
 
-#: filemap.c:743 filemap.c:845
+#: filemap.c:793 filemap.c:909
 #, c-format
 msgid "unknown file type for \"%s\""
 msgstr "ფაილის უცნობი ტიპი \"%s\"."
 
-#: filemap.c:778
+#: filemap.c:828
 #, c-format
 msgid "file \"%s\" is of different type in source and target"
 msgstr "ფაილი %s წყაროში და სამიზნეში სხვადასხვა ტიპისაა"
 
-#: filemap.c:850
+#: filemap.c:914
 #, c-format
 msgid "could not decide what to do with file \"%s\""
 msgstr "ვერ გადავწყვიტე, ფაილს რა ვუყო: %s"
@@ -482,8 +532,8 @@ msgstr "წყაროს ფაილის \"%s\" გახსნის შ�
 
 #: local_source.c:115
 #, c-format
-msgid "size of source file \"%s\" changed concurrently: %d bytes expected, %d copied"
-msgstr "ფაილის (%s) ზომა პარალელურად შეიცვალა: მოველოდი %d ბაიტს. დაკოპირდა %d"
+msgid "size of source file \"%s\" changed concurrently: %zu bytes expected, %zu copied"
+msgstr "ფაილის (%s) ზომა პარალელურად შეიცვალა: მოველოდი %zu ბაიტს. დაკოპირდა %zu"
 
 #: local_source.c:144
 #, c-format
@@ -502,28 +552,28 @@ msgstr "არასაკმარისი მეხსიერება WAL-
 
 #: parsexlog.c:92 parsexlog.c:146
 #, c-format
-msgid "could not read WAL record at %X/%X: %s"
-msgstr "შეცდომა WAL ჩანაწერის კითხვისას: %X/%X: %s"
+msgid "could not read WAL record at %X/%08X: %s"
+msgstr "შეცდომა WAL ჩანაწერის კითხვისას: %X/%08X: %s"
 
 #: parsexlog.c:96 parsexlog.c:149
 #, c-format
-msgid "could not read WAL record at %X/%X"
-msgstr "შეცდომა WAL ჩანაწერის კითხვისას: %X/%X"
+msgid "could not read WAL record at %X/%08X"
+msgstr "შეცდომა WAL ჩანაწერის კითხვისას: %X/%08X"
 
 #: parsexlog.c:108
 #, c-format
-msgid "end pointer %X/%X is not a valid end point; expected %X/%X"
-msgstr "ბოლოს მაჩვენებელი %X/%X არასწორი ბოლოს მაჩვენებელია. მოველოდი %X/%X"
+msgid "end pointer %X/%08X is not a valid end point; expected %X/%08X"
+msgstr "ბოლო მაჩვენებელი %X/%08X არ არის მოქმედი საბოლოო წერტილი; მოსალოდნელია %X/%08X"
 
 #: parsexlog.c:214
 #, c-format
-msgid "could not find previous WAL record at %X/%X: %s"
-msgstr "წინა WAL ჩანაწერის პოვნა შეუძლებელია მისამართზე %X/%X: %s"
+msgid "could not find previous WAL record at %X/%08X: %s"
+msgstr "წინა WAL ჩანაწერის პოვნა შეუძლებელია მისამართზე %X/%08X: %s"
 
 #: parsexlog.c:218
 #, c-format
-msgid "could not find previous WAL record at %X/%X"
-msgstr "წინა WAL ჩანაწერის პოვნა შეუძლებელია მისამართზე %X/%X"
+msgid "could not find previous WAL record at %X/%08X"
+msgstr "წინა WAL ჩანაწერის პოვნა შეუძლებელია მისამართზე %X/%08X"
 
 #: parsexlog.c:362
 #, c-format
@@ -532,8 +582,12 @@ msgstr "ფაილში (%s) გადახვევის პრობლ�
 
 #: parsexlog.c:461
 #, c-format
-msgid "WAL record modifies a relation, but record type is not recognized: lsn: %X/%X, rmid: %d, rmgr: %s, info: %02X"
-msgstr "WAL ჩანაწერი ცვლის ურთიერთობას, მაგრამ ჩანაწერის ტიპი უცნობია: lsn: %X/%X, rmid: %d, rmgr: %s, info: %02X"
+msgid ""
+"WAL record modifies a relation, but record type is not recognized:\n"
+"lsn: %X/%08X, rmid: %d, rmgr: %s, info: %02X"
+msgstr ""
+"WAL ჩანაწერი ცვლის ურთიერთობას, მაგრამ ჩანაწერის ტიპი უცნობია:\n"
+"lsn: %X/%08X, rmid: %d, rmgr: %s, info: %02X"
 
 #: pg_rewind.c:94
 #, c-format
@@ -661,220 +715,230 @@ msgstr ""
 msgid "%s home page: <%s>\n"
 msgstr "%s-ის საწყისი გვერდია: <%s>\n"
 
-#: pg_rewind.c:232 pg_rewind.c:240 pg_rewind.c:247 pg_rewind.c:254
-#: pg_rewind.c:261 pg_rewind.c:269
+#: pg_rewind.c:233 pg_rewind.c:241 pg_rewind.c:248 pg_rewind.c:255
+#: pg_rewind.c:262 pg_rewind.c:270
 #, c-format
 msgid "Try \"%s --help\" for more information."
 msgstr "მეტი ინფორმაციისთვის სცადეთ '%s --help'."
 
-#: pg_rewind.c:239
+#: pg_rewind.c:240
 #, c-format
 msgid "no source specified (--source-pgdata or --source-server)"
 msgstr "წყარო მითითებული არაა (--source-pgdata ან --source-server)"
 
-#: pg_rewind.c:246
+#: pg_rewind.c:247
 #, c-format
 msgid "only one of --source-pgdata or --source-server can be specified"
 msgstr "შეიძლება მხოლოდ ერთის, --source-pgdata ან --source-server -ის მითითება"
 
-#: pg_rewind.c:253
+#: pg_rewind.c:254
 #, c-format
 msgid "no target data directory specified (--target-pgdata)"
 msgstr "სამიზნე საქაღალდე მითითებული არაა (--target-pgdata)"
 
-#: pg_rewind.c:260
+#: pg_rewind.c:261
 #, c-format
 msgid "no source server information (--source-server) specified for --write-recovery-conf"
 msgstr "საწყისი სერვერის ინფორმაცია (--source-server) პარამეტრსთვის --write-recovery-conf მითითებული არაა"
 
-#: pg_rewind.c:267
+#: pg_rewind.c:268
 #, c-format
 msgid "too many command-line arguments (first is \"%s\")"
 msgstr "მეტისმეტად ბევრი ბრძანების-სტრიქონის არგუმენტი (პირველია \"%s\")"
 
-#: pg_rewind.c:282
+#: pg_rewind.c:283
 #, c-format
 msgid "cannot be executed by \"root\""
 msgstr "root-ით ვერ გაეშვება"
 
-#: pg_rewind.c:283
+#: pg_rewind.c:284
 #, c-format
 msgid "You must run %s as the PostgreSQL superuser."
 msgstr "%s PostgreSQL-ის ზემომხმარებლით უნდა გაუშვათ."
 
-#: pg_rewind.c:293
+#: pg_rewind.c:294
 #, c-format
 msgid "could not read permissions of directory \"%s\": %m"
 msgstr "საქაღალდის წვდომების წაკითხვა შეუძლებელია \"%s\": %m"
 
-#: pg_rewind.c:314
+#: pg_rewind.c:306
+#, c-format
+msgid "executing in dry-run mode"
+msgstr "შესრულება მშრალი გაშვების რეჟიმში"
+
+#: pg_rewind.c:307
+#, c-format
+msgid "The target directory will not be modified."
+msgstr "სამიზნე საქაღალდე არ შეიცვლება."
+
+#: pg_rewind.c:319
 #, c-format
 msgid "connected to server"
 msgstr "სერვერთან მიერთება წარმატებულია"
 
-#: pg_rewind.c:375
+#: pg_rewind.c:380
 #, c-format
 msgid "source and target cluster are on the same timeline"
 msgstr "საწყისი და სამიზნე კლასტერები იგივე დროის ხაზზეა"
 
-#: pg_rewind.c:396
+#: pg_rewind.c:401
 #, c-format
-msgid "servers diverged at WAL location %X/%X on timeline %u"
-msgstr "სერვერი დაშორდა WAL-ს მდებარეობაზე %X/%X დროის ხაზზე %u"
+msgid "servers diverged at WAL location %X/%08X on timeline %u"
+msgstr "სერვერი დაშორდა WAL-ს მდებარეობაზე %X/%08X დროის ხაზზე %u"
 
-#: pg_rewind.c:451
+#: pg_rewind.c:462
 #, c-format
 msgid "no rewind required"
 msgstr "გადახვევა საჭირო არაა"
 
-#: pg_rewind.c:464
+#: pg_rewind.c:475
 #, c-format
-msgid "rewinding from last common checkpoint at %X/%X on timeline %u"
-msgstr "გადახვევა ბოლო საერთო საკონტროლო წერტილიდან მისამართზე %X/%X დროის ხაზზე %u"
+msgid "rewinding from last common checkpoint at %X/%08X on timeline %u"
+msgstr "ბოლო საერთო საგუშაგოდან %X/%08X საათზე გადახვევა ვადების %u"
 
-#: pg_rewind.c:474
+#: pg_rewind.c:485
 #, c-format
 msgid "reading source file list"
 msgstr "ფაილების წყაროს სიის კითხვა"
 
-#: pg_rewind.c:478
+#: pg_rewind.c:489
 #, c-format
 msgid "reading target file list"
 msgstr "სამიზნის ფაილების სიის კითხვა"
 
-#: pg_rewind.c:487
+#: pg_rewind.c:498
 #, c-format
 msgid "reading WAL in target"
 msgstr "სამიზნეში მყოფი WAL-ის კითხვა"
 
-#: pg_rewind.c:508
+#: pg_rewind.c:519
 #, c-format
-msgid "need to copy %lu MB (total source directory size is %lu MB)"
-msgstr "საჭიროა %lu მბ-ის კოპირება (საწყის საქაღალდის სრული ზომაა %lu მბ)"
+msgid "need to copy %<PRIu64> MB (total source directory size is %<PRIu64> MB)"
+msgstr "საჭიროა %<PRIu64> მბ-ის კოპირება (საწყისი საქაღალდის სრული ზომაა %<PRIu64> მბ)"
 
-#: pg_rewind.c:526
+#: pg_rewind.c:537
 #, c-format
 msgid "syncing target data directory"
 msgstr "მონაცემების სამიზე საქაღალდის სინქრონიზაცია"
 
-#: pg_rewind.c:543
+#: pg_rewind.c:554
 #, c-format
 msgid "Done!"
 msgstr "შესრულებულია!"
 
-#: pg_rewind.c:623
+#: pg_rewind.c:634
 #, c-format
 msgid "no action decided for file \"%s\""
 msgstr "ფაილისთვის %s ქმედება არჩეული არაა"
 
-#: pg_rewind.c:655
+#: pg_rewind.c:666
 #, c-format
 msgid "source system was modified while pg_rewind was running"
 msgstr "საწყისი ფაილი შეიცვალა, სანამ pg_rewind იყო გაშვებული"
 
-#: pg_rewind.c:659
+#: pg_rewind.c:670
 #, c-format
 msgid "creating backup label and updating control file"
 msgstr "მარქაფის ჭდის შექმნა და საკონტროლო ფაილის განახლება"
 
-#: pg_rewind.c:709
+#: pg_rewind.c:720
 #, c-format
 msgid "source system was in unexpected state at end of rewind"
 msgstr "საწყისი სისტემა გადახვევისას გაურკვეველ მდგომარეობაში აღმოჩნდა"
 
-#: pg_rewind.c:741
+#: pg_rewind.c:752
 #, c-format
 msgid "source and target clusters are from different systems"
 msgstr "საწყისი და სამიზნე კლასტერები სხვადასახვა სისტემებიდანაა"
 
-#: pg_rewind.c:749
+#: pg_rewind.c:760
 #, c-format
 msgid "clusters are not compatible with this version of pg_rewind"
 msgstr "კლასტერები pg_rewind-ის ამ ვერსიასთან შეუთავსებელია"
 
-#: pg_rewind.c:759
+#: pg_rewind.c:770
 #, c-format
 msgid "target server needs to use either data checksums or \"wal_log_hints = on\""
 msgstr "სამზნე სერვერზე საჭიროა ან მონაცემების საკონტროლო ჯამების გამოყენება, ან \"wal_log_hints = on\""
 
-#: pg_rewind.c:770
+#: pg_rewind.c:781
 #, c-format
 msgid "target server must be shut down cleanly"
 msgstr "სამიზნე ბაზა წესების დაცვით უნდა იყოს გამორთული"
 
-#: pg_rewind.c:780
+#: pg_rewind.c:791
 #, c-format
 msgid "source data directory must be shut down cleanly"
 msgstr "საწყისი ბაზა წესების დაცვით უნდა იყოს გამორთული"
 
-#: pg_rewind.c:827
+#: pg_rewind.c:838
 #, c-format
 msgid "%*s/%s kB (%d%%) copied"
 msgstr "%*s/%s კბ (%d%%) დაკოპირდა"
 
-#: pg_rewind.c:953
+#: pg_rewind.c:964
 #, c-format
 msgid "could not find common ancestor of the source and target cluster's timelines"
 msgstr "საწყისი და სამიზნე კლასტერების დროის ხაზის საერთო წინაპრის პოვნა შეუძლებელია"
 
-#: pg_rewind.c:994
+#: pg_rewind.c:1005
 #, c-format
 msgid "backup label buffer too small"
 msgstr "მარქაფის ჭდის ბაფერი ძალიან პატარაა"
 
-#: pg_rewind.c:1017
+#: pg_rewind.c:1028
 #, c-format
 msgid "unexpected control file CRC"
 msgstr "კონტროლის ფაილის მოულოდნელი CRC"
 
-#: pg_rewind.c:1029
+#: pg_rewind.c:1040
 #, c-format
-msgid "unexpected control file size %d, expected %d"
-msgstr "საკონტროლო ფაილის არასწორი სიგრძე: %d. უნდა იყოს: %d"
+msgid "unexpected control file size %zu, expected %d"
+msgstr "მოულოდნელი საკონტროლო ფაილის ზომა %zu, მოსალოდნელი %d"
 
-#: pg_rewind.c:1039
+#: pg_rewind.c:1050
 #, c-format
 msgid "invalid WAL segment size in control file (%d byte)"
 msgid_plural "invalid WAL segment size in control file (%d bytes)"
 msgstr[0] "არასწორი WAL სეგმენტის ზომა კონტროლის ფაილში (%d ბაიტი)"
 msgstr[1] "არასწორი WAL სეგმენტის ზომა კონტროლის ფაილში (%d ბაიტი)"
 
-#: pg_rewind.c:1043
+#: pg_rewind.c:1054
 #, c-format
 msgid "The WAL segment size must be a power of two between 1 MB and 1 GB."
 msgstr "WAL სეგმენტის ზომა ორის ხარისხი უნდა იყოს, შუალედიდან 1მბ-1გბ."
 
-#: pg_rewind.c:1080 pg_rewind.c:1148
+#: pg_rewind.c:1091 pg_rewind.c:1159
 #, c-format
 msgid "program \"%s\" is needed by %s but was not found in the same directory as \"%s\""
 msgstr "პროგრამა \"%s\" სჭირდება \"%s\"-ს, მაგრამ იგივე საქაღალდეში, სადაც \"%s\", ნაპოვნი არაა"
 
-#: pg_rewind.c:1083 pg_rewind.c:1151
+#: pg_rewind.c:1094 pg_rewind.c:1162
 #, c-format
 msgid "program \"%s\" was found by \"%s\" but was not the same version as %s"
 msgstr "პროგრამა „%s“ ნაპოვნია „%s“-ის მიერ, მაგრამ ვერსია, იგივეა არაა, რაც %s"
 
-#: pg_rewind.c:1112
+#: pg_rewind.c:1123
 #, c-format
 msgid "could not read \"restore_command\" from target cluster"
 msgstr "სამიზნე კლასტერიდან \"restore_command\"-ის წაკითხვა შეუძლებელია"
 
-#: pg_rewind.c:1117
+#: pg_rewind.c:1128
 #, c-format
 msgid "\"restore_command\" is not set in the target cluster"
 msgstr "სამიზნე კლასტერში \"restore_command\" დაყენებული არაა"
 
-#: pg_rewind.c:1155
+#: pg_rewind.c:1166
 #, c-format
 msgid "executing \"%s\" for target server to complete crash recovery"
 msgstr "ავარიიდან სრულად აღდგენისთვის სამიზნე სერვერზე %s-ის შესრულდება"
 
-#: pg_rewind.c:1193
+#: pg_rewind.c:1204
 #, c-format
 msgid "postgres single-user mode in target cluster failed"
 msgstr "სამიზნე კლასტერში postgres-ის ერთმომხმარებლიანი რეჟიმის შეცდომა"
 
-#: pg_rewind.c:1194
+#: pg_rewind.c:1205
 #, c-format
 msgid "Command was: %s"
 msgstr "ბრძანება იყო: %s"
@@ -914,199 +978,157 @@ msgstr "არასწორი მონაცემები ისტორ�
 msgid "Timeline IDs must be less than child timeline's ID."
 msgstr "დროის ხაზის ID-ები შვილეული დროის ხაზის ID-ზე ნაკლები უნდა იყოს."
 
-#: xlogreader.c:620
+#: xlogreader.c:621
 #, c-format
-msgid "invalid record offset at %X/%X: expected at least %u, got %u"
-msgstr "ჩანაწერის არასწორი წანაცვლება მისამართზე %X/%X: მინდოდა %u, მივიღე %u"
+msgid "invalid record offset at %X/%08X: expected at least %u, got %u"
+msgstr "ჩანაწერის არასწორი წანაცვლება მისამართზე %X/%08X: მოველოდი მინიმუმ %u, მივიღე %u"
 
-#: xlogreader.c:629
+#: xlogreader.c:630
 #, c-format
-msgid "contrecord is requested by %X/%X"
-msgstr "contrecord მოთხოვნილია %X/%X-ის მიერ"
+msgid "contrecord is requested by %X/%08X"
+msgstr "contrecord მოთხოვნილია %X/%08X-ის მიერ"
 
-#: xlogreader.c:670 xlogreader.c:1135
+#: xlogreader.c:671 xlogreader.c:1146
 #, c-format
-msgid "invalid record length at %X/%X: expected at least %u, got %u"
-msgstr "ჩანაწერის არასწორი სიგრძე მისამართზე %X/%X: მოველოდი მინიმუმ %u, მივიღე %u"
+msgid "invalid record length at %X/%08X: expected at least %u, got %u"
+msgstr "ჩანაწერის არასწორი სიგრძე მისამართზე %X/%08X: მოველოდი მინიმუმ %u, მივიღე %u"
 
-#: xlogreader.c:759
+#: xlogreader.c:761
 #, c-format
-msgid "there is no contrecord flag at %X/%X"
-msgstr "contrecord ალამი მისამართზე %X/%X არ არსებობს"
+msgid "there is no contrecord flag at %X/%08X"
+msgstr "contrecord ალამი მისამართზე %X/%08X არ არსებობს"
 
-#: xlogreader.c:772
+#: xlogreader.c:774
 #, c-format
-msgid "invalid contrecord length %u (expected %lld) at %X/%X"
-msgstr "contrecord -ის არასწორი სიგრძე %u (მოველოდი %lld) მისამართზე %X/%X"
+msgid "invalid contrecord length %u (expected %lld) at %X/%08X"
+msgstr "contrecord -ის არასწორი სიგრძე %u (მოველოდი %lld) მისამართზე %X/%08X"
 
-#: xlogreader.c:1143
+#: xlogreader.c:1154
 #, c-format
-msgid "invalid resource manager ID %u at %X/%X"
-msgstr "რესურსის მმართველის არასწორი ID %u მისამართზე %X/%X"
+msgid "invalid resource manager ID %u at %X/%08X"
+msgstr "რესურსის მმართველის არასწორი ID %u მისამართზე %X/%08X"
 
-#: xlogreader.c:1156 xlogreader.c:1172
+#: xlogreader.c:1167 xlogreader.c:1183
 #, c-format
-msgid "record with incorrect prev-link %X/%X at %X/%X"
-msgstr "ჩანაწერი არასწორი წინა ბმულით %X/%X მისამართზე %X/%X"
+msgid "record with incorrect prev-link %X/%08X at %X/%08X"
+msgstr "ჩანაწერი არასწორი წინა ბმულით %X/%08X მისამართზე %X/%08X"
 
-#: xlogreader.c:1210
+#: xlogreader.c:1221
 #, c-format
-msgid "incorrect resource manager data checksum in record at %X/%X"
-msgstr "რესურსის მმართველის მონაცემების არასწორი საკონტროლო რიცხვი ჩანაწერში მისამართზე %X/%X"
+msgid "incorrect resource manager data checksum in record at %X/%08X"
+msgstr "რესურსის მმართველის მონაცემების არასწორი საკონტროლო რიცხვი ჩანაწერში მისამართზე %X/%08X"
 
-#: xlogreader.c:1244
+#: xlogreader.c:1255
 #, c-format
-msgid "invalid magic number %04X in WAL segment %s, LSN %X/%X, offset %u"
-msgstr "არასწორი მაგიური რიცხვი %04X ჟურნალის სეგმენტში %s, LSN %X/%X, წანაცვლება %u"
+msgid "invalid magic number %04X in WAL segment %s, LSN %X/%08X, offset %u"
+msgstr "არასწორი მაგიური რიცხვი %04X ჟურნალის სეგმენტში %s, LSN %X/%08X, წანაცვლება %u"
 
-#: xlogreader.c:1259 xlogreader.c:1301
+#: xlogreader.c:1270 xlogreader.c:1312
 #, c-format
-msgid "invalid info bits %04X in WAL segment %s, LSN %X/%X, offset %u"
-msgstr "არასწორი საინფორმაციო ბიტები %04X ჟურნალის სეგმენტში %s, LSN %X/%X, წანაცვლება %u"
+msgid "invalid info bits %04X in WAL segment %s, LSN %X/%08X, offset %u"
+msgstr "არასწორი საინფორმაციო ბიტები %04X ჟურნალის სეგმენტში %s, LSN %X/%08X, წანაცვლება %u"
 
-#: xlogreader.c:1275
+#: xlogreader.c:1286
 #, c-format
 msgid "WAL file is from different database system: WAL file database system identifier is %<PRIu64>, pg_control database system identifier is %<PRIu64>"
 msgstr "WAL ფაილი სხვა ბაზიდანაა: WAL ფაილის ბაზის იდენტიფიკატორია %<PRIu64>, pg_control-ის ბაზის სისტემის იდენტიფიკატორი კი %<PRIu64>"
 
-#: xlogreader.c:1283
+#: xlogreader.c:1294
 #, c-format
 msgid "WAL file is from different database system: incorrect segment size in page header"
 msgstr "WAL ფაილი სხვა ბაზის სიტემიდანაა: სეგმანტის არასწორი ზომა გვერდის თავსართში"
 
-#: xlogreader.c:1289
+#: xlogreader.c:1300
 #, c-format
 msgid "WAL file is from different database system: incorrect XLOG_BLCKSZ in page header"
 msgstr "WAL ფაილი სხვა მონაცემთა ბაზის სისტემიდანაა: გვერდის თავსართში მითითებული XLOG_BLKSZ არასწორია"
 
-#: xlogreader.c:1321
+#: xlogreader.c:1332
 #, c-format
-msgid "unexpected pageaddr %X/%X in WAL segment %s, LSN %X/%X, offset %u"
-msgstr "მოულოდნელი pageaddr %X/%X ჟურნალის სეგმენტში %s, LSN %X/%X, წანაცვლება %u"
+msgid "unexpected pageaddr %X/%08X in WAL segment %s, LSN %X/%08X, offset %u"
+msgstr "მოულოდნელი pageaddr %X/%08X ჟურნალის სეგმენტში %s, LSN %X/%08X, წანაცვლება %u"
 
-#: xlogreader.c:1347
+#: xlogreader.c:1358
 #, c-format
-msgid "out-of-sequence timeline ID %u (after %u) in WAL segment %s, LSN %X/%X, offset %u"
-msgstr "მიმდევრობის-გარე დროის ხაზის ID %u (%u-ის შემდეგ) ჟურნალის სეგმენტში %s, LSN %X/%X, წანაცვლება %u"
-
-#: xlogreader.c:1759
-#, c-format
-msgid "out-of-order block_id %u at %X/%X"
-msgstr "ურიგო block_id %u მისამართზე %X/%X"
-
-#: xlogreader.c:1783
-#, c-format
-msgid "BKPBLOCK_HAS_DATA set, but no data included at %X/%X"
-msgstr "BKPBLOCK_HAS_DATA დაყენებულია, მაგრამ მონაცემები მისამართზე %X/%X არ არსებობს"
+msgid "out-of-sequence timeline ID %u (after %u) in WAL segment %s, LSN %X/%08X, offset %u"
+msgstr "მიმდევრობის-გარე დროის ხაზის ID %u (%u-ის შემდეგ) ჟურნალის სეგმენტში %s, LSN %X/%08X, წანაცვლება %u"
 
 #: xlogreader.c:1790
 #, c-format
-msgid "BKPBLOCK_HAS_DATA not set, but data length is %u at %X/%X"
-msgstr "BKPBLOCK_HAS_DATA დაყენებულია, მაგრამ არსებობს მონაცემები სიგრძით %u მისამართზე %X/%X"
+msgid "out-of-order block_id %u at %X/%08X"
+msgstr "ურიგო block_id %u მისამართზე %X/%08X"
 
-#: xlogreader.c:1826
+#: xlogreader.c:1814
 #, c-format
-msgid "BKPIMAGE_HAS_HOLE set, but hole offset %u length %u block image length %u at %X/%X"
-msgstr "BKPIMAGE_HAS_HOLE დაყენებულია, მაგრამ ნახვრეტის წანაცვლება %u სიგრძე %u ბლოკის ასლის სიგრძე %u მისამართზე %X/%X"
+msgid "BKPBLOCK_HAS_DATA set, but no data included at %X/%08X"
+msgstr "BKPBLOCK_HAS_DATA დაყენებულია, მაგრამ მონაცემები მისამართზე %X/%08X არ არსებობს"
 
-#: xlogreader.c:1842
+#: xlogreader.c:1821
 #, c-format
-msgid "BKPIMAGE_HAS_HOLE not set, but hole offset %u length %u at %X/%X"
-msgstr "BKPIMAGE_HAS_HOLE დაყენებული არაა, მაგრამ ნახვრეტის წანაცვლება %u სიგრძე %u მისანართზე %X/%X"
+msgid "BKPBLOCK_HAS_DATA not set, but data length is %d at %X/%08X"
+msgstr "BKPBLOCK_HAS_DATA დაყენებულია, მაგრამ არსებობს მონაცემები სიგრძით %d მისამართზე %X/%08X"
 
-#: xlogreader.c:1856
+#: xlogreader.c:1857
 #, c-format
-msgid "BKPIMAGE_COMPRESSED set, but block image length %u at %X/%X"
-msgstr "BKPIMAGE_COMPRESSED დაყენებულია, მაგრამ ბლოკის ასლის სიგრძეა %u მისამართზე %X/%X"
+msgid "BKPIMAGE_HAS_HOLE set, but hole offset %d length %d block image length %d at %X/%08X"
+msgstr "BKPIMAGE_HAS_HOLE დაყენებულია, მაგრამ ნახვრეტის წანაცვლება %d სიგრძე %d ბლოკის ასლის სიგრძე %d მისამართზე %X/%08X"
 
-#: xlogreader.c:1871
+#: xlogreader.c:1873
 #, c-format
-msgid "neither BKPIMAGE_HAS_HOLE nor BKPIMAGE_COMPRESSED set, but block image length is %u at %X/%X"
-msgstr "არც BKPIMAGE_HAS_HOLE და არც BKPIMAGE_COMPRESSED დაყენებული არაა, მაგრამ ბლოკის ასლის სიგრძე %u-ა, მისამართზე %X/%X"
+msgid "BKPIMAGE_HAS_HOLE not set, but hole offset %d length %d at %X/%08X"
+msgstr "BKPIMAGE_HAS_HOLE დაყენებული არაა, მაგრამ ნახვრეტის წანაცვლება %d სიგრძე %d მისანართზე %X/%08X"
 
 #: xlogreader.c:1887
 #, c-format
-msgid "BKPBLOCK_SAME_REL set but no previous rel at %X/%X"
-msgstr "BKPBLOCK_SAME_REL დაყენებულია, მაგრამ წინა მნიშვნელობა მითითებული არაა მისამართზე %X/%X"
+msgid "BKPIMAGE_COMPRESSED set, but block image length %d at %X/%08X"
+msgstr "BKPIMAGE_COMPRESSED დაყენებულია, მაგრამ ბლოკის ასლის სიგრძეა %d მისამართზე %X/%08X"
 
-#: xlogreader.c:1899
+#: xlogreader.c:1902
 #, c-format
-msgid "invalid block_id %u at %X/%X"
-msgstr "არასწორი block_id %u %X/%X"
+msgid "neither BKPIMAGE_HAS_HOLE nor BKPIMAGE_COMPRESSED set, but block image length is %d at %X/%08X"
+msgstr "არც BKPIMAGE_HAS_HOLE და არც BKPIMAGE_COMPRESSED დაყენებული არაა, მაგრამ ბლოკის ასლის სიგრძე %d-ა, მისამართზე %X/%08X"
 
-#: xlogreader.c:1966
+#: xlogreader.c:1918
 #, c-format
-msgid "record with invalid length at %X/%X"
-msgstr "ჩანაწერი არასწორი სიგრძით მისამართზე %X/%X"
+msgid "BKPBLOCK_SAME_REL set but no previous rel at %X/%08X"
+msgstr "BKPBLOCK_SAME_REL დაყენებულია, მაგრამ წინა მნიშვნელობა მითითებული არაა მისამართზე %X/%08X"
 
-#: xlogreader.c:1992
+#: xlogreader.c:1930
+#, c-format
+msgid "invalid block_id %u at %X/%08X"
+msgstr "არასწორი block_id %u %X/%08X"
+
+#: xlogreader.c:1997
+#, c-format
+msgid "record with invalid length at %X/%08X"
+msgstr "ჩანაწერი არასწორი სიგრძით მისამართზე %X/%08X"
+
+#: xlogreader.c:2023
 #, c-format
 msgid "could not locate backup block with ID %d in WAL record"
 msgstr "შეცდომა WAL ჩანაწერში მარქაფი ბლოკის, ID-ით %d, მოძებნისას"
 
-#: xlogreader.c:2076
+#: xlogreader.c:2107
 #, c-format
-msgid "could not restore image at %X/%X with invalid block %d specified"
-msgstr "შეუძლებელია ასლის აღდგენა მისამართზე %X/%X, როცა მითითებულია არასწორი ბლოკი %d"
+msgid "could not restore image at %X/%08X with invalid block %d specified"
+msgstr "შეუძლებელია ასლის აღდგენა მისამართზე %X/%08X, როცა მითითებულია არასწორი ბლოკი %d"
 
-#: xlogreader.c:2083
+#: xlogreader.c:2114
 #, c-format
-msgid "could not restore image at %X/%X with invalid state, block %d"
-msgstr "შეუძლებელია ასლის აღდგენა მისამართზე %X/%X არასწორი მდგომარეობით, ბლოკი %d"
+msgid "could not restore image at %X/%08X with invalid state, block %d"
+msgstr "შეუძლებელია ასლის აღდგენა მისამართზე %X/%08X არასწორი მდგომარეობით, ბლოკი %d"
 
-#: xlogreader.c:2110 xlogreader.c:2127
+#: xlogreader.c:2141 xlogreader.c:2158
 #, c-format
-msgid "could not restore image at %X/%X compressed with %s not supported by build, block %d"
-msgstr "%3$s მეთოდით შეკუმშული ასლის აღდგენა მისამართზე %1$X/%2$X, ბლოკი %4$d შეუძლებელია. მხარდაუჭერელია ამ აგების მიერ"
+msgid "could not restore image at %X/%08X compressed with %s not supported by build, block %d"
+msgstr "აღდგენის შეცდომა მისამართზე %X/%08X, შეკუმშული %s-ით მხარდაჭერილი არაა აგების მიერ. ბლოკი %d"
 
-#: xlogreader.c:2136
+#: xlogreader.c:2167
 #, c-format
-msgid "could not restore image at %X/%X compressed with unknown method, block %d"
-msgstr "შეუძლებელია ასლის აღდგენა მისამართზე %X/%X, შეკუმშულია უცნობი მეთოდით, ბლოკი %d"
+msgid "could not restore image at %X/%08X compressed with unknown method, block %d"
+msgstr "შეუძლებელია ასლის აღდგენა მისამართზე %X/%08X, შეკუმშულია უცნობი მეთოდით, ბლოკი %d"
 
-#: xlogreader.c:2144
+#: xlogreader.c:2175
 #, c-format
-msgid "could not decompress image at %X/%X, block %d"
-msgstr "შეუძლებელია ასლის გაშლა მისამართზე %X/%X, ბლოკი %d"
-
-#, c-format
-#~ msgid "\"%s\" is a symbolic link, but symbolic links are not supported on this platform"
-#~ msgstr "%s სიმბმულია, მაგრამ სიმბოლური ბმულები ამ პლატფორმაზე მხარდაჭერილი არაა"
-
-#, c-format
-#~ msgid "WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d byte"
-#~ msgid_plural "WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d bytes"
-#~ msgstr[0] "WAL სეგმენტის ზომა ორის ხარისხი უნდა იყოს, 1 მბ-სა და 1გბ-ს შორის, მაგრამ კონტროლის ფაილში მითითებულია %d ბაიტი"
-#~ msgstr[1] "WAL სეგმენტის ზომა ორის ხარისხი უნდა იყოს, 1 მბ-სა და 1გბ-ს შორის, მაგრამ კონტროლის ფაილში მითითებულია %d ბაიტი"
-
-#, c-format
-#~ msgid "cannot create restricted tokens on this platform: error code %lu"
-#~ msgstr "ამ პლატფორმაზე შეზღუდული კოდების შექმნა შეუძლებელია: შეცდომის კოდი %lu"
-
-#, c-format
-#~ msgid "cannot use restore_command with %%r placeholder"
-#~ msgstr "restore_command-ის გამოყენება %%r ადგილმჭერის გარეშე გამოყენება შეუძლებელია"
-
-#, c-format
-#~ msgid "could not load library \"%s\": error code %lu"
-#~ msgstr "ბიბლიოთეკის (\"%s\") ჩატვირთვის შეცდომა: შეცდომის კოდი: %lu"
-
-#, c-format
-#~ msgid "invalid control file"
-#~ msgstr "არასწორი კონტროლის ფაილი"
-
-#, c-format
-#~ msgid "invalid record offset at %X/%X"
-#~ msgstr "ჩანაწერის არასწორი წანაცვლება მისამართზე %X/%X"
-
-#, c-format
-#~ msgid "missing contrecord at %X/%X"
-#~ msgstr "contrecord მისამართზე %X/%X არ არსებობს"
-
-#, c-format
-#~ msgid "out of memory while trying to decode a record of length %u"
-#~ msgstr "%u სიგრძის მქონე ჩანაწერის დეკოდირებისთვის მეხსიერება საკმარისი არაა"
-
-#, c-format
-#~ msgid "record length %u at %X/%X too long"
-#~ msgstr "ჩანაწერის სიგრძე %u მისამართზე %X/%X ძალიან გრძელია"
+msgid "could not decompress image at %X/%08X, block %d"
+msgstr "შეუძლებელია ასლის გაშლა მისამართზე %X/%08X, ბლოკი %d"

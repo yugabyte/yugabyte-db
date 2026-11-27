@@ -32,6 +32,7 @@
 #include "catalog/pg_type.h"
 #include "commands/publicationcmds.h"
 #include "funcapi.h"
+#include "miscadmin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
@@ -54,6 +55,7 @@ typedef struct
 } published_rel;
 
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
+static bool yb_is_internal_table_to_be_excluded_from_cdc(Oid relid);
 
 /*
  * Check if relation can be in given publication and throws appropriate
@@ -63,45 +65,67 @@ static void
 check_publication_add_relation(PublicationRelInfo *pri)
 {
 	Relation	targetrel = pri->relation;
+	const char *relname;
 	const char *errormsg;
 
 	if (pri->except)
+	{
+		/*
+		 * The name parts must not be quoted here, because the message already
+		 * encloses the whole name in double quotes.
+		 */
+		relname = psprintf("%s.%s",
+						   get_namespace_name(RelationGetNamespace(targetrel)),
+						   RelationGetRelationName(targetrel));
 		errormsg = gettext_noop("cannot specify relation \"%s\" in the publication EXCEPT clause");
+	}
 	else
+	{
+		relname = RelationGetRelationName(targetrel);
 		errormsg = gettext_noop("cannot add relation \"%s\" to publication");
+	}
 
 	/* If in EXCEPT clause, must be root partitioned table */
 	if (pri->except && targetrel->rd_rel->relispartition)
+	{
+		if (PartitionHasPendingDetach(RelationGetRelid(targetrel)))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg(errormsg, relname),
+					 errdetail("This operation is not supported for partitions with an incomplete detach."),
+					 errhint("Use ALTER TABLE ... DETACH PARTITION ... FINALIZE to complete the pending detach operation.")));
+
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg(errormsg, RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, relname),
 				 errdetail("This operation is not supported for individual partitions.")));
+	}
 
 	/* Must be a regular or partitioned table */
 	if (RelationGetForm(targetrel)->relkind != RELKIND_RELATION &&
 		RelationGetForm(targetrel)->relkind != RELKIND_PARTITIONED_TABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg(errormsg, RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, relname),
 				 errdetail_relkind_not_supported(RelationGetForm(targetrel)->relkind)));
 
 	/* Can't be system table */
 	if (IsCatalogRelation(targetrel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg(errormsg, RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, relname),
 				 errdetail("This operation is not supported for system tables.")));
 
 	/* UNLOGGED and TEMP relations cannot be part of publication. */
 	if (targetrel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg(errormsg, RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, relname),
 				 errdetail("This operation is not supported for temporary tables.")));
 	else if (targetrel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg(errormsg, RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, relname),
 				 errdetail("This operation is not supported for unlogged tables.")));
 
 	if (IsYugaByteEnabled() && !yb_cdcsdk_stream_tables_without_primary_key &&
@@ -622,9 +646,12 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 
 	/* Add dependency on the objects mentioned in the qualifications */
 	if (pri->whereClause)
+	{
+		CheckUsageOnTypesInSingleRelExpr(pri->whereClause, relid, GetUserId());
 		recordDependencyOnSingleRelExpr(&myself, pri->whereClause, relid,
 										DEPENDENCY_NORMAL, DEPENDENCY_NORMAL,
 										false);
+	}
 
 	/* Add dependency on the columns, if any are listed */
 	i = -1;
@@ -925,6 +952,25 @@ List *
 GetRelationExcludedPublications(Oid relid)
 {
 	return get_relation_publications(relid, true);
+}
+
+/*
+ * Check whether the relation is referenced by any publication, either as a
+ * published relation or in a publication's EXCEPT clause.
+ */
+bool
+RelationHasPublication(Oid relid)
+{
+	CatCList   *pubrellist;
+	bool		found;
+
+	pubrellist = SearchSysCacheList1(PUBLICATIONRELMAP,
+									 ObjectIdGetDatum(relid));
+	found = (pubrellist->n_members > 0);
+
+	ReleaseSysCacheList(pubrellist);
+
+	return found;
 }
 
 /*
@@ -1495,14 +1541,27 @@ pg_get_publication_tables(FunctionCallInfo fcinfo, ArrayType *pubnames,
 						  bool pub_missing_ok)
 {
 #define NUM_PUBLICATION_TABLES_ELEM	4
+
+	/*
+	 * State carried across SRF calls. We track the index ourselves instead of
+	 * using funcctx->call_cntr, so that concurrently dropped tables can be
+	 * skipped without emitting a row.
+	 */
+	typedef struct
+	{
+		List	   *table_infos;	/* list of published_rel */
+		int			curr_idx;	/* current index into table_infos */
+	} publication_tables_state;
+
 	FuncCallContext *funcctx;
-	List	   *table_infos = NIL;
+	publication_tables_state *ptstate = NULL;
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
 		TupleDesc	tupdesc;
 		MemoryContext oldcontext;
+		List	   *table_infos = NIL;
 		Datum	   *elems;
 		int			nelems,
 					i;
@@ -1625,25 +1684,46 @@ pg_get_publication_tables(FunctionCallInfo fcinfo, ArrayType *pubnames,
 
 		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-		funcctx->user_fctx = table_infos;
+
+		/* Store the state to be used across SRF calls. */
+		ptstate = palloc_object(publication_tables_state);
+		ptstate->table_infos = table_infos;
+		ptstate->curr_idx = 0;
+		funcctx->user_fctx = ptstate;
 
 		MemoryContextSwitchTo(oldcontext);
 	}
 
 	/* stuff done on every call of the function */
 	funcctx = SRF_PERCALL_SETUP();
-	table_infos = (List *) funcctx->user_fctx;
+	ptstate = (publication_tables_state *) funcctx->user_fctx;
 
-	if (funcctx->call_cntr < list_length(table_infos))
+	while (ptstate->curr_idx < list_length(ptstate->table_infos))
 	{
 		HeapTuple	pubtuple = NULL;
 		HeapTuple	rettuple;
 		Publication *pub;
-		published_rel *table_info = (published_rel *) list_nth(table_infos, funcctx->call_cntr);
+		published_rel *table_info = (published_rel *) list_nth(ptstate->table_infos,
+															   ptstate->curr_idx);
 		Oid			relid = table_info->relid;
-		Oid			schemaid = get_rel_namespace(relid);
+		Relation	rel;
+		Oid			schemaid;
 		Datum		values[NUM_PUBLICATION_TABLES_ELEM] = {0};
 		bool		nulls[NUM_PUBLICATION_TABLES_ELEM] = {0};
+
+		/* Advance the index for the next call. */
+		ptstate->curr_idx++;
+
+		/*
+		 * The table OIDs were collected earlier, so a table may have been
+		 * dropped before we get here. try_table_open() returns NULL if it is
+		 * already gone, in which case we skip it; such tables are simply
+		 * absent from the result set, which is the expected point-in-time
+		 * behavior.
+		 */
+		rel = try_table_open(relid, AccessShareLock);
+		if (rel == NULL)
+			continue;
 
 		/*
 		 * Form tuple with appropriate data.
@@ -1658,6 +1738,7 @@ pg_get_publication_tables(FunctionCallInfo fcinfo, ArrayType *pubnames,
 		 * We don't consider row filters or column lists for FOR ALL TABLES or
 		 * FOR TABLES IN SCHEMA publications.
 		 */
+		schemaid = RelationGetNamespace(rel);
 		if (!pub->alltables &&
 			!SearchSysCacheExists2(PUBLICATIONNAMESPACEMAP,
 								   ObjectIdGetDatum(schemaid),
@@ -1687,7 +1768,6 @@ pg_get_publication_tables(FunctionCallInfo fcinfo, ArrayType *pubnames,
 		/* Show all columns when the column list is not specified. */
 		if (nulls[2])
 		{
-			Relation	rel = table_open(relid, AccessShareLock);
 			int			nattnums = 0;
 			int16	   *attnums;
 			TupleDesc	desc = RelationGetDescr(rel);
@@ -1724,9 +1804,9 @@ pg_get_publication_tables(FunctionCallInfo fcinfo, ArrayType *pubnames,
 				values[2] = PointerGetDatum(buildint2vector(attnums, nattnums));
 				nulls[2] = false;
 			}
-
-			table_close(rel, AccessShareLock);
 		}
+
+		table_close(rel, AccessShareLock);
 
 		rettuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 
@@ -1861,6 +1941,10 @@ yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables,
 			Oid			rel = lfirst_oid(lc_tables);
 			bool		found;
 
+			/* FOR ALL TABLES lists already leave these tables out. */
+			if (!has_alltables && yb_is_internal_table_to_be_excluded_from_cdc(rel))
+				continue;
+
 			hash_search(seen_tables, &rel, HASH_ENTER, &found);
 			if (!found)
 				tables = lappend_oid(tables, rel);
@@ -1907,14 +1991,35 @@ yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
 /*
  * Similar to is_publishable_relation but with additional check for user defined
  * primary key when GUC variable 'yb_cdcsdk_stream_tables_without_primary_key'
- * is set to false.
+ * is set to false, and excludes tables internal to YugabyteDB.
  */
 bool
 yb_is_publishable_relation(Relation rel)
 {
 	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
 			(yb_cdcsdk_stream_tables_without_primary_key ||
-			 YBRelationHasPrimaryKey(rel)));
+			 YBRelationHasPrimaryKey(rel)) &&
+			!yb_is_internal_table_to_be_excluded_from_cdc(RelationGetRelid(rel)));
+}
+
+/*
+ * Returns true if the table is created internally by a YugabyteDB
+ * feature/extension and CDC must never stream it.
+ *
+ * Must exclude the same tables as the master
+ * (CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream): a slot fails
+ * to stream if it asks for a table that the master left out of its stream.
+ */
+static bool
+yb_is_internal_table_to_be_excluded_from_cdc(Oid relid)
+{
+	char	   *relname = get_rel_name(relid);
+	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
+
+	return relname != NULL && nspname != NULL &&
+		strcmp(nspname, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0 &&
+		(strcmp(relname, YB_XCLUSTER_DDL_QUEUE_TABLE_NAME) == 0 ||
+		 strcmp(relname, YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME) == 0);
 }
 
 /*

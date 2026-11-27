@@ -247,10 +247,15 @@ extern void PortalDefineQuery(Portal portal,
 							  CachedPlan *cplan);
 extern PlannedStmt *PortalGetPrimaryStmt(Portal portal);
 extern void PortalCreateHoldStore(Portal portal);
+extern void DropQueryEnvPortals(QueryEnvironment *queryEnv);
 extern void PortalHashTableDeleteAll(void);
 extern bool ThereAreNoReadyPortals(void);
 extern void HoldPinnedPortals(void);
 extern void ForgetPortalSnapshots(void);
+
+/* YB declarations */
 extern void YbForEachPortal(void (*callback) (Portal portal));
+extern bool YbHasHoldablePortal(void);
+extern void YbConnMgrLatchIfCursorExcluded(Portal portal);
 
 #endif							/* PORTAL_H */

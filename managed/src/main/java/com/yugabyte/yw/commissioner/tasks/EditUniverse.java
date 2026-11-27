@@ -32,12 +32,15 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -74,10 +77,9 @@ public class EditUniverse extends EditUniverseTaskBase {
   // Here, not in the handlers: the v2 edit skips UniverseCRUDHandler's checks.
   private void validateManagedLoadBalancerChanges() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    Cluster primaryAfterEdit =
-        taskParams().getPrimaryCluster() != null
-            ? taskParams().getPrimaryCluster()
-            : universe.getUniverseDetails().getPrimaryCluster();
+    Map<UUID, Cluster> clustersAfterEdit = new LinkedHashMap<>();
+    universe.getUniverseDetails().clusters.forEach(c -> clustersAfterEdit.put(c.uuid, c));
+    taskParams().clusters.forEach(c -> clustersAfterEdit.put(c.uuid, c));
     CommunicationPorts currentPorts = universe.getUniverseDetails().communicationPorts;
     CommunicationPorts ports =
         taskParams().communicationPorts != null ? taskParams().communicationPorts : currentPorts;
@@ -87,7 +89,7 @@ public class EditUniverse extends EditUniverseTaskBase {
         continue;
       }
       ManagedLoadBalancerUtil.validateEditedCluster(
-          universe, primaryAfterEdit, current, cluster, confGetter, cloudAPIFactory);
+          universe, clustersAfterEdit.values(), current, cluster, confGetter, cloudAPIFactory);
       // The edit ensures the load balancers with these ports last, after the rollback checkpoint.
       List<Integer> forwarded =
           ManageLoadBalancerGroup.getForwardedPorts(cluster.userIntent, ports);
@@ -178,10 +180,24 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      // A turn-off leaves the certs alone: extra names harm no client, and the next cert
+      // regeneration drops them.
+      Set<String> lbCertNodes =
+          getLoadBalancerCertNodes(taskParams(), ManagedLoadBalancerUtil::isEnabled);
       // Before VM creation and tserver restarts, so that a cloud permission error fails the edit
       // first. This creates the load balancers of new regions and reconciles the existing ones.
       for (Cluster cluster : clusters) {
         createEnsureManagedLoadBalancerTasks(cluster);
+      }
+      Predicate<String> isLbCertStale = isLoadBalancerCertStale();
+      // After ensure: it saves the addresses the certs carry.
+      if (!lbCertNodes.isEmpty()) {
+        // Rollback would restore the old names but not the certs on the nodes. Not the Once
+        // variant: this one may be skipped, and a later step must still add its own.
+        createMarkRollbackUnsafeTask()
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
+            .setShouldRunPredicate(t -> lbCertNodes.stream().anyMatch(isLbCertStale));
+        createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
       }
       // GCP proxies need 0.0.0.0 once the LB is on. A retry rechecks every node: the last attempt
       // may have saved the state and stopped mid-rebind.
@@ -197,7 +213,9 @@ public class EditUniverse extends EditUniverseTaskBase {
                           || lbState.getLoadBalancers().stream()
                               .noneMatch(lb -> lb.getClusterUuid().equals(c.uuid)))
               .map(c -> c.uuid)
-              .collect(Collectors.toSet()));
+              .collect(Collectors.toSet()),
+          lbCertNodes,
+          isLbCertStale);
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {
@@ -238,6 +256,7 @@ public class EditUniverse extends EditUniverseTaskBase {
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();
       }
+      createDeleteOrphanedManagedLoadBalancerTasks();
       if (taskParams().communicationPorts != null
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
@@ -341,8 +360,7 @@ public class EditUniverse extends EditUniverseTaskBase {
         .anyMatch(
             c ->
                 prevState.getClusterByUuid(c.uuid) != null
-                    && ManagedLoadBalancerUtil.isTurnedOnOrOff(
-                        prevState.getClusterByUuid(c.uuid), c))) {
+                    && ManagedLoadBalancerUtil.isChanged(prevState.getClusterByUuid(c.uuid), c))) {
       return false;
     }
     try {

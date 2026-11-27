@@ -1,7 +1,8 @@
 ## Making changes and pushing to upstream
 Never operate on master branch directly. Always create a new local branch and work on that.
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
-arc and phorge are used to review, run lab tests, and merge changes. This should ONLY be done by the human.
+Changes are reviewed, tested, and merged as GitHub PRs: publish with the `create-pr` skill and backport with `/backport-commit`. Merging is done by the human.
+Phorge (`arc diff` / `arc land`) is being retired: it stops accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21. Use it only when the user explicitly asks for a Phorge diff. `arc land` is always done by the human.
 
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
@@ -37,7 +38,7 @@ When the source material is a customer report:
 
 ### Scrub checklist before any public publish
 
-Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
+Before running `create-pr.sh`, `arc diff`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
 
 - [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names.
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
@@ -49,6 +50,26 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 - [ ] Branch name describes the change, not a customer — it becomes the public PR head ref when the branch is pushed.
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
+
+### Security and customer-sensitive changes
+
+Every fix here is public the moment it is pushed, usually before the release branches have it and always before patched builds ship. What the PR, the commits and the review say decides how much that window gives away. Pick a tier, and keep the rest in the JIRA ticket.
+
+| Tier | Applies to | Public PR, commits, branch | JIRA only |
+|---|---|---|---|
+| `public-cve` | A published CVE in a dependency we bundle or link (Postgres, JRE, Go modules, base images) | Component, old and new version, CVE IDs | Scan reports, affected images and releases, what stays unfixed and why |
+| `embargoed` | A defect in our own code, or a finding that is not public yet | What the code does ("validate the length before the copy"); no CVE ID, no impact, nothing that marks it as a security fix | Everything, including the wording to publish later |
+| `customer` | A change that exists because of one customer | What the code does; no customer | The customer and the case |
+
+For every tier:
+
+- **The JIRA key in the title is the link.** A security fix is tracked in a JIRA ticket of type Vulnerability, never a GitHub issue. The ticket holds the CVE IDs, the affected and target releases and the analysis, and JIRA links the PRs to it by key, so the internal answer to "what fixed this, and where" does not depend on anything written on GitHub.
+- **Never say in a public artifact what is still exposed**: which releases, branches, images or components lack the fix, or how the defect could be used against YugabyteDB. This holds for PR descriptions, review comments, replies and closing comments.
+- **The merged commit message stays as plain as the PR.** Fuller wording goes into the release notes and the disclosure page after fixed builds ship.
+- **Open release-branch PRs together with the master PR** so they can merge the same day. A fix that sits on master alone shows what the released branches lack.
+- **Review discussion that needs the sensitive context goes in the ticket**, with a pointer from the PR.
+
+`create-pr.sh -s <tier>` checks the title, body, commit messages and branch name against the tier before it pushes. The `/sensitive-change` skill walks through the whole flow.
 
 ## Git workflow on branches with an open PR
 
@@ -122,14 +143,14 @@ for the block below it, not narration of the change you just made. Don't restate
 retelling of the diff. Padding costs reviewers real time and rots as the code moves. Full
 rule and reasoning:
 [`AGENTS.md` § Prose discipline](../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume);
-the `create-pr` and `create-diff` skills re-check it before publishing.
+the `create-pr` skill re-checks it before publishing.
 
 ## Commit messages
 
 - Use backticks for method, class, and other code references.
 - Prefer `DocDB` over `docdb` as a component prefix.
 - When referencing other commits (for instance as the cause of a regression), use the form
-  `<COMMIT_HASH>/<DIFF_ID>`.
+  `<COMMIT_HASH>/#<PR>`, or `<COMMIT_HASH>/D<id>` for a commit that landed via Phorge.
 - The body carries the **why** — the constraint, the failure it fixes, the decision a
   reader would otherwise have to reverse-engineer. Not a file-by-file retelling of the
   diff (`git show` does that better). A commit whose reasoning is obvious from the subject

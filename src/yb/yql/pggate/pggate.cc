@@ -181,7 +181,8 @@ Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const YbcPgTableLocalityInfo& locality_info,
     const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_info);
+    return PgSelectIndex::Make(
+        pg_session, index_id, locality_info, IndexSkipIntentsInfo(skip_intents_info));
   }
   return PgSelect::Make(
       pg_session, table_id, locality_info, skip_intents_info, MakeIndexQueryInfo(index_id, params));
@@ -1481,8 +1482,17 @@ Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(
     PgStatement* handle, PgExpr* target, bool is_for_secondary_index) {
-  return VERIFY_RESULT_REF(
-      GetStatementAs<PgDml>(handle)).AppendTarget(target, is_for_secondary_index);
+  SCHECK(target->is_colref(), InvalidArgument, "target must be a column reference");
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle))
+      .AppendTarget(target, is_for_secondary_index);
+}
+
+Status PgApiImpl::DmlAppendAggregateTarget(PgStatement* handle, PgExpr* target, int index) {
+  SCHECK(target->is_aggregate(), InvalidArgument, "target must be an aggregate");
+  SCHECK_GE(index, 0, InvalidArgument, "aggregate tuple index must be non-negative");
+  down_cast<PgAggregateOperator*>(target)->set_index(index);
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle))
+      .AppendTarget(target, false /* is_for_secondary_index */);
 }
 
 Status PgApiImpl::DmlAppendQual(
@@ -2219,13 +2229,11 @@ Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time
 }
 
 Status PgApiImpl::RecreateTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RecreateTransaction();
+  return pg_txn_manager_->RecreateTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::RestartTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RestartTransaction();
+  return pg_txn_manager_->RestartTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::ResetTransactionReadPoint(bool is_catalog_snapshot) {
@@ -2237,11 +2245,15 @@ Status PgApiImpl::EnsureReadPoint() {
 }
 
 Status PgApiImpl::RestartReadPoint() {
-  return pg_txn_manager_->RestartReadPoint();
+  return pg_txn_manager_->RestartReadPoint(ClearSessionState());
 }
 
-bool PgApiImpl::IsRestartReadPointRequested() {
-  return pg_txn_manager_->IsRestartReadPointRequested();
+void PgApiImpl::ResetRetryReadLimitCaps() {
+  pg_txn_manager_->ResetRetryReadLimitCaps();
+}
+
+bool PgApiImpl::IsReadRestartRetryInProgress() const {
+  return pg_txn_manager_->IsReadRestartRetryInProgress();
 }
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
@@ -2299,6 +2311,11 @@ Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
 }
 
 Status PgApiImpl::SetDdlStateInPlainTransaction() {
+  // Collect the outcome of the writes still buffered or in flight first. A trigger that registers
+  // a catalog change, such as the hint table's, runs before its statement's write is flushed. A
+  // conflict of that write must surface before the transaction has DDL state, while the query layer
+  // can still retry the statement (#39047).
+  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::EnterDdlTxnMode()));
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->SetDdlStateInPlainTransaction();
 }

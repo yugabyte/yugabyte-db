@@ -62,5 +62,6 @@ extern void DropAllPreparedStatements(void);
 /* YB: */
 extern void YbForceDropPreparedStatement(PreparedStatement *entry);
 extern void YbDropProtoPrepStmtIfInvalid(PreparedStatement *entry);
+extern bool YbHasSqlPreparedStatement(void);
 
 #endif							/* PREPARE_H */

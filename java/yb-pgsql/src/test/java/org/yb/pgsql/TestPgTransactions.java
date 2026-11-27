@@ -53,8 +53,8 @@ import static org.yb.AssertionWrappers.*;
 public class TestPgTransactions extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
-  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
-  // cross-flag validators in common_flags.cc, so a single parameter drives all three.
+  // Object locking and transactional DDL are validated against each other in common_flags.cc,
+  // so a single parameter drives both. Concurrent DDL moves with them.
   private final boolean useLegacyDDLMode;
 
   public TestPgTransactions(boolean useLegacyDDLMode) {

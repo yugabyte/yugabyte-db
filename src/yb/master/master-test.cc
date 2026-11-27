@@ -899,9 +899,8 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   // A tier tserver outside every block takes no replica: with blocks for zone0 and zone1 only,
-  // the hdd tserver in zone2 does not count and the placement is one short. The untiered
-  // placement with the same blocks is accepted on a quorum; the ssd-only tserver in zone0 is
-  // where the balancer would have completed the tiered tablet.
+  // the hdd tserver in zone2 does not count and the placement is one short. The ssd-only tserver
+  // in zone0 counts for the untiered placement with the same blocks, not for the tiered one.
   ASSERT_RESULT(register_ts("ts-ssd", "zone0", kDefaultStorageTier));
   auto outside = placement("hdd", 3);
   add_block(&outside, "zone0", 1);
@@ -3166,6 +3165,8 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
   UNUSED_TS_ADMIN_METHOD(TableBackfillChunk, tserver::TableBackfillChunkRequestPB,
                          tserver::TableBackfillChunkResponsePB)
   UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
+                         tserver::ChangeMetadataResponsePB)
+  UNUSED_TS_ADMIN_METHOD(MarkNonConcurrentIndexDone, tablet::ChangeMetadataRequestPB,
                          tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)
