@@ -1,4 +1,5 @@
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 
 #ifndef KIWI_VAR_H
@@ -275,13 +276,19 @@ static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 	return 0;
 }
 
+/*
+ * YB: Match GUC names case-insensitively, as postgres does in
+ * guc_name_compare(). Needed for placeholder GUCs, which postgres reports under
+ * the spelling that created them, unlike other GUCs, which it reports under
+ * their defined name.
+ */
 static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
 {
 	if (vars->size == 0)
 		return NULL;
 
 	for (int i = 0; i < vars->size; i++) {
-		if (strcmp(vars->vars[i].name, name) == 0)
+		if (strcasecmp(vars->vars[i].name, name) == 0)
 			return &vars->vars[i];
 	}
 	return NULL;
@@ -438,7 +445,7 @@ static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
 	int idx_to_remove = -1;
 	for (int i = 0; i < vars->size; i++) {
 		if (vars->vars[i].name_len == name_len &&
-		    strcmp(vars->vars[i].name, name) == 0) {
+		    strcasecmp(vars->vars[i].name, name) == 0) {
 			idx_to_remove = i;
 			break;
 		}
