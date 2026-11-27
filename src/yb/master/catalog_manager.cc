@@ -8715,19 +8715,18 @@ Result<bool> NeedTwoPhaseDeleteForColumn(
     return true;
   }
 
-  auto it = states.begin();
+  int index = 0;
   if (req.has_sub_transaction_id()) {
     const SubTransactionId savepoint_sub_txn = req.has_innermost_savepoint_sub_transaction_id()
         ? req.innermost_savepoint_sub_transaction_id()
         : req.sub_transaction_id();
-    it = std::find_if(states.begin(), states.end(), [savepoint_sub_txn](const auto& state) {
-      return state.sub_transaction_id() >= savepoint_sub_txn;
-    });
-    if (it == states.end()) {
+    // The same lookup as ROLLBACK TO's, which undoes the states from this index on.
+    index = YsqlFirstDdlStateAtOrAfterSubTxn(pb, savepoint_sub_txn);
+    if (index == states.size()) {
       return true;
     }
   }
-  const auto& state = *it;
+  const auto& state = states[index];
   if (state.contains_create_table_op()) {
     return false;
   }
