@@ -127,9 +127,15 @@ public class PlacementInfoUtil {
       return false;
     }
     Map<UUID, Integer> replicaCountOld = new HashMap<>();
-    oldPlacementInfo.azStream().forEach(az -> replicaCountOld.put(az.uuid, az.replicationFactor));
+    oldPlacementInfo
+        .azStream()
+        .filter(az -> az.numNodesInAZ > 0) // Counting only non-empty zones.
+        .forEach(az -> replicaCountOld.put(az.uuid, az.replicationFactor));
     Map<UUID, Integer> replicaCountNew = new HashMap<>();
-    newPlacementInfo.azStream().forEach(az -> replicaCountNew.put(az.uuid, az.replicationFactor));
+    newPlacementInfo
+        .azStream()
+        .filter(az -> az.numNodesInAZ > 0) // Counting only non-empty zones.
+        .forEach(az -> replicaCountNew.put(az.uuid, az.replicationFactor));
     return !replicaCountOld.equals(replicaCountNew);
   }
 
