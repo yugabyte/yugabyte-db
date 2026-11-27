@@ -3111,10 +3111,10 @@ Status GetChangesForCDCSDK(
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
         // safe_hybrid_time_req, and CHANGE_METADATA_OP messages above the consistent snapshot time
-        // (all of them if the stream has no consistent snapshot time): they are not MVCC-tracked,
-        // so a previous response's safe time can pass one that was not yet committed. Skipping it
-        // would leave a stale schema in cached_schema_details. Processing one again only resends
-        // its DDL record.
+        // (all of them if the stream has no consistent snapshot time): one without use_mvcc is not
+        // MVCC-tracked, so a previous response's safe time can pass it before it is committed.
+        // Skipping it would leave a stale schema in cached_schema_details. Processing one again
+        // only resends its DDL record.
         uint64_t commit_time_threshold =
             GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
         const auto commit_time = GetTransactionCommitTime(msg);

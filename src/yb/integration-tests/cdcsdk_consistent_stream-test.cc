@@ -28,6 +28,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 
+DECLARE_bool(change_metadata_use_mvcc);
+
 namespace yb {
 namespace cdc {
 
@@ -1324,12 +1326,14 @@ void SetRejectMode(
 
 }  // namespace
 
-// A CHANGE_METADATA_OP is not MVCC-tracked, so the leader's safe time can pass its hybrid time
-// before the op is majority replicated. A GetChanges call in that window returns that safe time,
-// and the next call must still apply the op to the cached schema. Followers that reject appends
-// but ack heartbeats hold the op uncommitted while the leader keeps its lease.
+// A CHANGE_METADATA_OP without use_mvcc is not MVCC-tracked, so the leader's safe time can pass its
+// hybrid time before the op is majority replicated. A GetChanges call in that window returns that
+// safe time, and the next call must still apply the op to the cached schema. Followers that reject
+// appends but ack heartbeats hold the op uncommitted while the leader keeps its lease.
 void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
     SchemaChangeBelowSafeTime change, TransactionalDdl transactional_ddl) {
+  // As for an op created by an older leader or with the flag off.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_change_metadata_use_mvcc) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) =
       transactional_ddl.get();
   ToggleDDLMode(/* use_legacy = */ !transactional_ddl);
