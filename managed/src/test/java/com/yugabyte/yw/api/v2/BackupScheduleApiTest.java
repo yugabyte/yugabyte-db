@@ -49,13 +49,13 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.ebean.DB;
@@ -359,16 +359,17 @@ public class BackupScheduleApiTest extends FakeDBApplication {
 
   @Test
   public void createNameConflict() throws ApiException {
-    YBATask first = backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), null);
+    YBATask first =
+        backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), null);
 
     ApiException e =
         assertThrows(
             ApiException.class,
-            () -> backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), null));
+            () ->
+                backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), null));
     assertEquals(409, e.getCode());
     assertEquals(BackupScheduleHandler.NAME_CONFLICT, error(e).get("code").asText());
-    assertEquals(
-        first.getResourceUuid().toString(), error(e).get("backup_schedule_uuid").asText());
+    assertEquals(first.getResourceUuid().toString(), error(e).get("backup_schedule_uuid").asText());
     assertEquals("CREATING", error(e).get("backup_schedule_state").asText());
     submittedCreate(1);
   }
@@ -424,11 +425,11 @@ public class BackupScheduleApiTest extends FakeDBApplication {
         .when(mockBackupHelper)
         .validateIncrementalScheduleFrequency(eq(DAY), eq(DAY), any(Universe.class));
     assertCreateError(createSpec("a").incrementalInterval(duration(1, TimeUnitType.DAYS)), 400);
-    assertCreateError(
-        createSpec("a").retention(duration(Long.MAX_VALUE, TimeUnitType.YEARS)), 400);
+    assertCreateError(createSpec("a").retention(duration(Long.MAX_VALUE, TimeUnitType.YEARS)), 400);
     assertCreateError(createSpec("a").retention(duration(5, TimeUnitType.NANOSECONDS)), 400);
     verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
-    assertEquals(0, Schedule.getAllByCustomerUUIDAndType(customer.getUuid(), TaskType.CreateBackup).size());
+    assertEquals(
+        0, Schedule.getAllByCustomerUUIDAndType(customer.getUuid(), TaskType.CreateBackup).size());
   }
 
   private ApiException assertCreateError(BackupScheduleSpec spec, int code) {
@@ -444,8 +445,10 @@ public class BackupScheduleApiTest extends FakeDBApplication {
   public void createIsIdempotent() throws ApiException {
     String key = UUID.randomUUID().toString();
 
-    YBATask first = backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), key);
-    YBATask retry = backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), key);
+    YBATask first =
+        backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), key);
+    YBATask retry =
+        backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), key);
 
     assertEquals(first.getTaskUuid(), retry.getTaskUuid());
     assertEquals(first.getResourceUuid(), retry.getResourceUuid());
@@ -460,7 +463,8 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     assertCreateError(createSpec("x"), 400);
 
     assertFalse(
-        Schedule.maybeGetScheduleByUniverseWithName("x", universe.getUniverseUUID(), customer.getUuid())
+        Schedule.maybeGetScheduleByUniverseWithName(
+                "x", universe.getUniverseUUID(), customer.getUuid())
             .isPresent());
   }
 
