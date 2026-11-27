@@ -126,8 +126,8 @@ Status IncrementAllDBCatalogVersions(
     PGConn& conn,
     IsBreakingCatalogVersionChange is_breaking = IsBreakingCatalogVersionChange::kTrue);
 
-// Waits until NOTIFY works on conn: the first NOTIFY in the cluster fails while LISTEN/NOTIFY
-// creates its internal objects.
+// The first NOTIFY in a cluster fails while LISTEN/NOTIFY creates its objects; waits until one
+// works.
 Status WaitForListenNotifyReady(PGConn& conn);
 
 void GenerateCSVFileForCopy(

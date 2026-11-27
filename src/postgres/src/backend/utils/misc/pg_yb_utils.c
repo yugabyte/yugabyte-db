@@ -1291,11 +1291,8 @@ YBOnPostgresBackendShutdown()
 }
 
 /*
- * Wait until this node's shared catalog version reaches 'version', giving up
- * after the bound below. With stop_on_abort_interrupt, also return once an
- * interrupt that would abort the backend's work is pending (see
- * YBHasPendingAbortInterrupt), for callers that hold interrupts while they
- * wait.
+ * With stop_on_abort_interrupt, also return once an abort interrupt is pending,
+ * for callers that hold interrupts while they wait.
  */
 static void
 ybWaitForSharedCatalogVersion(uint64_t version, bool stop_on_abort_interrupt)
@@ -1358,7 +1355,6 @@ ybWaitForSharedCatalogVersion(uint64_t version, bool stop_on_abort_interrupt)
 		 */
 		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 			return;
-		/* The backend is exiting or its client canceled; don't warn. */
 		if (stop_on_abort_interrupt && YBHasPendingAbortInterrupt())
 			return;
 		/* Avoid flooding the log file, but always print for the first time. */
@@ -1395,10 +1391,6 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 								  false /* stop_on_abort_interrupt */ );
 }
 
-/*
- * Like YbWaitForSharedCatalogVersionToCatchup, but return early once an abort
- * interrupt is pending, for a caller that holds interrupts while it waits.
- */
 void
 YbWaitForSharedCatalogVersionToCatchupUnlessInterrupted(uint64_t version)
 {

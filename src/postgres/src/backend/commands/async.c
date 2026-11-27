@@ -187,10 +187,7 @@
  */
 #define YB_ASYNC_QUEUE_BEGIN_MARKER "__yb_begin__"
 
-/*
- * Begin marker of a replicated transaction that changed the catalog, see
- * YB_NOTIF_CATALOG_CHANGED_KEY.
- */
+/* BEGIN marker of a transaction that changed the catalog. */
 #define YB_ASYNC_QUEUE_BEGIN_CATALOG_MARKER "__yb_begin_catalog__"
 
 /*
@@ -601,13 +598,8 @@ static FormData_pg_attribute *YbNotificationsAtts[] = {
 #define YB_NOTIF_SEQ_KEY "seq"
 
 /*
- * Key in extra_options set when the sending transaction holds DDL state, so it
- * changes the catalog at commit. Before delivering such a transaction's
- * notifications, a listener waits for its tserver to have the catalog version,
- * with the exceptions listed at ybWaitForNotifyingTxnCatalogVersion. Only DDL
- * run in the transaction's own block (transactional DDL) sets the state; DDL
- * committed in a separate DDL transaction doesn't, so its transaction isn't
- * marked.
+ * Key in extra_options set when the sending transaction ran DDL in its own
+ * block (transactional DDL). See ybWaitForNotifyingTxnCatalogVersion.
  */
 #define YB_NOTIF_CATALOG_CHANGED_KEY "catalog_changed"
 
@@ -624,10 +616,9 @@ static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
 /*
- * Whether the buffered transaction has a YB_NOTIF_CATALOG_CHANGED_KEY row. This
- * is per streamed transaction, not per sender: DocDB transactions that commit
- * at the same hybrid time stream as one, so a sender without DDL grouped with
- * one that changed the catalog is held too.
+ * Whether the buffered transaction has a YB_NOTIF_CATALOG_CHANGED_KEY row.
+ * Transactions that commit at the same hybrid time stream as one, so they are
+ * marked together.
  */
 static bool ybNotifsPollerPendingCatalogChanged = false;
 
@@ -683,11 +674,8 @@ static bool ybNotifsPollerPermanentError = false;
  * the poller it registered under, so this state is reset when the backend
  * registers under a different poller (see Exec_ListenPreCommit).
  *
- * catalog_changed is set when the BEGIN marker says the transaction changed
- * the catalog. catalog_wait_done is set once the wait for that catalog version
- * has ended, for whatever reason (see ybWaitForNotifyingTxnCatalogVersion):
- * the version was reached, or the wait gave up and the notification is
- * delivered without it.
+ * catalog_changed and catalog_wait_done track the catalog version wait for the
+ * current transaction, see ybWaitForNotifyingTxnCatalogVersion.
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
@@ -2833,7 +2821,6 @@ asyncQueueProcessPageEntries(volatile QueuePosition *current,
 					/* payload follows channel name */
 					char	   *payload = qe->data + strlen(channel) + 1;
 
-					/* YB: see ybWaitForNotifyingTxnCatalogVersion */
 					if (IsYugaByteEnabled())
 						ybWaitForNotifyingTxnCatalogVersion();
 
@@ -3951,10 +3938,7 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 	MemoryContextSwitchTo(oldcontext);
 }
 
-/*
- * Replace the pending transaction's BEGIN entry, the first one, with a BEGIN
- * entry that tells listeners the transaction changed the catalog.
- */
+/* Make the pending transaction's BEGIN entry (the first) a catalog one. */
 static void
 ybNotifsPollerMarkPendingCatalogChanged(void)
 {
@@ -4070,30 +4054,16 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 }
 
 /*
- * PG sends a transaction's invalidations before signaling listeners. This
- * tserver gets the catalog version of a notifying transaction that changed the
- * catalog only after its commit (lock release or heartbeat), so wait for it
- * before delivering the transaction's first notification. The next statement
- * then refreshes the caches and gets the transaction's invalidation messages:
- * the tserver publishes the version before it stores the messages, but holds
- * its lock_ across both, and the message-list RPC takes lock_ too (see
- * TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages).
+ * PG sends a transaction's invalidations before signaling listeners, but this
+ * tserver learns a notifying DDL transaction's catalog version only later, from
+ * the lock release or a heartbeat. So before delivering such a transaction's
+ * first notification, wait until this tserver has master's current catalog
+ * version.
  *
- * The notification is delivered without the version when the wait times out,
- * the shared version is uninitialized, the version read fails, or an abort
- * interrupt (terminate, a cancel that isn't held off, lost client, idle
- * timeout) is pending; see YBHasPendingAbortInterrupt.
- *
- * The caller has already advanced the queue position past this entry, and an
- * error here would also end an idle listener's connection, so a failed read is
- * logged and the notification delivered. errfinish zeroes the holdoff counts,
- * and this can run inside the client read that holds off cancel interrupts
- * (SocketBackend), so restore them.
- *
- * Interrupts are held so that a terminate isn't taken inside this
- * transaction, where Async_UnlistenOnExit fails and the backend crashes. They
- * also keep pggate from cutting the read short, so an interrupt that arrives
- * during the read ends the wait only after the read returns.
+ * The wait is best effort: on a timeout, a failed read or a pending abort
+ * interrupt, the notification is delivered anyway. Errors are caught because
+ * the queue position is already past this entry. Interrupts are held because
+ * a terminate taken inside this transaction makes Async_UnlistenOnExit fail.
  */
 static void
 ybWaitForNotifyingTxnCatalogVersion(void)
@@ -4134,6 +4104,7 @@ ybWaitForNotifyingTxnCatalogVersion(void)
 	{
 		ErrorData  *edata;
 
+		/* errfinish zeroed the holdoff counts. */
 		InterruptHoldoffCount = save_interrupt_holdoff + 1;
 		QueryCancelHoldoffCount = save_cancel_holdoff;
 		MemoryContextSwitchTo(oldcontext);

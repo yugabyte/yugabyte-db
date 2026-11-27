@@ -5637,17 +5637,15 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
 class PgObjectLocksNotifyTest : public PgObjectLocksTest {
  protected:
   struct NotifyAfterCatalogChangeOptions {
-    // Whether the listener fails a lookup of t2 first, leaving a negative cache entry for it.
+    // The listener looks up t2 first, caching the miss.
     bool lookup_before_create = false;
-    // Runs on ts1. Its transaction inserts a row named marker_name into deployments.
+    // Runs on ts1 and inserts marker_name into deployments.
     std::string writer_sql;
     std::string marker_name;
-    // Whether a plain NOTIFY is sent from another ts1 connection once the marker row is visible on
-    // ts2, instead of the writer sending one.
+    // A plain NOTIFY is sent from ts1 once the marker row is visible on ts2.
     bool notify_after_marker = false;
-    // Whether the listener's notification must arrive only after ts2's release is unblocked.
+    // The notification must arrive only after ts2's release is unblocked.
     bool expect_held = false;
-    // Whether t2 exists after the writer commits and is read on ts2.
     bool read_t2 = true;
   };
 
@@ -5657,14 +5655,10 @@ class PgObjectLocksNotifyTest : public PgObjectLocksTest {
     opts->extra_master_flags.emplace_back("--ysql_yb_enable_listen_notify=true");
   }
 
-  // As in PG, where a committing transaction sends its invalidations before it signals listeners,
-  // a listener must see the catalog changes of the transaction that notified it. A listener on ts2
-  // gets notifications while ts2 learns the writer's catalog version only from the global lock
-  // release, which fails on ts2 until the listener is seen waiting for that version or the
-  // notification arrives.
+  // A listener on ts2 must see the catalog changes of the transaction that notified it. ts2 gets
+  // the writer's catalog version only once its lock release is unblocked.
   void TestNotifyAfterCatalogChange(const NotifyAfterCatalogChangeOptions& options);
 
-  // Connects the writer to ts and creates the deployments table once NOTIFY works.
   Result<PGConn> ConnectWriterAndWaitForNotifyReady(ExternalTabletServer* ts) {
     auto writer = VERIFY_RESULT(ConnectToTs(*ts));
     RETURN_NOT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
@@ -5672,9 +5666,7 @@ class PgObjectLocksNotifyTest : public PgObjectLocksTest {
     return writer;
   }
 
-  // Keeps ts behind on catalog versions: its heartbeat catalog refresh is off, and the global lock
-  // release, which also carries a DDL's catalog version, fails on it until
-  // TEST_fail_release_object_locks is cleared. The returned guard resets all three flags.
+  // Keeps ts behind on catalog versions until TEST_fail_release_object_locks is cleared.
   Result<ScopeExit<std::function<void()>>> BlockCatalogVersionOn(ExternalTabletServer* ts) {
     RETURN_NOT_OK(
         cluster_->SetFlag(ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
@@ -5699,8 +5691,6 @@ class PgObjectLocksNotifyTest : public PgObjectLocksTest {
         90s * kTimeMultiplier, "notification");
   }
 
-  // Logged by the backend with this pid when it finds its tserver's catalog version behind the
-  // one it waits for.
   static std::string CatalogVersionWaitLog(int pid) {
     return Format("[$0] LOG:  waiting for shared catalog version to reach", pid);
   }
@@ -5712,8 +5702,7 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
   auto* ts2 = cluster_->tablet_server(1);
   auto writer = ASSERT_RESULT(ConnectWriterAndWaitForNotifyReady(ts1));
 
-  // Connections are opened before ts2 goes stale: a new connection waits at startup for its
-  // tserver to reach the latest catalog version.
+  // Connect before ts2 goes stale: a new connection waits for the latest catalog version.
   auto notifier = ASSERT_RESULT(ConnectToTs(*ts1));
   auto listener = ASSERT_RESULT(ConnectToTs(*ts2));
   auto observer = ASSERT_RESULT(ConnectToTs(*ts2));
@@ -5746,8 +5735,6 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
         if (options.notify_after_marker) {
           ASSERT_OK(notifier.Execute("NOTIFY ch"));
         }
-        // Until the release is unblocked ts2 can't reach the writer's catalog version, so a
-        // listener that waits for it can deliver only after this point.
         ASSERT_OK(WaitFor(
             [&arrived, &listener_waiting]() -> Result<bool> {
               return arrived || listener_waiting.IsEventOccurred();
@@ -5757,8 +5744,6 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
         ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"));
       });
 
-  // No statement goes to the listener before the notification: the listener's backend sends it
-  // while idle.
   ASSERT_OK(WaitForNotification(listener));
   const auto held = release_unblocked.load();
   arrived = true;
@@ -5802,8 +5787,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWithCachedMissSeesRelationCreatedInDoBlo
   });
 }
 
-// A notification from a transaction without DDL isn't held while the listener's tserver lacks
-// another transaction's catalog version.
+// A notification from a transaction without DDL isn't held.
 TEST_F(PgObjectLocksNotifyTest, NotifyWithoutDdlIsNotHeldForStaleCatalog) {
   TestNotifyAfterCatalogChange({
       .writer_sql = "BEGIN; CREATE TABLE t3 (k INT); INSERT INTO deployments VALUES ('t3'); COMMIT",
@@ -5823,8 +5807,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerSeesRelationCreatedBeforeNotify) {
   });
 }
 
-// If the listener can't read the catalog version to wait for, it still delivers the notification,
-// as it does when that wait times out.
+// A failed catalog version read still delivers the notification.
 TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFails) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -5846,9 +5829,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFa
   }
 }
 
-// A listener waiting for a notifying transaction's catalog version exits promptly on SIGTERM,
-// without crashing. When the notification queue is full, the poller sends SIGTERM to the slowest
-// listener and escalates to SIGKILL after 10 s; pg_terminate_backend sends the same SIGTERM.
+// A waiting listener exits on SIGTERM without crashing, well before the poller's SIGKILL (10 s).
 TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -5856,7 +5837,6 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate
 
   auto listener = ASSERT_RESULT(ConnectToTs(*ts2));
   auto observer = ASSERT_RESULT(ConnectToTs(*ts2));
-  // libpq passes a FATAL that arrives while the connection is idle to the notice processor.
   std::string listener_notices;
   listener.SetNoticeProcessor(
       [](void* arg, const char* message) { *static_cast<std::string*>(arg) += message; },
@@ -5873,8 +5853,6 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate
   });
   ASSERT_OK(listener_waiting.WaitFor(60s * kTimeMultiplier));
   ASSERT_OK(observer.FetchFormat("SELECT pg_terminate_backend($0)", listener_pid));
-  // ts2's release stays blocked, so the listener can't get the catalog version it waits for. It
-  // must exit before the poller's SIGKILL would.
   const auto closed = WaitFor(
       [&listener]() -> Result<bool> { return !listener.HasNotification().ok(); },
       10s, "listener connection closed");
@@ -5883,16 +5861,13 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate
   LOG(INFO) << "listener closed: " << closed << ", notices: " << listener_notices;
 
   ASSERT_OK(closed);
-  // SIGTERM also interrupts the backend's RPCs, so its notify transaction can't commit and the
-  // FATAL it sends isn't always the terminate's own.
   ASSERT_STR_CONTAINS(listener_notices, "FATAL:");
-  // A backend that crashes while exiting makes the postmaster end every other backend on ts2.
+  // A crash would have restarted every backend on ts2.
   ASSERT_OK(observer.Fetch("SELECT 1"));
 }
 
-// A notification can also be delivered after the listener's own statement completes and before
-// ReadyForQuery, while the client still waits. A cancel there ends the catalog version wait, so
-// the statement isn't held for the wait's full timeout.
+// A notification delivered between a statement's completion and ReadyForQuery doesn't hold the
+// statement for the wait's full timeout: a cancel ends the wait.
 TEST_F(PgObjectLocksNotifyTest, ListenerWaitingBeforeReadyForQueryReturnsOnCancel) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -5901,8 +5876,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingBeforeReadyForQueryReturnsOnCance
   ASSERT_OK(writer.Execute("INSERT INTO gate VALUES (1)"));
 
   auto listener = ASSERT_RESULT(ConnectToTs(*ts2));
-  // Another listener on ts2, idle, whose wait shows that the poller has queued the notification
-  // and signaled the node's listeners.
+  // Its wait shows the notification has been queued.
   auto idle_listener = ASSERT_RESULT(ConnectToTs(*ts2));
   auto gate_holder = ASSERT_RESULT(ConnectToTs(*ts2));
   auto observer = ASSERT_RESULT(ConnectToTs(*ts2));
@@ -5913,11 +5887,10 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingBeforeReadyForQueryReturnsOnCance
   const auto listener_pid = listener.BackendPID();
   ASSERT_OK(listener.Execute("LISTEN ch"));
   ASSERT_OK(idle_listener.Execute("LISTEN ch"));
-  // A daemon has one log listener at a time, so the listener's LogWaiter is created only once the
-  // idle listener's has fired.
+  // A daemon keeps one log listener at a time.
   LogWaiter idle_listener_waiting(ts2, CatalogVersionWaitLog(idle_listener.BackendPID()));
 
-  // A row lock, so its release doesn't go through the global lock release blocked below.
+  // A row lock: its release doesn't go through the blocked global lock release.
   ASSERT_OK(gate_holder.Execute("BEGIN"));
   ASSERT_OK(gate_holder.Fetch("SELECT k FROM gate WHERE k = 1 FOR UPDATE"));
 
@@ -5939,7 +5912,6 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingBeforeReadyForQueryReturnsOnCance
 
   ASSERT_OK(writer.Execute("BEGIN; CREATE TABLE t2 (k INT); NOTIFY ch; COMMIT"));
   ASSERT_OK(idle_listener_waiting.WaitFor(60s * kTimeMultiplier));
-  // The listener can't reach its wait before the gate row is released.
   LogWaiter listener_waiting(ts2, CatalogVersionWaitLog(listener_pid));
   ASSERT_OK(gate_holder.Execute("COMMIT"));
   ASSERT_OK(listener_waiting.WaitFor(60s * kTimeMultiplier));
@@ -5949,8 +5921,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerWaitingBeforeReadyForQueryReturnsOnCance
 
   ASSERT_OK(statement_status);
   ASSERT_TRUE(ASSERT_RESULT(listener.HasNotification()));
-  // The wait's timeout path warns with this text; ts2's release stays blocked, so only the cancel
-  // can end the wait without it.
+  // The timeout path warns with this text.
   ASSERT_STR_NOT_CONTAINS(listener_notices, "has not reached");
 }
 

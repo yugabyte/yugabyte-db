@@ -412,8 +412,7 @@ class PGConn {
     PQsetNoticeProcessor(impl_.get(), proc, arg);
   }
 
-  // Whether a LISTEN notification has arrived, consuming it. Reads the socket only and sends
-  // nothing to the backend, so it doesn't wait for a busy backend.
+  // Consumes a LISTEN notification if one has arrived. Only reads the socket.
   Result<bool> HasNotification();
 
   // Would this query use an index [only] scan?

@@ -3015,9 +3015,8 @@ static struct config_bool ConfigureNamesBool[] =
 		{"yb_test_fail_notify_catalog_version_read", PGC_SUSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("When set, a LISTEN backend fails to read the catalog "
-						 "version that it waits for before delivering a "
-						 "notification from a transaction that changed the "
-						 "catalog."),
+						 "version it waits for before delivering a "
+						 "notification."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},

@@ -2155,9 +2155,6 @@ void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
   static std::atomic<uint64_t> next_debug_id{0};
   std::lock_guard l(lock_);
   const auto debug_id = ++next_debug_id;
-  // The new versions reach shared memory before the messages are stored. A backend that sees a
-  // new version in shared memory and then asks for its messages (GetTserverCatalogMessageLists,
-  // under a shared lock_) still gets them only because lock_ is held across both steps here.
   SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data, debug_id);
   SetYsqlDBCatalogInvalMessagesUnlocked(db_catalog_inval_messages_data, debug_id);
 }
