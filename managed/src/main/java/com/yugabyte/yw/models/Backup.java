@@ -1171,8 +1171,10 @@ public class Backup extends Model {
               expiryMs = Math.max(expiryMs, lastIncrementMs + timeBeforeDelete);
             }
             backup.setExpiry(new Date(expiryMs));
-            // onIncrementCompletion() reads this when the chain grows.
-            backup.getBackupInfo().timeBeforeDelete = timeBeforeDelete;
+            if (backup.isParentBackup()) {
+              // Only the base's onIncrementCompletion() reads this, when the chain grows.
+              backup.getBackupInfo().timeBeforeDelete = timeBeforeDelete;
+            }
             backup.save();
           }
         },
