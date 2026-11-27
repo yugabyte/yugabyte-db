@@ -57,7 +57,6 @@ PyJWT==2.15.1
 PyNaCl==1.6.2
 pyparsing==3.3.2
 python-dateutil==2.8.2
-python-ldap==3.4.7
 pytz==2026.3.post1
 PyYAML==6.0.3
 requests==2.33.0
