@@ -60,7 +60,7 @@ For a non-privileged universe, or for nodes you [prepared by hand](../../prepare
 
 A node prepared using `node-agent-provision.sh` runs a user-level node agent. When that node belongs to a privileged provider (YugabyteDB Anywhere has passwordless sudo), the UI still shows the action and the API accepts the request. The task then fails its precheck, because YugabyteDB Anywhere provisioning does not manage a user-level node agent. Re-apply OS settings by running `node-agent-provision.sh` on the node.
 
-Reprovisioning leaves the universe on the access model used to create it. It does not move a hand-prepared node onto privileged provisioning, and it does not switch a node to user-level systemd. Moving from privileged access, or from hand preparation, onto the provisioning script is optional. See [Node provisioning](../../upgrade/prepare-to-upgrade/#node-provisioning).
+Reprovisioning leaves the universe on the access model used to create it. It does not move a hand-prepared node onto privileged provisioning, and it does not switch a node to user-level systemd. Moving a hand-prepared universe onto the provisioning script is optional. See [Node provisioning](../../upgrade/prepare-to-upgrade/#node-provisioning).
 
 This action does not replace [patching the Linux OS](../upgrade-nodes/) or replacing a boot disk. After a boot disk replacement, continue to follow that procedure, which reinstalls YugabyteDB software on the node.
 

@@ -83,9 +83,9 @@ For each node in the universe, use the following general procedure:
 
 1. If you replaced the boot disk, do the following:
 
-    - Re-provision the node by following the steps in [Automatic provisioning without privileged access](../../prepare/server-nodes-software/software-on-prem/). Run that script only when **Manually Provision Nodes** is on in the provider configuration. On a [privileged](../../prepare/server-nodes-software/software-on-prem-auto/) provider the script stops and leaves the provider unchanged; use [Reprovision Universe Nodes](../reprovision-nodes/) instead.
+    - If **Manually Provision Nodes** is on, re-provision the node by following [Automatic provisioning without privileged access](../../prepare/server-nodes-software/software-on-prem/). If YugabyteDB Anywhere has [privileged](../../prepare/server-nodes-software/software-on-prem-auto/) access, skip this step.
 
-    - Reinstall YugabyteDB on the node using the following API command:
+    - Reinstall YugabyteDB on the node using the following API command. Run this command whether or not you ran the script. On a privileged provider, this call also provisions the node over SSH.
 
         ```shell
         curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \

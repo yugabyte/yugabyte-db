@@ -73,7 +73,7 @@ Starting in v2026.1.2.0, you can click **Actions > More > Reprovision Universe N
 
 ## Transparent hugepages
 
-Transparent hugepages (THP) should be enabled on nodes for optimal performance. If an on-premises universe does not have the required THP settings, update them by [reprovisioning nodes](../reprovision-nodes/) when the provider has privileged access (v2026.1.2.0 and later). When YugabyteDB Anywhere does not have privileged access, re-run [node-agent-provision.sh](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. If an on-premises universe does not have the required THP settings, update them by [reprovisioning nodes](../reprovision-nodes/) when the provider has privileged access (v2026.1.2.0 and later). Before v2026.1.2.0, follow the boot disk replacement procedure in [node patching](../upgrade-nodes/); THP settings are applied in step 3 when the node is provisioned again. When YugabyteDB Anywhere does not have privileged access, re-run [node-agent-provision.sh](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
 
 ## Kubernetes universes
 

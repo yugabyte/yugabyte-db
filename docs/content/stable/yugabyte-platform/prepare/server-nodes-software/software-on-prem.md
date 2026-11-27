@@ -48,7 +48,7 @@ You create the VMs. On each VM, run `node-agent-provision.sh` (also known as YNP
 
 Provisioning turns a Linux VM into a database node.
 
-On-premises [legacy manual provisioning](../software-on-prem-manual/) requires either YugabyteDB Anywhere or a DBA to run a long list of host commands (on the order of 40 per node). That list changes as node requirements change. If you are using your own automation to manage nodes, your configuration may drift over time.
+With [privileged access](../software-on-prem-auto/), YugabyteDB Anywhere signs in and provisions the node. To [prepare the node yourself](../software-on-prem-manual/), you run a long list of host commands, on the order of 40 per node. That list changes as node requirements change, so automation you maintain yourself can drift.
 
 Using the provisioning script, you can apply current node requirements without giving YugabyteDB Anywhere root SSH. The script is updated in sync with each release of YugabyteDB Anywhere, making it easier to stay current.
 
@@ -228,21 +228,18 @@ You can `su` to root for `--root`. A `sudo` prefix is only needed when sudo is t
 
 #### New universes
 
-1. Database administrators download the node agent package from the target YugabyteDB Anywhere version. In `node-agent-provision.yaml`, replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample placeholders fail validation before the script writes a command list. Then run a root dry run. That writes the root command list and does not change the node:
+1. Database administrators download the node agent package from the target YugabyteDB Anywhere version and edit `node-agent-provision.yaml`. Replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample placeholders fail validation before the script writes a command list. Set `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`).
+
+1. Linux administrators create the VM, install Linux and the [additional software](../#additional-software), and open the [required ports](../../networking/). They run a root dry run, which writes the root command list and does not change the node, then either run the rendered root script or run `--root`:
 
     ```sh
     sudo ./node-agent-provision.sh --root --dry_run
-    ```
-
-1. Linux administrators create the VM, install Linux and the [additional software](../#additional-software), open the [required ports](../../networking/), and either run the rendered root script or run `--root` themselves:
-
-    ```sh
     sudo ./node-agent-provision.sh --root
     ```
 
     `--root` runs only modules that need elevated privileges (the `yugabyte` user, chrony, THP, ulimits, sysctl, sudoers, node exporter, and root systemd units).
 
-1. Database administrators receive the VM, fill in `node-agent-provision.yaml`, and run `--noroot` as `yugabyte`:
+1. Database administrators run `--noroot` as `yugabyte`:
 
     ```sh
     ./node-agent-provision.sh --noroot
@@ -339,20 +336,26 @@ Override the FQDN and the YugabyteDB Anywhere URL together:
 
 Use the `--generate_config` flag (v2025.2.4.0 and later) to write a YAML file from the node's current provider registration. The command does not provision the node. This is how you hydrate a configuration for a node that is already in the provider, before [re-provisioning an existing universe](#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
 
-The seed `node-agent-provision.yaml` needs `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`). Replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample placeholders fail validation, and the script checks the seed before it writes a file. The generated file is named `node-agent-provision-generated.yaml` in the same directory. `--config_file` (default `./node-agent-provision.yaml`, available in v2024.2 and later) selects which file a later run reads. Point it at the generated file:
+The seed `node-agent-provision.yaml` needs `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`). Replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample placeholders fail validation, and the script checks the seed before it writes a file. The generated file is named `node-agent-provision-generated.yaml` in the same directory.
 
 ```sh
-sudo ./node-agent-provision.sh --preflight_check
 ./node-agent-provision.sh --generate_config
-./node-agent-provision.sh --config_file node-agent-provision-generated.yaml
 ```
+
+`--config_file` (default `./node-agent-provision.yaml`, available in v2024.2 and later) selects which file a later run reads. Provision from the generated file as root. On a node that is already in a universe, run that command only during the maintenance window in [Re-provision nodes of an existing universe](#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises). The checks bind the database ports.
+
+```sh
+sudo ./node-agent-provision.sh --config_file node-agent-provision-generated.yaml
+```
+
+From a root shell, omit `sudo`.
 
 When you combine [--config_override](#per-node-overrides) with `--generate_config`, overrides apply to fields used to contact YugabyteDB Anywhere (for example, `yba.url`), not to values that YugabyteDB Anywhere returns into the generated file.
 
-Use `--generate_and_run` (v2025.2.4.0 and later) to generate the file and provision in one invocation. The script switches to the generated file for the provision.
+Use `--generate_and_run` (v2025.2.4.0 and later) to generate the file and provision in one invocation. The script switches to the generated file for the provision. Run it as root, and on a universe node only while that node is in maintenance mode.
 
 ```sh
-./node-agent-provision.sh --generate_and_run
+sudo ./node-agent-provision.sh --generate_and_run
 ```
 
 To render scripts from the generated file without changing the node:
@@ -370,7 +373,7 @@ If **Manually Provision Nodes** is off, use [Reprovision universe nodes](../../.
 Do this one node at a time. On a universe with replication factor 3 or more, the universe stays available for reads and writes. Stopping a second node while the first is still in maintenance mode makes tablets unavailable.
 
 {{< warning title="Maintenance window" >}}
-If the node stays in maintenance mode longer than 15 minutes, the Raft leader treats the follower as failed and re-replicates its data. The timeout is [follower_unavailable_considered_failed_sec](../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec) (default 900 seconds). Raise that flag on YB-TServer and YB-Master before a slow run, and set [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to the same value so the WAL is kept until the node returns. Change the flags in [Edit configuration flags](../../../manage-deployments/edit-config-flags/). See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
+If the node stays in maintenance mode longer than 15 minutes, the Raft leader treats the follower as failed and re-replicates its data. The timeout is [follower_unavailable_considered_failed_sec](../../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec) (default 900 seconds). Raise that flag on YB-TServer and YB-Master before a slow run, and set [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to the same value so the WAL is kept until the node returns. Change the flags in [Edit configuration flags](../../../manage-deployments/edit-config-flags/). See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
 {{< /warning >}}
 
 ### On every node, before you stop anything
@@ -488,7 +491,7 @@ The package you download matches the YugabyteDB Anywhere version you are running
 | Transparent hugepages | Root | v2024.2. Required settings were updated in May 2025. A wrong setting raises **Incorrect THP settings**. **THP Issue Threshold Reached** fires when the node is under memory pressure and RSS is higher than TCMalloc accounts for. |
 | chrony | Root | v2024.2 |
 | ClockBound | Root. Optional (`is_configure_clockbound`, default false). Requires chrony. | v2025.2.3.0 |
-| Node exporter | Root. Installs the bundled node exporter and restarts `node_exporter.service` on port 9300. An exporter already running under that unit is replaced with the bundled binary, then restarted. | v2024.2 |
+| Node exporter | Root. Installs the bundled node exporter and restarts `node_exporter.service` on `node_exporter_port` (default 9300). An exporter already running under that unit is replaced with the bundled binary, then restarted. | v2024.2 |
 | cgroups | User (`--noroot`). Controlled by `configure_cgroup` (default true). | v2024.2 |
 | User-level systemd | User. Default (`use_system_level_systemd` false). | Cron-based universes are not supported in v2025.2 and later. |
 | Node agent | User. Installed as `yugabyte` under user-level systemd. | v2024.2. Running as `yugabyte` rather than root is the v2025.2 behavior. |

@@ -145,7 +145,7 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 
 #### Python for database nodes
 
-Install Python 3.6-3.12 on the database nodes. (If you [prepare the node yourself](software-on-prem-manual/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+Install Python 3.6-3.12 on the database nodes. (For [privileged access](software-on-prem-auto/), or when you [prepare the node yourself](software-on-prem-manual/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
 Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 
