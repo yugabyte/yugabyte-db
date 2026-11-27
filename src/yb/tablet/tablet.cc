@@ -8073,6 +8073,11 @@ Status Tablet::GetTabletKeyRanges(
 }
 
 docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
+  // MVCC operations this replica has not applied yet are above its safe time, and some read the
+  // history at their hybrid time, e.g. a vector index backfill (ChangeMetadataRequestPB::use_mvcc).
+  // Read before the caps below: an operation applied after this read already registered what they
+  // check, e.g. its vector index. SafeTimeForFollower returns at once for min_allowed kMin.
+  auto safe_time = mvcc_.SafeTimeForFollower(HybridTime::kMin, CoarseTimePoint::max());
   docdb::HistoryCutoff result = {
     .cotables_cutoff_ht = HybridTime::kInvalid,
     .primary_cutoff_ht = HybridTime::kMax,
@@ -8082,10 +8087,6 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
   }
   result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
   result.primary_cutoff_ht.MakeAtMost(vector_indexes_->AllowedHistoryCutoff());
-  // MVCC operations this replica has not applied yet are above its safe time, and some read the
-  // history at their hybrid time, e.g. a vector index backfill (ChangeMetadataRequestPB::use_mvcc).
-  // SafeTimeForFollower returns at once for min_allowed kMin.
-  auto safe_time = mvcc_.SafeTimeForFollower(HybridTime::kMin, CoarseTimePoint::max());
   if (!safe_time.ok()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
         << "Failed to get safe time, not moving history cutoff: " << safe_time.status();
