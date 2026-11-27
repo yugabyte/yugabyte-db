@@ -1850,14 +1850,7 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
                                << " of replication slot " << replication_slot_name;
         continue;
       }
-      // dropped_table_id is not yet updated right after the drop, or at all while
-      // cdcsdk_use_dropped_table_list_for_cleanup is off; the master returns NotFound then.
-      auto table_info_result = GetYBTableInfoById(entry.first, true /* include_hidden */);
-      if (!table_info_result.ok() && table_info_result.status().IsNotFound()) {
-        VLOG_WITH_FUNC(1) << "Skipping replica identity of dropped table " << entry.first;
-        continue;
-      }
-      auto table_info = VERIFY_RESULT(std::move(table_info_result));
+      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first, true /* include_hidden */));
 
       const auto pg_table_id = table_info.pg_table_id;
       auto table_oid = VERIFY_RESULT(
