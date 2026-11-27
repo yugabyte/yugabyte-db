@@ -850,7 +850,10 @@ Result<std::unordered_set<TabletId>> TabletsWithVectorIndex(
   std::unordered_set<TabletId> result;
   for (const auto& peer : VERIFY_RESULT(
            ListTabletPeersForTableName(&cluster, "test", ListPeersFilter::kLeaders))) {
-    if (VERIFY_RESULT(peer->shared_tablet())->vector_indexes().HasIndex(index_id)) {
+    auto indexes = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
+    if (indexes && std::ranges::any_of(*indexes, [&index_id](const auto& index) {
+          return index->table_id() == index_id;
+        })) {
       result.insert(peer->tablet_id());
     }
   }

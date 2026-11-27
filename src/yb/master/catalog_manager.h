@@ -1241,6 +1241,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status VisitSysCatalog(SysCatalogLoadingState* state);
   Status RunLoaders(SysCatalogLoadingState* state) REQUIRES(mutex_);
 
+  // Adds a post-load task that calls ScheduleAddTableToTablet for each PREPARING colocated table
+  // the tablet loader collected.
+  void AddPostLoadTaskToSendAddTableToTablet(SysCatalogLoadingState* state);
+
   // Sends AddTableToTablet for a PREPARING colocated table to each of its tablets. The table is
   // promoted to RUNNING once all of them have added it.
   void ScheduleAddTableToTablet(

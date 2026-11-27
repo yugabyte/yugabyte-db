@@ -1741,24 +1741,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
   RETURN_NOT_OK(Load<TableLoader>("tables", state));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", state));
-  if (!state->preparing_colocated_tables.empty()) {
-    state->AddPostLoadTask(
-        [this, preparing_tables = std::move(state->preparing_colocated_tables),
-         epoch = state->epoch] {
-          for (const auto& [table_id, table] : preparing_tables) {
-            // Only the active tablets, as at creation: inactive ones, e.g. hidden or deleted split
-            // parents, also list a vector index, but never add it.
-            auto tablets = table->GetTablets();
-            if (!tablets.ok()) {
-              LOG(WARNING) << "Failed to get tablets of " << table->ToString() << ": "
-                           << tablets.status();
-              continue;
-            }
-            ScheduleAddTableToTablet(table, *tablets, epoch);
-          }
-        },
-        "Send AddTableToTablet for PREPARING tables");
-  }
+  // Must follow the tablet loader, which collects the PREPARING tables.
+  AddPostLoadTaskToSendAddTableToTablet(state);
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
@@ -1783,6 +1767,28 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
 
   return Status::OK();
+}
+
+void CatalogManager::AddPostLoadTaskToSendAddTableToTablet(SysCatalogLoadingState* state) {
+  if (state->preparing_colocated_tables.empty()) {
+    return;
+  }
+  state->AddPostLoadTask(
+      [this, preparing_tables = std::move(state->preparing_colocated_tables),
+       epoch = state->epoch] {
+        for (const auto& [table_id, table] : preparing_tables) {
+          // Only the active tablets, as at creation: inactive ones, e.g. hidden or deleted split
+          // parents, also list a vector index, but never add it.
+          auto tablets = table->GetTablets();
+          if (!tablets.ok()) {
+            LOG(WARNING) << "Failed to get tablets of " << table->ToString() << ": "
+                         << tablets.status();
+            continue;
+          }
+          ScheduleAddTableToTablet(table, *tablets, epoch);
+        }
+      },
+      "Send AddTableToTablet for PREPARING tables");
 }
 
 void CatalogManager::ScheduleAddTableToTablet(

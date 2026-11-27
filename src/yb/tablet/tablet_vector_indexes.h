@@ -105,6 +105,13 @@ class TabletVectorIndexes :
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
       EXCLUDES(vector_indexes_mutex_);
 
+  // As CreateIndex, but does nothing if the index exists. A new master leader resends
+  // AddTableToTablet to all tablets of a vector index that is still PREPARING, including the ones
+  // which already added it.
+  Status CreateIndexIfMissing(
+      const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
+      EXCLUDES(vector_indexes_mutex_);
+
   // Takes the index out of the tablet and stops it, see DocVectorIndex::StartDestroy. Marks its
   // storage as removed, see docdb::MarkRemovedVectorIndexStorage, for PrepareAddIndex. Returns the
   // completion of the removal, which destroys the storage, in the background unless the index was
@@ -192,8 +199,6 @@ class TabletVectorIndexes :
 
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
-
-  bool HasIndex(const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
 
   // Stamps `frontier` as flushed on every vector index not flushed at its OpId yet, see
   // DocVectorIndex::ModifyFlushedFrontier.

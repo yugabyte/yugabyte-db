@@ -459,6 +459,16 @@ Status TabletVectorIndexes::CreateIndex(
   return DoCreateIndex(index_table, indexed_table, bootstrap);
 }
 
+Status TabletVectorIndexes::CreateIndexIfMissing(
+    const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap) {
+  std::lock_guard lock(vector_indexes_mutex_);
+  if (vector_indexes_map_.contains(index_table.table_id)) {
+    LOG_WITH_PREFIX(INFO) << "Vector index " << index_table.table_id << " already exists";
+    return Status::OK();
+  }
+  return DoCreateIndex(index_table, indexed_table, bootstrap);
+}
+
 Status TabletVectorIndexes::CreateSkippedIndexes(
     const TableInfoPtr& indexed_table, bool bootstrap) {
   std::lock_guard lock(vector_indexes_mutex_);
@@ -1296,10 +1306,6 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table
   return IndexForTableUnlocked(table_id);
 }
 
-bool TabletVectorIndexes::HasIndex(const TableId& table_id) const {
-  SharedLock lock(vector_indexes_mutex_);
-  return vector_indexes_map_.contains(table_id);
-}
 
 VectorIndexList TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {

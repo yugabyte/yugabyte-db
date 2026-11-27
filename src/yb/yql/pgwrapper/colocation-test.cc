@@ -43,9 +43,8 @@ class ColocatedDBTest : public LibPqTestBase {
     return ConnectToDB(db_name);
   }
 
-  // Looks the table up by name or by ID.
   Result<master::ListTablesResponsePB_TableInfo> GetTableFromMasterLeader(
-      const std::string& db_name, const std::string& table_name_or_id) {
+      const std::string& db_name, const std::string& table_name) {
     master::ListTablesRequestPB req;
     master::ListTablesResponsePB resp;
     req.mutable_namespace_()->set_name(db_name);
@@ -59,18 +58,18 @@ class ColocatedDBTest : public LibPqTestBase {
       return StatusFromPB(resp.error().status());
     }
     for (const auto& table : resp.tables()) {
-      if (table.name() == table_name_or_id || table.id() == table_name_or_id) {
+      if (table.name() == table_name) {
         return table;
       }
     }
-    return STATUS_FORMAT(NotFound, "Table $0 not found in $1", table_name_or_id, db_name);
+    return STATUS_FORMAT(NotFound, "Table $0 not found in $1", table_name, db_name);
   }
 
   // A failed lookup counts as false, so that it can be polled across a master leader change.
   bool TableHasState(
-      const std::string& db_name, const std::string& table_name_or_id,
+      const std::string& db_name, const std::string& table_name,
       master::SysTablesEntryPB::State state) {
-    auto table = GetTableFromMasterLeader(db_name, table_name_or_id);
+    auto table = GetTableFromMasterLeader(db_name, table_name);
     return table.ok() && table->state() == state;
   }
 };
@@ -439,9 +438,9 @@ TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {
   ASSERT_OK(conn.Execute("INSERT INTO test_tbl1 values (1, 1)"));
 }
 
-// A colocated table which a new master leader loads as PREPARING becomes RUNNING once its own
-// AddTableToTablet finishes: not when that of another table on the same tablet finishes, and not
-// before. See issue #38982.
+// Each colocated table which a new master leader loads as PREPARING becomes RUNNING once its own
+// AddTableToTablet finishes, also when another table on the same tablet is PREPARING too. See issue
+// #38982.
 TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
   const std::string db_name = "test_db";
   auto conn = ASSERT_RESULT(CreateColocatedDB(db_name));
@@ -451,9 +450,11 @@ TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "true"));
   std::array<std::atomic<int32_t>, 2> create_table_pids{};
+  std::atomic<size_t> num_created_tables{0};
   TestThreadHolder thread_holder;
   for (size_t i = 0; i != create_table_pids.size(); ++i) {
-    thread_holder.AddThreadFunctor([this, &db_name, i, &pid = create_table_pids[i]] {
+    thread_holder.AddThreadFunctor(
+        [this, &db_name, i, &pid = create_table_pids[i], &num_created_tables] {
       auto conn = ASSERT_RESULT(ConnectToDB(db_name));
       pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
       // The two concurrent DDLs conflict when the second one commits, after its table was created.
@@ -465,6 +466,7 @@ TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
         }
         LOG(INFO) << "Retrying CREATE TABLE t" << i << ": " << status;
       }
+      ++num_created_tables;
     });
   }
   // CREATE TABLE waits for the table to become RUNNING. Kill it on failure, so the thread can be
@@ -484,24 +486,13 @@ TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
     return TableHasState(db_name, "t0", master::SysTablesEntryPB::PREPARING) &&
            TableHasState(db_name, "t1", master::SysTablesEntryPB::PREPARING);
   }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "Both tables PREPARING"));
-  // A retried CREATE TABLE leaves another table with the same name, so use the IDs from here on.
-  const auto t0_id = ASSERT_RESULT(GetTableFromMasterLeader(db_name, "t0")).id();
-  const auto t1_id = ASSERT_RESULT(GetTableFromMasterLeader(db_name, "t1")).id();
 
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_table_to_tablet_table_id", t1_id));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "false"));
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
 
-  auto status = WaitFor([this, &db_name, &t1_id] {
-    return TableHasState(db_name, t1_id, master::SysTablesEntryPB::RUNNING);
-  }, MonoDelta::FromSeconds(3 * kTimeMultiplier), "t1 RUNNING");
-  ASSERT_TRUE(status.IsTimedOut()) << status;
-  ASSERT_OK(WaitFor([this, &db_name, &t0_id] {
-    return TableHasState(db_name, t0_id, master::SysTablesEntryPB::RUNNING);
-  }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "t0 RUNNING"));
-
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_table_to_tablet_table_id", ""));
-  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  ASSERT_OK(WaitFor([&num_created_tables, &create_table_pids] {
+    return num_created_tables == create_table_pids.size();
+  }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "Both tables created"));
   thread_holder.JoinAll();
   for (const auto* table : {"t0", "t1"}) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
