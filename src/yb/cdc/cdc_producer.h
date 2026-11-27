@@ -39,6 +39,10 @@ namespace cdc {
 struct SchemaDetails {
   SchemaVersion schema_version;
   std::shared_ptr<Schema> schema;
+  // Set when the schema was loaded while decoding a transaction's intents, so it can be a schema
+  // from inside that transaction. Checked against the schema at commit once the transaction is
+  // streamed.
+  bool loaded_in_txn = false;
 };
 // We will maintain a map for each stream, tablet pait. The schema details will correspond to the
 // the current 'running' schema.
