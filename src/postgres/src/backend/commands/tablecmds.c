@@ -1407,6 +1407,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 												  &alter_cmd_handle));
 				HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 				YBCExecAlterTable(alter_cmd_handle, defaultPartOid);
+				YbTrackAlteredTableId(defaultPartOid);
 			}
 
 			/* Keep the lock until commit. */

@@ -2032,6 +2032,7 @@ YBCRename(Oid relationId, ObjectType renameType, const char *relname,
 	}
 
 	YBCExecAlterTable(handle, relationId);
+	YbTrackAlteredTableId(relationId);
 }
 
 void
@@ -2061,6 +2062,7 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 	}
 
 	YBCExecAlterTable(handle, relationId);
+	YbTrackAlteredTableId(relationId);
 }
 
 /*
@@ -2638,5 +2640,6 @@ YBCDropColumn(Relation rel, AttrNumber attnum)
 										  &handle));
 		HandleYBStatus(YBCPgAlterTableDropColumn(handle, attr->attname.data));
 		HandleYBStatus(YBCPgExecAlterTable(handle));
+		YbTrackAlteredTableId(RelationGetRelid(rel));
 	}
 }
