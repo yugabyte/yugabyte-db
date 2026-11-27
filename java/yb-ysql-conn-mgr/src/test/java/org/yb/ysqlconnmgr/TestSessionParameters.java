@@ -835,6 +835,87 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // When an extension's library loads, its GUC replaces a placeholder of the same name, and PG
+  // then reports the value under the extension's spelling. Conn mgr must match that spelling to
+  // the placeholder's, or a RESET removes only the extension's spelling, and the next physical
+  // connection is replayed the old value kept under the placeholder's spelling.
+  @Test
+  public void testMixedCaseExtensionGucName() throws Exception {
+    SessionParameter sp = new SessionParameter("pg_trgm.similarity_threshold", "0.3", "0.5",
+        new ExceptionType[] {});
+    String actualValue;
+    ResultSet rs;
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection newConn1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection newConn2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection newConn3 = isTestRunningInWarmupRandomMode() ?
+            getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect() :
+            null;
+        Statement stmt = conn.createStatement();
+        Statement newStmt1 = newConn1.createStatement();
+        Statement newStmt2 = newConn2.createStatement();
+        Statement newStmt3 = isTestRunningInWarmupRandomMode() ?
+            newConn3.createStatement() :
+            null;) {
+
+      // Latch onto every physical connection in the pool.
+      newStmt1.execute("BEGIN");
+      newStmt1.execute("SELECT 1");
+      newStmt2.execute("BEGIN");
+      newStmt2.execute("SELECT 1");
+      if (isTestRunningInWarmupRandomMode()) {
+        newStmt3.execute("BEGIN");
+        newStmt3.execute("SELECT 1");
+      }
+
+      // Detach newStmt2, so that pg_trgm's library is loaded only on the second physical
+      // connection.
+      newStmt2.execute("COMMIT");
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+      stmt.execute("SELECT similarity('a', 'b')");
+      newStmt2.execute("BEGIN");
+      newStmt2.execute("SELECT 1");
+
+      // Detach newStmt1. The library isn't loaded on the first physical connection, so the SET
+      // creates a placeholder spelled Pg_Trgm.Similarity_Threshold. Calling similarity() then loads
+      // the library, which reports the value as pg_trgm.similarity_threshold.
+      newStmt1.execute("COMMIT");
+      stmt.execute("SET \"Pg_Trgm.Similarity_Threshold\" = '0.5'");
+      stmt.execute("SELECT similarity('a', 'b')");
+      actualValue = fetchParameterValue(stmt, sp);
+      assertEquals("value after the library loads", sp.expectedValue, actualValue);
+      stmt.execute("RESET pg_trgm.similarity_threshold");
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue("backend pid should be non-null", rs.next());
+      int backendPID = rs.getInt(1);
+
+      // Lock the first physical connection, and unlock the second one.
+      newStmt1.execute("BEGIN");
+      newStmt1.execute("SELECT 1");
+      newStmt2.execute("COMMIT");
+      actualValue = fetchParameterValue(stmt, sp);
+      assertEquals("value on the second physical connection after the RESET", sp.defaultValue,
+          actualValue);
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue("backend pid should be non-null", rs.next());
+      assertFalse("primary connection should have attached onto the second physical connection",
+          backendPID == rs.getInt(1));
+
+      newStmt1.execute("COMMIT");
+      if (isTestRunningInWarmupRandomMode())
+        newStmt3.execute("COMMIT");
+    }
+  }
+
   // Builds a search_path of exactly `length` characters. Each identifier is kept well under
   // NAMEDATALEN since conn mgr replays search_path unquoted, and PG truncates longer identifiers.
   private static String buildSearchPath(int length) {
