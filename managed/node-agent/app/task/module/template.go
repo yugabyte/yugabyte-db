@@ -5,6 +5,7 @@ package module
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io/fs"
 	"node-agent/util"
 	"os"
@@ -184,6 +185,43 @@ func CopyFile(
 		return "", err
 	}
 	return output, nil
+}
+
+// InstallFile renders a template, requiring every variable it uses, and installs the result at
+// destination with mode mod. Unlike CopyFile, install runs as username (through sudo when sudo is
+// true), so a root node-agent never writes for that user through a path the user controls; install
+// also replaces a link at destination rather than writing through it.
+func InstallFile(
+	ctx context.Context,
+	values map[string]any,
+	templateSubpath, destination string,
+	mod fs.FileMode,
+	username string,
+	sudo bool,
+) error {
+	templatePath := templateSubpath
+	if !filepath.IsAbs(templateSubpath) {
+		templatePath = filepath.Join(util.TemplateDir(), templateSubpath)
+	}
+	output, err := ResolveTemplateStrict(ctx, values, templatePath, true)
+	if err != nil {
+		return err
+	}
+	args := []string{"install", "-m", fmt.Sprintf("%04o", mod.Perm()), "/dev/stdin", destination}
+	if sudo {
+		args = append([]string{"sudo"}, args...)
+	}
+	cmdInfo := &CommandInfo{
+		User:   username,
+		Cmd:    args[0],
+		Args:   args[1:],
+		Stdin:  strings.NewReader(strings.TrimSpace(output)),
+		StdErr: util.NewBuffer(MaxBufferCapacity),
+	}
+	if err := cmdInfo.RunCmd(ctx); err != nil {
+		return fmt.Errorf("could not install %s: %w - %s", destination, err, cmdInfo.StdErr.String())
+	}
+	return nil
 }
 
 func ResolveTemplate(

@@ -80,6 +80,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -970,7 +971,7 @@ public class BackupHelper {
     try {
       targets =
           Provider.getAll(customerUUID).stream()
-              .map(p -> CloudInfoInterface.getCrossCloudFederationTarget(p, targetCloud))
+              .map(p -> ybaUsableTarget(p, targetCloud))
               .filter(Objects::nonNull)
               // Compare only what is stamped: a gcp entry's role ARN is unused and may differ.
               .map(
@@ -1166,7 +1167,7 @@ public class BackupHelper {
   /**
    * Provider-level federation settings for reaching {@code targetCloud} from this universe, or null
    * when federation is off, there is no universe context, or the provider has nothing configured
-   * for that cloud.
+   * for that cloud, or has one YBA cannot use (see {@link #ybaUsableTarget}).
    */
   @Nullable
   CrossCloudFederationTarget resolveCrossCloudFederationTarget(
@@ -1188,11 +1189,26 @@ public class BackupHelper {
       // userIntent.provider is the cluster's only provider, not an arbitrary one.
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-      return CloudInfoInterface.getCrossCloudFederationTarget(provider, targetCloud);
+      return ybaUsableTarget(provider, targetCloud);
     } catch (Exception e) {
       log.warn("Could not resolve cross-cloud federation settings: {}", e.getMessage());
       return null;
     }
+  }
+
+  /**
+   * The provider's federation entry for {@code targetCloud} as YBA itself uses it to reach the
+   * bucket, or null. Always null for the {@code gcp} entry of an OCI provider: its audience names
+   * an OIDC workload identity provider, which the AWS-based credential YBA builds from an entry
+   * cannot use, so YBA reaches such a universe's bucket as it does one whose provider has no entry.
+   */
+  @Nullable
+  private static CrossCloudFederationTarget ybaUsableTarget(
+      Provider provider, CloudType targetCloud) {
+    if (targetCloud == CloudType.gcp && provider.getCloudCode() == CloudType.oci) {
+      return null;
+    }
+    return CloudInfoInterface.getCrossCloudFederationTarget(provider, targetCloud);
   }
 
   public void validateRestoreOverwrites(
@@ -1410,10 +1426,10 @@ public class BackupHelper {
       }
       for (NodeDetails node : universe.getRunningTserversinCluster(cluster.uuid)) {
         CloudType nodeCloud = nodeCloud(universe, cluster, node, probeNodes);
-        // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
-        // natively, and one whose cloud is unknown is left to the YBC check.
-        if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp)
-            && nodeCloud != bucketCloud) {
+        // Only a VM on a cloud that federates to the bucket's needs it; a node on the bucket's
+        // cloud reaches it natively, and one whose cloud is unknown is left to the YBC check.
+        if (nodeCloud != null
+            && CrossCloudFederationDirections.isSupported(nodeCloud, bucketCloud)) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               String.format(

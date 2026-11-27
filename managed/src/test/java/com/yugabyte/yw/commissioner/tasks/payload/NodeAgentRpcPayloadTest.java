@@ -4,10 +4,12 @@ package com.yugabyte.yw.commissioner.tasks.payload;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.export.TelemetryConfig;
@@ -65,6 +67,24 @@ public class NodeAgentRpcPayloadTest {
   @Test
   public void upgradedNodeAgentWithSecretEnvPasses() {
     NodeAgentRpcPayload.checkNodeAgentReadsSecretEnv(nodeAgent("2026.2.0.0-b10"), SECRET_ENV);
+  }
+
+  /** A local build has no build number to compare, so it matches the same version. */
+  @Test
+  public void localBuildOfTheSameVersionMatches() {
+    Util.setYbaVersion("2026.2.0.0-PRE_RELEASE");
+    NodeAgentClient.requireVersionMatchesYba(nodeAgent("2026.2.0.0-PRE_RELEASE"), "why");
+  }
+
+  /** Agrees with NodeAgentPoller, which never upgrades an agent whose version it cannot parse. */
+  @Test
+  public void unparseableVersionMatchesAsInThePoller() {
+    NodeAgentClient.requireVersionMatchesYba(nodeAgent("not-a-version"), "why");
+    IllegalStateException e =
+        assertThrows(
+            IllegalStateException.class,
+            () -> NodeAgentClient.requireVersionMatchesYba(nodeAgent(null), "Do this."));
+    assertTrue(e.getMessage(), e.getMessage().endsWith("Do this."));
   }
 
   @Test
