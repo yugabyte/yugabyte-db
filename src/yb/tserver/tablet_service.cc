@@ -2870,7 +2870,7 @@ Status TabletServiceImpl::PerformWrite(
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
   RETURN_NOT_OK(CheckWriteThrottling(req->rejection_score(), tablet.peer.get()));
-  RETURN_NOT_OK(CheckVectorIndexWriteThrottling(*req, tablet.peer.get()));
+  RETURN_NOT_OK(CheckVectorIndexWriteThrottling(*req, *tablet.tablet, tablet.peer.get()));
 
   if (FLAGS_ysql_debug_log_write_requests) {
     WARN_NOT_OK(

@@ -403,7 +403,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       Slice indexed_table_key_prefix, TableWritesReverseMapping table_writes_reverse_mapping,
       DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
-      const MetricEntityPtr& metric_entity)
+      const MetricEntityPtr& metric_entity, const MemTrackerPtr& insert_queue_mem_tracker)
       : table_id_(table_id),
         indexed_table_id_(indexed_table_id),
         indexed_table_key_prefix_(indexed_table_key_prefix),
@@ -414,6 +414,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         context_(std::move(vector_index_context)),
         block_cache_(block_cache),
         mem_tracker_(mem_tracker),
+        insert_queue_mem_tracker_(insert_queue_mem_tracker),
         metric_entity_(metric_entity),
         metrics_(metric_entity) {
     DCHECK_ONLY_NOTNULL(context_.get());
@@ -504,6 +505,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
       .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
+      .insert_queue_mem_tracker = insert_queue_mem_tracker_,
       // Fixed by master at index creation: the chunk payload mode and the reverse mapping
       // writes must stay consistent for the whole lifetime of the index.
       .store_vector_payload = vector_index::StoreVectorPayload(StoresPayload()),
@@ -747,6 +749,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.InsertTasksSoftLimitReached();
   }
 
+  void SetInsertsWaitForFreeTasks(bool value) override {
+    lsm_.SetInsertsWaitForFreeTasks(value);
+  }
+
   bool TEST_HasBackgroundInserts() const override {
     return lsm_.TEST_HasBackgroundInserts();
   }
@@ -894,6 +900,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const DocVectorIndexContextPtr context_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
+  const MemTrackerPtr insert_queue_mem_tracker_;
   const MetricEntityPtr metric_entity_;
   const DocVectorIndexMetrics metrics_;
 
@@ -1024,12 +1031,13 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
-    const MetricEntityPtr& metric_entity) {
+    const MetricEntityPtr& metric_entity,
+    const MemTrackerPtr& insert_queue_mem_tracker) {
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), index_info.indexed_table_id(), index_info.vector_idx_options(),
       hybrid_time, indexed_table_key_prefix,
       table_writes_reverse_mapping, std::move(vector_index_context), block_cache, mem_tracker,
-      metric_entity);
+      metric_entity, insert_queue_mem_tracker);
   RETURN_NOT_OK(result->Open(log_prefix, storage_dir, split_generation, thread_pool_provider));
   return result;
 }

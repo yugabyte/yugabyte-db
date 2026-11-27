@@ -283,6 +283,9 @@ class DocVectorIndex {
   // See VectorLSM::InsertTasksSoftLimitReached.
   virtual bool InsertTasksSoftLimitReached() const = 0;
 
+  // See VectorLSM::SetInsertsWaitForFreeTasks.
+  virtual void SetInsertsWaitForFreeTasks(bool value) = 0;
+
   virtual bool TEST_HasBackgroundInserts() const = 0;
   virtual size_t TEST_NextManifestFileNo() const = 0;
 
@@ -360,6 +363,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
-    const MetricEntityPtr& metric_entity);
+    const MetricEntityPtr& metric_entity,
+    const MemTrackerPtr& insert_queue_mem_tracker = nullptr);
 
 }  // namespace yb::docdb

@@ -105,6 +105,7 @@ class CountingVectorIndex : public DocVectorIndex {
   void StartShutdown() override { LOG(FATAL) << "Unexpected call"; }
   void CompleteShutdown() override { LOG(FATAL) << "Unexpected call"; }
   bool InsertTasksSoftLimitReached() const override { LOG(FATAL) << "Unexpected call"; }
+  void SetInsertsWaitForFreeTasks(bool) override { LOG(FATAL) << "Unexpected call"; }
   bool TEST_HasBackgroundInserts() const override { LOG(FATAL) << "Unexpected call"; }
   size_t TEST_NextManifestFileNo() const override { LOG(FATAL) << "Unexpected call"; }
 

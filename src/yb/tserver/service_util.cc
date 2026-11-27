@@ -456,12 +456,11 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
 }
 
 Status CheckVectorIndexWriteThrottling(
-    const WriteRequestMsg& req, tablet::TabletPeer* tablet_peer) {
+    const WriteRequestMsg& req, tablet::Tablet& tablet, tablet::TabletPeer* tablet_peer) {
   if (req.pgsql_write_batch().empty()) {
     return Status::OK();
   }
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
-  auto indexes = tablet->vector_indexes().List();
+  auto indexes = tablet.vector_indexes().List();
   if (!indexes) {
     return Status::OK();
   }
@@ -470,7 +469,9 @@ Status CheckVectorIndexWriteThrottling(
       continue;
     }
     for (const auto& pg_req : req.pgsql_write_batch()) {
-      if (pg_req.table_id() == Slice(index->indexed_table_id())) {
+      // A delete takes no insert tasks.
+      if (pg_req.stmt_type() != PgsqlWriteRequestPB::PGSQL_DELETE &&
+          pg_req.table_id() == Slice(index->indexed_table_id())) {
         return RejectWrite(
             tablet_peer,
             Format("Insert tasks of vector index $0 reached the soft limit", index->table_id()),

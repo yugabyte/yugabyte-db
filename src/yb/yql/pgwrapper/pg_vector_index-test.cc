@@ -2081,6 +2081,17 @@ class PgVectorIndexInsertTasksTest : public PgVectorIndexTestBase {
     return Status::OK();
   }
 
+  // Memory charged for the vectors queued for insertion on the tablet leader.
+  Result<int64_t> LeaderInsertQueueConsumption() {
+    int64_t result = 0;
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(
+             cluster_.get(), ListPeersFilter::kLeaders)) {
+      result += ChildConsumption(
+          VERIFY_RESULT(peer->shared_tablet())->mem_tracker(), "vector_insert_queue");
+    }
+    return result;
+  }
+
   Status CheckAllRowsIndexed(size_t num_rows) {
     RETURN_NOT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
     const auto indexes = ListVectorIndexes(cluster_.get());
@@ -2167,9 +2178,26 @@ TEST_F(PgVectorIndexInsertTasksTest, LeaderLargeBatch) {
   const size_t batch_size = kMaxInsertTasks * FLAGS_vector_index_task_size;
   ASSERT_OK(InsertBatch(conn, 2, static_cast<int64_t>(batch_size)));
   ASSERT_OK(CheckHeartbeats(*leader));
+  ASSERT_GE(ASSERT_RESULT(LeaderInsertQueueConsumption()),
+            static_cast<int64_t>((1 + batch_size) * dimensions_ * sizeof(float)));
 
   unblock->CountDown();
   ASSERT_OK(CheckAllRowsIndexed(1 + batch_size));
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    return VERIFY_RESULT(LeaderInsertQueueConsumption()) == 0;
+  }, 30s * kTimeMultiplier, "Insert queue memory released"));
+}
+
+// With no insert tasks allowed, any queued write task reaches the soft limit, but no task at all
+// must not.
+TEST_F(PgVectorIndexInsertTasksTest, ZeroMaxInsertTasks) {
+  auto conn = ASSERT_RESULT(MakeIndexAndWaitBackfill());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = 0;
+  // A rejected write would be retried until the statement times out.
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", 10 * kTimeMultiplier));
+  ASSERT_OK(InsertRows(
+      conn, 1, kNumRows, /* keep_vectors= */ false, NonTransactionalWrites::kTrue));
+  ASSERT_OK(CheckAllRowsIndexed(kNumRows));
 }
 
 class PgVectorIndexInsertTasksColocatedTest : public PgVectorIndexInsertTasksTest {
@@ -2180,10 +2208,13 @@ class PgVectorIndexInsertTasksColocatedTest : public PgVectorIndexInsertTasksTes
 };
 
 // The leader rejects writes only to the table whose vector index reached the soft limit, not to
-// the other tables of the tablet.
+// the other tables of the tablet, and not deletes.
 TEST_F(PgVectorIndexInsertTasksColocatedTest, WriteToTableWithoutVectorIndex) {
   auto conn = ASSERT_RESULT(MakeIndexAndWaitBackfill());
   ASSERT_OK(conn.Execute("CREATE TABLE plain (k INT PRIMARY KEY)"));
+  // No vector, so the index does not hold it.
+  constexpr int kDeletedId = 1000;
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, NULL)", kDeletedId));
   auto* leader = ASSERT_RESULT(TServerWithReplica(/* leader= */ true));
   // Destroyed after unblock_scope, so a failed check does not join the blocked insert.
   TestThreadHolder threads;
@@ -2207,6 +2238,8 @@ TEST_F(PgVectorIndexInsertTasksColocatedTest, WriteToTableWithoutVectorIndex) {
   // A rejected write would be retried until the statement times out.
   ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", 10 * kTimeMultiplier));
   ASSERT_OK(conn.Execute("INSERT INTO plain VALUES (1)"));
+  // A delete takes no insert tasks either.
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id = $0", kDeletedId));
 
   unblock->CountDown();
   threads.JoinAll();

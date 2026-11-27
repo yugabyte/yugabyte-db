@@ -337,7 +337,7 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 // lock. So the leader rejects new writes to a table whose vector index has
 // vector_index_insert_tasks_soft_limit_percentage of vector_index_max_insert_tasks queued.
 Status CheckVectorIndexWriteThrottling(
-    const WriteRequestMsg& req, tablet::TabletPeer* tablet_peer);
+    const WriteRequestMsg& req, tablet::Tablet& tablet, tablet::TabletPeer* tablet_peer);
 
 class CatalogVersionChecker {
  public:

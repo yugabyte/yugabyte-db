@@ -492,6 +492,15 @@ class VectorLSMInsertTask :
     entries_.push_back(std::move(entry));
   }
 
+  // Charges the added vectors to mem_tracker until the task is done.
+  void TrackMemory(const MemTrackerPtr& mem_tracker) {
+    int64_t bytes = 0;
+    for (const auto& entry : entries_) {
+      bytes += entry.vector.size() * sizeof(entry.vector[0]) + entry.payload.size();
+    }
+    consumption_ = ScopedTrackedConsumption(mem_tracker, bytes);
+  }
+
   void Run() override {
     TEST_SYNC_POINT("VectorLSMInsertTask::Run:Begin");
     insert_callback_(DoInsert());
@@ -505,6 +514,7 @@ class VectorLSMInsertTask :
       index_ = nullptr;
       registry = std::move(registry_);
       entries_.clear();
+      consumption_ = ScopedTrackedConsumption();
     }
 
     // We are not really interested in the status as it could indicate shutting down
@@ -557,6 +567,7 @@ class VectorLSMInsertTask :
   std::vector<VectorIndexEntry<Vector>> entries_;
   uint64_t epoch_ = 0;
   bool waited_for_free_tasks_ = false;
+  ScopedTrackedConsumption consumption_;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -746,7 +757,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
         auto waiting_inserts_tasks = waiting_inserts_tasks_;
         lock.unlock();
         LOG_WITH_FUNC(WARNING)
-            << "Long wait to allocate " << num_tasks << " tasks, allocated: "
+            << "Long wait to allocate " << num_tasks << " tasks, allocated to waiting inserts: "
             << waiting_inserts_tasks << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
         lock.lock();
       }
@@ -1733,8 +1744,10 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   // save and hang CompleteShutdown, and its frontiers would claim vectors that were never inserted.
   typename InsertRegistry::InsertTaskList tasks;
   if (num_tasks) {
-    tasks = VERIFY_RESULT(
-        insert_registry_->AllocateTasks(num_tasks, context.wait_for_free_tasks));
+    tasks = VERIFY_RESULT(insert_registry_->AllocateTasks(
+        num_tasks,
+        context.wait_for_free_tasks ||
+            inserts_wait_for_free_tasks_.load(std::memory_order_acquire)));
     DCHECK_EQ(num_tasks, tasks.size());
   }
   auto release_tasks = CancelableScopeExit([this, &tasks] {
@@ -1816,6 +1829,11 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
       index_in_task = 0;
     }
     tasks_it->Add(std::move(entry));
+  }
+  if (options_.insert_queue_mem_tracker) {
+    for (auto& task : tasks) {
+      task.TrackMemory(options_.insert_queue_mem_tracker);
+    }
   }
   insert_registry_->ExecuteTasks(tasks);
 
@@ -2775,8 +2793,15 @@ bool VectorLSM<Vector, DistanceResult>::InsertTasksSoftLimitReached() const {
   if (percentage == 0 || !insert_registry_) {
     return false;
   }
-  return insert_registry_->NumWriteTasks() * 100 >=
-         FLAGS_vector_index_max_insert_tasks * percentage;
+  // With vector_index_max_insert_tasks at 0, the limit is any write task.
+  const auto num_write_tasks = insert_registry_->NumWriteTasks();
+  return num_write_tasks > 0 &&
+         num_write_tasks * 100 >= FLAGS_vector_index_max_insert_tasks * percentage;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::SetInsertsWaitForFreeTasks(bool value) {
+  inserts_wait_for_free_tasks_.store(value, std::memory_order_release);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
