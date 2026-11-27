@@ -57,7 +57,8 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
   private boolean timeoutReached = false;
   private long currentTimeMs = 0;
   private boolean hasTimedout(final long startTimeMs) {
-    final long timeoutMs = 1500000;
+    // Sanitizer builds never reach the 1600-column limit, so they always run until the timeout.
+    final long timeoutMs = BuildTypeUtil.isSanitizerBuild() ? 300000 : 1500000;
     if (timeoutReached) {
       return true;
     }
