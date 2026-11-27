@@ -31,6 +31,9 @@ public class ShellProcessContext {
   @Builder.Default boolean useDefaultUser = true;
   // Whether to log stdout&stderr to application.log or not.
   boolean logCmdOutput;
+  // The output holds data such as users' query text: its files are readable only by the owner and
+  // deleted when the command stops, and its "[app]" lines are not logged.
+  boolean sensitiveOutput;
   // Executed command is logged with trace level, in case it's set to true. Otherwise info.
   boolean traceLogging;
   // Use SSH connection only ignoring other connection types.

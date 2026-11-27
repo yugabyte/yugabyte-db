@@ -164,7 +164,8 @@ public class ShellProcessHandler {
     Process process = null;
     UUID processUUID = context.getUuid() != null ? context.getUuid() : UUID.randomUUID();
     try {
-      Pair<File, File> logFiles = shellLogsManager.createFilesForProcess(processUUID);
+      Pair<File, File> logFiles =
+          shellLogsManager.createFilesForProcess(processUUID, context.isSensitiveOutput());
       tempOutputFile = logFiles.getLeft();
       tempErrorFile = logFiles.getRight();
       pb.redirectOutput(tempOutputFile);
@@ -199,7 +200,13 @@ public class ShellProcessHandler {
         Util.setPID(context.getUuid(), process);
       }
       boolean timedOut =
-          waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
+          waitForProcessExit(
+              process,
+              description,
+              tempOutputFile,
+              tempErrorFile,
+              endTimeMs,
+              !context.isSensitiveOutput());
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();
@@ -272,7 +279,7 @@ public class ShellProcessHandler {
       } else {
         log.info(logMsg);
       }
-      shellLogsManager.onProcessStop(processUUID);
+      shellLogsManager.onProcessStop(processUUID, context.isSensitiveOutput());
       if (context.getUuid() != null) {
         // TODO revisit this leak fix for backup for a cleaner approach.
         Util.removeProcess(context.getUuid());
@@ -380,7 +387,12 @@ public class ShellProcessHandler {
   // Returns true if the process was aborted because it exceeded endTimeMs, false if it exited on
   // its own.
   private static boolean waitForProcessExit(
-      Process process, String description, File outFile, File errFile, long endTimeMs)
+      Process process,
+      String description,
+      File outFile,
+      File errFile,
+      long endTimeMs,
+      boolean logAppLines)
       throws IOException, InterruptedException {
     boolean timedOut = false;
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
@@ -392,8 +404,8 @@ public class ShellProcessHandler {
       while (!waitFor(process, Duration.ofSeconds(1), Duration.ofMillis(500))) {
         // read a limited number of lines so that we don't
         // get stuck infinitely without getting to the time check
-        tailStream(outputStream, 10000 /*maxLines*/);
-        tailStream(errorStream, 10000 /*maxLines*/);
+        tailStream(outputStream, 10000 /*maxLines*/, logAppLines);
+        tailStream(errorStream, 10000 /*maxLines*/, logAppLines);
         if (endTimeMs > 0 && (System.currentTimeMillis() >= endTimeMs)) {
           log.warn("Aborting command {} forcibly because it took too long", description);
           timedOut = true;
@@ -402,17 +414,16 @@ public class ShellProcessHandler {
         }
       }
       // check for any remaining lines
-      tailStream(outputStream);
-      tailStream(errorStream);
+      tailStream(outputStream, 0 /*maxLines*/, logAppLines);
+      tailStream(errorStream, 0 /*maxLines*/, logAppLines);
     }
     return timedOut;
   }
 
-  private static void tailStream(BufferedReader br) throws IOException {
-    tailStream(br, 0 /*maxLines*/);
-  }
-
-  private static void tailStream(BufferedReader br, long maxLines) throws IOException {
+  // logAppLines is false for sensitive output: a line of it, such as query text, can contain
+  // "[app]".
+  private static void tailStream(BufferedReader br, long maxLines, boolean logAppLines)
+      throws IOException {
 
     String line;
     long count = 0;
@@ -421,7 +432,7 @@ public class ShellProcessHandler {
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       line = line.trim();
-      if (line.contains("[app]")) {
+      if (logAppLines && line.contains("[app]")) {
         log.info(line);
       }
       count++;
