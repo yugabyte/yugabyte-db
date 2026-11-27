@@ -47,6 +47,9 @@
 extern double yb_transaction_priority_lower_bound;
 extern double yb_transaction_priority_upper_bound;
 
+/* True while InitializeGUCOptions() initializes the GUCs one by one */
+bool		yb_initializing_guc_options = false;
+
 bool
 check_default_replica_identity(char **newval, void **extra, GucSource source)
 {
@@ -196,6 +199,19 @@ assign_yb_enable_cbo(int new_value, void *extra)
 			break;
 	}
 
+	/*
+	 * InitializeGUCOptions() applies these once every GUC is initialized:
+	 * setting a GUC before its own initialization links it into
+	 * guc_nondef_list behind InitializeOneGUCOption()'s back.
+	 */
+	if (!yb_initializing_guc_options)
+		yb_set_cbo_dependent_defaults(new_value);
+}
+
+/* Sets the dynamic defaults that yb_enable_cbo implies for other GUCs */
+void
+yb_set_cbo_dependent_defaults(int new_value)
+{
 	/*
 	 * When enabling CBO, also set:
 	 *  - yb_enable_bitmapscan to on

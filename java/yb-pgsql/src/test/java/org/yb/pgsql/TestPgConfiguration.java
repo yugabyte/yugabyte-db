@@ -542,6 +542,63 @@ public class TestPgConfiguration extends BasePgSQLTest {
     }
   }
 
+  /*
+   * RESET ALL returns every GUC set in the session to its default, including the GUCs that
+   * yb_enable_cbo's assign hook also sets (yb_enable_bitmapscan is one) and the GUCs set before
+   * them.
+   */
+  @Test
+  public void testResetAllAfterSettingCboDependent() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      // work_mem stands in for any GUC set before a CBO dependent.
+      stmt.execute("SET work_mem = '7MB'");
+      stmt.execute("SET yb_enable_bitmapscan = on");
+      stmt.execute("RESET ALL");
+      for (String guc : Arrays.asList("work_mem", "yb_enable_bitmapscan")) {
+        try (ResultSet rs = stmt.executeQuery(
+                 "SELECT setting = reset_val FROM pg_settings WHERE name = '" + guc + "'")) {
+          assertTrue(rs.next());
+          assertTrue(guc + " should be back at its default after RESET ALL", rs.getBoolean(1));
+        }
+      }
+    }
+  }
+
+  /*
+   * When yb_enable_cbo goes back to its default, by RESET or when a SET LOCAL ends with its
+   * transaction, the GUCs its assign hook also sets go back to the values the default implies.
+   */
+  @Test
+  public void testCboDependentsFollowCboBackToDefault() throws Exception {
+    final String dependents =
+        "SELECT string_agg(name || '=' || setting, ',' ORDER BY name) FROM pg_settings"
+        + " WHERE name IN ('yb_enable_bitmapscan', 'yb_parallel_range_rows',"
+        + " 'yb_enable_update_reltuples_after_create_index',"
+        + " 'yb_use_cluster_config_for_geolocation_costing')";
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      String atDefault = getSingleRow(stmt, dependents).getString(0);
+
+      stmt.execute("SET yb_enable_cbo = on");
+      assertNotEquals(atDefault, getSingleRow(stmt, dependents).getString(0));
+      stmt.execute("RESET yb_enable_cbo");
+      assertEquals("after RESET", atDefault, getSingleRow(stmt, dependents).getString(0));
+
+      conn.setAutoCommit(false);
+      stmt.execute("SET LOCAL yb_enable_cbo = on");
+      assertNotEquals(atDefault, getSingleRow(stmt, dependents).getString(0));
+      conn.commit();
+      conn.setAutoCommit(true);
+      assertEquals("after SET LOCAL ended", atDefault,
+                   getSingleRow(stmt, dependents).getString(0));
+    }
+  }
+
   @Test
   public void testShowAll() throws Exception {
     int tserver = spawnTServer();

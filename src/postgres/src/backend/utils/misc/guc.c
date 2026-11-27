@@ -71,6 +71,7 @@
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
 #include "utils/backend_status.h"
+#include "utils/guc_hooks.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -1542,6 +1543,14 @@ InitializeGUCOptions(void)
 	build_guc_variables();
 
 	/*
+	 * YB: setting a GUC before its own initialization corrupts
+	 * guc_nondef_list, so an assign hook that sets other GUCs checks this
+	 * flag and skips that until every GUC is initialized (see
+	 * assign_yb_enable_cbo()).
+	 */
+	yb_initializing_guc_options = true;
+
+	/*
 	 * Load all variables with their compiled-in defaults, and initialize
 	 * status fields as needed.
 	 */
@@ -1560,6 +1569,7 @@ InitializeGUCOptions(void)
 
 		InitializeOneGUCOption(hentry->gucvar);
 	}
+	yb_initializing_guc_options = false;
 
 	/*
 	 * YB: Initialize yb_enable_cbo after every other variable.  Its assign
@@ -1584,6 +1594,9 @@ InitializeGUCOptions(void)
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 	SetConfigOption("transaction_deferrable", "no",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+	/* YB: deferred from assign_yb_enable_cbo() until every GUC exists */
+	yb_set_cbo_dependent_defaults(yb_enable_cbo);
 
 	/*
 	 * For historical reasons, some GUC parameters can receive defaults from
