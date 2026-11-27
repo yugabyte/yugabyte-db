@@ -55,6 +55,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -1018,5 +1019,162 @@ public class BackupScheduleApiTest extends FakeDBApplication {
             UUID.randomUUID());
     assertToggleError(otherSchedule, true, 404);
     assertToggleError(otherSchedule, false, 404);
+  }
+
+  /** Submits of the delete task record a task with its params, as the commissioner does. */
+  private void mockDeleteSubmit() {
+    when(mockCommissioner.submit(eq(TaskType.DeleteBackupSchedule), any(ITaskParams.class)))
+        .thenAnswer(
+            invocation -> {
+              TaskInfo taskInfo = new TaskInfo(TaskType.DeleteBackupSchedule, null);
+              taskInfo.setTaskParams(Json.toJson(invocation.getArgument(1)));
+              taskInfo.setOwner("test-owner");
+              taskInfo.save();
+              return taskInfo.getUuid();
+            });
+  }
+
+  private BackupScheduleTaskParams submittedDelete(int submits) {
+    ArgumentCaptor<ITaskParams> params = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner, times(submits))
+        .submit(eq(TaskType.DeleteBackupSchedule), params.capture());
+    return (BackupScheduleTaskParams) params.getValue();
+  }
+
+  private ApiException assertDeleteError(Schedule schedule, int code) {
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () ->
+                backupScheduleApi.deleteBackupSchedule(
+                    customer.getUuid(), schedule.getScheduleUUID(), null));
+    assertEquals(e.getResponseBody(), code, e.getCode());
+    return e;
+  }
+
+  @Test
+  public void deleteSubmitsTheTaskAndARepeatGetsIt() throws ApiException {
+    mockDeleteSubmit();
+    Schedule schedule = editableSchedule("daily", false);
+
+    YBATask task =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+
+    assertEquals(schedule.getScheduleUUID(), task.getResourceUuid());
+    BackupScheduleTaskParams params = submittedDelete(1);
+    assertEquals(schedule.getScheduleUUID(), params.getScheduleUUID());
+    assertEquals(customer.getUuid(), params.getCustomerUUID());
+    // v1's delete task records its customer task against the universe.
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(task.getTaskUuid());
+    assertEquals(CustomerTask.TaskType.Delete, customerTask.getType());
+    assertEquals(CustomerTask.TargetType.Schedule, customerTask.getTargetType());
+
+    // While the task deletes it, a repeated delete gets the same task.
+    schedule = reload(schedule);
+    schedule.setStatus(Schedule.State.Deleting);
+    schedule.save();
+    YBATask repeat =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+    assertEquals(task.getTaskUuid(), repeat.getTaskUuid());
+    submittedDelete(1);
+
+    // DELETING with no delete task running.
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUuid());
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.save();
+    ApiException e = assertDeleteError(schedule, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    assertEquals("DELETING", error(e).get("backup_schedule_state").asText());
+
+    // Once the task removed it.
+    schedule.delete();
+    assertDeleteError(schedule, 404);
+  }
+
+  @Test
+  public void deletesPausedErrorAndOlderSchedules() throws ApiException {
+    mockDeleteSubmit();
+    Schedule paused = editableSchedule("paused", false);
+    paused.setStatus(Schedule.State.Stopped);
+    paused.save();
+    backupScheduleApi.deleteBackupSchedule(customer.getUuid(), paused.getScheduleUUID(), null);
+    assertEquals(paused.getScheduleUUID(), submittedDelete(1).getScheduleUUID());
+
+    // A schedule in ERROR, as a failed create or edit leaves it.
+    Schedule failed = editableSchedule("failed", false);
+    failed.setStatus(Schedule.State.Error);
+    failed.save();
+    backupScheduleApi.deleteBackupSchedule(customer.getUuid(), failed.getScheduleUUID(), null);
+    assertEquals(failed.getScheduleUUID(), submittedDelete(2).getScheduleUUID());
+
+    // A schedule of an older backup task.
+    Schedule older =
+        ModelFactory.createScheduleBackup(
+            customer.getUuid(), universe.getUniverseUUID(), storageConfig.getConfigUUID());
+    backupScheduleApi.deleteBackupSchedule(customer.getUuid(), older.getScheduleUUID(), null);
+    assertEquals(older.getScheduleUUID(), submittedDelete(3).getScheduleUUID());
+  }
+
+  @Test
+  public void deleteConflicts() throws ApiException {
+    mockDeleteSubmit();
+    for (Schedule.State state :
+        List.of(Schedule.State.Creating, Schedule.State.Editing, Schedule.State.Paused)) {
+      Schedule schedule = editableSchedule("in-" + state, false);
+      schedule.setStatus(state);
+      schedule.save();
+      ApiException e = assertDeleteError(schedule, 409);
+      assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    }
+
+    // Another task holds it.
+    Schedule held = editableSchedule("held", false);
+    Schedule.modifyScheduleRunningAndSave(customer.getUuid(), held.getScheduleUUID(), true);
+    ApiException e = assertDeleteError(held, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+
+    // A backup it started is running.
+    Schedule running = editableSchedule("running", false);
+    UUID backupTask = UUID.randomUUID();
+    ScheduleTask.create(backupTask, running.getScheduleUUID());
+    e = assertDeleteError(running, 409);
+    assertEquals(BackupScheduleHandler.BACKUP_RUNNING, error(e).get("code").asText());
+    assertEquals(backupTask.toString(), error(e).get("task_uuid").asText());
+
+    // The Kubernetes operator manages it.
+    Schedule operated = editableSchedule("operated", false);
+    operated.setIsKubernetesOperatorControlled(true);
+    e = assertDeleteError(operated, 409);
+    assertEquals(BackupScheduleHandler.OPERATOR_CONTROLLED, error(e).get("code").asText());
+
+    // A point-in-time-restore schedule while a task holds the universe.
+    Schedule pit = editableSchedule("pit", true);
+    Universe.saveDetails(
+        universe.getUniverseUUID(), u -> u.getUniverseDetails().updateInProgress = true);
+    e = assertDeleteError(pit, 409);
+    assertEquals(BackupScheduleHandler.UNIVERSE_LOCKED, error(e).get("code").asText());
+    assertEquals(universe.getUniverseUUID().toString(), error(e).get("universe_uuid").asText());
+    // A schedule without point_in_time_restore doesn't wait for the universe.
+    Schedule plain = editableSchedule("plain", false);
+    backupScheduleApi.deleteBackupSchedule(customer.getUuid(), plain.getScheduleUUID(), null);
+    assertEquals(plain.getScheduleUUID(), submittedDelete(1).getScheduleUUID());
+  }
+
+  @Test
+  public void deleteMissing() {
+    Schedule missing = editableSchedule("missing", false);
+    missing.delete();
+    assertDeleteError(missing, 404);
+    Schedule otherSchedule =
+        createBackupSchedule(
+            ModelFactory.testCustomer("other-customer"),
+            "other",
+            UUID.randomUUID(),
+            UUID.randomUUID());
+    assertDeleteError(otherSchedule, 404);
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.DeleteBackupSchedule), any(ITaskParams.class));
   }
 }

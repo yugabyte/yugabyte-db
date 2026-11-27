@@ -23,11 +23,12 @@
       older than YBA's, and for point_in_time_restore sets the history retention the backups need.
       It then makes the schedule ACTIVE. If the task fails, the schedule is removed, so the name is
       free for a retry; the failed task's error says why. If YBA restarts while the create task
-      runs, the schedule is left in ERROR; delete it before creating one with the same name. A
+      runs, the schedule is left in ERROR; delete it (DELETE
+      /customers/{cUUID}/backup-schedules/{bsUUID}) before creating one with the same name. A
       point-in-time-restore schedule whose task fails after changing the universe's history
-      retention is left in ERROR; delete it to restore the retention. Only YSQL and YCQL schedules
-      can be created; each keyspaces entry needs its keyspace. Retry with the same Idempotency-Key
-      to get the task of a request whose response was lost.
+      retention is left in ERROR; deleting it restores the retention. Only YSQL and YCQL
+      schedules can be created; each keyspaces entry needs its keyspace. Retry with the same
+      Idempotency-Key to get the task of a request whose response was lost.
     tags:
       - Backup Schedule
     requestBody:
@@ -212,6 +213,59 @@
       - requiredPermission:
           resourceType: other
           action: update
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-idempotent: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deleteBackupSchedule
+    summary: Delete a backup schedule
+    description: |
+      Deletes a backup schedule and returns the task that does it (resource_uuid is the schedule's
+      UUID). The backups the schedule took are kept; they expire by their own retention. An
+      ACTIVE, PAUSED or ERROR schedule can be deleted. The schedule is DELETING while the task
+      runs and gone (404) once it succeeds; for point_in_time_restore the task first lowers the
+      universe's history retention to what its other schedules need. If the task fails, the
+      schedule is left in ERROR, and can be deleted again. Deleting a schedule that a delete task
+      is already deleting returns that task. A schedule the YBA Kubernetes operator manages is
+      deleted through its custom resource, not here. Retry with the same Idempotency-Key to get
+      the task of a request whose response was lost.
+    tags:
+      - Backup Schedule
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no update permission on the schedule''s universe or no delete permission on the customer'
+      '404':
+        description: The customer has no backup schedule with this UUID
+      '409':
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING or EDITING, DELETING with no delete task to return, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_BACKUP_RUNNING while a backup the schedule started runs (error.task_uuid), BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; delete its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Schedule
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: DeleteBackupSchedule
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: update
+        resourceLocation:
+          path: owner_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.Schedule.class
+          identifier: backup-schedules
+          columnName: schedule_uuid
+      - requiredPermission:
+          resourceType: other
+          action: delete
         resourceLocation:
           path: customers
           sourceType: endpoint
