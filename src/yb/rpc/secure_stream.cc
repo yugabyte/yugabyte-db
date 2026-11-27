@@ -23,8 +23,6 @@
 
 #include <boost/tokenizer.hpp>
 
-#include "yb/encryption/encryption_util.h"
-
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/outbound_data.h"

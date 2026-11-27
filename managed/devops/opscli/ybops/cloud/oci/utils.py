@@ -1261,8 +1261,17 @@ class OciCloudAdmin:
 
     def update_volume_size(self, volume_id, new_size_in_gbs):
         from oci.core.models import UpdateVolumeDetails
+        # A retry can find the earlier resize still running, or the volume already resized. OCI
+        # only accepts a larger size.
+        volume = self._wait_for_volume_state(volume_id, "AVAILABLE")
+        if volume.size_in_gbs >= new_size_in_gbs:
+            return
         update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
         self.blockstorage_client.update_volume(volume_id, update_details)
+        # The resize is asynchronous.
+        self._wait_for_volume_state(
+            volume_id, "AVAILABLE",
+            ready_check=lambda volume: volume.size_in_gbs >= new_size_in_gbs)
 
     def list_volumes_by_tags(self, tags, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
@@ -1369,15 +1378,19 @@ class OciCloudAdmin:
         raise YBOpsRuntimeError(
             "Timeout waiting for work request {} to finish".format(work_request_id))
 
-    def _wait_for_volume_state(self, volume_id, target_state, timeout=300):
+    def _wait_for_volume_state(self, volume_id, target_state, timeout=300, ready_check=None):
         start_time = time.time()
+        last_seen = None
         while time.time() - start_time < timeout:
             volume = self.blockstorage_client.get_volume(volume_id).data
             if volume.lifecycle_state == target_state:
-                return volume
+                if ready_check is None or ready_check(volume):
+                    return volume
+            last_seen = "{} at {} GB".format(volume.lifecycle_state, volume.size_in_gbs)
             time.sleep(5)
         raise YBOpsRuntimeError(
-            "Timeout waiting for volume {} to reach state {}".format(volume_id, target_state))
+            "Timeout waiting for volume {} to reach state {}, last seen {}".format(
+                volume_id, target_state, last_seen))
 
     def _wait_for_attachment_state(self, attachment_id, target_state, timeout=300):
         start_time = time.time()

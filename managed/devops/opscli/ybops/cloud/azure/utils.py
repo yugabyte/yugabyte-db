@@ -735,7 +735,7 @@ class AzureCloudAdmin():
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except (CloudError, HttpResponseError) as e:
             code = self._get_azure_error_code(e)
-            if code == 'ResourceNotFound':
+            if code in ['ResourceNotFound', 'NotFound']:
                 logging.info("[app] Resource ip name {} is not found".format(ip_name))
             else:
                 raise e
@@ -807,19 +807,14 @@ class AzureCloudAdmin():
         vmdel.wait()
         logging.info("[app] Deleted vm {}".format(vm_name))
 
-        disk_dels = {}
-        data_disks = vm.storage_profile.data_disks
-        for disk in data_disks:
-            logging.info("[app] Deleting disk {}".format(disk.name))
-            disk_del = self.delete_disk(disk.name)
-            disk_dels[disk.name] = disk_del
-
+        disk_names = [disk.name for disk in vm.storage_profile.data_disks]
         # Skip OS delete during VM image upgrade so disk can be cloned and remounted.
-        if not skip_os_delete:
-            os_disk_name = vm.storage_profile.os_disk.name
-            logging.info("[app] Deleting os disk {}".format(os_disk_name))
-            disk_del = self.delete_disk(os_disk_name)
-            disk_dels[os_disk_name] = disk_del
+        # A VM whose allocation failed never got an OS disk, so its name is None.
+        if not skip_os_delete and vm.storage_profile.os_disk.name:
+            disk_names.append(vm.storage_profile.os_disk.name)
+        # Disks go first: after a failed creation Azure also reserves the NIC for 180 seconds
+        # (NicReservedForAnotherVm), and waiting out the disk lock outlasts that reservation.
+        self.delete_disks_of_deleted_vm(disk_names)
 
         nic_name = self.get_nic_name(vm_name)
         logging.info("[app] Deleting nic {}".format(nic_name))
@@ -836,11 +831,51 @@ class AzureCloudAdmin():
             ip_del.wait()
             logging.info("[app] Deleted ip {}".format(ip_name))
 
-        for disk_name, disk_del in disk_dels.items():
-            disk_del.wait()
-            logging.info("[app] Deleted disk {}".format(disk_name))
-
         logging.info("[app] Successfully destroyed instance {}".format(vm_name))
+
+    def delete_disks_of_deleted_vm(self, disk_names, max_attempts=10, retry_interval_sec=30):
+        """Deletes the disks of a VM that was just deleted.
+
+        When a VM creation fails (e.g. ZonalAllocationFailed), Azure keeps its disks locked until
+        a few minutes after the VM is deleted, and rejects their deletion with
+        OperationNotAllowed ("is being attached to VM"). Only that error is retried, with
+        max_attempts attempts in all. NotFound counts as deleted, and any other error is raised.
+        """
+        pending = list(disk_names)
+        for attempt in range(1, max_attempts + 1):
+            locked = []
+
+            def on_error(disk_name, e):
+                code = self._get_azure_error_code(e)
+                if code in ['ResourceNotFound', 'NotFound']:
+                    logging.info("[app] Disk {} is already deleted".format(disk_name))
+                elif (code == 'OperationNotAllowed' and 'attached' in str(e)
+                      and attempt < max_attempts):
+                    logging.warning("[app] Disk {} is still locked by the deleted vm: {}"
+                                    .format(disk_name, e))
+                    locked.append(disk_name)
+                else:
+                    raise e
+
+            deletions = OrderedDict()
+            for disk_name in pending:
+                logging.info("[app] Deleting disk {}".format(disk_name))
+                try:
+                    deletions[disk_name] = self.delete_disk(disk_name)
+                except Exception as e:
+                    on_error(disk_name, e)
+            for disk_name, deletion in deletions.items():
+                try:
+                    deletion.wait()
+                    logging.info("[app] Deleted disk {}".format(disk_name))
+                except Exception as e:
+                    on_error(disk_name, e)
+            if not locked:
+                return
+            logging.info("[app] Retrying deletion of disks {} in {} seconds (attempt {} of {})."
+                         .format(locked, retry_interval_sec, attempt + 1, max_attempts))
+            time.sleep(retry_interval_sec)
+            pending = locked
 
     def get_subnet_id(self, vnet, subnet):
         # subnet URN can be used directly

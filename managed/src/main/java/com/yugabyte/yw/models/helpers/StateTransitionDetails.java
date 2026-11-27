@@ -16,6 +16,7 @@ import java.util.Comparator;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import play.libs.Json;
 
 /** Captures a before-to-target state transition for an in-flight universe task. */
@@ -24,7 +25,10 @@ import play.libs.Json;
 @AllArgsConstructor
 public class StateTransitionDetails {
   private boolean rollbackSafe;
-  private JsonNode delta;
+
+  // Holds the universe's sensitive gflags, such as LDAP bind passwords, in clear, so a log line
+  // that prints these details must not print it.
+  @ToString.Exclude private JsonNode delta;
 
   /**
    * Validates that this transition can be rolled back (delta present and still within the safe

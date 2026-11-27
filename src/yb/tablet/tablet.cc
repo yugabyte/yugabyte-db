@@ -576,8 +576,8 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
-// log_ht is not known for applies resumed after a restart, and HybridTime::kInvalid would be the
-// largest one, so their frontiers cover commit_ht only.
+// log_ht is invalid for an apply resumed from a state written by a version that did not store it,
+// and HybridTime::kInvalid would be the largest one, so their frontiers cover commit_ht only.
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
@@ -3195,14 +3195,17 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 
   OpId min_op_id = OpId::Max();
   OpId max_op_id = OpId::Min();
-  HybridTime min_ht = HybridTime::kMax;
-  HybridTime max_ht = HybridTime::kMin;
+  HybridTime min_ht;
+  HybridTime max_ht;
 
   for (const auto& metadata : metadatas) {
     min_op_id = std::min(min_op_id, metadata.apply_op_id);
     max_op_id = std::max(max_op_id, metadata.apply_op_id);
-    min_ht = std::min({min_ht, metadata.commit_ht, metadata.log_ht});
-    max_ht = std::max({max_ht, metadata.commit_ht, metadata.log_ht});
+    DCHECK(metadata.commit_ht) << metadata.ToString();
+    for (auto ht : {metadata.commit_ht, metadata.log_ht}) {
+      min_ht.MakeAtMost(ht);
+      max_ht.MakeAtLeast(ht);
+    }
   }
 
   docdb::ConsensusFrontiers frontiers;
@@ -3441,6 +3444,13 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   std::optional<qlexpr::IndexInfo> index_info;
   if (table_info.has_index_info()) {
     index_info.emplace(table_info.index_info(), ht);
+  }
+
+  // A restore can add back a vector index whose storage is still being destroyed, or was left by a
+  // crash during its removal. The metadata must not list the index before the storage is gone, see
+  // RemoveTable. Blocks the apply, but only in that case.
+  if (index_info && index_info->is_vector_index()) {
+    RETURN_NOT_OK(vector_indexes_->PrepareAddIndex(table_info.table_id(), *index_info));
   }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
@@ -3717,9 +3727,11 @@ Status Tablet::AddMultipleTables(
 }
 
 Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
-  RETURN_NOT_OK(vector_indexes_->Remove(table_id));
+  auto complete_remove_vector_index = VERIFY_RESULT(vector_indexes_->Remove(table_id));
   metadata_->RemoveTable(table_id, op_id);
   RETURN_NOT_OK(metadata_->Flush());
+  // Not before the flush: bootstrap fails to open a listed index from partly deleted storage.
+  complete_remove_vector_index();
   return Status::OK();
 }
 

@@ -913,6 +913,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
 
+  Status SetEncryptionAlgorithm(
+      const SetEncryptionAlgorithmRequestPB* req, SetEncryptionAlgorithmResponsePB* resp);
+
+  // Applies update to the cluster config's encryption info, persists it, and resends the universe
+  // key registry to tservers on their next heartbeat.
+  Status UpdateEncryptionInfo(const std::function<Status(EncryptionInfoPB*)>& update);
+
   Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
                                     GetFullUniverseKeyRegistryResponsePB* resp);
 
@@ -2180,6 +2187,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   FRIEND_TEST(TestCatalogManager, PlaceReplicasExcludesOtherPlacementUuids);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasBlockWithTooFewTservers);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasOverlappingBlocksFail);
+  FRIEND_TEST(MasterTestXRepl, TestXReplBgTasksRunDuringSharedLockHold);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -2563,6 +2571,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::shared_ptr<AsyncAddServerTask>> ScheduleAddServerTask(
       const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
+      const LeaderEpoch& epoch, const std::string& reason);
+
+  // Tiered storage: start a task that tells the replica of 'tablet' on 'ts_uuid' to move its
+  // SSTs to 'target_tier' (AlterTabletTier).
+  Result<std::shared_ptr<RetryingRpcTask>> ScheduleAlterTabletTierTask(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
       const LeaderEpoch& epoch, const std::string& reason);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and
@@ -3463,10 +3477,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
       const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
 
+  // Returns true if stream_ids is non-empty and the streams are logical replication streams (see
+  // IsCdcLogicalReplicationStream). Returns NotFound if none of the streams is in cdc_stream_map_.
+  Result<bool> AreCdcLogicalReplicationStreams(
+      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
+
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
   // across them.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
-      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
+      const std::unordered_set<xrepl::StreamId>& stream_ids) EXCLUDES(mutex_);
 
   Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
   GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)

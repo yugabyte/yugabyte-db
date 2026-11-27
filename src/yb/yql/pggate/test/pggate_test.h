@@ -97,6 +97,9 @@ class PggateTest : public YBTest {
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
 
+  // Session counters filled by PgGate. Lives for the cluster created in Init.
+  YbcPgExecStatsState* session_stats_ = nullptr;
+
  private:
   void CreateDB();
 };

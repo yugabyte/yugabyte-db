@@ -32,6 +32,7 @@ ADD_YB_LIBRARY(encryption
       ctr_cipher_stream.cc
       encrypted_file.cc
       encrypted_file_factory.cc
+      encryption_key_report.cc
       encryption_util.cc
       header_manager_impl.cc
       universe_key_manager.cc
@@ -44,7 +45,7 @@ ADD_YB_LIBRARY(encryption
 ADD_YB_TEST_LIBRARY(
   encryption_test_util
   SRCS encryption_test_util.cc header_manager_mock_impl.cc
-  DEPS yb_test_util)
+  DEPS encryption yb_test_util)
 
 set(YB_TEST_LINK_LIBS encryption encryption_test_util ${YB_MIN_TEST_LIBS})
 

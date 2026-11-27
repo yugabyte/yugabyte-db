@@ -58,6 +58,8 @@ class BlockAccessCipherStream {
 
   bool UseOpensslCompatibleCounterOverflow();
 
+  uint32_t key_size() const;
+
  private:
   Status EncryptByBlock(
       uint64_t block_index,

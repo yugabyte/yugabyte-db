@@ -34,6 +34,7 @@ export default class NodeAction extends Component {
     this.closeModal = this.closeModal.bind(this);
     this.closeOverridesModal = this.closeOverridesModal.bind(this);
     this.handleLiveQueryClick = this.handleLiveQueryClick.bind(this);
+    this.handleSlowQueryClick = this.handleSlowQueryClick.bind(this);
   }
 
   static propTypes = {

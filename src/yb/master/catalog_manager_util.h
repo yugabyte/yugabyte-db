@@ -81,6 +81,14 @@ class CatalogManagerUtil {
   static Result<std::string> GetPlacementUuidFromRaftPeer(
       const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
 
+  // The read replica placement whose uuid is placement_uuid, else the first one: the cluster's
+  // read replica placements can change (yb-admin add/delete_read_replica_placement_info) between
+  // a tablespace refresh and now, and the next refresh rebinds. Null when the table has none.
+  // Shared by the balancer's read replica runs and the tier a new observer is created on, which
+  // have to pick the same placement.
+  static const PlacementInfoPB* FindReadReplicaPlacement(
+      const ReplicationInfoPB& replication_info, const std::string& placement_uuid);
+
   // Returns error if tablet partition is not covered by running inner tablets partitions.
   static Status CheckIfCanDeleteSingleTablet(const TabletInfoPtr& tablet);
 

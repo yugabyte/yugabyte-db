@@ -121,6 +121,7 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 							bool xs_want_itup, YbcPgStatement handle)
 {
 	ListCell   *lc;
+	int			aggno = 0;
 
 	/* Set aggregate scan targets. */
 	foreach(lc, aggrefs)
@@ -231,9 +232,9 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 			}
 		}
 
-		/* Add aggregate operator as scan target. */
-		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle,
-											false /* is_for_secondary_index */ ));
+		/* Aggregate results are read at slots 0..n-1. */
+		HandleYBStatus(YBCPgDmlAppendAggregateTarget(handle, op_handle, aggno));
+		++aggno;
 	}
 }
 

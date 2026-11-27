@@ -31,6 +31,7 @@ class MasterEncryptionServiceImpl : public MasterServiceBase, public MasterEncry
     CatalogManager,
     (ChangeEncryptionInfo)
     (IsEncryptionEnabled)
+    (SetEncryptionAlgorithm)
     (GetFullUniverseKeyRegistry)
   )
 

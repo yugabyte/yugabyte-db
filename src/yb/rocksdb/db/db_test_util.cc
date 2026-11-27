@@ -23,6 +23,7 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
 
@@ -108,7 +109,7 @@ DBHolder::~DBHolder() {
 }
 
 void DBHolder::CreateEncryptedEnv() {
-  auto bytes = yb::RandomBytes(32);
+  auto bytes = yb::RandomBytes(yb::encryption::DefaultUniverseKeySize());
   yb::Slice key(bytes.data(), bytes.size());
   auto status = yb::WriteStringToFile(yb::Env::Default(), key, kKeyFile);
   if (!status.ok()) {

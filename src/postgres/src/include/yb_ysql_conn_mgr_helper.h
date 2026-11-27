@@ -83,11 +83,15 @@ extern bool yb_ysql_conn_mgr_sticky_listen;
 
 extern bool yb_ysql_conn_mgr_sticky_replication_origin;
 
+extern bool yb_ysql_conn_mgr_sticky_cursor;
+
 extern bool yb_conn_mgr_replication_origin_permanent_sticky;
 
 extern bool yb_conn_mgr_prepare_permanent_sticky;
 
 extern bool yb_conn_mgr_listen_permanent_sticky;
+
+extern bool yb_conn_mgr_cursor_permanent_sticky;
 
 /*
  * The "local" component of Logical Client Version. It is only incremented

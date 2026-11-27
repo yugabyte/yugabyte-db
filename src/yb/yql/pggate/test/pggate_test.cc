@@ -17,7 +17,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_set>
 
 #include "yb/util/flags.h"
 
@@ -186,9 +185,9 @@ Status PggateTest::Init(
 
   YbcPgCallbacks callbacks;
 
-  auto* session_stats =
+  session_stats_ =
       static_cast<YbcPgExecStatsState*>(PggateTestAlloc(sizeof(YbcPgExecStatsState)));
-  memset(session_stats, 0, sizeof(YbcPgExecStatsState));
+  memset(session_stats_, 0, sizeof(YbcPgExecStatsState));
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
@@ -209,7 +208,7 @@ Status PggateTest::Init(
     .parallel_leader_session_id = nullptr,
     .shared_data = &shared_data_placeholder};
   CHECK_YBC_STATUS(YBCInitPgGate(
-      YBCTestGetTypeTable(), &callbacks, &init_info, &ash_config, session_stats,
+      YBCTestGetTypeTable(), &callbacks, &init_info, &ash_config, session_stats_,
       false /* is_binary_upgrade */));
   if (should_create_db) {
     CreateDB();

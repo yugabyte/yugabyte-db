@@ -35,6 +35,8 @@ unset AZURE_NVME_ID_COMMAND
 
 {% include "azure_disk_utils.sh.j2" %}
 
+{% include "oci_disk_utils.sh.j2" %}
+
 {% raw %}
 CLOUD_TYPE=$(printf '%s' "$CLOUD_TYPE_B64" | base64 --decode)
 readonly CLOUD_TYPE
@@ -167,6 +169,9 @@ get_ephemeral_drives() {
   elif [[ $CLOUD_TYPE == "azu" ]]; then
     get_azu_drives
     get_ephemeral_drives_rv=$get_azu_drives_rv
+  elif [[ $CLOUD_TYPE == "oci" ]]; then
+    get_oci_drives
+    get_ephemeral_drives_rv=$get_oci_drives_rv
   else
     get_ephemeral_drives_rv=$DEFAULT_SSD_DRIVES
   fi
@@ -390,7 +395,9 @@ mount_drives() {
 
   if [[ $num_devices -lt ${#mounts[@]} ]]; then
     echo >&2 "Only $num_devices volumes discovered, but ${#mounts[@]} mount points provided: $MOUNT_PATHS."
-    echo >&2 "Will mount available volumes and return an error after that."
+    if [[ $CLOUD_TYPE != "azu" && $CLOUD_TYPE != "oci" ]]; then
+      echo >&2 "Will mount available volumes and return an error after that."
+    fi
     exit_code=1
   fi
 
@@ -456,7 +463,11 @@ mount_drives() {
         elif [[ $CLOUD_TYPE != "azu" ]] && \
              ! [[ " ${mounts[*]} " =~ [[:space:]]${value}[[:space:]] ]]; then
           echo "$device_path is mounted at $value, which is not expected to be managed by yba"
-          max_iterations=$((max_iterations+1))
+          # Only the AWS NVMe device path follows the loop index, so only there does another
+          # iteration probe another device. Elsewhere it would probe this one again, forever.
+          if [[ $CLOUD_TYPE == "aws" && "$DRIVE_SCHEME" == "nvme" ]]; then
+            max_iterations=$((max_iterations+1))
+          fi
           continue 2
         fi
       done
@@ -500,10 +511,11 @@ mount_drives() {
   if [[ ${#device_paths[@]} -lt ${#mounts[@]} ]]; then
     echo >&2 "Only ${#device_paths[@]} devices resolved for ${#mounts[@]} mount points: $MOUNT_PATHS."
     exit_code=1
-    if [[ $CLOUD_TYPE == "azu" ]]; then
-      # Every Azure LUN maps to exactly one mount path; mounting a partial set would shift disks
-      # onto the wrong mount points.
-      echo >&2 "Refusing to mount a partial set of Azure data disks."
+    if [[ $CLOUD_TYPE == "azu" || $CLOUD_TYPE == "oci" ]]; then
+      # On Azure, mounting a partial set would shift LUNs onto the wrong mount
+      # points. On OCI, refuse to mount or update fstab when not all expected
+      # data volumes resolved.
+      echo >&2 "Refusing to mount a partial set of data disks."
       exit 1
     fi
   fi

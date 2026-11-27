@@ -570,6 +570,10 @@ class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
     // stale-syscache race window, so it must be disabled to reproduce.
     ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ true);
     ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ true);
+    // TODO(#39366): With Read Committed on, debug builds hit an unrelated assertion in
+    // AtEOXact_RelationCache. Remove this once that is fixed.
+    opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
+    opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=false");
   }
 
   static bool IsBackendCrash(const Status& status) {

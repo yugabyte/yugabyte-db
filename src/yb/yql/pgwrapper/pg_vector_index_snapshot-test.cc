@@ -16,6 +16,9 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/docdb_util.h"
+
+#include "yb/fs/fs_manager.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
@@ -35,7 +38,10 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
+#include "yb/util/env_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/vector_index/vector_lsm.h"
 
@@ -48,6 +54,8 @@ DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
+DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint64(vector_index_task_size);
 
 namespace yb::tablet {
 
@@ -57,10 +65,26 @@ extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 namespace yb::pgwrapper {
 
-MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
+YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
+
+class PgVectorIndexSnapshotTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+ protected:
+  void TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen crash_after_reopen);
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSnapshotTest);
+
+class PgVectorIndexColocationOnlyTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  void TestDroppedIndexKeepsUnflushedRows(bool skip_deactivation_flush);
+  void TestSkippedIndexStorageDestroyedOnRemove(bool with_kept_index);
+};
+
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexColocationOnlyTest);
 
-TEST_P(PgVectorIndexTest, SnapshotSchedule) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotSchedule) {
   constexpr size_t kNumRows = 128;
   constexpr size_t kQueryLimit = 5;
 
@@ -94,7 +118,7 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
 // An in-place restore of a plain snapshot keeps vector indexes created after the snapshot. They
 // have no counterpart in the snapshot superblock and must be backfilled from the restored rows.
 // See issue #35832.
-TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
   constexpr size_t kNumRows = 128;
   constexpr size_t kQueryLimit = 5;
 
@@ -140,7 +164,7 @@ TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
 // A restore to before a DROP COLUMN of the vector column must not leave the column recorded as
 // deleted, otherwise compaction past the drop discards its reverse mapping entries.
 // See issue #35814.
-TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotScheduleRestoreBeforeDropColumn) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
@@ -194,7 +218,7 @@ TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
 // A restored vector index that needs a compaction right away must not start it before the
 // restore resumes read/write operations. The compaction would fail with TryAgain, the index would
 // keep that failure, and the restore apply or the next write would crash the tserver. See DB-23803.
-TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
+TEST_P(PgVectorIndexSnapshotTest, CompactionAfterSnapshotRestore) {
   constexpr size_t kBatch = 8;
 
   num_pre_split_tablets_ = 1;
@@ -252,7 +276,7 @@ TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
   ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
 }
 
-void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
+void PgVectorIndexSnapshotTest::TestSnapshotRestoreNonTransactionalWrites(
     CrashAfterRestoreReopen crash_after_reopen) {
   constexpr size_t kNumRows = 16;
 
@@ -301,14 +325,14 @@ void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
 // A restore replaces the vector index storage together with the regular DB. The vector indexes
 // must get the restore op id like the regular DB, otherwise bootstrap starts replay at their older
 // flushed OpId and re-inserts the rolled back writes into them. See issue #32797.
-TEST_P(PgVectorIndexTest, SnapshotRestoreNonTransactionalWrites) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotRestoreNonTransactionalWrites) {
   TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen::kFalse);
 }
 
 // Once the regular DB has the restore op id, bootstrap does not replay the restore. A crash right
 // after the restore reopens the storages must find the vector indexes at the restore op id too,
 // not at the snapshot's OpIds. See issue #35077.
-TEST_P(PgVectorIndexTest, SnapshotRestoreCrashAfterReopen) {
+TEST_P(PgVectorIndexSnapshotTest, SnapshotRestoreCrashAfterReopen) {
   TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen::kTrue);
 }
 
@@ -1103,9 +1127,15 @@ void PgVectorIndexColocationOnlyTest::TestSkippedIndexStorageDestroyedOnRemove(
         return true;
       },
       60s * kTimeMultiplier, "Index removed from the tablets"));
-  for (const auto& dir : skipped_dirs) {
-    EXPECT_FALSE(Env::Default()->FileExists(dir)) << dir;
-  }
+  // The removal deletes the storage only after it flushes the metadata without the index.
+  ASSERT_OK(WaitFor(
+      [&skipped_dirs] {
+        auto* env = Env::Default();
+        return std::ranges::none_of(skipped_dirs, [env](const auto& dir) {
+          return env->FileExists(dir) || docdb::IsVectorIndexStorageMarkedRemoved(*env, dir);
+        });
+      },
+      30s * kTimeMultiplier, "Skipped index storage and its removal mark deleted"));
   for (const auto& dir : kept_dirs) {
     EXPECT_TRUE(Env::Default()->FileExists(dir)) << dir;
   }
@@ -1117,6 +1147,408 @@ TEST_P(PgVectorIndexColocationOnlyTest, SkippedIndexStorageDestroyedOnRemove) {
 
 TEST_P(PgVectorIndexColocationOnlyTest, SkippedIndexStorageDestroyedOnRemoveWithKeptIndex) {
   TestSkippedIndexStorageDestroyedOnRemove(/* with_kept_index= */ true);
+}
+
+// Cancelling CREATE INDEX removes the index while its backfill is still inserting. Neither the
+// cancel nor the removal may wait for the rest of the backfill: the removal is applied by Raft, so
+// waiting there blocks the tablet and the heartbeats of its tservers (GH#38073). The removal does
+// not wait for the destroy of the index storage either, which waits for the queued inserts to skip
+// their vectors.
+TEST_P(PgVectorIndexColocationOnlyTest, CancelCreateIndexDuringBackfill) {
+  constexpr size_t kNumRows = 2000;
+  // With one insert thread and one vector per task, each replica needs kNumRows * kInsertDelay to
+  // backfill, far longer than kRemoveTimeout.
+  constexpr auto kInsertDelay = 50ms;
+  const auto kRemoveTimeout = 20s * kTimeMultiplier;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT g, ('[' || g || ',' || g || ',' || g || ']')::vector "
+      "FROM generate_series(1, $0) g", kNumRows));
+
+  CountDownLatch destroys_held{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [kInsertDelay](void*) {
+    std::this_thread::sleep_for(kInsertDelay);
+  });
+  sync_point->SetCallBack(
+      "VectorLSM::CompleteShutdown:RegistriesStopped", [&destroys_held](void*) {
+    destroys_held.Wait();
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point, &destroys_held] {
+    destroys_held.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  std::atomic<int32_t> backend_pid{0};
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, &backend_pid] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    backend_pid = ASSERT_RESULT(index_conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    ASSERT_NOK_STR_CONTAINS(CreateIndex(index_conn), "canceling statement due to user request");
+  });
+  ASSERT_OK(WaitForVectorIndexBackfillsStarted(cluster_->num_tablet_servers()));
+  const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
+  std::vector<std::string> storage_dirs;
+  for (const auto& vector_index : ListVectorIndexes(cluster_.get())) {
+    storage_dirs.push_back(vector_index->path());
+  }
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  ASSERT_EQ(storage_dirs.size(), peers.size());
+
+  const auto start = MonoTime::Now();
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      Format("SELECT pg_cancel_backend($0)", backend_pid.load()))));
+  // The rollback of the cancelled CREATE INDEX removes the index from the tablets.
+  threads.JoinAll();
+  ASSERT_OK(WaitFor([&peers, &index_table_id] {
+    for (const auto& peer : peers) {
+      if (peer->tablet_metadata()->GetTableInfo(index_table_id).ok()) {
+        return false;
+      }
+    }
+    return true;
+  }, kRemoveTimeout, "Index removed from tablets"));
+  const auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "Index removed in " << elapsed;
+  ASSERT_LT(elapsed, MonoDelta(kRemoveTimeout));
+
+  destroys_held.CountDown();
+  auto* env = Env::Default();
+  ASSERT_OK(WaitFor([env, &storage_dirs] {
+    for (const auto& dir : storage_dirs) {
+      if (env->DirExists(dir) || docdb::IsVectorIndexStorageMarkedRemoved(*env, dir)) {
+        return false;
+      }
+    }
+    return true;
+  }, kRemoveTimeout, "Index storages and their removal marks deleted"));
+  LOG(INFO) << "Index storages deleted in " << MonoTime::Now() - start;
+
+  sync_point->ClearAllCallBacks();
+  ASSERT_OK(CreateIndex(conn));
+}
+
+// The removal of an index may delete its storage only once the tablet metadata no longer lists the
+// index: after a crash in between, bootstrap would open the index from its partly deleted storage
+// and fail the tablet.
+TEST_P(PgVectorIndexColocationOnlyTest, RemoveIndexDeletesStorageAfterMetadataFlush) {
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
+
+  std::mutex mutex;
+  // Storage dir of the index, by the metadata of each replica not flushed without the index yet.
+  std::unordered_map<tablet::RaftGroupMetadata*, std::string> storage_dirs;
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    storage_dirs[peer->tablet_metadata().get()] =
+        tablet->vector_indexes().IndexForTable(index_table_id)->path();
+  }
+  ASSERT_EQ(storage_dirs.size(), peers.size());
+  std::atomic<size_t> checked{0};
+  std::atomic<size_t> deleted_before_flush{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "RaftGroupMetadata::Flush",
+      [&mutex, &storage_dirs, &index_table_id, &checked, &deleted_before_flush](void* arg) {
+    auto* metadata = static_cast<tablet::RaftGroupMetadata*>(arg);
+    std::string dir;
+    {
+      std::lock_guard lock(mutex);
+      auto it = storage_dirs.find(metadata);
+      if (it == storage_dirs.end() || metadata->HasTable(index_table_id)) {
+        return;
+      }
+      dir = it->second;
+      storage_dirs.erase(it);
+    }
+    // Gives a destroy scheduled before the flush the time to delete the storage.
+    auto status = WaitFor(
+        [&dir] { return !Env::Default()->DirExists(dir); }, 2s * kTimeMultiplier,
+        "Storage deleted before the metadata flush");
+    if (status.ok()) {
+      LOG(INFO) << "Deleted before the metadata flush: " << dir;
+      ++deleted_before_flush;
+    }
+    ++checked;
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  ASSERT_OK(WaitFor([&checked, &peers] {
+    return checked.load() == peers.size();
+  }, 30s * kTimeMultiplier, "Metadata flushes without the index checked"));
+  ASSERT_EQ(deleted_before_flush.load(), 0);
+}
+
+// Re-adding an index while the destroy of its earlier instance is pending, as a PITR restore can do
+// (see TabletVectorIndexes::DoCreateIndex), must wait for the destroy, which would otherwise delete
+// the storage the re-added index uses. The tablet metadata must not list the index meanwhile: a
+// flush of it followed by a crash would leave a listed index with partly deleted storage.
+TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexWaitsForPendingDestroy) {
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
+  const auto storage_dir = tablet->vector_indexes().IndexForTable(index_table_id)->path();
+  auto index_table = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index_table_id));
+  tablet::TableInfoPB index_table_pb;
+  index_table->ToPB(&index_table_pb);
+
+  CountDownLatch destroys_held{1};
+  std::atomic<bool> re_add_waiting{false};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::CompleteShutdown:RegistriesStopped", [&destroys_held](void*) {
+    destroys_held.Wait();
+  });
+  sync_point->SetCallBack(
+      "TabletVectorIndexes::PrepareAddIndex", [&re_add_waiting](void*) {
+    re_add_waiting = true;
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point, &destroys_held] {
+    destroys_held.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  ASSERT_OK(WaitFor([&tablet, &index_table_id] {
+    return !tablet->metadata()->GetTableInfo(index_table_id).ok();
+  }, 30s * kTimeMultiplier, "Index removed from the tablet"));
+
+  std::atomic<bool> created{false};
+  TestThreadHolder threads;
+  // As the apply of a re-sent AddTableToTablet does.
+  threads.AddThreadFunctor([&tablet, &index_table_pb, &index_table, &created] {
+    ASSERT_OK(tablet->AddTable(
+        index_table_pb, tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(),
+        index_table->hybrid_time));
+    created = true;
+  });
+  // Before the thread is joined.
+  auto release_destroys = ScopeExit([&destroys_held] { destroys_held.CountDown(); });
+  ASSERT_OK(WaitFor(
+      [&re_add_waiting] { return re_add_waiting.load(); }, 30s * kTimeMultiplier,
+      "Re-add waits for the destroy"));
+  ASSERT_NOK(WaitFor([&tablet, &index_table_id, &created] {
+    return created.load() || tablet->metadata()->HasTable(index_table_id);
+  }, 1s * kTimeMultiplier, "Re-add done or index listed"));
+
+  destroys_held.CountDown();
+  threads.JoinAll();
+  ASSERT_TRUE(created.load());
+  ASSERT_NE(tablet->vector_indexes().IndexForTable(index_table_id), nullptr);
+  ASSERT_TRUE(Env::Default()->DirExists(storage_dir)) << storage_dir;
+}
+
+// A crash after the removal of an index flushed the tablet metadata, but before the destroy deleted
+// the storage, leaves the storage whole under its name. A replayed re-add of the index must not
+// reuse it: it holds the chunks and the backfill state of the removed index.
+TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexDeletesStorageLeftByRemoval) {
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  ASSERT_OK(cluster_->FlushTablets());
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
+  const auto storage_dir = tablet->vector_indexes().IndexForTable(index_table_id)->path();
+  auto index_table = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index_table_id));
+  tablet::TableInfoPB index_table_pb;
+  index_table->ToPB(&index_table_pb);
+
+  CountDownLatch destroys_held{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::CompleteShutdown:RegistriesStopped", [&destroys_held](void*) {
+    destroys_held.Wait();
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point, &destroys_held] {
+    destroys_held.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  ASSERT_OK(WaitFor([&tablet, &index_table_id] {
+    return !tablet->metadata()->GetTableInfo(index_table_id).ok();
+  }, 30s * kTimeMultiplier, "Index removed from the tablet"));
+
+  // The storage as the crash leaves it.
+  auto* env = Env::Default();
+  ASSERT_TRUE(docdb::IsVectorIndexStorageMarkedRemoved(*env, storage_dir)) << storage_dir;
+  const auto left_dir = storage_dir + ".left";
+  ASSERT_OK(env->CreateDir(left_dir));
+  for (const auto& file : ASSERT_RESULT(env->GetChildren(storage_dir, ExcludeDots::kTrue))) {
+    ASSERT_OK(env_util::CopyFile(
+        env, JoinPathSegments(storage_dir, file), JoinPathSegments(left_dir, file)));
+  }
+  destroys_held.CountDown();
+  ASSERT_OK(WaitFor(
+      [env, &storage_dir] { return !docdb::IsVectorIndexStorageMarkedRemoved(*env, storage_dir); },
+      30s * kTimeMultiplier, "Storage destroyed"));
+  ASSERT_FALSE(env->DirExists(storage_dir)) << storage_dir;
+  ASSERT_OK(env->RenameFile(left_dir, storage_dir));
+  ASSERT_OK(docdb::MarkRemovedVectorIndexStorage(*env, storage_dir));
+  const auto stale_file = JoinPathSegments(storage_dir, "stale");
+  ASSERT_OK(WriteStringToFile(env, "stale", stale_file));
+
+  // As the replay of a re-sent AddTableToTablet does.
+  ASSERT_OK(tablet->AddTable(
+      index_table_pb, tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(),
+      index_table->hybrid_time));
+  ASSERT_FALSE(env->FileExists(stale_file)) << stale_file;
+  ASSERT_FALSE(docdb::IsVectorIndexStorageMarkedRemoved(*env, storage_dir)) << storage_dir;
+  ASSERT_NE(tablet->vector_indexes().IndexForTable(index_table_id), nullptr);
+}
+
+// A crash after the removal of an index is applied, but before the tablet metadata is flushed
+// without the index, makes bootstrap replay the removal, which schedules the destroy of the
+// storage. The startup sweep of unlisted storages must not delete the storage under that destroy.
+TEST_P(PgVectorIndexColocationOnlyTest, StartupWaitsForDestroyReplayedByBootstrap) {
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // The superblocks and the storages as the crash leaves them.
+  auto* env = Env::Default();
+  std::unordered_map<std::string, tablet::RaftGroupReplicaSuperBlockPB> superblocks;
+  std::vector<std::string> storage_dirs;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    const auto& meta = *peer->tablet_metadata();
+    auto path = ASSERT_RESULT(meta.fs_manager()->GetRaftGroupMetadataPath(peer->tablet_id()));
+    ASSERT_OK(meta.ReadSuperBlockFromDisk(&superblocks[path]));
+    for (const auto& dir : meta.vector_index_dirs()) {
+      const auto copy_dir = dir + ".copy";
+      ASSERT_OK(env->CreateDir(copy_dir));
+      for (const auto& file : ASSERT_RESULT(env->GetChildren(dir, ExcludeDots::kTrue))) {
+        ASSERT_OK(env_util::CopyFile(
+            env, JoinPathSegments(dir, file), JoinPathSegments(copy_dir, file)));
+      }
+      storage_dirs.push_back(dir);
+    }
+  }
+  ASSERT_EQ(storage_dirs.size(), cluster_->num_tablet_servers());
+  auto storages_destroyed = [env, &storage_dirs] {
+    return std::ranges::none_of(storage_dirs, [env](const auto& dir) {
+      return env->DirExists(dir) || docdb::IsVectorIndexStorageMarkedRemoved(*env, dir);
+    });
+  };
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  ASSERT_OK(WaitFor(storages_destroyed, 30s * kTimeMultiplier, "Index storages destroyed"));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
+  for (const auto& [path, superblock] : superblocks) {
+    ASSERT_OK(pb_util::WritePBContainerToPath(
+        env, path, superblock, pb_util::OVERWRITE, pb_util::SYNC));
+  }
+  for (const auto& dir : storage_dirs) {
+    ASSERT_OK(env->RenameFile(dir + ".copy", dir));
+  }
+
+  std::atomic<size_t> destroys_held{0};
+  CountDownLatch release_destroys{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::CompleteShutdown:RegistriesStopped", [&destroys_held, &release_destroys](void*) {
+    ++destroys_held;
+    release_destroys.Wait();
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point, &release_destroys] {
+    release_destroys.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  // Each in its own thread, since Start waits for the tablets to open.
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    threads.AddThreadFunctor([this, i] {
+      ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    });
+  }
+  // Before the threads are joined.
+  auto release = ScopeExit([&release_destroys] { release_destroys.CountDown(); });
+  ASSERT_OK(WaitFor(
+      [&destroys_held, &storage_dirs] { return destroys_held.load() == storage_dirs.size(); },
+      60s * kTimeMultiplier, "Bootstrap replays the removal"));
+  ASSERT_NOK(WaitFor(
+      [env, &storage_dirs] {
+        return std::ranges::any_of(
+            storage_dirs, [env](const auto& dir) { return !env->DirExists(dir); });
+      },
+      3s * kTimeMultiplier, "Storage deleted under its pending destroy"));
+
+  release_destroys.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(WaitFor(storages_destroyed, 30s * kTimeMultiplier, "Index storages destroyed"));
+}
+
+// A restore can put back the storage of an index whose removal left the mark, e.g. when its
+// destroy failed. The restore must delete the mark, or a re-sent AddTableToTablet would delete the
+// restored storage.
+TEST_P(PgVectorIndexColocationOnlyTest, SnapshotRestoreDeletesRemovalMark) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto hybrid_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  auto* env = Env::Default();
+  std::vector<std::string> storage_dirs;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    for (auto& dir : peer->tablet_metadata()->vector_index_dirs()) {
+      ASSERT_OK(docdb::MarkRemovedVectorIndexStorage(*env, dir));
+      storage_dirs.push_back(std::move(dir));
+    }
+  }
+  ASSERT_FALSE(storage_dirs.empty());
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
+  // The restore can be done before the followers apply it.
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+
+  for (const auto& dir : storage_dirs) {
+    ASSERT_TRUE(env->DirExists(dir)) << dir;
+    ASSERT_FALSE(docdb::IsVectorIndexStorageMarkedRemoved(*env, dir)) << dir;
+  }
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 }  // namespace yb::pgwrapper

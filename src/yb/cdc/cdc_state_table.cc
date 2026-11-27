@@ -640,11 +640,13 @@ Status CDCStateTable::WriteEntries(
     QLOperator condition_op, const bool replace_full_map,
     const std::vector<std::string>& keys_to_delete) {
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  Synchronizer sync;
+  // The callback holds a weak reference, so returning on an error without waiting is safe even if
+  // the callback runs later.
+  auto sync = std::make_shared<Synchronizer>();
   RETURN_NOT_OK(WriteEntriesAsync<CDCEntry>(
-      entries, statement_type, sync.AsStdStatusCallback(), condition_op, replace_full_map,
-      keys_to_delete));
-  return sync.Wait();
+      entries, statement_type, Synchronizer::AsStdStatusCallback(sync), condition_op,
+      replace_full_map, keys_to_delete));
+  return sync->Wait();
 }
 
 Status CDCStateTable::InsertEntriesAsync(
@@ -659,9 +661,9 @@ Status CDCStateTable::InsertEntries(
     const std::vector<CDCStateTableEntry>& entries) {
   VLOG_WITH_FUNC(1) << yb::ToString(entries);
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  Synchronizer sync;
-  RETURN_NOT_OK(InsertEntriesAsync(entries, sync.AsStdStatusCallback()));
-  return sync.Wait();
+  auto sync = std::make_shared<Synchronizer>();
+  RETURN_NOT_OK(InsertEntriesAsync(entries, Synchronizer::AsStdStatusCallback(sync)));
+  return sync->Wait();
 }
 
 Status CDCStateTable::UpdateEntries(

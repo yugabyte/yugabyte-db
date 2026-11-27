@@ -12,16 +12,12 @@ import json
 import logging
 import socket
 import requests
-import os
-import re
-import shlex
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
     AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
 from ybops.cloud.azure.utils import AzureCloudAdmin, create_resource_group
-from ybops.utils.remote_shell import RemoteShell
 from azure.identity import DefaultAzureCredential
 from azure.core.exceptions import ClientAuthenticationError
 
@@ -34,7 +30,6 @@ class AzureCloud(AbstractCloud):
     BASE_INSTANCE_METADATA_API = "http://169.254.169.254/metadata/instance?api-version="
     API_VERSION = "2021-02-01"
     METADATA_API_TIMEOUT_SECONDS = 3
-    DISK_RESIZE_TIMEOUT_SEC = 600
 
     def __init__(self):
         super(AzureCloud, self).__init__("azu")
@@ -292,10 +287,7 @@ class AzureCloud(AbstractCloud):
         not: a rescan is requested from the owning controller through 'rescan_controller'. The
         namespace's 'device' link points at the controller without native multipath and at the
         NVMe subsystem with it, so fall back to rescanning every controller in the latter case.
-
-        The NVMe rescan only queues the scan, and the new size may not have reached the guest
-        yet, so the rescan is repeated until the size shows up. Without this, xfs_growfs can run
-        against the old size and succeed without growing anything.
+        The NVMe rescan only queues the scan.
         """
         if device_name.startswith("nvme"):
             rescan_script = (
@@ -307,42 +299,13 @@ class AzureCloud(AbstractCloud):
         else:
             rescan_script = "echo 1 > /sys/class/block/{dev}/device/rescan".format(
                 dev=device_name)
-        # /sys/class/block/<dev>/size is always in 512-byte sectors.
-        wait_script = (
-            "want={sectors}; "
-            "for i in $(seq {timeout}); do "
-            "{rescan}; "
-            "[ \"$(cat /sys/class/block/{dev}/size)\" -ge \"$want\" ] && exit 0; "
-            "sleep 1; done; "
-            "echo \"/dev/{dev} has $(cat /sys/class/block/{dev}/size) sectors, expected at least "
-            "$want ({gb} GiB) after {timeout}s\" >&2; exit 1"
-        ).format(sectors=size_gb * 1024 * 1024 * 2, timeout=AzureCloud.DISK_RESIZE_TIMEOUT_SEC,
-                 rescan=rescan_script, dev=device_name, gb=size_gb)
-        return "sudo bash -c '{}' && sudo fdisk -l /dev/{}".format(wait_script, device_name)
+        return "{} && sudo fdisk -l /dev/{}".format(
+            AbstractCloud._wait_for_disk_size_command(device_name, size_gb, rescan_script),
+            device_name)
 
     def expand_file_system(self, args, connect_options):
-        remote_shell = RemoteShell(connect_options)
-        mount_points = self.get_mount_points_csv(args).split(',')
-        for mount_point in mount_points:
-            quoted_mount_point = shlex.quote(mount_point)
-            source = remote_shell.check_exec_command(
-                "findmnt -rn -M {} -o SOURCE".format(quoted_mount_point)).strip()
-            if not source:
-                raise YBOpsRuntimeError(
-                    "Could not find a mounted device for {}".format(mount_point))
-            device_path = remote_shell.check_exec_command(
-                "readlink -f -- {}".format(shlex.quote(source))).strip()
-            device_name = os.path.basename(device_path)
-            if not re.fullmatch(r"(sd[a-z]+|nvme[0-9]+n[0-9]+)", device_name):
-                raise YBOpsRuntimeError(
-                    "Unsupported Azure data disk {} for mount point {}".format(
-                        device_path, mount_point))
-
-            remote_shell.check_exec_command(
-                self._disk_rescan_command(device_name, args.volume_size))
-            logging.info("Expanding file system with mount point: {}".format(mount_point))
-            remote_shell.check_exec_command(
-                'sudo xfs_growfs {}'.format(quoted_mount_point))
+        self._rescan_and_expand_file_system(
+            args, connect_options, r"(sd[a-z]+|nvme[0-9]+n[0-9]+)", self._disk_rescan_command)
 
     def normalize_instance_state(self, instance_state):
         if instance_state:

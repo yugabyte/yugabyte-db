@@ -327,10 +327,12 @@ extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
 extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
 extern PGDLLIMPORT bool yb_test_notifs_poller_error_holding_queue_lock;
+extern PGDLLIMPORT bool yb_test_notifs_poller_error_before_init;
 extern PGDLLIMPORT int yb_test_notifs_poller_init_delay_ms;
 extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
+extern PGDLLIMPORT int yb_notifications_poller_no_progress_timeout_ms;
 extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
 extern PGDLLIMPORT bool yb_enable_mage;
 

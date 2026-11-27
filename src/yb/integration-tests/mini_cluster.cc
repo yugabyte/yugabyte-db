@@ -461,11 +461,14 @@ Status MiniCluster::AddTabletServer(
           GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts, new_idx);
   } else {
     std::vector<std::string> dirs;
+    auto opts = extra_opts;
     for (int i = 0; i < options_.num_drives; ++i) {
       dirs.push_back(GetTabletServerDrive(new_idx, i));
+      if (i < narrow_cast<int>(options_.ts_drive_storage_tiers.size())) {
+        opts.fs_opts.tier_by_path[dirs.back()] = options_.ts_drive_storage_tiers[i];
+      }
     }
-    tablet_server = std::make_shared<MiniTabletServer>(
-          dirs, dirs, ts_rpc_port, extra_opts, new_idx);
+    tablet_server = std::make_shared<MiniTabletServer>(dirs, dirs, ts_rpc_port, opts, new_idx);
   }
 
   // set the master addresses

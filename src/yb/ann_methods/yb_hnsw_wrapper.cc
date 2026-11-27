@@ -95,7 +95,9 @@ class YbHnswIndex :
         YbHnswIndex<Vector, DistanceResult>, Vector, DistanceResult>;
 
   template <class... Args>
-  explicit YbHnswIndex(Args&&... args) : index_(std::forward<Args>(args)...) {}
+  // Only mutable indexes take deletions, so this one tracks none.
+  explicit YbHnswIndex(Args&&... args)
+      : Base(/* mem_tracker= */ MemTrackerPtr()), index_(std::forward<Args>(args)...) {}
 
   ~YbHnswIndex() {
     while (auto* context = search_contexts_.Pop()) {

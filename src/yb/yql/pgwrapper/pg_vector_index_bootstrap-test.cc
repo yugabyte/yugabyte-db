@@ -75,9 +75,24 @@ extern bool TEST_block_after_backfilling_first_vector_index_batch;
 
 namespace yb::pgwrapper {
 
-MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
+YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
+YB_STRONGLY_TYPED_BOOL(RestartBeforeBackfill);
+YB_STRONGLY_TYPED_BOOL(SafeTimeBeforeIndex);
 
-void PgVectorIndexTest::TestRestart(
+class PgVectorIndexBootstrapTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+ protected:
+  void TestRestart(
+      tablet::FlushFlags flush_flags,
+      NonTransactionalWrites non_transactional_writes = NonTransactionalWrites::kFalse);
+  void TestBootstrapAfterSchemaChange(
+      NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
+  void TestLaggingReplicaBackfill(
+      RestartBeforeBackfill restart, SafeTimeBeforeIndex safe_time_before_index);
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexBootstrapTest);
+
+void PgVectorIndexBootstrapTest::TestRestart(
     tablet::FlushFlags flush_flags, NonTransactionalWrites non_transactional_writes) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
@@ -149,32 +164,32 @@ void PgVectorIndexTest::TestRestart(
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
-TEST_P(PgVectorIndexTest, Restart) {
+TEST_P(PgVectorIndexBootstrapTest, Restart) {
   TestRestart(tablet::FlushFlags::kAllDbs);
 }
 
-TEST_P(PgVectorIndexTest, Bootstrap) {
+TEST_P(PgVectorIndexBootstrapTest, Bootstrap) {
   TestRestart(tablet::FlushFlags::kRegular);
 }
 
-TEST_P(PgVectorIndexTest, BootstrapFlushedIntentsDB) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapFlushedIntentsDB) {
   TestRestart(tablet::FlushFlags::kIntents);
 }
 
-TEST_P(PgVectorIndexTest, BootstrapFlushedVectorIndexes) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapFlushedVectorIndexes) {
   TestRestart(tablet::FlushFlags::kVectorIndexes);
 }
 
 // Plain non-transactional writes flushed to the regular DB but not to the vector index must be
 // replayed into the vector index after an ungraceful restart. See issue #32797.
-TEST_P(PgVectorIndexTest, BootstrapNonTransactionalWrites) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapNonTransactionalWrites) {
   TestRestart(tablet::FlushFlags::kRegular, NonTransactionalWrites::kTrue);
 }
 
 // A vector index whose backfill has not flushed anything before an ungraceful restart has no
 // flushed OpId, so bootstrap reads the whole retained WAL. Plain writes made before the index
 // existed must not be replayed into it, their schema packing could be GCed already (GH#35124).
-TEST_P(PgVectorIndexTest, BootstrapUnfinishedBackfillAfterSchemaPackingGC) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapUnfinishedBackfillAfterSchemaPackingGC) {
   constexpr size_t kNumRows = 16;
   constexpr size_t kQueryLimit = 5;
 
@@ -281,7 +296,7 @@ TEST_P(PgVectorIndexTest, BootstrapUnfinishedBackfillAfterSchemaPackingGC) {
 // A transaction that writes its intents before the vector index is added and commits after it is
 // invisible to the backfill, so the index gets its rows from the apply only. Bootstrap must replay
 // that apply into the index, while skipping the intent writes that precede the index.
-TEST_P(PgVectorIndexTest, BootstrapTransactionCommittedAfterIndexCreation) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapTransactionCommittedAfterIndexCreation) {
   constexpr int64_t kNumRows = 16;
   constexpr size_t kQueryLimit = 5;
 
@@ -322,7 +337,7 @@ TEST_P(PgVectorIndexTest, BootstrapTransactionCommittedAfterIndexCreation) {
 // A large transaction committed before CREATE INDEX is applied in chunks after the commit.
 // The apply finishing while the backfill is reading must not leave its rows out of the index.
 // See #36909.
-TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
+TEST_P(PgVectorIndexBootstrapTest, BackfillLargeTransactionAppliedAfterCommit) {
   constexpr int64_t kNumRows = 100;
   constexpr int kApplyBatchRecords = 10;
 
@@ -378,7 +393,7 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
 
 // A transaction committed before CREATE INDEX may be applied while a backfill batch is read.
 // That must not leave its rows out of the index. See #36909.
-TEST_P(PgVectorIndexTest, BackfillTransactionAppliedDuringRead) {
+TEST_P(PgVectorIndexBootstrapTest, BackfillTransactionAppliedDuringRead) {
   constexpr int64_t kNumRows = 100;
 
   num_pre_split_tablets_ = 1;
@@ -439,7 +454,7 @@ TEST_P(PgVectorIndexTest, BackfillTransactionAppliedDuringRead) {
 // A vector index backfill must not keep the transactions that finish on its tablet in the
 // transaction participant until it ends: that holds back their cleanup and their intents.
 // See #36909.
-TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
+TEST_P(PgVectorIndexBootstrapTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
   constexpr int64_t kNumRows = 100;
   constexpr size_t kBatchSize = 10;
 
@@ -498,7 +513,7 @@ TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
 
 // A backfill reads at backfill_ht, so compactions must keep the history at backfill_ht from the
 // moment the index is added until its backfill is done, also before the backfill task starts.
-TEST_P(PgVectorIndexTest, CompactionRetainsHistoryForPendingBackfill) {
+TEST_P(PgVectorIndexBootstrapTest, CompactionRetainsHistoryForPendingBackfill) {
   constexpr int64_t kNumRows = 64;
 
   num_pre_split_tablets_ = 1;
@@ -557,7 +572,7 @@ TEST_P(PgVectorIndexTest, CompactionRetainsHistoryForPendingBackfill) {
 
 // A replica that gets the vector index more than the history retention interval late, and compacts
 // before and after that, still builds the index, also across a restart (GH#38103).
-void PgVectorIndexTest::TestLaggingReplicaBackfill(
+void PgVectorIndexBootstrapTest::TestLaggingReplicaBackfill(
     RestartBeforeBackfill restart, SafeTimeBeforeIndex safe_time_before_index) {
   constexpr int64_t kNumRows = 64;
   constexpr int64_t kNumUpdatedRows = 16;
@@ -728,23 +743,23 @@ void PgVectorIndexTest::TestLaggingReplicaBackfill(
   ASSERT_EQ(inconsistencies, "");
 }
 
-TEST_P(PgVectorIndexTest, LaggingReplicaBackfill) {
+TEST_P(PgVectorIndexBootstrapTest, LaggingReplicaBackfill) {
   TestLaggingReplicaBackfill(RestartBeforeBackfill::kFalse, SafeTimeBeforeIndex::kFalse);
 }
 
-TEST_P(PgVectorIndexTest, LaggingReplicaBackfillAfterRestart) {
+TEST_P(PgVectorIndexBootstrapTest, LaggingReplicaBackfillAfterRestart) {
   TestLaggingReplicaBackfill(RestartBeforeBackfill::kTrue, SafeTimeBeforeIndex::kFalse);
 }
 
 // The lagging replica gets the leader's safe time while the op that adds the index has its hybrid
 // time but is not in the log yet.
-TEST_P(PgVectorIndexTest, YB_DEBUG_ONLY_TEST(LaggingReplicaGetsSafeTimeBeforeIndexOp)) {
+TEST_P(PgVectorIndexBootstrapTest, YB_DEBUG_ONLY_TEST(LaggingReplicaGetsSafeTimeBeforeIndexOp)) {
   TestLaggingReplicaBackfill(RestartBeforeBackfill::kFalse, SafeTimeBeforeIndex::kTrue);
 }
 
 // A vector index storage the tablet does not list, as a restore leaves on a crash, is deleted at
 // tserver startup. See issue #35895.
-TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
+TEST_P(PgVectorIndexBootstrapTest, StartupDeletesStorageOfUnlistedIndex) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
@@ -753,6 +768,7 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
   auto* env = Env::Default();
   std::vector<std::string> unlisted_dirs;
   std::vector<std::string> listed_dirs;
+  std::vector<std::string> marked_dirs;
   for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
     const auto& meta = *peer->tablet_metadata();
     auto dirs = meta.vector_index_dirs();
@@ -761,6 +777,9 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
     auto dir = docdb::GetStorageDir(meta.rocksdb_dir(), docdb::kVectorIndexDirPrefix + "99999");
     ASSERT_OK(env->CreateDir(dir));
     ASSERT_OK(WriteStringToFile(env, "chunk", JoinPathSegments(dir, "1.yb_hnsw")));
+    // As a crash during the destroy of a removed index leaves it, see TabletVectorIndexes::Remove.
+    ASSERT_OK(docdb::MarkRemovedVectorIndexStorage(*env, dir));
+    marked_dirs.push_back(dir);
     unlisted_dirs.push_back(std::move(dir));
   }
   ASSERT_FALSE(unlisted_dirs.empty());
@@ -773,6 +792,9 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
   for (const auto& dir : unlisted_dirs) {
     ASSERT_FALSE(env->DirExists(dir)) << dir;
   }
+  for (const auto& dir : marked_dirs) {
+    ASSERT_FALSE(docdb::IsVectorIndexStorageMarkedRemoved(*env, dir)) << dir;
+  }
   for (const auto& dir : listed_dirs) {
     ASSERT_TRUE(env->DirExists(dir)) << dir;
   }
@@ -780,7 +802,7 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
 
 // DROP destroys only the vector index storages the tablet lists, so it leaves one a restore left,
 // e.g. on a build before #35006. The tserver deletes it at startup. See issue #35895.
-TEST_P(PgVectorIndexTest, StartupDeletesStorageOfDroppedTablet) {
+TEST_P(PgVectorIndexBootstrapTest, StartupDeletesStorageOfDroppedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
 
   auto* env = Env::Default();
@@ -826,7 +848,7 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfDroppedTablet) {
 // Tablet::AddTableInMemory creates the storage of a new vector index before the superblock that
 // lists the index is flushed. Rolling the superblocks back to before the index simulates a crash in
 // that window: bootstrap replays the index back, so the startup sweep must keep its storage.
-TEST_P(PgVectorIndexTest, StartupKeepsStorageOfIndexReplayedByBootstrap) {
+TEST_P(PgVectorIndexBootstrapTest, StartupKeepsStorageOfIndexReplayedByBootstrap) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
@@ -888,7 +910,7 @@ TEST_P(PgVectorIndexTest, StartupKeepsStorageOfIndexReplayedByBootstrap) {
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
-TEST_P(PgVectorIndexTest, RemoteBootstrap) {
+TEST_P(PgVectorIndexBootstrapTest, RemoteBootstrap) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
@@ -936,7 +958,7 @@ TEST_P(PgVectorIndexTest, RemoteBootstrap) {
 
 // Bootstrap replays the writes that a vector index has not flushed into it, so packing GC must
 // keep their schema packings after the regular DB repacks the rows (GH#35466).
-void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
+void PgVectorIndexBootstrapTest::TestBootstrapAfterSchemaChange(
     NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes) {
   constexpr size_t kNumRows = 16;
   constexpr size_t kQueryLimit = 5;
@@ -1018,17 +1040,17 @@ void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
   ASSERT_OK(check_old_packings(false));
 }
 
-TEST_P(PgVectorIndexTest, BootstrapLaggingVectorIndexAfterSchemaChange) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapLaggingVectorIndexAfterSchemaChange) {
   TestBootstrapAfterSchemaChange(
       NullVectorBeforeSchemaChange::kFalse, NonTransactionalWrites::kTrue);
 }
 
-TEST_P(PgVectorIndexTest, BootstrapTransactionalWritesAfterSchemaChange) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapTransactionalWritesAfterSchemaChange) {
   TestBootstrapAfterSchemaChange(
       NullVectorBeforeSchemaChange::kFalse, NonTransactionalWrites::kFalse);
 }
 
-TEST_P(PgVectorIndexTest, BootstrapNullVectorAfterSchemaChange) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapNullVectorAfterSchemaChange) {
   TestBootstrapAfterSchemaChange(
       NullVectorBeforeSchemaChange::kTrue, NonTransactionalWrites::kTrue);
 }
@@ -1036,7 +1058,7 @@ TEST_P(PgVectorIndexTest, BootstrapNullVectorAfterSchemaChange) {
 // Bootstrap replays an op into a lagging vector index whatever tables it writes. In a colocated
 // tablet a plain write or a transaction could write only another table, whose old schema packings
 // the index does not keep (GH#35466).
-TEST_P(PgVectorIndexTest, BootstrapAfterOtherTableSchemaChange) {
+TEST_P(PgVectorIndexBootstrapTest, BootstrapAfterOtherTableSchemaChange) {
   constexpr size_t kNumRows = 16;
   constexpr size_t kQueryLimit = 5;
 
@@ -1093,7 +1115,7 @@ TEST_P(PgVectorIndexTest, BootstrapAfterOtherTableSchemaChange) {
 // closing, so the CheckClosing() guard from [#31374] does not apply, and tablet_ is not yet
 // assigned, so the raw access dereferences a null tablet. RF>1 is required so the transaction
 // status coordinator is available to answer the status request while the tablet reopens.
-TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
+TEST_P(PgVectorIndexBootstrapTest, StatusResolutionDuringBootstrapBackfill) {
   num_pre_split_tablets_ = 1;
 
   // Hold the initial vector index backfill until the tablet starts shutting down, so it never
@@ -1172,7 +1194,7 @@ TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
 // one: the index stayed not backfilled until the tserver restarted, blocking tablet splits and
 // never reaching the master through vector_index_finished_backfills (GH#33102). In a debug build
 // the abort also hit a DFATAL.
-TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
+TEST_P(PgVectorIndexBootstrapTest, BackfillInterruptedByTruncate) {
   constexpr size_t kNumRows = 64;
 
   if (IsColocated()) {
@@ -1228,7 +1250,7 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
 // A backfill holds its blocking operation from batch to batch, so a truncate waits for it.
 // The truncate disables new blocking operations, so the next batch fails with TryAgain, which
 // releases the truncate, and the backfill is retried after it.
-TEST_P(PgVectorIndexTest, TruncateBetweenBackfillBatches) {
+TEST_P(PgVectorIndexBootstrapTest, TruncateBetweenBackfillBatches) {
   constexpr int64_t kNumRows = 100;
   constexpr int64_t kBatchSize = 10;
 
@@ -1295,7 +1317,7 @@ TEST_P(PgVectorIndexTest, TruncateBetweenBackfillBatches) {
 
 // When the backfill fails with something other than TryAgain/ShutdownInProgress, CREATE INDEX
 // should fail with that error instead of hanging.
-TEST_P(PgVectorIndexTest, CreateIndexFailsOnFailedBackfill) {
+TEST_P(PgVectorIndexBootstrapTest, CreateIndexFailsOnFailedBackfill) {
   constexpr size_t kNumRows = 64;
 
   auto conn = ASSERT_RESULT(MakeTable());
@@ -1317,7 +1339,7 @@ TEST_P(PgVectorIndexTest, CreateIndexFailsOnFailedBackfill) {
 // stayed elevated, so a chunk that a flush had meanwhile handed to the save path never saved and
 // the shutdown waited for it forever (GH#34199). Only an index removal can shut the registry down
 // under a running insert: a tablet shutdown drains the operations first.
-TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
+TEST_P(PgVectorIndexBootstrapTest, RemoveIndexDuringBackfillInsert) {
   constexpr size_t kNumRows = 64;
 
   num_pre_split_tablets_ = 1;

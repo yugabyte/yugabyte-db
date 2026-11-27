@@ -656,6 +656,54 @@ yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
 	return pos;
 }
 
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+#define YB_TXN_PRIORITY_LOWER_BOUND "yb_transaction_priority_lower_bound"
+#define YB_TXN_PRIORITY_UPPER_BOUND "yb_transaction_priority_upper_bound"
+
+/*
+ * YB: The transaction priority bounds check each other on SET (lower <= the
+ * current upper, upper >= the current lower), so replaying both can fail in
+ * either fixed order, depending on what the backend holds. That is not always
+ * a session value: startup options are deployed before the session values,
+ * and ALTER ROLE/DATABASE ... SET and the config file set the bounds without
+ * connection manager tracking them. Setting the lower bound to 0 first makes
+ * the order safe: the upper bound then passes against 0, and the client's
+ * lower bound passes against the client's upper bound.
+ *
+ * lower and upper are the client's bounds that differ from the backend's, or
+ * NULL. A single one is sent alone. That is safe when the other bound is
+ * tracked with the client's value. When the other bound is untracked and its
+ * default changed after the client set its bound (ALTER ROLE/DATABASE ... SET
+ * on a newer backend, or a config reload), the SET can still fail; that case
+ * is not handled.
+ */
+static inline int yb_kiwi_add_txn_priority_bounds(kiwi_var_t *lower,
+						  kiwi_var_t *upper,
+						  char *query, int pos,
+						  int query_len)
+{
+	static const char lower_to_zero[] =
+		"SET " YB_TXN_PRIORITY_LOWER_BOUND "=0;";
+
+	if (lower != NULL && upper != NULL) {
+		int len = sizeof(lower_to_zero) - 1;
+
+		if (query_len < pos + len)
+			return -1;
+		memcpy(query + pos, lower_to_zero, len);
+		pos += len;
+	}
+	if (upper != NULL) {
+		pos = yb_kiwi_add_var_to_query(upper, query, pos, query_len);
+		if (pos == -1)
+			return -1;
+	}
+	if (lower != NULL)
+		pos = yb_kiwi_add_var_to_query(lower, query, pos, query_len);
+	return pos;
+}
+#endif
+
 __attribute__((hot)) static inline int
 kiwi_vars_cas(kiwi_vars_t *client_session_vars,
 	      kiwi_vars_t *server_session_vars, char *query, int query_len)
@@ -675,6 +723,8 @@ kiwi_vars_cas(kiwi_vars_t *client_session_vars,
 		server_var = kiwi_vars_of(server_session_vars, type);
 #else
 	kiwi_var_t *var;
+	kiwi_var_t *yb_lower_bound = NULL;
+	kiwi_var_t *yb_upper_bound = NULL;
 	for (int i = 0; i < client_session_vars->size; i++) {
 		var = &client_session_vars->vars[i];
 		/* we do not support odyssey-to-backend compression yet */
@@ -688,10 +738,27 @@ kiwi_vars_cas(kiwi_vars_t *client_session_vars,
 		if (kiwi_var_compare(var, server_var))
 			continue;
 
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+		/* YB: the bounds go out after the loop, in a safe order */
+		if (strcmp(var->name, YB_TXN_PRIORITY_LOWER_BOUND) == 0) {
+			yb_lower_bound = var;
+			continue;
+		}
+		if (strcmp(var->name, YB_TXN_PRIORITY_UPPER_BOUND) == 0) {
+			yb_upper_bound = var;
+			continue;
+		}
+#endif
+
 		pos = yb_kiwi_add_var_to_query(var, query, pos, query_len);
 		if (pos == -1)
 			return -1;
 	}
+
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	pos = yb_kiwi_add_txn_priority_bounds(yb_lower_bound, yb_upper_bound,
+					      query, pos, query_len);
+#endif
 
 	return pos;
 }

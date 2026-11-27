@@ -309,6 +309,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
+      .ysql_enable_concurrent_ddl = &FLAGS_ysql_enable_concurrent_ddl,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_bypass_anonymous_savepoint_ddl_check =

@@ -28,6 +28,7 @@
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -140,7 +141,15 @@ class PgTableRow {
     return *projection_;
   }
 
+  // Same size as pggate::ColumnWireSize(GetQLValuePB(...)), without building the protobuf.
+  Result<size_t> ColumnWireSize(size_t index) const;
   QLValuePB GetQLValuePB(ColumnIdRep column_id) const;
+  // Same as GetQLValuePB(column) == other, without allocating a temporary protobuf.
+  // STRING and DECIMAL compare raw bytes. Grouped pushdown uses that as the group
+  // boundary because YSQL only pushes when the keys are an ordered index prefix:
+  // text is collation-encoded in the index, and numeric/decimal uses a comparable
+  // encoding.
+  bool EqualsQLValuePB(size_t index, const QLValuePB& other) const;
 
   PgValue TrimString(size_t idx, size_t skip_prefix, size_t new_len);
 

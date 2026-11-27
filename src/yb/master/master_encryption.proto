@@ -31,6 +31,14 @@ message ChangeEncryptionInfoResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message SetEncryptionAlgorithmRequestPB {
+  optional encryption.EncryptionAlgorithmPB algorithm = 1;
+}
+
+message SetEncryptionAlgorithmResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message IsEncryptionEnabledRequestPB {
 }
 
@@ -79,6 +87,9 @@ service MasterEncryption {
   rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
 
   rpc IsEncryptionEnabled(IsEncryptionEnabledRequestPB) returns (IsEncryptionEnabledResponsePB);
+
+  rpc SetEncryptionAlgorithm(SetEncryptionAlgorithmRequestPB)
+      returns (SetEncryptionAlgorithmResponsePB);
 
   rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
   rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
