@@ -113,6 +113,7 @@ YbGetNewOuterTupleFn_t
 YbGetNormalizedQueryFuncPtr
 YbGucOidAssignHook
 YbGucOidCheckHook
+YbHintAliasHashEntry
 YbHistInterval
 YbHistPair
 YbHistParseState

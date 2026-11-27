@@ -47,6 +47,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "utils/hsearch.h"
+
 static bool can_minmax_aggs(PlannerInfo *root, List **context);
 static bool build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 							  Oid eqop, Oid sortop, bool nulls_first);
@@ -328,6 +331,8 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	Cost		path_cost;
 	double		path_fraction;
 
+	HTAB	   *saveYbHintAliasHash;
+
 	/*
 	 * We are going to construct what is effectively a sub-SELECT query, so
 	 * clone the current query level's state and adjust it to make it look
@@ -432,6 +437,8 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	List	   *saveYbPlanHintsAliasMapping = subroot->glob->ybPlanHintsAliasMapping;
 
 	subroot->glob->ybPlanHintsAliasMapping = NIL;
+	saveYbHintAliasHash = subroot->glob->ybHintAliasHash;
+	subroot->glob->ybHintAliasHash = NULL;
 	int			saveYbBlockCnt = subroot->glob->ybBlockCnt;
 
 	subroot->glob->ybBlockCnt = 0;
@@ -444,6 +451,9 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	subroot->glob->ybBaseRelCnt = saveYbBaseRelCnt;
 	list_free(subroot->glob->ybPlanHintsAliasMapping);
 	subroot->glob->ybPlanHintsAliasMapping = saveYbPlanHintsAliasMapping;
+	if (subroot->glob->ybHintAliasHash)
+		hash_destroy(subroot->glob->ybHintAliasHash);
+	subroot->glob->ybHintAliasHash = saveYbHintAliasHash;
 	subroot->glob->ybBlockCnt = saveYbBlockCnt;
 
 	/*

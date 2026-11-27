@@ -264,6 +264,14 @@ SET enable_partitionwise_join to false;
 -- Make sure the internal hint test passes.
 explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
+-- Partitions take the next free "<alias>_<n>" alias; hp_3 and hp_34 are taken by the query.
+create table hp (k int, v int, primary key (k asc)) partition by range (k);
+do $$ begin for i in 0..33 loop execute format('create table hp_p%s partition of hp for values from (%s) to (%s)', i, i * 10, (i + 1) * 10); end loop; end $$;
+create table hq (k int, v int, primary key (k asc));
+explain (hints on, costs off) select * from hp, hq hp_3, hq hp_34 where hp.k = hp_3.k and hp.k = hp_34.k;
+explain (hints on, costs off) select * from hq hp_3, hq hp_34, hp where hp.k = hp_3.k and hp.k = hp_34.k;
+drop table hp, hq;
+
 -- Test hint table using query id instead of query text.
 create extension if not exists pg_hint_plan;
 set pg_hint_plan.enable_hint_table to on;
