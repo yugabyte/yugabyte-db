@@ -22,9 +22,11 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -139,6 +141,12 @@ Status IncrementAllDBCatalogVersions(
         "SELECT yb_increment_all_db_catalog_versions($0)", is_breaking ? "true" : "false"));
   }
   return result;
+}
+
+Status WaitForListenNotifyReady(PGConn& conn) {
+  return WaitFor(
+      [&conn]() -> Result<bool> { return conn.Execute("NOTIFY ch").ok(); },
+      60s * kTimeMultiplier, "LISTEN/NOTIFY ready");
 }
 
 void GenerateCSVFileForCopy(

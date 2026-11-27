@@ -8846,10 +8846,24 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 bool
 YBHasProcessableAbortInterrupt()
 {
-	if (!INTERRUPTS_PENDING_CONDITION())
+	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
 		return false;
 
-	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
+	return YBHasPendingAbortInterrupt();
+}
+
+/*
+ * YBHasPendingAbortInterrupt:
+ *
+ * Checks for pending interrupts which might abort execution, whether or not
+ * interrupts are held. A cancel counts only when cancel interrupts aren't held
+ * off, so a cancel that arrives while the backend reads a command (which
+ * ProcessInterrupts would ignore) doesn't count.
+ */
+bool
+YBHasPendingAbortInterrupt()
+{
+	if (!INTERRUPTS_PENDING_CONDITION())
 		return false;
 
 	if (ProcDiePending)

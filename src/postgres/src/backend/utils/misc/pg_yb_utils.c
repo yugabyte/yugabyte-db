@@ -1290,8 +1290,15 @@ YBOnPostgresBackendShutdown()
 	YBCDestroyPgGate();
 }
 
-void
-YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
+/*
+ * Wait until this node's shared catalog version reaches 'version', giving up
+ * after the bound below. With stop_on_abort_interrupt, also return once an
+ * interrupt that would abort the backend's work is pending (see
+ * YBHasPendingAbortInterrupt), for callers that hold interrupts while they
+ * wait.
+ */
+static void
+ybWaitForSharedCatalogVersion(uint64_t version, bool stop_on_abort_interrupt)
 {
 	/*
 	 * We want to wait for 'version' to propagate to shared memory of this
@@ -1351,6 +1358,9 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 		 */
 		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 			return;
+		/* The backend is exiting or its client canceled; don't warn. */
+		if (stop_on_abort_interrupt && YBHasPendingAbortInterrupt())
+			return;
 		/* Avoid flooding the log file, but always print for the first time. */
 		if (count % 20 == 1)
 			ereport(LOG,
@@ -1376,6 +1386,24 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 						shared_catalog_version, version),
 				 errhidestmt(true),
 				 errhidecontext(true)));
+}
+
+void
+YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
+{
+	ybWaitForSharedCatalogVersion(version,
+								  false /* stop_on_abort_interrupt */ );
+}
+
+/*
+ * Like YbWaitForSharedCatalogVersionToCatchup, but return early once an abort
+ * interrupt is pending, for a caller that holds interrupts while it waits.
+ */
+void
+YbWaitForSharedCatalogVersionToCatchupUnlessInterrupted(uint64_t version)
+{
+	ybWaitForSharedCatalogVersion(version,
+								  true /* stop_on_abort_interrupt */ );
 }
 
 /*---------------------------------------------------------------------------*/
@@ -2499,6 +2527,7 @@ int			yb_test_sleep_before_executor_start_ms = 0;
 
 int			yb_test_fail_next_ddl = 0;
 bool		yb_test_fail_stale_catalog_message_check = false;
+bool		yb_test_fail_notify_catalog_version_read = false;
 bool		yb_enable_stale_catalog_prefetch = true;
 
 bool		yb_test_fail_drop_after_heap_drop = false;

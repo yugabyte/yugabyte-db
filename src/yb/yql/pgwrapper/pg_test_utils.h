@@ -126,6 +126,10 @@ Status IncrementAllDBCatalogVersions(
     PGConn& conn,
     IsBreakingCatalogVersionChange is_breaking = IsBreakingCatalogVersionChange::kTrue);
 
+// Waits until NOTIFY works on conn: the first NOTIFY in the cluster fails while LISTEN/NOTIFY
+// creates its internal objects.
+Status WaitForListenNotifyReady(PGConn& conn);
+
 void GenerateCSVFileForCopy(
     const std::string& filename, int num_rows, int num_columns = 2, int offset = 0);
 

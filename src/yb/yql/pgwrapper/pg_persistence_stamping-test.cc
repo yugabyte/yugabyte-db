@@ -36,6 +36,7 @@
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_uint64(TEST_persistence_reject_stamped_before_ht);
 DECLARE_bool(TEST_block_do_backfill);
@@ -599,10 +600,7 @@ class PgPersistenceStampingNotifyTest : public PgPersistenceStampingTest {
 TEST_F(PgPersistenceStampingNotifyTest, Notify) {
   auto conn = ASSERT_RESULT(Connect());
   const auto db_oid = ASSERT_RESULT(DatabaseOid(conn));
-  // The first NOTIFY in the cluster fails while LISTEN/NOTIFY creates its internal objects.
-  ASSERT_OK(WaitFor(
-      [&conn]() -> Result<bool> { return conn.Execute("NOTIFY ch, 'x'").ok(); }, 60s,
-      "LISTEN/NOTIFY ready"));
+  ASSERT_OK(WaitForListenNotifyReady(conn));
   ASSERT_OK(PinOriginationTime(conn));
 
   RejectPinned();

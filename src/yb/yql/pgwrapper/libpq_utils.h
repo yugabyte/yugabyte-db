@@ -412,6 +412,10 @@ class PGConn {
     PQsetNoticeProcessor(impl_.get(), proc, arg);
   }
 
+  // Whether a LISTEN notification has arrived, consuming it. Reads the socket only and sends
+  // nothing to the backend, so it doesn't wait for a busy backend.
+  Result<bool> HasNotification();
+
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
   Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
