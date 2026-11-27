@@ -279,7 +279,8 @@ explain (costs off)
 -- k = 5 implies s = 0 and t = 0 (rd_k_s, rd_k_t), so the scans using i_rd_k
 -- should have the Estimated Nexts and the Estimated Table Roundtrips of
 -- k = 5 alone, with a Filter as well.  With the partial index i_rd_k_part,
--- the Estimated Nexts should be the rows of the Bitmap Index Scan.
+-- the Estimated Nexts should be the rows of the Bitmap Index Scan, and a
+-- Storage Filter on t should not change the estimates.
 --
 drop function if exists explain_analyze_debug_json cascade;
 drop function if exists non_pushable cascade;
@@ -326,7 +327,8 @@ from
     (2, 'i_rd_k', 'k = 5 and s = 0'),
     (3, 'i_rd_k', 'k = 5 and t = 0'),
     (4, 'i_rd_k', 'k = 5 and t = 0 and non_pushable(pk) > 0'),
-    (5, 'i_rd_k_part', 'k = 5 and pk <= 6000')) q(n, idx, cond),
+    (5, 'i_rd_k_part', 'k = 5 and pk <= 6000'),
+    (6, 'i_rd_k_part', 'k = 5 and pk <= 6000 and t = 0')) q(n, idx, cond),
   lateral explain_analyze_debug_json(
     '/*+ BitmapScan(rd ' || q.idx || ') */ select pk from rd where ' || q.cond) js,
   lateral to_json(js.explain_line->0->'Plan') bts
