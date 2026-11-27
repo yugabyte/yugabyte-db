@@ -50,6 +50,8 @@ Provide all of the master addresses using the [`--tserver_master_addrs`](../../.
 
 {{<tags/feature/tp idea="1807">}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
 
+If you [enabled TCMalloc per-CPU caches](../system-config/#enable-tcmalloc-per-cpu-caches) during system configuration, put `GLIBC_TUNABLES=glibc.pthread.rseq=0` before the command.
+
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
 ## Run YB-TServer with configuration file
