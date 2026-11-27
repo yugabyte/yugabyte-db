@@ -12,7 +12,7 @@
 SET enable_seqscan = off;
 SHOW yb_test_ybgin_disable_cost_factor;
 \set Q1
-\set Q2 '/*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/'
+\set Q2 '/*+SET(yb_test_ybgin_disable_cost_factor 0)*/'
 
 -- Given what is currently supported, these queries would fail, so they should
 -- use sequential scan.

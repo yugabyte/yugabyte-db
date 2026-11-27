@@ -298,6 +298,9 @@ static Selectivity yb_cmp_selectivity(PlannerInfo *root, Oid opfamily,
 									  Oid collation, int cmpstrategy,
 									  Node *var, Oid vartype, Const *bound);
 static int	yb_scansel_cmpstrategy(bool isgt, bool end_fraction, bool strict);
+static void yb_cost_unsupported_ybgin_scan(IndexPath *path,
+										   Cost *indexStartupCost,
+										   Cost *indexTotalCost);
 static Selectivity yb_bounded_cmp_selectivity(PlannerInfo *root,
 											  Oid opfamily,
 											  Oid collation,
@@ -8843,8 +8846,8 @@ gincost_pattern(IndexOptInfo *index, int indexcol,
 		 * TODO(#7850): for ybgin, non-default search mode queries aren't
 		 * supported yet.
 		 *
-		 * Piggyback on attHasFullScan, which the caller translates to
-		 * disable_cost.
+		 * Piggyback on attHasFullScan, which the caller costs with
+		 * yb_cost_unsupported_ybgin_scan.
 		 */
 		counts->attHasFullScan[indexcol] = true;
 		return true;
@@ -9094,8 +9097,8 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		 * TODO(#7850): for ybgin, queries using multiple scan keys aren't
 		 * supported yet.
 		 */
-		*indexStartupCost = *indexTotalCost =
-			yb_test_ybgin_disable_cost_factor * disable_cost;
+		yb_cost_unsupported_ybgin_scan(path, indexStartupCost,
+									   indexTotalCost);
 		*indexSelectivity = 0;
 		*indexCorrelation = 0.0;
 		*indexPages = 0;
@@ -9282,8 +9285,8 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 			 *
 			 * indexSelectivity and indexCorrelation are already set above.
 			 */
-			*indexStartupCost = *indexTotalCost =
-				yb_test_ybgin_disable_cost_factor * disable_cost;
+			yb_cost_unsupported_ybgin_scan(path, indexStartupCost,
+										   indexTotalCost);
 			*indexPages = 0;
 			return;
 		}
@@ -10248,4 +10251,22 @@ yb_adjust_scansel_for_restrictions(PlannerInfo *root, Oid collation,
 	}
 
 	return conditioned;
+}
+
+/*
+ * Cost a ybgin scan that ybgin cannot execute yet (#7850).  The planner
+ * compares disabled node counts before costs, so the scan also counts as a
+ * disabled node, unless yb_test_ybgin_disable_cost_factor is 0, which lets
+ * tests force the scan.
+ *
+ * TODO(#39306): add the penalty to the GIN estimate instead of replacing it.
+ */
+static void
+yb_cost_unsupported_ybgin_scan(IndexPath *path, Cost *indexStartupCost,
+							   Cost *indexTotalCost)
+{
+	*indexStartupCost = *indexTotalCost =
+		yb_test_ybgin_disable_cost_factor * disable_cost;
+	if (yb_test_ybgin_disable_cost_factor != 0)
+		path->path.disabled_nodes = 1;
 }

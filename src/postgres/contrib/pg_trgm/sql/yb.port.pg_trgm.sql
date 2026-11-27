@@ -41,7 +41,7 @@ create index trgm_idx on test_trgm using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 -- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
 -- index scan even if it is detected to be not supported.
-set yb_test_ybgin_disable_cost_factor = 0.5;
+set yb_test_ybgin_disable_cost_factor = 0;
 
 select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu0988' order by sml desc, t;
 select t,similarity(t,'gwertyu0988') as sml from test_trgm where t % 'gwertyu0988' order by sml desc, t;
@@ -69,6 +69,7 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
 -- run the same queries with sequential scan to check the results
 set enable_bitmapscan=off;
 set enable_seqscan=on;
+reset yb_test_ybgin_disable_cost_factor;
 select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
@@ -90,7 +91,7 @@ create index test2_idx_gin on test2 using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 -- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
 -- index scan even if it is detected to be not supported.
-set yb_test_ybgin_disable_cost_factor = 0.5;
+set yb_test_ybgin_disable_cost_factor = 0;
 explain (costs off)
   select * from test2 where t like '%BCD%';
 explain (costs off)
@@ -143,6 +144,7 @@ select * from test2 where t = '%li%ne 5%';
 select * from test2 where t = 'line 6';
 select * from test2 where t = 'li_e 6';
 drop index test2_idx_gin;
+reset yb_test_ybgin_disable_cost_factor;
 
 create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 

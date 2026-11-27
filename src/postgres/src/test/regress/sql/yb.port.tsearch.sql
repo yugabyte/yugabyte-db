@@ -87,7 +87,7 @@ ALTER TABLE test_tsvector SET (parallel_workers = 2);
 CREATE INDEX wowidx ON test_tsvector USING gin (a);
 
 SET enable_seqscan=OFF;
-SET yb_test_ybgin_disable_cost_factor = 0.5; -- YB: enable_seqscan=OFF is not enough to force index scan
+SET yb_test_ybgin_disable_cost_factor = 0; -- YB: enable_seqscan=OFF is not enough to force index scan
 -- GIN only supports bitmapscan, so no need to test plain indexscan
 -- YB note: ybgin is the opposite: it supports indexscan, not bitmapscan
 
