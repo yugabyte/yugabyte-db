@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Find work already in flight on a newly filed issue.
+
+Run when an issue is created, before anyone is assigned, to find:
+  - open PRs whose diff, title or body mention the issue's test names, error
+    text or code identifiers (a fix may already be under way);
+  - open GitHub issues that mention the same things (someone may already be
+    investigating it).
+
+Usage:
+  issue_check.py --issue 38288        # a GitHub issue
+  issue_check.py --text notes.txt     # any text; "-" reads stdin
+
+Uses pr_overlap.py's cached PR diffs.
+"""
+import argparse
+import json
+import math
+import re
+import sys
+import time
+
+import pr_overlap as po
+
+MAX_SEARCH_TERMS = 6      # GitHub search allows 30 requests a minute
+COMMON_HITS = 25          # a term in more open issues than this says nothing
+MAX_TERM_LEN = 100        # GitHub search rejects queries over 256 characters
+SEARCH_RETRY_WAIT = 61    # seconds; the search rate-limit window is a minute
+MAX_ITEMS = 3             # per comment section
+# An issue with this many terms (a long design-level report) matches PRs on
+# shared vocabulary alone, so a PR needs one more shared term to be listed.
+LONG_ISSUE_TERMS = 20
+
+TEST_NAME = re.compile(
+    r"\b(?:[A-Z]\w*Test\w*\.\w+|Test\w+#\w+|org\.yb\.[\w.]+#?\w*)")
+ERROR_LINE = re.compile(r"(?:ERROR|FATAL|PANIC|Check failed):\s+(.+)")
+URL = re.compile(r"https?://\S+")
+# Parts of an error message that change from run to run: addresses, numbers
+# and quoted names (relation "t1" does not exist).
+VARIABLE = re.compile(r"\b0x[0-9a-f]+\b|\b\d+\b|\"[^\"]*\"|(?<!\w)'[^']*'")
+
+
+def load_issue(args):
+    """(title, body, self-references to exclude)."""
+    if args.issue:
+        d = json.loads(po.gh("issue", "view", str(args.issue), "--repo",
+                             po.REPO, "--json", "title,body"))
+        title, body = d["title"], d["body"] or ""
+        selfs = {f"#{args.issue}"}
+    else:
+        body = sys.stdin.read() if args.text == "-" else open(args.text).read()
+        title, selfs = "", set()
+    return title, body, selfs
+
+
+def extract_terms(title, body):
+    """Strong terms (test names, error text) and code identifiers."""
+    # Tokens inside links (query strings, %2F-encoded paths) are not terms.
+    text = URL.sub(" ", f"{title}\n{body}")
+    strong = set(TEST_NAME.findall(text))
+    for m in ERROR_LINE.finditer(text):
+        # Keep the error text up to the first address or number, which
+        # changes from run to run.
+        phrase = VARIABLE.split(m.group(1))[0].strip(" .:'\"`\\")
+        if 15 <= len(phrase) <= MAX_TERM_LEN and '"' not in phrase:
+            strong.add(phrase)
+    idents = {t for t in po.IDENT.findall(text)
+              if t not in po.STOP and po.CODE_LIKE.search(t)}
+    idents -= {t for s in strong for t in po.IDENT.findall(s)}
+    # A term inside another (pg_ddl_transaction in
+    # pgwrapper_pg_ddl_transaction) would count one match twice.
+    every = strong | idents
+    idents = {t for t in idents if not any(t != o and t in o for o in every)}
+    return strong, idents
+
+
+def linked_pattern(selfs):
+    """Regex for a reference to the issue (#N or issues/N)."""
+    alts = [rf"(?<![\w/])#{s[1:]}\b|/issues/{s[1:]}\b" for s in selfs]
+    return re.compile("|".join(alts)) if alts else None
+
+
+def match_prs(strong, idents, data, metas, linked=None):
+    """Score pool PRs by the issue terms their diff, title or body contain.
+
+    Skips PRs whose title or body already reference the issue (linked):
+    GitHub shows those on the issue already, and they were most of the
+    comments in a sample of new issues."""
+    def is_linked(n):
+        return linked and linked.search(
+            metas[n]["title"] + "\n" + (metas[n].get("body") or ""))
+    # Catch-up merges and other huge PRs contain nearly every identifier.
+    hay = {n: "\n".join((d["text"], metas[n]["title"], metas[n].get("body") or
+                         "", " ".join(d["paths"])))
+           for n, d in data.items()
+           if len(d["paths"]) <= po.MAX_FILES and not is_linked(n)}
+    terms = strong | idents
+    df = {t: sum(t in h for h in hay.values()) for t in terms}
+    n = len(hay)
+    max_df = max(3, math.ceil(n / 100))
+    out = []
+    for num, h in hay.items():
+        hits = [t for t in terms if t in h and df[t] <= max_df]
+        if not hits:
+            continue
+        strong_hits = [t for t in hits if t in strong]
+        if not strong_hits and len(hits) < 2:
+            continue
+        score = sum(math.log(n / df[t]) * (2 if t in strong else 1)
+                    for t in hits)
+        out.append((round(score, 1), num, sorted(hits, key=lambda t: (df[t], t))))
+    return sorted(out, reverse=True), df
+
+
+def search_issues(terms, selfs):
+    """Open GitHub issues mentioning each term, via the search API."""
+    found = {}
+    for t in terms:
+        q = f'repo:{po.REPO} is:issue is:open "{t.replace(chr(34), "")}"'
+        args = ("api", "-X", "GET", "search/issues", "-f", f"q={q}",
+                "-f", "per_page=20")
+        try:
+            try:
+                r = json.loads(po.gh(*args))
+            except po.subprocess.CalledProcessError as e:
+                # Search allows 30 requests a minute; bots file issues in
+                # bursts. Wait out the window once.
+                if "rate limit" not in e.stderr.lower():
+                    raise
+                time.sleep(SEARCH_RETRY_WAIT)
+                r = json.loads(po.gh(*args))
+        except po.subprocess.CalledProcessError as e:
+            # One failed term (rejected query, still limited) shouldn't stop
+            # the others.
+            print(f"warning: GitHub search failed: {e.stderr.strip()[:200]}",
+                  file=sys.stderr)
+            continue
+        if r["total_count"] > COMMON_HITS:
+            continue
+        for it in r["items"]:
+            key = f"#{it['number']}"
+            # Never drop by title: recurring test failures share titles, and
+            # those are the duplicates worth reporting.
+            if key in selfs:
+                continue
+            e = found.setdefault(key, {"title": it["title"],
+                                       "url": it["html_url"],
+                                       "assignees": [a["login"] for a in
+                                                     it["assignees"]],
+                                       "terms": []})
+            e["terms"].append(t)
+    return found
+
+
+def pick_search_terms(strong, idents, df):
+    """Strong terms first, then the identifiers rarest among open PRs."""
+    ranked = sorted(strong, key=len, reverse=True)
+    ranked += sorted(idents, key=lambda t: (df.get(t, 0), -len(t)))
+    return ranked[:MAX_SEARCH_TERMS]
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawTextHelpFormatter)
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--issue", type=int, help="GitHub issue number")
+    g.add_argument("--text", help="file with issue text, or - for stdin")
+    ap.add_argument("--bases", default=po.DEFAULT_BASES.pattern)
+    ap.add_argument("--format", choices=("text", "github"), default="text",
+                    help="text (default), or the GitHub comment, which is "
+                         "empty when nothing matched")
+    args = ap.parse_args()
+
+    comment = args.format != "text"
+    title, body, selfs = load_issue(args)
+    strong, idents = extract_terms(title, body)
+    if not strong and not idents:
+        msg = "no test names, error text or code identifiers in the issue"
+        if comment:
+            print(f"{msg}; not commenting", file=sys.stderr)
+            return
+        sys.exit(msg)
+
+    pool = po.pool_prs(re.compile(args.bases))
+    metas = {p["number"]: p for p in pool}
+    # Prune only with the full default pool; a narrower --bases would drop
+    # the shared cache entries of every PR outside it.
+    data = po.load(pool, prune=args.bases == po.DEFAULT_BASES.pattern)
+    prs, df = match_prs(strong, idents, data, metas, linked_pattern(selfs))
+    terms = pick_search_terms(strong, idents, df)
+    issues = search_issues(terms, selfs)
+
+    if args.format == "text":
+        print_text(strong, terms, prs, metas, issues)
+    else:
+        print_comment(strong, prs, metas, issues, len(strong | idents))
+
+
+def print_text(strong, terms, prs, metas, issues):
+    print(f"Terms: {', '.join(sorted(strong))}" if strong else "Terms: -")
+    print(f"Searched issues for: {', '.join(terms)}\n")
+    print("## Open PRs that may already fix this")
+    for score, n, hits in prs[:10]:
+        print(f"- [{score}] {po.describe(metas[n])}\n    matches: "
+              f"{', '.join(hits[:8])}")
+    if not prs:
+        print("- none")
+    print("\n## Open GitHub issues that mention the same things")
+    rows = sorted(issues.items(), key=lambda kv: -len(kv[1]["terms"]))
+    for key, e in rows[:10]:
+        who = ", ".join(e["assignees"]) or "unassigned"
+        print(f"- {key} {e['title']} ({who}) {e['url']}\n    "
+              f"matches: {', '.join(e['terms'])}")
+    if not rows:
+        print("- none")
+
+
+def print_comment(strong, prs, metas, issues, n_terms):
+    """A short Markdown comment, or nothing when there is nothing worth saying.
+
+    Keeps only strong matches, at most MAX_ITEMS per section: a test name,
+    or two or more shared terms (three for a PR when the issue has
+    LONG_ISSUE_TERMS or more)."""
+    # Only a test name is specific enough alone; error text cut at the first
+    # number ("plancache reference") matched issues from 2020.
+    tests = {t for t in strong if TEST_NAME.fullmatch(t)}
+
+    def keep(terms, need=2):
+        return len(terms) >= need or any(t in tests for t in terms)
+
+    pr_need = 3 if n_terms >= LONG_ISSUE_TERMS else 2
+    sections = []
+    rows = [(n, hits) for _, n, hits in prs if keep(hits, pr_need)][:MAX_ITEMS]
+    if rows:
+        sections.append(("Open PRs that may already fix this", [
+            f"- #{n} {metas[n]['title']} (@{metas[n]['author']['login']}) "
+            f"{metas[n]['url']} - matches "
+            + ", ".join(f"`{t}`" for t in hits[:4])
+            for n, hits in rows]))
+    rows = sorted(((k, e) for k, e in issues.items() if keep(e["terms"])),
+                  key=lambda kv: -len(kv[1]["terms"]))[:MAX_ITEMS]
+    if rows:
+        sections.append(("Open GitHub issues about the same thing", [
+            f"- {k} {e['title']} "
+            f"({', '.join(e['assignees']) or 'unassigned'}) {e['url']}"
+            for k, e in rows]))
+    if not sections:
+        return
+    print("Automated check: this issue looks related to work already in "
+          "flight. Please check before starting on it.\n")
+    for head, lines in sections:
+        print(f"### {head}")
+        print("\n".join(lines) + "\n")
+    print("_Matched on test names, error text and code identifiers in the "
+          "issue (.github/scripts/issue_overlap)._")
+
+
+if __name__ == "__main__":
+    main()

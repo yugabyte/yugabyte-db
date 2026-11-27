@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,14 +16,26 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.Test;
+import play.libs.Json;
 
 public class StateTransitionDetailsTest {
+
+  @Test
+  public void toStringLeavesOutTheDelta() {
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(
+            Json.newObject(), Json.newObject().put("ycql_ldap_bind_passwd", "ycql-ldap-secret"));
+    String text = new StateTransitionDetails(true, delta).toString();
+    assertFalse(text, text.contains("ycql-ldap-secret"));
+    assertTrue(text, text.contains("rollbackSafe=true"));
+  }
 
   @Test
   public void applyBeforeToPreservesCurrentYbcFields() {
@@ -159,6 +172,30 @@ public class StateTransitionDetailsTest {
             "ybcInstalled",
             "ybcFlags"),
         fields);
+  }
+
+  @Test
+  public void getBeforeUniverseDetailsPutsPrimaryFirst() {
+    UUID primaryUuid = UUID.randomUUID();
+    UUID readReplicaUuid = UUID.randomUUID();
+    UniverseDefinitionTaskParams before = new UniverseDefinitionTaskParams();
+    before.clusters.add(cluster(primaryUuid, ClusterType.PRIMARY, "2"));
+    before.clusters.add(cluster(readReplicaUuid, ClusterType.ASYNC, "2"));
+    UniverseDefinitionTaskParams target = new UniverseDefinitionTaskParams();
+    target.clusters.add(cluster(primaryUuid, ClusterType.PRIMARY, "2"));
+    target.clusters.add(cluster(readReplicaUuid, ClusterType.ASYNC, "2"));
+    target.getClusterByUuid(readReplicaUuid).userIntent.numNodes = 2;
+    // An older read-replica-only edit wrote its target with the primary last.
+    Collections.reverse(target.clusters);
+    StateTransitionDetails details =
+        new StateTransitionDetails(
+            true /* rollbackSafe */, DeltaEvaluator.buildDeltaJsonTree(before, target));
+
+    UniverseDefinitionTaskParams restored = details.getBeforeUniverseDetails();
+
+    assertEquals(primaryUuid, restored.clusters.get(0).uuid);
+    assertEquals(readReplicaUuid, restored.clusters.get(1).uuid);
+    assertEquals(0, restored.getClusterByUuid(readReplicaUuid).userIntent.numNodes);
   }
 
   private static Cluster cluster(UUID uuid, ClusterType clusterType, String maxUploads) {

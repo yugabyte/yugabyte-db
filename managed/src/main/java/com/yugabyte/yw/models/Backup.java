@@ -929,6 +929,28 @@ public class Backup extends Model {
         .exists();
   }
 
+  /** How many of the customer's backups stored with the config are in one of the states. */
+  public static int countWithStorageConfig(
+      UUID customerUUID, UUID storageConfigUUID, Collection<BackupState> states) {
+    return find.query()
+        .where()
+        .eq("customerUUID", customerUUID)
+        .eq("storageConfigUUID", storageConfigUUID)
+        .in("state", states)
+        .findCount();
+  }
+
+  /** The customer's backups stored with the config that are in none of the states. */
+  public static List<Backup> findWithStorageConfigNotIn(
+      UUID customerUUID, UUID storageConfigUUID, Collection<BackupState> states) {
+    return find.query()
+        .where()
+        .eq("customerUUID", customerUUID)
+        .eq("storageConfigUUID", storageConfigUUID)
+        .notIn("state", states)
+        .findList();
+  }
+
   public static List<Backup> findAllBackupsQueuedForDeletion(UUID customerUUID) {
     List<Backup> backupList =
         find.query()

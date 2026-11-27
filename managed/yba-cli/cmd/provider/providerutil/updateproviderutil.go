@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -168,6 +169,8 @@ func BuildZoneMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "zone")
 		}
 	}
 	if _, ok := zone["name"]; !ok {
@@ -293,6 +296,12 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		case "longitude":
+			if !util.IsEmptyString(val) {
+				region["longitude"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
 		case "config-file-path":
 			if !util.IsEmptyString(val) {
 				region["config-file-path"] = val
@@ -341,6 +350,8 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "region")
 		}
 	}
 	if _, ok := region["name"]; !ok {
@@ -421,6 +432,8 @@ func BuildImageBundleMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "image bundle")
 		}
 	}
 	if strings.Compare(operation, "add") == 0 {
@@ -481,6 +494,8 @@ func BuildImageBundleRegionOverrideMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "image bundle region override")
 		}
 	}
 	if strings.Compare(operation, "add") == 0 {
@@ -509,6 +524,35 @@ func BuildImageBundleRegionOverrideMapFromString(
 	return override
 }
 
+// SSHPort checks that an --ssh-port flag value is a TCP port, 1 to 65535.
+func SSHPort(port int) (int32, error) {
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid ssh-port %d; provide a port between 1 and 65535", port)
+	}
+	return int32(port), nil
+}
+
+// ImageBundleSSHPort parses ssh-port. An empty value is an omitted flag and
+// defaults to 22. Any other value must be a TCP port, 1 to 65535, so a bad
+// flag is neither stored as 22 nor sent to YBA out of range.
+func ImageBundleSSHPort(bundle map[string]string) (int32, error) {
+	raw := bundle["ssh-port"]
+	if raw == "" {
+		return 22, nil
+	}
+	port, err := strconv.ParseUint(raw, 10, 16)
+	if err != nil || port == 0 {
+		id := bundle["name"]
+		if id == "" {
+			id = bundle["uuid"]
+		}
+		return 0, fmt.Errorf(
+			"invalid ssh-port %s for image bundle %s; provide a port between 1 and 65535",
+			raw, id)
+	}
+	return int32(port), nil
+}
+
 // DefaultImageBundleValues is to set default values for image bundle
 func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 	if _, ok := imageBundle["ssh-port"]; !ok {
@@ -524,6 +568,27 @@ func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 		imageBundle["arch"] = util.X86_64
 	}
 	return imageBundle
+}
+
+// ValidateUpdateAddZoneRegions rejects an --add-zone whose region-name is neither a
+// region of the provider nor in --add-region. The update commands skip unmatched
+// zones, so a typo would otherwise exit 0 without adding the zone.
+func ValidateUpdateAddZoneRegions(
+	addRegions, addZones []string,
+	providerRegions []ybaclient.Region,
+) error {
+	knownRegions := make(map[string]bool, len(addRegions)+len(providerRegions))
+	for _, regionString := range addRegions {
+		knownRegions[BuildRegionMapFromString(regionString, "add")["name"]] = true
+	}
+	for _, region := range providerRegions {
+		knownRegions[region.GetCode()] = true
+	}
+	if unknown := UnknownZoneRegions(addZones, "add", knownRegions); len(unknown) > 0 {
+		return fmt.Errorf("region %s in --add-zone is not in the provider or in --add-region",
+			strings.Join(unknown, ", "))
+	}
+	return nil
 }
 
 // ValidateZoneRemovalLeavesActiveZone rejects a --remove-zone that deactivates

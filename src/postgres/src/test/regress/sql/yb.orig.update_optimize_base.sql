@@ -498,3 +498,255 @@ UPDATE self_assign SET v1 = v1 + 1, v2 = CASE WHEN false THEN v1 ELSE v2 END WHE
 SELECT * FROM self_assign WHERE k = 1;
 
 DROP TABLE self_assign;
+
+--
+-- GH-33617: primary key is a stored generated column. Updating a source moves
+-- the DocKey, so every secondary index must refresh its ybctid. The plan-time
+-- skip list must stay empty, and the single-row path must be refused.
+--
+CREATE TABLE t (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED,
+	v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, v) VALUES (1, 1, 10);
+
+-- Expression SET at default GUCs: Index Scan, no assert, index consistent.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 + 1 WHERE g = 2;
+UPDATE t SET c1 = c1 + 1 WHERE g = 2;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+
+-- Same with the runtime optimization disabled.
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = c1 + 1 WHERE g = 4;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+SET yb_update_num_cols_to_compare TO 50;
+
+-- Constant SET (GH-33618): must not take the Result path; Index Scan fetches
+-- ybctid.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 5 WHERE g = 6;
+UPDATE t SET c1 = 5 WHERE g = 6;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+
+-- Same value: g is recomputed to the value it had. The executor decides from
+-- the column set, not the values, so this too must read the row.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 5 WHERE g = 10;
+UPDATE t SET c1 = 5 WHERE g = 10;
+SELECT * FROM t ORDER BY id;
+
+-- Constant SET with the runtime optimization disabled.
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = 6 WHERE g = 10;
+SET yb_update_num_cols_to_compare TO 50;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+
+-- Source in SET but the PK value does not change. A plain column reference
+-- needs no projection, so the single-row path returns before it builds a skip
+-- list.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 WHERE g = 12;
+UPDATE t SET c1 = c1 WHERE g = 12;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+
+-- Same through an expression, which does reach the skip list. When the PK may
+-- change, no secondary index is put on the skip list.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 + 0 WHERE g = 12;
+UPDATE t SET c1 = c1 + 0 WHERE g = 12;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+
+-- ON CONFLICT DO UPDATE that moves the generated PK.
+INSERT INTO t (id, c1, v) VALUES (2, 6, 20)
+	ON CONFLICT (g) DO UPDATE SET c1 = EXCLUDED.c1 + 1;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+
+DROP TABLE t;
+
+-- Control: generated column is not the PK.
+CREATE TABLE t (id INT PRIMARY KEY, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT);
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, v) VALUES (1, 1, 10);
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 + 1 WHERE id = 1;
+UPDATE t SET c1 = c1 + 1 WHERE id = 1;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;
+
+-- GH-33617: the same check for a partitioned table updated through the root.
+-- The root has no primary key; the leaf's primary key is generated. The
+-- single-row path works on the leaf, so the check must see the leaf's key.
+CREATE TABLE t (part_key INT, id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT) PARTITION BY RANGE (part_key);
+CREATE TABLE t_leaf PARTITION OF t (PRIMARY KEY (g)) FOR VALUES FROM (0) TO (100);
+CREATE INDEX NONCONCURRENTLY idx_v ON t_leaf (v);
+INSERT INTO t (part_key, id, c1, v) VALUES (1, 1, 1, 10), (2, 2, 50, 20);
+-- Constant SET: must not take the Result path.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 5 WHERE g = 2;
+UPDATE t SET c1 = 5 WHERE g = 2;
+-- Expression SET with the runtime optimization disabled.
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = c1 + 1 WHERE g = 100;
+SET yb_update_num_cols_to_compare TO 50;
+-- Expression SET at default GUCs.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 + 1 WHERE g = 10;
+UPDATE t SET c1 = c1 + 1 WHERE g = 10;
+-- Constant SET with the runtime optimization disabled.
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = 7 WHERE g = 12;
+SET yb_update_num_cols_to_compare TO 50;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;
+
+-- GH-33617: cached plans. The decision is made when the plan is built, so a
+-- cached generic plan must carry it when the runtime optimization is turned
+-- on or off after the plan was cached, and DDL that changes the decision must
+-- rebuild the plan.
+SET plan_cache_mode = force_generic_plan;
+CREATE TABLE t (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT, w INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, v, w) VALUES (1, 1, 10, 100), (2, 50, 20, 200);
+PREPARE upd_const (INT, INT) AS UPDATE t SET c1 = $1 WHERE g = $2;
+EXPLAIN (COSTS OFF) EXECUTE upd_const (5, 2);
+EXECUTE upd_const (5, 2);
+EXECUTE upd_const (6, 10);
+PREPARE upd_expr (INT, INT) AS UPDATE t SET c1 = c1 + $1 WHERE g = $2;
+EXPLAIN (COSTS OFF) EXECUTE upd_expr (1, 100);
+EXECUTE upd_expr (1, 100);
+-- Cached with the runtime optimization enabled, run with it disabled.
+SET yb_update_num_cols_to_compare TO 0;
+EXECUTE upd_expr (1, 102);
+SET yb_update_num_cols_to_compare TO 50;
+-- Cached with the runtime optimization disabled, run with it enabled. The
+-- plan has no affected entities, so nothing at run time can clear a bad skip
+-- list.
+SET yb_update_num_cols_to_compare TO 0;
+PREPARE upd_expr_off (INT, INT) AS UPDATE t SET c1 = c1 + $1 WHERE g = $2;
+EXPLAIN (COSTS OFF) EXECUTE upd_expr_off (1, 104);
+SET yb_update_num_cols_to_compare TO 50;
+EXECUTE upd_expr_off (1, 104);
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DEALLOCATE upd_const;
+DEALLOCATE upd_expr;
+DEALLOCATE upd_expr_off;
+
+-- A cached plan that took the single-row path must be rebuilt after DDL that
+-- makes that path unsafe, and again after the DDL is undone.
+PREPARE upd_w (INT, INT) AS UPDATE t SET w = $1 WHERE g = $2;
+EXPLAIN (COSTS OFF) EXECUTE upd_w (101, 12);
+EXECUTE upd_w (101, 12);
+-- An index on the SET column: the row must be read to maintain it.
+CREATE INDEX NONCONCURRENTLY idx_w ON t (w);
+EXPLAIN (COSTS OFF) EXECUTE upd_w (102, 12);
+EXECUTE upd_w (102, 12);
+SELECT yb_index_check('idx_w'::regclass);
+DROP INDEX idx_w;
+EXPLAIN (COSTS OFF) EXECUTE upd_w (103, 12);
+-- A BEFORE ROW trigger needs the old row.
+CREATE FUNCTION t_noop() RETURNS trigger LANGUAGE plpgsql AS
+	$$BEGIN RETURN NEW; END$$;
+CREATE TRIGGER t_noop BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION t_noop();
+EXPLAIN (COSTS OFF) EXECUTE upd_w (104, 12);
+EXECUTE upd_w (104, 12);
+DROP TRIGGER t_noop ON t;
+DROP FUNCTION t_noop;
+EXPLAIN (COSTS OFF) EXECUTE upd_w (105, 12);
+-- A CHECK constraint can read columns that SET does not give.
+ALTER TABLE t ADD CONSTRAINT t_w_check CHECK (w < v * 100);
+EXPLAIN (COSTS OFF) EXECUTE upd_w (106, 12);
+EXECUTE upd_w (106, 12);
+ALTER TABLE t DROP CONSTRAINT t_w_check;
+EXPLAIN (COSTS OFF) EXECUTE upd_w (107, 12);
+EXECUTE upd_w (107, 12);
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DEALLOCATE upd_w;
+RESET plan_cache_mode;
+DROP TABLE t;
+
+-- GH-33617: a BEFORE ROW trigger that changes a source of the generated
+-- primary key, while SET names no source. The row moves; the unrelated
+-- index must follow.
+CREATE TABLE t (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT, w INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_w ON t (w);
+CREATE FUNCTION t_bump_c1() RETURNS trigger LANGUAGE plpgsql AS
+	$$BEGIN NEW.c1 := NEW.c1 + 1; RETURN NEW; END$$;
+CREATE TRIGGER t_bump BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION t_bump_c1();
+INSERT INTO t (id, c1, v, w) VALUES (1, 1, 10, 100);
+EXPLAIN (COSTS OFF) UPDATE t SET v = 11 WHERE g = 2;
+UPDATE t SET v = 11 WHERE g = 2;
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET v = 12 WHERE g = 4;
+SET yb_update_num_cols_to_compare TO 50;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_w'::regclass);
+DROP TABLE t;
+DROP FUNCTION t_bump_c1;
+
+-- GH-33618: a two-column primary key where only one column is generated. With
+-- every key column in WHERE, the statement is a single-row candidate, and a
+-- SET on the generated column's source still moves the row.
+CREATE TABLE t (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT, PRIMARY KEY (id, g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, v) VALUES (1, 1, 10), (2, 50, 20);
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 5 WHERE id = 1 AND g = 2;
+UPDATE t SET c1 = 5 WHERE id = 1 AND g = 2;
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = c1 + 1 WHERE id = 2 AND g = 100;
+SET yb_update_num_cols_to_compare TO 50;
+-- SET on the other key column moves the row too.
+EXPLAIN (COSTS OFF) UPDATE t SET id = 3 WHERE id = 1 AND g = 10;
+UPDATE t SET id = 3 WHERE id = 1 AND g = 10;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;
+
+-- GH-33617: the generated primary key depends on two columns. With one source
+-- in SET, the other must be read to compute the key. With both in SET, every
+-- source is known, so the statement is a single-row candidate and must still
+-- be refused.
+CREATE TABLE t (id INT, c1 INT, c2 INT,
+	g INT GENERATED ALWAYS AS (c1 + c2) STORED, v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, c2, v) VALUES (1, 1, 1, 10), (2, 50, 50, 20);
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 5 WHERE g = 2;
+UPDATE t SET c1 = 5 WHERE g = 2;
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 3, c2 = 4 WHERE g = 6;
+UPDATE t SET c1 = 3, c2 = 4 WHERE g = 6;
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = c1 + 1 WHERE g = 7;
+UPDATE t SET c1 = 5, c2 = 15 WHERE g = 100;
+SET yb_update_num_cols_to_compare TO 50;
+-- Swapping the sources leaves the key unchanged.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c2, c2 = c1 WHERE g = 20;
+UPDATE t SET c1 = c2, c2 = c1 WHERE g = 20;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;
+
+-- GH-33617: rows found by a sequential scan or a secondary index scan rather
+-- than by primary key, with the runtime optimization disabled.
+CREATE TABLE t (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, v) VALUES (1, 1, 10), (2, 2, 20), (3, 3, 10);
+SET yb_update_num_cols_to_compare TO 0;
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 + 100;
+UPDATE t SET c1 = c1 + 100;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+EXPLAIN (COSTS OFF) /*+ IndexScan(t idx_v) */ UPDATE t SET c1 = c1 + 100 WHERE v = 10;
+/*+ IndexScan(t idx_v) */ UPDATE t SET c1 = c1 + 100 WHERE v = 10;
+SET yb_update_num_cols_to_compare TO 50;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;

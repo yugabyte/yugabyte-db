@@ -14,9 +14,9 @@
 #pragma once
 
 #include <functional>
-#include <utility>
-
-#include <boost/container/small_vector.hpp>
+#include <optional>
+#include <string>
+#include <tuple>
 
 #include "yb/common/pgsql_protocol.pb.h"
 
@@ -173,7 +173,7 @@ struct PgsqlReadOperationData {
   bool table_has_vector_deletion = false;
 };
 
-class PgsqlReadOperation : public DocExprExecutor {
+class PgsqlReadOperation {
  public:
   // Construct and access methods.
   PgsqlReadOperation(std::reference_wrapper<const PgsqlReadOperationData> data,
@@ -200,15 +200,15 @@ class PgsqlReadOperation : public DocExprExecutor {
   //     SELECT ... WHERE ybctid IN (y1, y2, y3)
   Result<size_t> Execute();
 
-  Result<Slice> GetSpecialColumn(ColumnIdRep column_id);
-
  private:
-  // Execute a READ operator for a given scalar argument.
+  // Execute a READ operator for a given scalar argument. Processor is picked from
+  // request_.is_aggregate() by the caller so the row loop is specialized at compile time.
+  template <class Processor>
   Result<std::tuple<size_t, bool>> ExecuteScalar();
 
-  // Execute a READ operator for a given batch of keys.
-  template <class KeyProvider>
-  Result<size_t> ExecuteBatchKeys(KeyProvider& key_provider);
+  // Execute a READ operator for a given batch of keys. Processor as in ExecuteScalar.
+  template <class Processor, class KeyProvider>
+  Result<std::tuple<size_t, bool>> ExecuteBatchKeys(KeyProvider& key_provider);
 
   Result<std::tuple<size_t, bool>> ExecuteSample();
 
@@ -220,13 +220,6 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   void BindReadTimeToPagingState(const ReadHybridTime& read_time);
 
-  Status PopulateResultSet(const dockv::PgTableRow& table_row,
-                           WriteBuffer *result_buffer);
-
-  Status EvalAggregate(const dockv::PgTableRow& table_row);
-
-  Status PopulateAggregate(WriteBuffer *result_buffer);
-
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
   Result<bool> SetPagingState(
@@ -235,10 +228,6 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Result<size_t> ExecuteVectorLSMSearch(const PgVectorReadOptionsMsg& options);
 
-  void InitTargetEncoders(
-      const PgsqlExpressionMsgs& targets,
-      const dockv::PgTableRow& table_row);
-
   //------------------------------------------------------------------------------------------------
   const PgsqlReadOperationData& data_;
   const PgsqlReadRequestMsg& request_;
@@ -246,7 +235,6 @@ class PgsqlReadOperation : public DocExprExecutor {
   WriteBuffer* const result_buffer_;
   ReadRestartData* const read_restart_data_;
 
-  boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
   // Read restart data of the vector search intents scan, filter and reverse mapping reader, which

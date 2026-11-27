@@ -31,6 +31,7 @@
 #include "nodes/nodeFuncs.h"
 #include "nodes/parsenodes.h"
 #include "parser/parse_relation.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -72,7 +73,7 @@ XClusterExtensionOwner(void)
 	ScanKeyData entry[1];
 
 	ScanKeyInit(&entry[0], Anum_pg_extension_extname, BTEqualStrategyNumber,
-				F_NAMEEQ, CStringGetDatum(EXTENSION_NAME));
+				F_NAMEEQ, CStringGetDatum(YB_XCLUSTER_DDL_REPLICATION_NAME));
 
 	SysScanDesc scanDescriptor = systable_beginscan(extensionRelation,
 													ExtensionNameIndexId, true,
@@ -84,7 +85,8 @@ XClusterExtensionOwner(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("%s extension is not loaded", EXTENSION_NAME)));
+				 errmsg("%s extension is not loaded",
+						YB_XCLUSTER_DDL_REPLICATION_NAME)));
 	}
 
 	Form_pg_extension extensionForm = (Form_pg_extension) GETSTRUCT(extensionTuple);
@@ -430,7 +432,7 @@ ShouldReplicateAnalyzedRelation(Oid relid)
 	 * The extension's own tables are replicated as ordinary data; there is no
 	 * point in refreshing statistics for them on the target.
 	 */
-	if (strcmp(nspname, EXTENSION_NAME) == 0)
+	if (strcmp(nspname, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0)
 		return false;
 
 	return true;

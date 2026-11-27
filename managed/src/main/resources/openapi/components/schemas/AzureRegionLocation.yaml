@@ -19,7 +19,7 @@ properties:
     example: 'https://examplewestus2.blob.core.windows.net/backups'
     minLength: 1
   sas_token:
-    description: 'SAS token of this region''s container, with SAS_TOKEN credentials. Required on create with those credentials; never returned.'
+    description: 'SAS token of this region''s container, with SAS_TOKEN credentials. Required on create with those credentials; on edit, omit it to keep the stored one for the same region. Never returned.'
     type: string
     minLength: 4
     writeOnly: true

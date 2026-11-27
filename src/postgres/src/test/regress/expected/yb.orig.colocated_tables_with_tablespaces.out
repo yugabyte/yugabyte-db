@@ -5,6 +5,17 @@ CREATE DATABASE colocation_test colocation = true;
 CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region1", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region1", "zone" : "zone3", "min_num_replicas" : 1}]}');
 CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region2", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region2", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region2", "zone" : "zone3", "min_num_replicas" : 1}]}');
 CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region3", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region3", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region3", "zone" : "zone3", "min_num_replicas" : 1}]}');
+-- default_tablespace must not put the default tablegroup in a tablespace
+SET default_tablespace = tsp1;
+CREATE TABLE in_pg_default (a int) TABLESPACE pg_default;
+RESET default_tablespace;
+SELECT grpname, grptablespace FROM pg_yb_tablegroup;
+ grpname | grptablespace 
+---------+---------------
+ default |             0
+(1 row)
+
+DROP TABLE in_pg_default;
 -- Should succeed in creating colocated partitioned tables with tablespace
 CREATE TABLE partitioned_table (name varchar, region varchar, PRIMARY KEY(name, region)) PARTITION BY LIST(region);
 CREATE TABLE partition_in_dc1 PARTITION OF partitioned_table FOR VALUES IN ('region1') TABLESPACE tsp1;
@@ -34,11 +45,11 @@ SELECT y.spcname FROM pg_tablespace as y JOIN pg_yb_tablegroup as x ON x.grptabl
 (3 rows)
 
 DROP TABLE partitioned_table;
--- Implicit tablegroups must be deleted since it has no tables
+-- The tablespace tablegroups must be deleted since they have no tables, the default one stays
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     0
+     1
 (1 row)
 
 -- Test non-colocated children tables of a partitioned table
@@ -82,7 +93,7 @@ GRANT CREATE ON TABLESPACE tsp2 TO user2;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     0
+     1
 (1 row)
 
 SET SESSION ROLE user1;
@@ -92,7 +103,7 @@ ERROR:  permission denied for tablespace tsp2
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     1
+     2
 (1 row)
 
 SET SESSION ROLE user2;
@@ -106,7 +117,7 @@ LINE 1: CREATE TABLE s1.t4 (a INT) TABLESPACE tsp2;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     2
+     3
 (1 row)
 
 SET SESSION ROLE user1;
@@ -115,7 +126,7 @@ DROP TABLE s1.t1;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     1
+     2
 (1 row)
 
 SET SESSION ROLE user2;
@@ -124,7 +135,7 @@ DROP TABLE s2.t3;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     0
+     1
 (1 row)
 
 RESET ROLE;
@@ -152,7 +163,7 @@ DROP TABLE base_table;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     0
+     1
 (1 row)
 
 -- Test colocated indexes
@@ -232,7 +243,7 @@ DROP TABLE table_1;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     0
+     1
 (1 row)
 
 -- Describing colocated table with tablespace must show both colocation and tablespace info
@@ -268,7 +279,7 @@ DROP TABLE table_1;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
 -------
-     0
+     1
 (1 row)
 
 -- Test ALTER TABLE/INDEX/MATERIALIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ... CASCADE
@@ -595,6 +606,16 @@ SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegrou
 (1 row)
 
 CREATE TABLE table2(a int) TABLESPACE pg_default;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
+ grpname | grpowner | grptablespace | grpacl | grpoptions 
+---------+----------+---------------+--------+------------
+ default |       10 |             0 |        | 
+(1 row)
+
+-- The same holds for indexes, however many there are
+CREATE INDEX index1 ON table2(a) TABLESPACE pg_default;
+CREATE INDEX index2 ON table2(a) TABLESPACE pg_default;
+ALTER TABLE table2 ADD CONSTRAINT table2_a_key UNIQUE (a) USING INDEX TABLESPACE pg_default;
 SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
  grpname | grpowner | grptablespace | grpacl | grpoptions 
 ---------+----------+---------------+--------+------------

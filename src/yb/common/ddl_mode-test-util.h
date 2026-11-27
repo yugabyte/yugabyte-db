@@ -18,10 +18,10 @@
 
 namespace yb {
 
-// Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
-// cross-flag validators in common_flags.cc, so tests must move all three at once or the daemons
-// FATAL at startup. These helpers do that: use_legacy selects the legacy mode, where DDLs neither
-// take object locks nor run inside the enclosing transaction block.
+// Object locking and transactional DDL are validated against each other in common_flags.cc, so
+// tests must move both at once or the daemons FATAL at startup. Concurrent DDL moves with them.
+// These helpers do that: use_legacy selects the legacy mode, where DDLs neither take object locks
+// nor run inside the enclosing transaction block.
 //
 // DDL savepoint support and the new relation fastpath write in transaction blocks require
 // transactional DDL, so the legacy mode turns them off too. The new mode leaves them at their

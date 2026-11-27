@@ -241,8 +241,7 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount; /* Count of objects that
 												 * require stickiness within a
 												 * certain transaction (e.g.
-												 * TEMP TABLES/WITH HOLD
-												 * CURSORS) */
+												 * TEMP TABLES) */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -3638,8 +3637,32 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
+/*
+ * YbCommitTransactionCommandIntermediate
+ *
+ * Commits the current transaction and starts a new one in the middle of a
+ * statement that runs in several transactions, such as an ANALYZE of several
+ * tables, and carries the statement's DDL state into the new transaction. The
+ * new transaction takes the database DDL lock like any DDL transaction (see
+ * YbLockDatabaseToBlockDdlConcurrency).
+ */
 void
 YbCommitTransactionCommandIntermediate(void)
+{
+	YbCommitTransactionCommandIntermediateExtended(true /* block_ddl_concurrency_in_db */ );
+}
+
+/*
+ * YbCommitTransactionCommandIntermediateExtended
+ *
+ * With block_ddl_concurrency_in_db false, the new transaction enters DDL state
+ * without the database DDL lock. DETACH PARTITION CONCURRENTLY needs this: it
+ * waits for lockers right after the new transaction starts, and holding the
+ * lock during that wait can block a writer's DDL with no deadlock reported
+ * (see YBAddDdlTxnStateExtended). It takes the lock after the wait.
+ */
+void
+YbCommitTransactionCommandIntermediateExtended(bool block_ddl_concurrency_in_db)
 {
 	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
@@ -3684,8 +3707,12 @@ YbCommitTransactionCommandIntermediate(void)
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		YBAddDdlTxnState(ddl_mode);
+		/*
+		 * Restore the statement state first: entering DDL state reads it to
+		 * decide whether to take the database DDL lock (ANALYZE does not).
+		 */
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
+		YBAddDdlTxnStateExtended(ddl_mode, block_ddl_concurrency_in_db);
 	}
 }
 

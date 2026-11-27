@@ -775,10 +775,14 @@
   check_hook => 'check_default_table_access_method',
 },
 
+# YB: ConnMgr can't replay this safely since the check hook looks up the
+# name again. The tablespace might have been dropped between the SET and the
+# replay, making the replay fail. So, setting this GUC makes the connection
+# sticky.
 { name => 'default_tablespace', type => 'string', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'Sets the default tablespace to create tables and indexes in.',
   long_desc => 'An empty string means use the database\'s default tablespace.',
-  flags => 'GUC_IS_NAME',
+  flags => 'GUC_YB_CONN_MGR_STICKY | GUC_IS_NAME',
   variable => 'default_tablespace',
   boot_val => '""',
   check_hook => 'check_default_tablespace',
@@ -3144,10 +3148,13 @@
   max => 'INT_MAX',
 },
 
+# YB: The check hook resolves the names to tablespace OIDs, so a ConnMgr
+# replay after a DROP or RENAME TABLESPACE would resolve them differently. So,
+# setting this GUC makes the connection sticky.
 { name => 'temp_tablespaces', type => 'string', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'Sets the tablespace(s) to use for temporary tables and sort files.',
   long_desc => 'An empty string means use the database\'s default tablespace.',
-  flags => 'GUC_LIST_INPUT | GUC_LIST_QUOTE',
+  flags => 'GUC_YB_CONN_MGR_STICKY | GUC_LIST_INPUT | GUC_LIST_QUOTE',
   variable => 'temp_tablespaces',
   boot_val => '""',
   check_hook => 'check_temp_tablespaces',
@@ -3754,7 +3761,7 @@
 
 { name => 'yb_allow_prehashed_passwords', type => 'bool', context => 'PGC_SUSET', group => 'CONN_AUTH_AUTH',
   short_desc => 'Allows a role to be given an already-hashed password.',
-  long_desc => 'A pre-hashed password cannot be inspected, so no password policy can be enforced while this is on.',
+  long_desc => 'Even when yb_allow_prehashed_passwords is on, a pre-hashed password is refused when a role with a password reuse policy changes its own password, because it cannot be compared with that role\'s previous passwords.',
   variable => 'yb_allow_prehashed_passwords',
   boot_val => 'true',
   check_hook => 'check_yb_allow_prehashed_passwords',
@@ -3893,6 +3900,33 @@
   boot_val => '""',
   check_hook => 'check_yb_conn_mgr_client_hostname',
   assign_hook => 'assign_yb_conn_mgr_client_hostname',
+},
+
+{ name => 'yb_conn_mgr_cursor_permanent_sticky', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Keeps a Connection Manager connection that declares a WITH HOLD cursor sticky until disconnect instead of unsticking it once all such cursors are closed.',
+  long_desc => 'Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions gflag.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_conn_mgr_cursor_permanent_sticky',
+  boot_val => 'false',
+  assign_hook => 'yb_assign_conn_mgr_cursor_permanent_sticky',
+},
+
+{ name => 'yb_conn_mgr_listen_permanent_sticky', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Keeps a Connection Manager connection that listens on a channel sticky until disconnect instead of unsticking it once it stops listening.',
+  long_desc => 'Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions gflag.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_conn_mgr_listen_permanent_sticky',
+  boot_val => 'false',
+  assign_hook => 'yb_assign_conn_mgr_listen_permanent_sticky',
+},
+
+{ name => 'yb_conn_mgr_prepare_permanent_sticky', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Keeps a Connection Manager connection that creates a SQL PREPARE statement sticky until disconnect instead of unsticking it once all such statements are deallocated.',
+  long_desc => 'Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions gflag.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_conn_mgr_prepare_permanent_sticky',
+  boot_val => 'false',
+  assign_hook => 'yb_assign_conn_mgr_prepare_permanent_sticky',
 },
 
 { name => 'yb_conn_mgr_replication_origin_permanent_sticky', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
@@ -4521,6 +4555,13 @@
   boot_val => 'false',
 },
 
+{ name => 'yb_enable_replication_slot_transactional_ddl', type => 'bool', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Autoflag to enable support for logical replication with transactional DDL. Not to be touched by users.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_replication_slot_transactional_ddl',
+  boot_val => 'true',
+},
+
 { name => 'yb_enable_retry_after_non_atomic_commit', type => 'bool', context => 'PGC_USERSET', group => 'COMPAT_OPTIONS_PREVIOUS',
   short_desc => 'Allow query layer retries of CALL/DO statements after an in-procedure COMMIT.',
   long_desc => 'When enabled, the query layer will retry CALL and DO statements on conflict or read-restart errors even if the procedure or DO block has already performed a COMMIT. This can lead to re-execution of already-committed work (e.g., duplicate inserts) and is provided only as a compatibility option to revert to the old behavior. The default (off) is the safe behavior.',
@@ -4935,6 +4976,16 @@
   max => 'INT_MAX',
 },
 
+{ name => 'yb_notifications_poller_no_progress_timeout_ms', type => 'int', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Time in milliseconds without progress after which a notifications poller error terminates the node\'s listening sessions instead of restarting the poller.',
+  long_desc => '0 terminates them on the first error.',
+  flags => 'GUC_UNIT_MS',
+  variable => 'yb_notifications_poller_no_progress_timeout_ms',
+  boot_val => '300000',
+  min => '0',
+  max => 'INT_MAX',
+},
+
 { name => 'yb_origination_time_override', type => 'string', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Origination time to stamp on this session\'s writes and commits instead of the time each transaction originated. Takes a Unix timestamp in microseconds; 0 means unset.',
   long_desc => 'Set by the tablet server on internal connections that do work on behalf of an earlier statement, such as index backfill.',
@@ -5138,9 +5189,12 @@
   boot_val => 'false',
 },
 
+# YB: ConnMgr can't replay this since the check hook rejects it inside a
+# transaction block, so setting it makes the connection sticky.
 { name => 'yb_read_after_commit_visibility', type => 'enum', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Control read-after-commit-visibility guarantee.',
   long_desc => 'This GUC is intended as a crutch for users migrating from PostgreSQL and new to read restart errors. Users can now largely avoid these errors when read-after-commit-visibility guarantee is not a strong requirement. This option cannot be set from within a transaction block. Configure one of the following options: (a) strict: Default Behavior. The read-after-commit-visibility guarantee is maintained by the database. However, users may see read restart errors that show "ERROR:  Query error: Restart read required at: ...". The database attempts to retry on such errors internally but that is not always possible. (b) relaxed: With this option, the read-after-commit-visibility guarantee is relaxed. Do not see read restart errors but may miss recent updates with staleness bounded by clock skew. This mode does not apply to serializable isolation level and fast path writes. (c) deferred: Defers read point. Higher latency but read-after-commit-visibility guarantee is maintained.',
+  flags => 'GUC_YB_CONN_MGR_STICKY',
   variable => 'yb_read_after_commit_visibility',
   boot_val => 'YB_STRICT_READ_AFTER_COMMIT_VISIBILITY',
   options => 'yb_read_after_commit_visibility_options',
@@ -5390,12 +5444,12 @@
 },
 
 { name => 'yb_test_fail_next_ddl', type => 'int', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
-  short_desc => 'When set to non-zero, the next DDL will fail: 1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict.',
+  short_desc => 'When set to non-zero, the next DDL will fail: 1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict, 6=deadlock, 7=conflict and 8=deadlock at the commit RPC of a transaction with DDL state, which needs transactional DDL (they stay set until one commits).',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_test_fail_next_ddl',
   boot_val => '0',
   min => '0',
-  max => '5',
+  max => '8',
 },
 
 { name => 'yb_test_fail_next_inc_catalog_version', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
@@ -5462,6 +5516,20 @@
   short_desc => 'When set, all DDL statements will cause the catalog version to increment. This mainly affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE. This also enables negative catcache entries.',
   variable => 'yb_test_make_all_ddl_statements_incrementing',
   boot_val => 'true',
+},
+
+{ name => 'yb_test_notifs_poller_error_before_init', type => 'bool', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'When true, the notifications poller raises an ERROR before it initializes, so it exits and is restarted without reporting an init status.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_test_notifs_poller_error_before_init',
+  boot_val => 'false',
+},
+
+{ name => 'yb_test_notifs_poller_error_holding_queue_lock', type => 'bool', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'When true, the notifications poller raises an ERROR while holding NotifyQueueLock, before writing to the async queue.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_test_notifs_poller_error_holding_queue_lock',
+  boot_val => 'false',
 },
 
 { name => 'yb_test_notifs_poller_init_delay_ms', type => 'int', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
@@ -5606,7 +5674,7 @@
 },
 
 { name => 'yb_update_num_cols_to_compare', type => 'int', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
-  short_desc => 'Maximum number of columns whose data is to be compared while seeking to optimize updates. If set to 0, all applicable columns in the table will be compared.',
+  short_desc => 'Maximum number of columns whose data is to be compared while seeking to optimize updates. If set to 0, the update optimization is disabled.',
   variable => 'yb_update_optimization_options.num_cols_to_compare',
   boot_val => '50',
   min => '0',

@@ -228,6 +228,21 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
   }
 }
 
+const PlacementInfoPB* CatalogManagerUtil::FindReadReplicaPlacement(
+    const ReplicationInfoPB& replication_info, const std::string& placement_uuid) {
+  if (replication_info.read_replicas().empty()) {
+    return nullptr;
+  }
+  for (const auto& placement : replication_info.read_replicas()) {
+    if (placement.placement_uuid() == placement_uuid) {
+      return &placement;
+    }
+  }
+  LOG(WARNING) << "Could not find read only cluster with placement uuid: " << placement_uuid
+               << "; using the first read replica placement until the next tablespace refresh";
+  return &replication_info.read_replicas(0);
+}
+
 Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const TabletInfoPtr& tablet) {
   static const auto stringify_partition_key = [](const Slice& key) {

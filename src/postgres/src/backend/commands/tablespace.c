@@ -1281,15 +1281,6 @@ check_default_tablespace(char **newval, void **extra, GucSource source)
 		}
 	}
 
-	/*
-	 * YB: If Connection Manager is enabled, make the connection sticky.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Setting sticky connection for default_tablespace");
-		yb_ysql_conn_mgr_sticky_guc = true;
-	}
-
 	return true;
 }
 
@@ -1467,15 +1458,6 @@ check_temp_tablespaces(char **newval, void **extra, GucSource source)
 
 	pfree(rawname);
 	list_free(namelist);
-
-	/*
-	 * YB: If Connection Manager is enabled, make the connection sticky.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Setting sticky connection for temp_tablespaces");
-		yb_ysql_conn_mgr_sticky_guc = true;
-	}
 
 	return true;
 }

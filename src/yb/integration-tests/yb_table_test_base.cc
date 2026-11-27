@@ -146,6 +146,7 @@ void YBTableTestBase::SetUp() {
         .ts_env = ts_env_ ? ts_env_.get() : nullptr,
         .ts_rocksdb_env = ts_rocksdb_env_ ? ts_rocksdb_env_.get() : nullptr
     };
+    CustomizeMiniCluster(&opts);
     LOG(INFO) << "opts: " << opts.ts_env;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = enable_ysql();
 

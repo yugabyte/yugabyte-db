@@ -713,3 +713,30 @@ SELECT m.relname,
 FROM inh_idx_info m
 JOIN pg_class new ON new.relname = m.relname
 ORDER BY m.relname;
+
+-- ADD COLUMN ... DEFAULT with a VOLATILE SQL function that planning inlines
+-- to a constant (#37663).  PG stores a missing value instead of rewriting, so
+-- DocDB must get the same missing value, or existing rows read NULL.
+CREATE FUNCTION add_col_default_fn() RETURNS int LANGUAGE sql AS 'SELECT 42';
+CREATE TABLE add_col_default_test (id int PRIMARY KEY);
+INSERT INTO add_col_default_test VALUES (1), (2), (3);
+CREATE TEMP TABLE add_col_default_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'add_col_default_test';
+ALTER TABLE add_col_default_test
+    ADD COLUMN c1 int NOT NULL DEFAULT add_col_default_fn();
+ALTER TABLE add_col_default_test ADD COLUMN c2 int DEFAULT add_col_default_fn() + 1;
+-- no rewrite: DocDB serves the missing values.
+SELECT CASE WHEN m.relfilenode = c.relfilenode THEN 'relfilenode reused'
+            ELSE 'relfilenode changed' END
+FROM add_col_default_info m, pg_class c
+WHERE c.relname = 'add_col_default_test';
+INSERT INTO add_col_default_test (id) VALUES (4);
+SELECT * FROM add_col_default_test ORDER BY id;
+CREATE INDEX add_col_default_test_c1_idx ON add_col_default_test (c1);
+-- the index build also sees the missing values.
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
+SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
+RESET enable_seqscan;
+DROP TABLE add_col_default_test;
+DROP FUNCTION add_col_default_fn();

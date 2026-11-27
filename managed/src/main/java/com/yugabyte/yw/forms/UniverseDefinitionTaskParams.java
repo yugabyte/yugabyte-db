@@ -472,6 +472,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  /** How far a K8s edit's master move got, in order. A retry reads it to pick master lists. */
+  public enum MasterMoveStage {
+    STARTED,
+    // The masters the edit adds outside a master full move run, and may be in the Raft config.
+    ADDED_MASTERS_RUNNING,
+    // Those masters are in the Raft config. Recorded only before a master full move, which then
+    // creates its pods.
+    ADDED_MASTERS_JOINED,
+    // The master full move's new masters run too, and may be in the Raft config.
+    FULL_MOVE_MASTERS_RUNNING,
+    OLD_MASTERS_REMOVED,
+    // Every master step is over. From here tserver pods change, so a retry renders and pushes no
+    // master list: one at the pre-edit pod counts would undo those changes.
+    MASTERS_SETTLED
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -543,6 +559,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         hidden = true,
         value = "YbaApi Internal. Saved full move batch index for Master")
     private int currentMasterFullMoveBatchIndex = -1;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. How far a K8s master move got")
+    private MasterMoveStage masterMoveStage;
 
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter
@@ -901,30 +922,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonIgnore
     public PlacementInfo getOverallPlacement() {
       if (!CollectionUtils.isEmpty(partitions)) {
-        PlacementInfo result = new PlacementInfo();
-        // TODO Sort?
+        Collection<PlacementInfo> allPlacements = new ArrayList<>();
+        Set<UUID> defaultPartitionAzs = new HashSet<>();
         for (PartitionInfo partition : partitions) {
-          partition
-              .getPlacement()
-              .azStream()
-              .forEach(
-                  az -> {
-                    int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfo.PlacementAZ mergedAz =
-                        PlacementInfoUtil.addPlacementZone(
-                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
-                    // AZs are disjoint across partitions, so each AZ is added exactly once
-                    // and it is safe to copy the K8s statefulset indices directly. These
-                    // indices must be preserved: master addresses and pod names computed
-                    // from the overall placement (e.g. during a K8s full move) rely on them,
-                    // and dropping them would generate stale/incorrect master addresses.
-                    mergedAz.masterStsIndex = az.masterStsIndex;
-                    mergedAz.tsStsIndex = az.tsStsIndex;
-                    // addPlacementZone does not set leaderPreference, so rankings would
-                    // otherwise reset to 0.
-                    mergedAz.leaderPreference = az.leaderPreference;
-                  });
+          allPlacements.add(partition.placement);
+          if (partition.defaultPartition && partition.placement != null) {
+            defaultPartitionAzs.addAll(partition.placement.getAllAZUUIDs());
+          }
         }
+        PlacementInfo result = PlacementInfoUtil.mergePlacements(allPlacements);
+        result
+            .azStream()
+            .forEach(
+                az -> {
+                  // AZs are disjoint across partitions.
+                  if (!defaultPartitionAzs.contains(az.uuid)) {
+                    // For non-default partition RF should be zero.
+                    az.replicationFactor = 0;
+                  }
+                });
         return result;
       }
       return placementInfo;
@@ -1637,11 +1653,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                   + " Must be false.")
       private boolean enablePublic = false;
 
+      @ApiModelProperty(
+          value =
+              "DNS names that clients use to reach the load balancers, for example"
+                  + " db.example.com or *.db.example.com. YBA adds them, and the load balancer"
+                  + " address, to the server certs that its self-signed CA signs for the nodes"
+                  + " behind the load balancers. IP addresses are rejected. In an edit, leaving"
+                  + " this out keeps the current names, and an empty list clears them. To"
+                  + " change the names, the setting must also set enablePrivate to true.")
+      @Nullable
+      private List<String> dnsNames;
+
       @Override
       public ManagedLoadBalancerConfig clone() {
         ManagedLoadBalancerConfig newConfig = new ManagedLoadBalancerConfig();
         newConfig.enablePrivate = enablePrivate;
         newConfig.enablePublic = enablePublic;
+        newConfig.dnsNames = dnsNames == null ? null : new ArrayList<>(dnsNames);
         return newConfig;
       }
     }
@@ -1874,6 +1902,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             return tserverSpec != null ? tserverSpec.getK8SNodeResourceSpec() : null;
           },
           u -> u.tserverK8SNodeResourceSpec);
+    }
+
+    public String getAwsInstanceProfileForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID, spec -> spec.awsInstanceProfile, u -> u.awsArnString);
     }
 
     public void setProviderInstanceTags(UUID providerUUID, Map<String, String> instanceTags) {
@@ -2540,6 +2573,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     clusters.remove(cluster);
+  }
+
+  /** Changes the managed load balancer state; an empty state is saved as null. */
+  public void updateManagedLoadBalancerState(Consumer<ManagedLoadBalancerState> updater) {
+    ManagedLoadBalancerState state =
+        managedLoadBalancerState == null
+            ? new ManagedLoadBalancerState()
+            : managedLoadBalancerState;
+    updater.accept(state);
+    managedLoadBalancerState = state.isEmpty() ? null : state;
   }
 
   /**

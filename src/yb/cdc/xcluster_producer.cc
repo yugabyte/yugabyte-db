@@ -346,7 +346,10 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   //    b. Reset last_apply_safe_time and apply_safe_time_checkpoint_op_id
   //  5. Else don't set any response.apply_safe_time. The next GetChanges RPC will reuse the
   //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
-  if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+  // ResolveIntents waits for the transaction loader, so while it loads, records are sent without
+  // an apply safe time instead of blocking the poll.
+  if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid() &&
+      txn_participant->AllTransactionsLoaded()) {
     // See if its time to update the apply safe time.
     if (txn_participant->GetNumRunningTransactions() == 0 ||
         !stream_tablet_metadata->last_apply_safe_time_update_time_ ||

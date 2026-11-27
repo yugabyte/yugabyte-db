@@ -2134,6 +2134,8 @@ CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
           resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
           UpdateRecordCount(change_resp.cdc_sdk_proto_records(i), count);
         }
+        resp.aborted_subtxns.insert(
+            change_resp.aborted_subtxns().begin(), change_resp.aborted_subtxns().end());
 
         begin_records = count[6];
         commit_records = count[7];
@@ -4489,7 +4491,7 @@ void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
     }
 
     if (record.row_message().op() == RowMessage::DDL &&
-        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl && in_transaction) {
+        FLAGS_ysql_yb_enable_replication_slot_transactional_ddl && in_transaction) {
       ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
       ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
       ASSERT_TRUE(record.row_message().has_pg_lsn());

@@ -1202,21 +1202,26 @@ DefineIndex(ParseState *pstate,
 			is_colocated_via_database && !MyColocatedDatabaseLegacy)
 		{
 			char	   *tablegroup_name = NULL;
+			Oid			grp_tablespace_id = tablespaceId;
 
-			if (OidIsValid(tablespaceId))
+			/* The database's default tablespace means no tablespace. */
+			if (grp_tablespace_id == MyDatabaseTableSpace)
+				grp_tablespace_id = InvalidOid;
+
+			if (OidIsValid(grp_tablespace_id))
 			{
 				/*
 				 * We look in pg_shdepend rather than directly use the derived name,
 				 * as later we might need to associate an existing implicit tablegroup to a tablespace
 				 */
-				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+				tablegroupId = YbLockImplicitTablegroup(grp_tablespace_id);
 
 				/*
 				 * If we do not find a tablegroup corresponding to the given tablespace, we
 				 * would have to create one. We derive the name from tablespace OID.
 				 */
 				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
-					get_implicit_tablegroup_name(tablespaceId);
+					get_implicit_tablegroup_name(grp_tablespace_id);
 
 			}
 			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
@@ -1282,11 +1287,11 @@ DefineIndex(ParseState *pstate,
 			else
 			{
 				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				tablegroupId = YbLockImplicitTablegroup(InvalidOid);
 			}
 
-			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
-										   get_tablespace_name(tablespaceId) :
+			char	   *tablespace_name = (OidIsValid(grp_tablespace_id) ?
+										   get_tablespace_name(grp_tablespace_id) :
 										   NULL);
 
 			/* Tablegroup doesn't exist, so create it. */
@@ -2561,13 +2566,13 @@ DefineIndex(ParseState *pstate,
 				CommitTransactionCommand();
 				StartTransactionCommand();
 
+				/* YB: Short wait for backends on older catalog versions. */
+				YbWaitForBackendsCatalogVersion(false);
+
 				if (yb_should_run_in_autonomous_transaction)
 					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 				else
 					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-				/* YB: Short wait for backends on older catalog versions. */
-				YbWaitForBackendsCatalogVersion(false);
 
 				/*
 				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
@@ -2669,12 +2674,12 @@ YbDefineIndexHelper(Oid relationId,
 
 	StartTransactionCommand();
 
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2704,12 +2709,12 @@ YbDefineIndexHelper(Oid relationId,
 
 	StartTransactionCommand();
 
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);

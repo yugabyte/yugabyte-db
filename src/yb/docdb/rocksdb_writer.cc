@@ -67,9 +67,9 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
-DEFINE_test_flag(bool, store_apply_state_without_apply_op_id, false,
-                 "Store the apply state of a large transaction without its apply op id, as older "
-                 "releases did.");
+DEFINE_test_flag(bool, store_apply_state_without_apply_op_id_and_log_ht, false,
+                 "Store the apply state of a large transaction without its apply op id and log "
+                 "hybrid time, as older releases did.");
 
 namespace yb::docdb {
 
@@ -809,9 +809,10 @@ ApplyIntentsContext::ApplyIntentsContext(
     TableType table_type,
     ApplyIntentsContextCompleteListener complete_listener)
       // TODO(vector_index): Add support for large transactions. Their later chunks are applied by
-      // a deferred task that carries apply_to_storages across vector index list changes, which
+      // ApplyIntentsTask, which carries apply_to_storages across vector index list changes, which
       // StorageSet does not support yet; see the TODO in docdb::StorageSet. That requires
-      // reworking TransactionApplyData::apply_to_storages, which the deferred task keeps.
+      // reworking TransactionApplyData::apply_to_storages. Applies resumed after a restart do not
+      // keep it, they use StorageSet::All().
     : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr),
           intents_db, key_bounds, file_filter_ht),
       FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
@@ -850,8 +851,11 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
-  if (!FLAGS_TEST_store_apply_state_without_apply_op_id) {
+  if (!FLAGS_TEST_store_apply_state_without_apply_op_id_and_log_ht) {
     apply_op_id_.ToPB(pb.mutable_apply_op_id());
+    if (log_ht_) {
+      pb.set_log_ht(log_ht_.ToUint64());
+    }
   }
   faststring encoded_pb;
   RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));

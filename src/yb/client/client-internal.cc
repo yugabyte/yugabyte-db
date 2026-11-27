@@ -1002,82 +1002,6 @@ Status YBClient::Data::DeleteTablegroup(
   return Status::OK();
 }
 
-Status YBClient::Data::BackfillIndex(YBClient* client,
-                                     const YBTableName& index_name,
-                                     const TableId& index_id,
-                                     CoarseTimePoint deadline,
-                                     std::optional<TransactionMetadata> requester_transaction,
-                                     bool wait) {
-  BackfillIndexRequestPB req;
-  BackfillIndexResponsePB resp;
-
-  if (index_name.has_table()) {
-    index_name.SetIntoTableIdentifierPB(req.mutable_index_identifier());
-  }
-  if (!index_id.empty()) {
-    req.mutable_index_identifier()->set_table_id(index_id);
-  }
-  if (requester_transaction.has_value()) {
-    requester_transaction->ToPB(req.mutable_requester_transaction());
-  }
-
-  RETURN_NOT_OK((SyncLeaderMasterRpc(
-      deadline, req, &resp, "BackfillIndex", &master::MasterDdlProxy::BackfillIndexAsync)));
-
-  // Spin until the table is fully backfilled, if requested.
-  if (wait) {
-    RETURN_NOT_OK(WaitForBackfillIndexToFinish(
-        client,
-        resp.table_identifier().table_id(),
-        index_id,
-        deadline));
-  }
-
-  LOG(INFO) << "Backfilled index " << req.index_identifier().ShortDebugString();
-  return Status::OK();
-}
-
-Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
-                                                 const TableId& table_id,
-                                                 const TableId& index_id,
-                                                 CoarseTimePoint deadline,
-                                                 bool* backfill_in_progress) {
-  DCHECK_ONLY_NOTNULL(backfill_in_progress);
-  YBTableInfo yb_table_info;
-  RETURN_NOT_OK(GetTableSchema(client,
-                               table_id,
-                               deadline,
-                               &yb_table_info));
-  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
-
-  *backfill_in_progress = true;
-  if (!index_info->backfill_error_message().empty()) {
-    *backfill_in_progress = false;
-    // backfill_status preserves the error codes (such as the PostgreSQL error code) but may be
-    // stale after a rollback: an old master clears only backfill_error_message on success.
-    return index_info->backfill_status().ok()
-        ? STATUS(Aborted, index_info->backfill_error_message())
-        : index_info->backfill_status().CloneAndReplaceCode(Status::kAborted);
-  } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
-    *backfill_in_progress = false;
-  }
-
-  return Status::OK();
-}
-
-Status YBClient::Data::WaitForBackfillIndexToFinish(
-    YBClient* client,
-    const TableId& table_id,
-    const TableId& index_id,
-    CoarseTimePoint deadline) {
-  return RetryUntilShutdown(
-      deadline,
-      "Waiting on Backfill Index to be completed",
-      "Timed out waiting for Backfill Index",
-      std::bind(
-          &YBClient::Data::IsBackfillIndexInProgress, this, client, table_id, index_id, _1, _2));
-}
-
 Result<bool> YBClient::Data::IsBackfillIndexStarted(
     YBClient* client, const TableId& index_table_id, const TableId& indexed_table_id,
     CoarseTimePoint deadline) {
@@ -1622,7 +1546,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
   info->index_map.FromPB(resp.indexes());
   if (resp.has_index_info()) {
-    info->index_info.emplace(resp.index_info());
+    info->index_info.emplace(resp.index_info(), HybridTime::kInvalid);
   }
   if (resp.has_replication_info()) {
     info->replication_info.emplace(resp.replication_info());
@@ -2628,6 +2552,56 @@ class WaitForLockersMultipleGlobalRpc
   StdStatusCallback user_cb_;
 };
 
+class BackfillIndexRpc :
+    public ClientMasterRpc<
+        master::BackfillIndexRequestPB, master::BackfillIndexResponsePB> {
+ public:
+  BackfillIndexRpc(
+      YBClient* client, const YBTableName& index_name, TableIdView index_id,
+      const std::optional<TransactionMetadata>& requester_transaction,
+      BackfillIndexCallback&& user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+
+    if (index_name.has_table()) {
+      index_name.SetIntoTableIdentifierPB(req_.mutable_index_identifier());
+    }
+    if (!index_id.empty()) {
+      req_.mutable_index_identifier()->set_table_id(index_id.data(), index_id.size());
+    }
+    if (requester_transaction.has_value()) {
+      requester_transaction->ToPB(req_.mutable_requester_transaction());
+    }
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "BackfillIndexRpc (request: $0, num_attempts: $1)", req_.DebugString(), num_attempts());
+  }
+
+ private:
+  Status ResponseStatus() override { return StatusFromResp(resp_); }
+
+  bool ShouldRetry(const Status& status) override { return status.IsTryAgain(); }
+
+  void CallRemoteMethod() override {
+    VLOG(2) << "Calling BackfillIndex with request: " << req_.DebugString();
+    master_ddl_proxy()->BackfillIndexAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&BackfillIndexRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.ok()) {
+      user_cb_(resp_.table_identifier().table_id());
+      return;
+    }
+    LOG(WARNING) << ToString() << " failed: " << AsString(status);
+    user_cb_(status);
+  }
+
+  BackfillIndexCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -3279,12 +3253,16 @@ Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
 }
 
 Status YBClient::Data::ReportYsqlDdlTxnStatus(
-    const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline) {
+    const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time,
+    const CoarseTimePoint& deadline) {
   master::ReportYsqlDdlTxnStatusRequestPB req;
   master::ReportYsqlDdlTxnStatusResponsePB resp;
 
   req.set_transaction_id(txn.transaction_id.data(), txn.transaction_id.size());
   req.set_is_committed(is_committed);
+  if (propagated_hybrid_time.is_valid()) {
+    req.set_propagated_hybrid_time(propagated_hybrid_time.ToUint64());
+  }
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "ReportYsqlDdlTxnStatus",
       &master::MasterDdlProxy::ReportYsqlDdlTxnStatusAsync));
@@ -3573,6 +3551,14 @@ Status YBClient::Data::RetryUntilShutdown(
         return func(deadline, retry);
       },
       max_wait, max_jitter_ms, init_exponent);
+}
+
+void YBClient::Data::BackfillIndexAsync(
+    YBClient* client, const YBTableName& index_name, TableIdView index_id,
+    const std::optional<TransactionMetadata>& requester_transaction,
+    CoarseTimePoint deadline, BackfillIndexCallback&& callback) {
+  StartRpc<internal::BackfillIndexRpc>(
+      client, index_name, index_id, requester_transaction, std::move(callback), deadline);
 }
 
 }  // namespace client

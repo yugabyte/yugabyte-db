@@ -95,7 +95,9 @@ class YbHnswIndex :
         YbHnswIndex<Vector, DistanceResult>, Vector, DistanceResult>;
 
   template <class... Args>
-  explicit YbHnswIndex(Args&&... args) : index_(std::forward<Args>(args)...) {}
+  // Only mutable indexes take deletions, so this one tracks none.
+  explicit YbHnswIndex(Args&&... args)
+      : Base(/* mem_tracker= */ MemTrackerPtr()), index_(std::forward<Args>(args)...) {}
 
   ~YbHnswIndex() {
     while (auto* context = search_contexts_.Pop()) {
@@ -161,8 +163,6 @@ class YbHnswIndex :
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const vector_index::SearchOptions& options) const {
-    SCHECK(options.tenant.empty() || index_.header().num_tenant_directory_blocks, InvalidArgument,
-           "Tenant search of a vector index without tenants");
     auto* context = search_contexts_.Pop();
     if (!context) {
       context = new SearchContextHolder;

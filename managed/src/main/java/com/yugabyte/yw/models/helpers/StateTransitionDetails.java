@@ -11,9 +11,12 @@ import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import java.util.Comparator;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import play.libs.Json;
 
 /** Captures a before-to-target state transition for an in-flight universe task. */
@@ -22,7 +25,10 @@ import play.libs.Json;
 @AllArgsConstructor
 public class StateTransitionDetails {
   private boolean rollbackSafe;
-  private JsonNode delta;
+
+  // Holds the universe's sensitive gflags, such as LDAP bind passwords, in clear, so a log line
+  // that prints these details must not print it.
+  @ToString.Exclude private JsonNode delta;
 
   /**
    * Validates that this transition can be rolled back (delta present and still within the safe
@@ -65,7 +71,11 @@ public class StateTransitionDetails {
     return beforePrimary.userIntent.dedicatedNodes != targetPrimary.userIntent.dedicatedNodes;
   }
 
-  /** Reconstructs pre-task universe details from {@code delta}. */
+  /**
+   * Reconstructs pre-task universe details from {@code delta}. The delta keeps the target's cluster
+   * order, and a checkpoint written by an older build can have the primary after the read replica,
+   * so the primary is moved back to the front.
+   */
   @JsonIgnore
   public UniverseDefinitionTaskParams getBeforeUniverseDetails() {
     JsonNode beforeJson = DeltaEvaluator.generateOldValue(requireDelta());
@@ -73,7 +83,12 @@ public class StateTransitionDetails {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot roll back: generateOldValue returned null");
     }
-    return Json.fromJson(beforeJson, UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams before =
+        Json.fromJson(beforeJson, UniverseDefinitionTaskParams.class);
+    if (before.clusters != null) {
+      before.clusters.sort(Comparator.comparing(c -> c.clusterType != ClusterType.PRIMARY));
+    }
+    return before;
   }
 
   /** Reconstructs the failed task's target universe details from {@code delta}. */

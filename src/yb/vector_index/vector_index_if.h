@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <span>
+
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/kv_util.h"
@@ -26,6 +28,7 @@
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_lsm_deletions.h"
 
 namespace yb {
 
@@ -115,8 +118,8 @@ struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
-  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Empty searches all
-  // tenants. Only indexes whose vectors belong to tenants support a tenant, others reject it.
+  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Required by indexes
+  // whose vectors belong to tenants, rejected by others.
   Slice tenant = Slice();
 
   std::string ToString() const {
@@ -128,7 +131,7 @@ template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf;
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorIndexReaderIf {
+class VectorIndexReaderIf : public VectorDeletionsReaderIf {
  public:
   using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
   using IteratorValue = VectorIndexIteratorEntry<Vector>;
@@ -172,6 +175,12 @@ class VectorIndexWriterIf {
   // Inserts the vector with the specified id and attached payload (could be empty).
   // The payload is stored in the index and returned by search together with the vector id.
   virtual Status Insert(VectorId vector_id, const Vector& vector, Slice payload) = 0;
+
+  // Inserts deletions of vectors in this or other indexes, which the index then finds, see
+  // VectorDeletionsReaderIf. Only the indexes of mutable chunks take deletions.
+  virtual void InsertDeletions(std::span<const VectorLSMDeletion> deletions) {
+    LOG(DFATAL) << "Vector deletions are not supported";
+  }
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -246,6 +255,12 @@ class VectorIndexTraitsIf {
   // to the index file, because its own format cannot store them. See VectorPayloadMap.
   virtual bool StoresPayloadInSeparateFile() const {
     return false;
+  }
+
+  // Returns the tenant extractor of the created indexes, null when vectors have no tenants.
+  virtual const VectorTenantExtractor& tenant_extractor() const {
+    static const VectorTenantExtractor kNoTenants;
+    return kNoTenants;
   }
 };
 

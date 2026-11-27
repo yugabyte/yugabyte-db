@@ -17305,26 +17305,33 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		return InvalidDumpId;
 
 	/*
-	 * YB: pg_stat_statements is a built-in extension in YB (created during
-	 * initdb). PG doesn't dump built-in extensions, so pg_stat_statements is
-	 * not dumped. Therefore, pg_stat_statements_reset() is not explicitly
-	 * created. Moreover, the function no longer exists with the source's
-	 * signature (it gained parameters in PG15 and again in PG17). So keep this
-	 * work-around for now, otherwise the restore will fail with:
-	 * ERROR:  function pg_catalog.pg_stat_statements_reset() does not exist
-	 * In the future, we may want to follow the typical extension binary upgrade
-	 * path for pg_stat_statements (create an empty extension and manually
-	 * create extension objects), and then this work-around can be removed
-	 * (tracked in GH issue #26566).
+	 * YB: PG dumps no object definition for a built-in extension, only the
+	 * permissions on its members.  So the dump never creates
+	 * pg_stat_statements_reset, yet D40407 made it carry that function's ACL,
+	 * by enabling ACL dumping during binary upgrade for tablegroups.  The ACL
+	 * names the source's signature, which the new release does not have (the
+	 * function gained parameters in PG15 and again in PG17), so the restore
+	 * fails:
+	 * ERROR:  function pg_catalog.pg_stat_statements_reset(...) does not exist
+	 * D42796 avoided that by dropping the ACL, losing the operator's
+	 * privileges.  Write it against the function name alone instead, which
+	 * resolves to the new release's only pg_stat_statements_reset.  The
+	 * argument list is cut rather than rewritten because pg_upgrade dumps with
+	 * --quote-all-identifiers, which also quotes argument names and types.
 	 *
-	 * TODO(#35687): once master's rewrite of this ACL to the PG15
-	 * signature (#31239) merges in, rewrite a PG15 source's ACL to the PG19
-	 * signature instead of skipping it, so a GRANT on it survives the upgrade.
+	 * This matches what the dump already does for every other ACL.  It does not
+	 * carry what the dump omits, such as an extension member's owner.
+	 *
+	 * GH #26566 would give built-in extensions the normal binary upgrade path,
+	 * creating an empty extension and then its objects.  The dump would then
+	 * create pg_stat_statements_reset itself, so the ACL would name a function
+	 * the dump had just written, and this rewrite could go.
 	 */
 	if (IsYugabyteEnabled && dopt->binary_upgrade &&
+		nspname != NULL && strcmp(nspname, "pg_catalog") == 0 &&
 		strncmp(name, "\"pg_stat_statements_reset\"(",
 				strlen("\"pg_stat_statements_reset\"(")) == 0)
-		return InvalidDumpId;
+		name = pnstrdup(name, strlen("\"pg_stat_statements_reset\""));
 
 	/* --data-only skips ACLs *except* large object ACLs */
 	if (!dopt->dumpSchema && strcmp(type, "LARGE OBJECT") != 0)

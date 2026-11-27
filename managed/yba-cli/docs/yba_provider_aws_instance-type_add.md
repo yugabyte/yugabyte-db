@@ -4,7 +4,7 @@ Add an instance type to YugabyteDB Anywhere AWS provider
 
 ### Synopsis
 
-Add an instance type to YugabyteDB Anywhere AWS provider
+Add an instance type to YugabyteDB Anywhere AWS provider. If the instance type exists, it is updated and unset flags keep their current values.
 
 ```
 yba provider aws instance-type add [flags]

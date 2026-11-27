@@ -109,6 +109,8 @@ struct HistoryRetentionDirective {
   MonoDelta table_ttl;
 
   ShouldRetainDeleteMarkersInMajorCompaction retain_delete_markers_in_major_compaction{false};
+
+  bool is_transactional_xcluster_target = false;
 };
 
 struct CompactionSchemaInfo {
@@ -183,7 +185,8 @@ class DocVectorMetadataIteratorProvider {
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const = 0;
 
   // Start time of the oldest transaction running in this tablet (see
-  // TransactionParticipant::MinRunningHybridTime()), or kMin if it is not known yet. Read before
+  // TransactionParticipant::MinRunningHybridTime()), or kMin if it is not known yet or the tablet
+  // holds external intents of a transaction replicated by xCluster. Read before
   // CreateVectorMetadataIterator(), so the iterator sees the records of the transactions which are
   // not running anymore.
   virtual HybridTime MinRunningHybridTime() const = 0;
@@ -251,11 +254,14 @@ class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
 
   void SetTableTTLForTests(MonoDelta ttl);
 
+  void SetIsTransactionalXClusterTargetForTests(bool value);
+
  private:
   std::mutex history_cutoff_mutex_;
   HistoryCutoff history_cutoff_ GUARDED_BY(history_cutoff_mutex_)
       = { HybridTime::kInvalid, HybridTime::kMin };
   std::atomic<MonoDelta> table_ttl_{MonoDelta::kMax};
+  std::atomic<bool> is_transactional_xcluster_target_{false};
 };
 
 HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info);

@@ -61,6 +61,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
  */
@@ -213,6 +216,14 @@ static bool is_subquery_var(Var *node, RelOptInfo *foreignrel,
 static void get_relation_column_alias_ids(Var *node, RelOptInfo *foreignrel,
 										  int *relno, int *colno);
 
+/*
+ * YB: function declarations for YugabyteDB-specific logic.
+ */
+static void yb_deparse_as_remote_param(Expr *expr,
+									   deparse_expr_cxt *context);
+static bool yb_has_unpushable_funcs(Node *expr);
+static void YbDeparseSqlValueFunction(SQLValueFunction *node,
+									  deparse_expr_cxt *context);
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,
@@ -289,9 +300,26 @@ is_foreign_expr(PlannerInfo *root,
 	 * side could cause confusion from clock offsets.  Future versions might
 	 * be able to make this choice with more granularity.  (We check this last
 	 * because it requires a lot of expensive catalog lookups.)
+	 *
+	 * YB: For federated YugabyteDB we make this more granular and whitelist
+	 * expressions that are safe to push down: immutable functions,
+	 * constifiable stable functions (listed in yb_pushdown_funcs_to_constify,
+	 * e.g. now()), and SQLValueFunction nodes other than CURRENT_SCHEMA
+	 * (e.g. CURRENT_TIMESTAMP, CURRENT_USER).
+	 * Non-federated servers keep the upstream behaviour and reject all
+	 * mutable (stable + volatile) functions.
 	 */
-	if (contain_mutable_functions((Node *) expr))
-		return false;
+	if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB &&
+		yb_enable_global_views_stable_func_pushdown)
+	{
+		if (yb_has_unpushable_funcs((Node *) expr))
+			return false;
+	}
+	else
+	{
+		if (contain_mutable_functions((Node *) expr))
+			return false;
+	}							/* YB */
 
 	/* OK to evaluate on the remote server */
 	return true;
@@ -1060,6 +1088,25 @@ foreign_expr_walker(Node *node,
 					state = FDW_COLLATE_UNSAFE;
 			}
 			break;
+
+		case T_SQLValueFunction:	/* YB */
+			{
+				/*
+				 * YB: For federated YugabyteDB, SQLValueFunctions are sent as
+				 * remote params.  CURRENT_SCHEMA is left out: params are
+				 * evaluated under the search_path forced by
+				 * set_transmission_modes(), so it would always be pg_catalog.
+				 */
+				if (fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB ||
+					!yb_enable_global_views_stable_func_pushdown ||
+					((SQLValueFunction *) node)->op == SVFOP_CURRENT_SCHEMA)
+					return false;
+
+				collation = InvalidOid;
+				state = FDW_COLLATE_NONE;
+			}
+			break;
+
 		default:
 
 			/*
@@ -1168,6 +1215,33 @@ is_foreign_param(PlannerInfo *root,
 		case T_Param:
 			/* Params always have to be sent to the foreign server */
 			return true;
+
+		case T_FuncExpr:	/* YB */
+			{
+				/*
+				 * YB: For federated YugabyteDB, deparseFuncExpr sends stable
+				 * functions as remote params.
+				 */
+				FuncExpr   *fexpr = (FuncExpr *) expr;
+				PgFdwRelationInfo *fpinfo;
+
+				fpinfo = (PgFdwRelationInfo *) baserel->fdw_private;
+				if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB &&
+					yb_enable_global_views_stable_func_pushdown &&
+					func_volatile(fexpr->funcid) == PROVOLATILE_STABLE)
+					return true;
+				return false;
+			}
+		case T_SQLValueFunction:	/* YB */
+			{
+				PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) baserel->fdw_private;
+				if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB &&
+					yb_enable_global_views_stable_func_pushdown &&
+					((SQLValueFunction *) expr)->op != SVFOP_CURRENT_SCHEMA)
+					return true;
+				return false;
+			}
+
 		default:
 			break;
 	}
@@ -3053,6 +3127,11 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 		case T_Aggref:
 			deparseAggref((Aggref *) node, context);
 			break;
+
+		case T_SQLValueFunction:	/* YB */
+			YbDeparseSqlValueFunction((SQLValueFunction *) node, context);
+			break;
+
 		default:
 			elog(ERROR, "unsupported expression type for deparse: %d",
 				 (int) nodeTag(node));
@@ -3351,6 +3430,22 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	bool		use_variadic;
 	bool		first;
 	ListCell   *arg;
+
+	PgFdwRelationInfo *yb_fpinfo;
+
+	/*
+	 * YB: For federated YugabyteDB, send stable functions (e.g. now()) as
+	 * remote params, evaluated locally at each execution.  is_foreign_expr
+	 * has already limited them to the allowlist.
+	 */
+	yb_fpinfo = (PgFdwRelationInfo *) context->foreignrel->fdw_private;
+	if (yb_fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB
+		&& yb_enable_global_views_stable_func_pushdown
+		&& func_volatile(node->funcid) == PROVOLATILE_STABLE)
+	{
+		yb_deparse_as_remote_param((Expr *) node, context);
+		return;
+	}
 
 	/*
 	 * If the function call came from an implicit coercion, then just show the
@@ -4359,3 +4454,111 @@ get_relation_column_alias_ids(Var *node, RelOptInfo *foreignrel,
 	/* Shouldn't get here */
 	elog(ERROR, "unexpected expression in subquery output");
 }
+
+/*
+ * YB: Callback for check_functions_in_node.
+ *
+ * Return true when func_id is not pushable.  Immutable functions and
+ * allowlisted stable functions are accepted; volatile and unlisted stable
+ * functions are rejected.
+ */
+static bool
+yb_unpushable_function_checker(Oid func_id, void *context)
+{
+	char		volatility = func_volatile(func_id);
+
+	switch (volatility)
+	{
+		case PROVOLATILE_IMMUTABLE:
+			return false;
+		case PROVOLATILE_STABLE:
+			for (int i = 0; i < yb_pushdown_funcs_to_constify_count; ++i)
+			{
+				if (func_id == yb_pushdown_funcs_to_constify[i])
+					return false;
+			}
+			return true;
+		case PROVOLATILE_VOLATILE:
+			return true;
+	}
+
+	pg_unreachable();
+}
+
+/*
+ * YB: Like contain_mutable_functions, but allows the stable functions listed
+ * in yb_pushdown_funcs_to_constify (e.g. now()).  Only function OIDs are
+ * checked; which node types may be pushed (e.g. SQLValueFunction) is decided
+ * by foreign_expr_walker.
+ */
+static bool
+yb_has_unpushable_funcs_walker(Node *expr, void *context)
+{
+	if (expr == NULL)
+		return false;
+
+	if (check_functions_in_node(expr, yb_unpushable_function_checker,
+								context))
+		return true;
+
+	return expression_tree_walker(expr,
+								  yb_has_unpushable_funcs_walker,
+								  context);
+}
+
+static bool
+yb_has_unpushable_funcs(Node *expr)
+{
+	return yb_has_unpushable_funcs_walker(expr, NULL);
+}
+
+/*
+ * YB: Add expr to context->params_list, if it is not there yet, and print
+ * its $N placeholder.  Same logic as deparseParam, which only takes a Param.
+ */
+static void
+yb_deparse_as_remote_param(Expr *expr, deparse_expr_cxt *context)
+{
+	int			pindex = 0;
+	ListCell   *lc;
+
+	/*
+	 * There is no params_list when deparsing the EXPLAIN for a remote
+	 * estimate (use_remote_estimate), so emit a placeholder as deparseParam
+	 * does.
+	 */
+	if (context->params_list == NULL)
+	{
+		printRemotePlaceholder(exprType((Node *) expr),
+							   exprTypmod((Node *) expr), context);
+		return;
+	}
+
+	foreach(lc, *context->params_list)
+	{
+		pindex++;
+		if (equal(expr, (Node *) lfirst(lc)))
+			break;
+	}
+	if (lc == NULL)
+	{
+		pindex++;
+		*context->params_list = lappend(*context->params_list, expr);
+	}
+
+	printRemoteParam(pindex, exprType((Node *) expr),
+					 exprTypmod((Node *) expr), context);
+}
+
+static void
+YbDeparseSqlValueFunction(SQLValueFunction *node, deparse_expr_cxt *context)
+{
+	if (((PgFdwRelationInfo *) context->foreignrel->fdw_private)->
+		yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("SQLValueFunction deparse is only supported "
+						"for federated YugabyteDB servers")));
+	yb_deparse_as_remote_param((Expr *) node, context);
+}
+

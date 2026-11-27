@@ -214,7 +214,7 @@ Create a Security Group with inbound and outbound rules configured to ensure acc
 
 ### Upload Debezium connector Jar file to the S3 bucket
 
-Download the connector jar from the [repository](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) and upload it to an S3 bucket.
+Download the connector JAR from the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page and upload it to an S3 bucket.
 
 ![Upload to S3](/images/explore/cdc/aws_msk_images/upload-to-s3.png)
 
