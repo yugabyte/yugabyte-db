@@ -888,9 +888,17 @@ TEST_F(CDCSDKYsqlTest, TestSnapshotNoData) {
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
-  // We are calling 'GetChanges' in snapshot mode, but sine there is no data in the tablet, the
-  // first response itself should indicate the end of snapshot.
+  // There is no data in the tablet, so the snapshot ends without records. It ends in the first
+  // response, unless the stream's retention barrier op, which is MVCC-tracked, makes the tablet
+  // look non-empty: then the first response starts the snapshot and the next one ends it.
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  if (change_resp.cdc_sdk_checkpoint().write_id() == -1) {
+    ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
+    change_resp = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+  }
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    ASSERT_NE(record.row_message().op(), RowMessage::READ);
+  }
   // 'write_id' must be set to 0, 'key' must to empty, to indicate that the snapshot is done.
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().write_id(), 0);
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
