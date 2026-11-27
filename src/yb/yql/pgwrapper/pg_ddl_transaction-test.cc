@@ -55,6 +55,7 @@ const auto kTableName2 = "test2";
 
 YB_STRONGLY_TYPED_BOOL(MarkedForDeletion);
 YB_STRONGLY_TYPED_BOOL(TestCommit);
+YB_STRONGLY_TYPED_BOOL(TableExistedBefore);
 
 enum class DdlOp : uint8_t {
   kNone = 0,
@@ -1243,7 +1244,7 @@ class PgDdlSavepointDropColumnDataTest
   }
 
   // Ends the transaction as the test parameter says, then checks v again if the table still exists.
-  void EndTransactionAndCheck(PGConn& conn, bool table_existed_before) {
+  void EndTransactionAndCheck(PGConn& conn, TableExistedBefore table_existed_before) {
     ASSERT_OK(conn.Execute(Commit() ? "COMMIT" : "ROLLBACK"));
     if (Commit() || table_existed_before) {
       ASSERT_OK(CheckColumnIntact(conn));
@@ -1283,7 +1284,7 @@ TEST_P(PgDdlSavepointDropColumnDataTest, CreatedTable) {
   // Step 4
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
   ASSERT_OK(CheckColumnIntact(conn));
-  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, /* table_existed_before = */ false));
+  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kFalse));
 }
 
 // The table is rewritten in the transaction: ALTER COLUMN ... TYPE builds a new DocDB table and
@@ -1313,28 +1314,32 @@ TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTable) {
   // Step 5
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
   ASSERT_OK(CheckColumnIntact(conn));
-  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, /* table_existed_before = */ true));
+  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kTrue));
 }
 
 // As RewrittenTable, but a PL/pgSQL EXCEPTION block undoes the DROP by rolling back its internal
 // savepoint.
-// 1. Create a table and insert rows, outside the transaction.
+// 1. Create a table and insert rows, outside the transaction. Take an advisory lock on another
+//    connection. The gate is an advisory lock, not a row lock: a row read that waits through the
+//    compaction would fail with "Snapshot too old".
 // 2. In a transaction, rewrite the table.
-// 3. On another thread, run a block that drops a column, sleeps, then raises an error it catches.
-// 4. While the block sleeps, compact with no history retention.
+// 3. On another thread, run a block that drops a column, waits for the advisory lock, then raises
+//    an error it catches.
+// 4. Once the block waits for the lock, compact with no history retention, then release the lock.
 // 5. After the block ends, check the column's values.
 TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTableExceptionBlock) {
-  static constexpr int kSleepSec = 10;
+  static constexpr int kGateLockKey = 39490;
   auto conn = ASSERT_RESULT(ConnectWithFastPath());
-  auto observer_conn = ASSERT_RESULT(Connect());
+  auto gate_conn = ASSERT_RESULT(Connect());
 
   // Step 1
   ASSERT_OK(CreateAndFillTable(conn));
+  ASSERT_OK(gate_conn.Execute("BEGIN"));
+  ASSERT_OK(gate_conn.FetchFormat("SELECT pg_advisory_xact_lock($0)", kGateLockKey));
 
   // Step 2
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN x TYPE BIGINT", kTableName));
-  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
 
   // Step 3
   std::atomic<bool> block_done{false};
@@ -1343,30 +1348,31 @@ TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTableExceptionBlock) {
     ASSERT_OK(conn.ExecuteFormat(
         "DO $$$$ BEGIN "
         "  ALTER TABLE $0 DROP COLUMN v; "
-        "  PERFORM pg_sleep($1); "
+        "  PERFORM pg_advisory_xact_lock($1); "
         "  RAISE EXCEPTION 'undo the drop'; "
         "EXCEPTION WHEN raise_exception THEN NULL; "
         "END $$$$",
-        kTableName, kSleepSec));
+        kTableName, kGateLockKey));
     block_done = true;
   });
 
   // Step 4
   ASSERT_OK(WaitFor(
-      [&observer_conn, pid]() -> Result<bool> {
-        return VERIFY_RESULT(observer_conn.FetchRow<int64_t>(Format(
-            "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND wait_event = 'PgSleep'",
-            pid))) == 1;
+      [&gate_conn]() -> Result<bool> {
+        return VERIFY_RESULT(gate_conn.FetchRow<int64_t>(
+            "SELECT COUNT(*) FROM pg_locks WHERE NOT granted")) > 0;
       },
-      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Wait for the block to sleep after the DROP"));
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Wait for the block to wait for the advisory lock after the DROP"));
   FlushAndCompactTablets();
-  ASSERT_FALSE(block_done.load()) << "The block ended before the compaction; raise kSleepSec";
+  ASSERT_FALSE(block_done.load());
+  ASSERT_OK(gate_conn.Execute("COMMIT"));
 
   // Step 5
   thread_holder.JoinAll();
   ASSERT_TRUE(block_done.load());
   ASSERT_OK(CheckColumnIntact(conn));
-  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, /* table_existed_before = */ true));
+  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kTrue));
 }
 
 // Probe for #29139 / D51840: without the fix, when sys.catalog raft replication on yb-master is
