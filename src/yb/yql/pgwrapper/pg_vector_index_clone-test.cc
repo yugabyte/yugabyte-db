@@ -60,12 +60,65 @@ extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 namespace yb::pgwrapper {
 
-MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexColocationOnlyTest);
+class PgVectorIndexCloneTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  static constexpr auto kSourceDb = "source_db";
+  static constexpr auto kCloneDb = "clone_db";
+
+  // Creates kSourceDb holding table test with rows 1..num_rows, one statement per row. The vector
+  // index is left to the caller.
+  Result<PGConn> CreateSourceTable(size_t num_rows);
+
+  Status CreateSourceSnapshotSchedule();
+
+  // Clones kSourceDb into kCloneDb through a schedule that CreateSourceSnapshotSchedule created.
+  Status CloneSourceDbWithExistingSchedule() {
+    auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
+    return admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb);
+  }
+
+  Status CloneSourceDb() {
+    RETURN_NOT_OK(CreateSourceSnapshotSchedule());
+    return CloneSourceDbWithExistingSchedule();
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexCloneTest);
+
+Result<PGConn> PgVectorIndexCloneTest::CreateSourceTable(size_t num_rows) {
+  dimensions_ = 3;
+  auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
+  RETURN_NOT_OK(admin_conn.ExecuteFormat(
+      "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+  auto conn = VERIFY_RESULT(ConnectToDB(kSourceDb));
+  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0",
+      IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS"));
+  for (size_t i = 1; i <= num_rows; ++i) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  return conn;
+}
+
+Status PgVectorIndexCloneTest::CreateSourceSnapshotSchedule() {
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
+  // snapshot is GC'd before the clone is applied.
+  return ResultToStatus(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
+      client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
+}
 
 // A clone starts from a snapshot of the source without the source's log, so rows the source's
 // vector index holds only in memory when that snapshot is taken must be in the snapshot. See
 // issue #34759.
-TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsUnflushedVectorIndexRows) {
+TEST_P(PgVectorIndexCloneTest, CloneKeepsUnflushedVectorIndexRows) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
 
@@ -105,7 +158,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsUnflushedVectorIndexRows) {
 
 // After clone, the child's TS-side index_map must list the cloned vector index, not the source
 // Restore does not rewrite those IDs for vector indexes.
-TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
+TEST_P(PgVectorIndexCloneTest, CloneRemapsVectorIndexMap) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
 
@@ -156,7 +209,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
 // including indexes created after the clone time. A storage dir is named by index oid, which the
 // clone keeps, so a later index of the clone that gets such an oid would load the source index's
 // chunks, and DROP DATABASE of the clone would leave the dir behind. See issue #35006.
-TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
+TEST_P(PgVectorIndexCloneTest, CloneDropsStorageOfIndexNotInClone) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
 
   constexpr size_t kNumRows = 8;
@@ -218,7 +271,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
 // restore brings the vector index flushed OpId back to the restore OpId, bootstrap treats the
 // clone's own writes as already flushed into the vector index, and they disappear from it after
 // an ungraceful restart. See issue #34763.
-TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
+TEST_P(PgVectorIndexCloneTest, CloneKeepsNewRowsAcrossRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
 
@@ -352,7 +405,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
 // A vector index only takes intent applies committed after its hybrid time. The clone used to
 // leave that time invalid on the target tablet, so rows written transactionally into the clone
 // never reached its vector index (#34767).
-TEST_P(PgVectorIndexColocationOnlyTest, CloneIndexesNewTransactionalWrites) {
+TEST_P(PgVectorIndexCloneTest, CloneIndexesNewTransactionalWrites) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
 
@@ -386,7 +439,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneIndexesNewTransactionalWrites) {
 // resumed backfill stamps the index table's op id into flushed frontiers, so that op id must not
 // come from the source tablet's log: it is ahead of the clone's, and bootstrap would skip the
 // clone's writes as already flushed.
-TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
+TEST_P(PgVectorIndexCloneTest, CloneResumesIncompleteBackfill) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
   // Several chunks, so that a backfill blocked after its first one is left unfinished.
@@ -488,7 +541,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
 // Snapshot import keeps the snapshot's vector index options, so a snapshot of an index without a
 // block-based backend (here: no backend set, as in indexes that predate the backend field) must be
 // rejected before the import creates anything.
-TEST_P(PgVectorIndexColocationOnlyTest, ImportRejectsDeprecatedBackend) {
+TEST_P(PgVectorIndexCloneTest, ImportRejectsDeprecatedBackend) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
 
   client::SnapshotTestUtil snapshot_util;
