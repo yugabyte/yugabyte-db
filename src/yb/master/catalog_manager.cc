@@ -8692,25 +8692,24 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 namespace {
 // Given the SysTablesEntryPB for a table and 'col_name', return whether the column can be directly
 // dropped or if it should be marked for deletion first and dropped later.
-Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const string& col_name) {
+Result<bool> NeedTwoPhaseDeleteForColumn(
+    const SysTablesEntryPB& pb, const AlterTableRequestPB& req, const string& col_name) {
   // Applicable only for YSQL tables.
   if (pb.table_type() != PGSQL_TABLE_TYPE) {
     return false;
   }
 
-  // In general, mark the column for deletion first and drop it only after the transaction commits
-  // to prevent data loss. However, if the table was created in the same transaction or if the
-  // column was added in this transaction, then we can safely skip 2-phase deletion because the
-  // column being dropped will not exist whether the transaction is a success or not, and no other
-  // clients can see this column.
+  // Mark the column for deletion and drop it only after the transaction commits, unless no
+  // rollback, of the transaction or to a savepoint, can bring the column back: the table was
+  // created, or the column added, in the sub-transaction running the DROP.
   if (pb.ysql_ddl_txn_verifier_state_size() == 0) {
     return true;
   }
 
-  // ysql_ddl_txn_verifier_state is a repeated field with as many entries as number of savepoints
-  // in the transaction so far. Since we don't support savepoints for DDL transactions today,
-  // default to picking the first entry.
-  const auto& state = pb.ysql_ddl_txn_verifier_state(0);
+  const auto& state = *pb.ysql_ddl_txn_verifier_state().rbegin();
+  if (req.has_sub_transaction_id() && state.sub_transaction_id() != req.sub_transaction_id()) {
+    return true;
+  }
   if (state.contains_create_table_op()) {
     return false;
   }
@@ -8800,7 +8799,7 @@ Status ApplyAlterSteps(server::Clock* clock,
         }
 
         if (req->ysql_yb_ddl_rollback_enabled() &&
-            VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
+            VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, *req, col_name))) {
           RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
           ddl_log_entries->emplace_back(
               time, table_id, current_pb,
