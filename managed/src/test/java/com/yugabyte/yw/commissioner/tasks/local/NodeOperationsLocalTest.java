@@ -8,6 +8,7 @@ import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperation
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
@@ -32,6 +33,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Result;
@@ -139,6 +142,60 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.isMaster && n.state.equals(NodeDetails.NodeState.Live))
             .count());
+    verifyUniverseState(universe);
+  }
+
+  // Stopping a master in an AZ that has a spare node adds a replacement and removes the old
+  // master. The remove leader-blacklists that master first so preferred-zone affinity cannot
+  // re-elect it; the blacklist is cleared before the replacement is added and after the remove.
+  @Test
+  public void testMasterAddRemoveLeaderBlacklist() throws Exception {
+    Universe universe = createUniverse(4, 3);
+    Map<UUID, List<NodeDetails>> nodesGroupedByAzUuid =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .collect(Collectors.groupingBy(node -> node.azUuid));
+    NodeDetails masterToStop = null;
+    for (List<NodeDetails> nodesInAz : nodesGroupedByAzUuid.values()) {
+      if (nodesInAz.size() > 1) {
+        masterToStop =
+            nodesInAz.stream().filter(n -> n.isMaster && n.isTserver).findFirst().orElse(null);
+        if (masterToStop != null) {
+          break;
+        }
+      }
+    }
+    assertNotNull(masterToStop);
+    String stoppedMaster = masterToStop.cloudInfo.private_ip + ":" + masterToStop.masterRpcPort;
+
+    NodeActionFormData.startMasterOnStopNode = true;
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.STOP;
+    TaskInfo taskInfo =
+        checkAndWaitForTask(
+            nodeOperationInUniverse(universe.getUniverseUUID(), masterToStop.nodeName, formData));
+
+    List<String> steps = masterLeaderBlacklistSteps(taskInfo);
+    String addedNode = nodeFromStep(steps, "AddMaster:");
+    String removedNode = nodeFromStep(steps, "RemoveMaster:");
+    assertEquals(masterToStop.nodeName, removedNode);
+    assertNotNull(addedNode);
+    assertFalse(addedNode.equals(removedNode));
+    assertMasterStepsInOrder(
+        steps,
+        List.of(
+            "unblacklist:" + addedNode,
+            "AddMaster:" + addedNode,
+            "blacklist:" + removedNode,
+            "RemoveMaster:" + removedNode,
+            "unblacklist:" + removedNode));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        3,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.isMaster && n.state.equals(NodeDetails.NodeState.Live))
+            .count());
+    assertMasterNotLeaderBlacklisted(universe, stoppedMaster);
     verifyUniverseState(universe);
   }
 
@@ -557,6 +614,66 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     formData.nodeAction = NodeActionType.START;
     result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
     checkAndWaitForTask(result);
+  }
+
+  private static List<String> masterLeaderBlacklistSteps(TaskInfo taskInfo) {
+    List<String> steps = new ArrayList<>();
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      JsonNode params = subTask.getTaskParams();
+      if (subTask.getTaskType() == TaskType.ModifyBlackList
+          && params.path("blacklistMaster").asBoolean(false)) {
+        appendBlacklistStep(steps, params.get("addNodes"), "blacklist:");
+        appendBlacklistStep(steps, params.get("removeNodes"), "unblacklist:");
+      } else if (subTask.getTaskType() == TaskType.ChangeMasterConfig) {
+        steps.add(params.path("opType").asText() + ":" + params.path("nodeName").asText());
+      }
+    }
+    return steps;
+  }
+
+  private static void appendBlacklistStep(List<String> steps, JsonNode nodes, String prefix) {
+    if (nodes == null || !nodes.isArray()) {
+      return;
+    }
+    for (JsonNode node : nodes) {
+      steps.add(prefix + node.path("nodeName").asText());
+    }
+  }
+
+  private static String nodeFromStep(List<String> steps, String prefix) {
+    return steps.stream()
+        .filter(step -> step.startsWith(prefix))
+        .map(step -> step.substring(prefix.length()))
+        .findFirst()
+        .orElse(null);
+  }
+
+  private static void assertMasterStepsInOrder(List<String> steps, List<String> expected) {
+    int from = 0;
+    for (String step : expected) {
+      int idx = steps.subList(from, steps.size()).indexOf(step);
+      assertTrue("missing " + step + " after " + from + " in " + steps, idx >= 0);
+      from += idx + 1;
+    }
+  }
+
+  private void assertMasterNotLeaderBlacklisted(Universe universe, String stoppedMaster)
+      throws Exception {
+    String certificate = universe.getCertificateNodetoNode();
+    try (YBClientApi client =
+        ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
+      for (HostPortPB host :
+          client.getMasterClusterConfig().getConfig().getLeaderBlacklist().getHostsList()) {
+        String addr = host.getHost() + ":" + host.getPort();
+        assertFalse(addr, addr.equals(stoppedMaster));
+        for (NodeDetails node : universe.getNodes()) {
+          if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
+            continue;
+          }
+          assertFalse(addr, addr.equals(node.cloudInfo.private_ip + ":" + node.masterRpcPort));
+        }
+      }
+    }
   }
 
   private TaskInfo checkAndWaitForTask(Result result) throws InterruptedException {

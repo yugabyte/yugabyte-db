@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -58,8 +59,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClientApi;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -84,6 +88,14 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
       ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
       when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
+      CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+          CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+      lenient()
+          .when(mockClient.getMasterClusterConfig())
+          .thenReturn(new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null));
+      lenient()
+          .when(mockClient.changeMasterClusterConfig(any()))
+          .thenReturn(new ChangeMasterClusterConfigResponse(1112, "", null));
       mockClockSyncResponse(mockNodeUniverseManager);
     } catch (Exception e) {
       fail();
@@ -222,6 +234,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           // Set master to true.
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
+          TaskType.ModifyBlackList, // clear master leader blacklist before add
           TaskType.ChangeMasterConfig,
           TaskType.CheckFollowerLag,
           // Start of master address update subtasks from MasterInfoUpdateTask.
@@ -252,6 +265,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of("serverType", "MASTER")),
+          Json.toJson(ImmutableMap.of()), // clear master leader blacklist before add
           Json.toJson(ImmutableMap.of("opType", "AddMaster")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
