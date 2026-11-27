@@ -34,6 +34,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -176,7 +177,8 @@ TEST_F(BackupTxnTest, PointInTimeRestore) {
 // Then takes snapshot and restores it to time before the write.
 // So we test how filtering iterator works in case where a lot of record should be skipped.
 TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
-  constexpr int kNumWrites = RegularBuildVsSanitizers(100000, 100);
+  // Slower builds and mac CI hosts cannot drain the write backlog before the snapshot wait ends.
+  constexpr int kNumWrites = RegularBuildVsDebugVsSanitizers(kIsMac ? 20000 : 100000, 20000, 100);
   constexpr int kKey = 123;
 
   std::vector<std::future<FlushStatus>> futures;
