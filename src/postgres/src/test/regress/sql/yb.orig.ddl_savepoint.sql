@@ -409,7 +409,7 @@ ROLLBACK;
 SELECT f_34485_b();
 
 -- #39406: ROLLBACK TO SAVEPOINT over a DDL that alters the DocDB table outside
--- ALTER TABLE's own path (a rename, SET SCHEMA, attaching a partition next to
+-- ALTER TABLE's own path (a rename, SET SCHEMA, creating a partition next to
 -- a default partition, or a column dropped with its type) must invalidate the
 -- table cache entry. The FOR ALL TABLES publication, created in this session,
 -- makes it process a relcache-wide invalidation, after which it no longer
