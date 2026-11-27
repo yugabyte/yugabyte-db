@@ -112,11 +112,15 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 				 errmsg("getting logical slot changes is unavailable"),
 				 errdetail("yb_enable_replication_slot_query_api is false.")));
 
-	if (IsYugaByteEnabled() && YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
+	if (IsYugaByteEnabled() && !YBCUsingObjectLocksGloballyForCurrentTxn())
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("getting logical slot changes is unavailable"),
-				 errdetail("enable_object_locking_for_table_locks is false.")));
+				 errdetail("The current transaction does not use global object locks."),
+				 errhint("Requires enable_object_locking_for_table_locks on, "
+						 "disable_global_object_locks off, "
+						 "yb_enable_global_object_locking_infra on, and "
+						 "yb_read_time unset.")));
 
 	Name		name;
 	XLogRecPtr	upto_lsn;

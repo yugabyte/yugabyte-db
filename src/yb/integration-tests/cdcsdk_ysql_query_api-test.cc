@@ -15,6 +15,7 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_bool(disable_global_object_locks);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
@@ -31,6 +32,27 @@ class CDCSDKYsqlQueryApiTest : public CDCSDKYsqlTest {
     // The query API needs object locking, which is off by default in debug builds.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  }
+
+  // Creates a slot, runs setup_stmt if given, then expects each query API function to fail with
+  // the object locking guard error.
+  void AssertQueryApiUnavailable(pgwrapper::PGConn* conn, const std::string& setup_stmt = "") {
+    ASSERT_OK(conn->Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
+    ASSERT_OK(conn->Fetch(
+        "SELECT * FROM pg_create_logical_replication_slot('test_slot', 'test_decoding')"));
+    if (!setup_stmt.empty()) {
+      ASSERT_OK(conn->Execute(setup_stmt));
+    }
+
+    for (const auto* function : {
+             "pg_logical_slot_get_changes", "pg_logical_slot_peek_changes",
+             "pg_logical_slot_get_binary_changes", "pg_logical_slot_peek_binary_changes"}) {
+      auto result = conn->FetchFormat("SELECT * FROM $0('test_slot', NULL, NULL)", function);
+      ASSERT_NOK(result) << function;
+      ASSERT_STR_CONTAINS(
+          result.status().message().ToBuffer(),
+          "The current transaction does not use global object locks");
+    }
   }
 
   // pg_logical_slot_get_changes pins catalog reads to a past time and resets the pin before it
@@ -103,18 +125,27 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiObjectLockingGuard) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
-  ASSERT_OK(conn.Fetch(
-      "SELECT * FROM pg_create_logical_replication_slot('test_slot', 'test_decoding')"));
+  ASSERT_NO_FATALS(AssertQueryApiUnavailable(&conn));
+}
 
-  for (const auto* function : {
-           "pg_logical_slot_get_changes", "pg_logical_slot_peek_changes",
-           "pg_logical_slot_get_binary_changes", "pg_logical_slot_peek_binary_changes"}) {
-    auto result = conn.FetchFormat("SELECT * FROM $0('test_slot', NULL, NULL)", function);
-    ASSERT_NOK(result) << function;
-    ASSERT_STR_CONTAINS(
-        result.status().message().ToBuffer(), "enable_object_locking_for_table_locks is false");
-  }
+// Verify that the query API is unavailable when object locks are taken only locally.
+TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiGlobalObjectLocksDisabledGuard) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_global_object_locks) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(AssertQueryApiUnavailable(&conn));
+}
+
+// Verify that the query API is unavailable in a transaction that reads at yb_read_time, which
+// takes no object locks.
+TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiYbReadTimeGuard) {
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto now_us = ASSERT_RESULT(
+      conn.FetchRow<int64_t>("SELECT (EXTRACT(EPOCH FROM now()) * 1000000)::bigint"));
+  ASSERT_NO_FATALS(AssertQueryApiUnavailable(&conn, Format("SET yb_read_time TO $0", now_us)));
 }
 
 // Verify peek vs get semantics with test_decoding (text output).
