@@ -63,7 +63,7 @@ Provides a list of all replication slots that currently exist on the database cl
 | database | text | The name of the database this slot is associated with. |
 | temporary | boolean | True if this is a temporary replication slot. Temporary slots are automatically dropped on error or when the session has finished. |
 | active | boolean | True if this slot is currently actively being used. In YSQL, an "active" replication slot means a slot which has been consumed at least once in a certain time frame. The time is defined using the `ysql_cdc_active_replication_slot_window_ms` flag, which has a default of 5 minutes. |
-| active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. |
+| active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. The PID doesn't identify the node; match it to `pid` in [`pg_stat_replication`](#pg-stat-replication). |
 | xmin | xid | The oldest transaction that this slot needs the database to retain. |
 | catalog_xmin | xid | Not applicable for YSQL. Always set to xmin. |
 | restart_lsn | pg_lsn | The Log Sequence Number ([LSN](../key-concepts/#lsn-type)) of the oldest change record which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints. |
@@ -73,7 +73,26 @@ Provides a list of all replication slots that currently exist on the database cl
 
 ### pg_stat_replication
 
-Displays information about active WAL senders, providing insights into the state of replication for each connected standby or logical replication client.
+Lists WAL senders on the node you are connected to: their state, acknowledged LSN, and lag. On a multi-node universe, an empty result means no consumer is attached to that node. Connect to every node before you conclude that nothing is consuming.
+
+[pg_replication_slots](#pg-replication-slots) lists every slot in the cluster, but `active_pid` doesn't say which node the process is on. Match it to `pid` in this view on the node where the sender is running. Nothing locks a slot to a single consumer (issue {{<issue 20755>}}), so this per-node check is how you see what is attached.
+
+To check every node at once (v2026.1.2 and later), query [gv$pg_stat_replication](../../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/) {{<tags/feature/tp idea="2134">}}. Each row includes a `server_uuid` column that identifies the node. To use it:
+
+- Set [yb_enable_global_views](../../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#enable-cluster-wide-database-views) to `true` (the default is `false`).
+- Make sure your role is a member of [pg_read_all_stats](../../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#required-privileges).
+
+Check the query's warnings. A node that doesn't respond is skipped with a WARNING and returns no rows, which looks the same as a node with no WAL sender. See [Limitations](../../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#limitations).
+
+If you're on an earlier version, or cluster-wide views aren't enabled, list the nodes using [yb_servers()](../../../../api/ysql/exprs/func_yb_servers/), connect to each `host` and `port`, and run:
+
+```plpgsql
+SELECT pid, application_name, client_addr
+FROM pg_stat_activity
+WHERE backend_type = 'walsender';
+```
+
+Query `pg_stat_replication` on that same connection for lag.
 
 | Column name | Data type | Description |
 | :----- | :----- | :----- |
