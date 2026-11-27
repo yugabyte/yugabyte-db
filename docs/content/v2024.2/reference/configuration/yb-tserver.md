@@ -1950,7 +1950,7 @@ Default: true
 
 ##### yb_insert_on_conflict_read_batch_size
 
-{{<tags/feature/ea idea="1455">}} Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Only a superuser can change this setting. Batching is always disabled for the following:
+{{<tags/feature/ea idea="1455">}} Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Starting in v2024.2.12.0, any user can change this setting for their session; values set at the cluster level (using `ysql_pg_conf_csv`), or for a role or database, act as defaults. In earlier releases, only a superuser can change this setting. Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
