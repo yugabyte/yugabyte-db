@@ -12,32 +12,12 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../software-on-prem-legacy/" class="nav-link">
-      Choose access
-    </a>
-  </li>
-
-  <li>
-    <a href="../software-on-prem/" class="nav-link">
-      Non-privileged
-    </a>
-  </li>
-
-  <li>
-    <a href="../software-on-prem-auto/" class="nav-link active">
-      Privileged
-    </a>
-  </li>
-</ul>
-
 {{< note title="Privileged access" >}}
-Use this page when you give YugabyteDB Anywhere SSH access to the provider VMs. In the provider, set the SSH user and private key, and leave **Manually Provision Nodes** off.
+Use these instructions when you give YugabyteDB Anywhere SSH access to the provider VMs. In the provider configuration, set the [SSH user and private key](../../../configure-yugabyte-platform/on-premises-provider/#ssh-key-pairs), and leave [**Manually Provision Nodes**](../../../configure-yugabyte-platform/on-premises-provider/#manually-provision-nodes) off.
 
-This was formerly called legacy automatic provisioning.
+(This provisioning method was formerly called legacy automatic provisioning.)
 
-When YugabyteDB Anywhere must not have SSH access, prepare the node with the provisioning script. See [Automatic provisioning without privileged access](../software-on-prem/).
+When YugabyteDB Anywhere must not have SSH access, prepare the node using the provisioning script. See [Automatic provisioning without privileged access](../software-on-prem/).
 {{< /note >}}
 
 Give YugabyteDB Anywhere an SSH user with passwordless sudo (for example, `ec2-user` on AWS EC2). YugabyteDB Anywhere signs in as that user and provisions the VM when you add the instance to the provider.

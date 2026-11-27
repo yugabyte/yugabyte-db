@@ -1,7 +1,7 @@
 ---
 title: Prepare on-premises nodes yourself
 headerTitle: Prepare on-premises nodes yourself
-linkTitle: Manual
+linkTitle: Legacy Manual
 description: Prepare on-premises nodes by hand when you do not give YugabyteDB Anywhere SSH access and do not use the provisioning script.
 headContent: Prepare a VM yourself, without SSH access for YugabyteDB Anywhere and without the provisioning script
 aliases:
@@ -9,15 +9,19 @@ aliases:
 menu:
     stable_yugabyte-platform:
         identifier: software-on-prem-4-manual
-        parent: on-prem-provisioning
+        parent: software-on-prem
         weight: 30
 type: docs
 ---
 
 {{< note title="For operators using their own automation" >}}
-YugabyteDB Anywhere has no SSH access to these nodes, the same access model as [automatic provisioning without privileged access](../software-on-prem/). On that path, `node-agent-provision.sh` prepares the node. Use the steps on this page when you prepare the node with your own automation and will not run that script. (This method was formerly called legacy fully manual provisioning.)
+YugabyteDB Anywhere has no SSH access to these nodes, the same access model as [automatic provisioning without privileged access](../software-on-prem/). On that path, `node-agent-provision.sh` prepares the node. Use the following procedure when you prepare the node with your own automation and will not run that script.
 
-Existing universes prepared this way continue to work. You can upgrade YugabyteDB Anywhere without moving them. Refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+(This provisioning method was formerly called legacy fully manual provisioning.)
+
+This provisioning method is deprecated, and automatic provisioning without privileged access is recommended for new on-premises providers where you cannot provide YugabyteDB Anywhere privileged access. For information on migrating existing manually provisioned providers and universes, see [Re-provision nodes of an existing universe](../software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
+
+You can upgrade YugabyteDB Anywhere without changing manually provisioned universes. Refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /note >}}
 
 You install each prerequisite on the VM. You need a local user with sudo. YugabyteDB Anywhere never signs in.

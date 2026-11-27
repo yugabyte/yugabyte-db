@@ -14,43 +14,23 @@ rightNav:
   hideH4: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../software-on-prem-legacy/" class="nav-link">
-      Choose access
-    </a>
-  </li>
-
-  <li>
-    <a href="../software-on-prem/" class="nav-link active">
-      Non-privileged
-    </a>
-  </li>
-
-  <li>
-    <a href="../software-on-prem-auto/" class="nav-link">
-      Privileged
-    </a>
-  </li>
-</ul>
-
 {{< note title="Non-privileged access" >}}
-Use the following steps when YugabyteDB Anywhere has no SSH access to the provider VMs. In the provider configuration, leave **SSH Key Pairs** empty and turn **Manually Provision Nodes** on.
+Use these instructions when YugabyteDB Anywhere has no SSH access to the provider VMs. You don't provide [SSH Key Pairs](../../../configure-yugabyte-platform/on-premises-provider/#ssh-key-pairs) in the provider configuration, and [**Manually Provision Nodes**](../../../configure-yugabyte-platform/on-premises-provider/#manually-provision-nodes) is on.
 
-(This was formerly called automatic provisioning with the node agent script.)
+(This provisioning method was formerly called automatic provisioning with the node agent script.)
 
-On a provider with SSH keys and **Manually Provision Nodes** off, YugabyteDB Anywhere provisions the nodes itself. Run this script on a non-privileged provider. On a privileged provider the script stops and leaves the provider unchanged. See [Automatic provisioning with privileged access](../software-on-prem-auto/).
+On a provider with SSH keys and **Manually Provision Nodes** off, YugabyteDB Anywhere provisions the nodes itself. Run this script only on nodes that will be added to a non-privileged provider. On a privileged provider the script stops and leaves the provider unchanged. See [Automatic provisioning with privileged access](../software-on-prem-auto/).
 {{< /note >}}
 
 You create the VMs. On each VM, run `node-agent-provision.sh` (also known as YNP, the YugabyteDB Node Provisioner) to prepare the node. The script can also create the on-premises provider and add the VM to the provider free pool.
 
 ## Overview
 
-Provisioning turns a Linux VM into a database node.
+Provisioning turns a Linux VM into a YugabyteDB database node.
 
-With [privileged access](../software-on-prem-auto/), YugabyteDB Anywhere signs in and provisions the node. To [prepare the node yourself](../software-on-prem-manual/), you run a long list of host commands, on the order of 40 per node. That list changes as node requirements change, so automation you maintain yourself can drift.
+When YugabyteDB Anywhere has [privileged access](../software-on-prem-auto/), it signs in and provisions the node for you. If YugabyteDB Anywhere can't be given privileged access, you must provision nodes yourself. Formerly, preparing the node yourself required running a long list of host commands, on the order of 40 per node. That list changes as node requirements change, so any automation you maintain yourself can drift.
 
-Using the provisioning script, you can apply current node requirements without giving YugabyteDB Anywhere root SSH. The script is updated in sync with each release of YugabyteDB Anywhere, making it easier to stay current.
+The provisioning script provides a simplified workflow for performing these manual steps. Using the provisioning script, you can apply current node requirements without giving YugabyteDB Anywhere root SSH. The script is updated in sync with each release of YugabyteDB Anywhere, making it easier to [keep provisioning current](#keep-provisioning-current).
 
 ### What you get
 
@@ -366,17 +346,21 @@ To render scripts from the generated file without changing the node:
 
 ## Re-provision nodes of an existing universe (non-sudo on-premises)
 
-Use this when the universe already exists, **Manually Provision Nodes** is on, and you want every node prepared by `node-agent-provision.sh`. YugabyteDB Anywhere has no task for this path, because that task needs sudo on the node. Your automation owns the loop. **Enter Maintenance Mode** in the UI is the **Stop Node** API (`nodeAction` `STOP`). **Exit Maintenance Mode** is **Start Node** (`START`).
+Use this procedure when the universe already exists, **Manually Provision Nodes** is on, and you want every node prepared using `node-agent-provision.sh`. YugabyteDB Anywhere has no task for this path, because that task needs sudo on the node.
 
-If **Manually Provision Nodes** is off, use [Reprovision universe nodes](../../../manage-deployments/reprovision-nodes/) instead.
+Note: **Enter Maintenance Mode** in the UI is the **Stop Node** API (`nodeAction` `STOP`). **Exit Maintenance Mode** is **Start Node** (`START`).
+
+If **Manually Provision Nodes** is off (YugabyteDB Anywhere has privileged access to nodes), use [Reprovision universe nodes](../../../manage-deployments/reprovision-nodes/) instead.
 
 Do this one node at a time. On a universe with replication factor 3 or more, the universe stays available for reads and writes. Stopping a second node while the first is still in maintenance mode makes tablets unavailable.
 
 {{< warning title="Maintenance window" >}}
-If the node stays in maintenance mode longer than 15 minutes, the Raft leader treats the follower as failed and re-replicates its data. The timeout is [follower_unavailable_considered_failed_sec](../../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec) (default 900 seconds). Raise that flag on YB-TServer and YB-Master before a slow run, and set [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to the same value so the WAL is kept until the node returns. Change the flags in [Edit configuration flags](../../../manage-deployments/edit-config-flags/). See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
+If the node stays in maintenance mode longer than 15 minutes, the Raft leader treats the follower as failed and re-replicates its data. The timeout is [follower_unavailable_considered_failed_sec](../../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec) (default 900 seconds). Increase that flag on YB-TServer and YB-Master before a slow run, and set [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to the same value so the WAL is kept until the node returns. Change the flags in [Edit configuration flags](../../../manage-deployments/edit-config-flags/). See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
 {{< /warning >}}
 
 ### On every node, before you stop anything
+
+Before you begin provisioning, do the following on each node:
 
 1. [Download the node agent package](#download-the-package) that matches the YugabyteDB Anywhere version.
 1. In `node-agent-provision.yaml`, set `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`). Replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample values `<number_of_cores>`, `<memory_in_gb>`, and `<volume_in_gb>` fail validation, and `--generate_config` does not run until they are replaced or removed.
@@ -396,6 +380,8 @@ If the node stays in maintenance mode longer than 15 minutes, the Raft leader tr
     ```
 
 ### On each node, rolling
+
+Perform the following procedure on each node in turn:
 
 1. Put the node in maintenance mode.
 
@@ -453,7 +439,9 @@ If the node stays in maintenance mode longer than 15 minutes, the Raft leader tr
 
 ### Adding a script-provisioned node to a legacy universe
 
-A node you provision with the script joins the provider and zone you name in the YAML. The universe can run that way. Use one method for the whole universe: keep preparing new nodes the way the existing nodes were prepared, or re-provision every node with this runbook before you add more. Mixing legacy-manual nodes and script-provisioned nodes in one universe is discouraged.
+A node you provision with the script joins the provider and zone you name in the YAML. The universe can run that way.
+
+Use one provisioning method for the whole universe: keep preparing new nodes the way the existing nodes were prepared, or re-provision every node using this runbook before you add more. Mixing legacy-manual nodes and script-provisioned nodes in one universe is discouraged.
 
 ## Keep provisioning current
 
