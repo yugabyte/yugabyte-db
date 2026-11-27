@@ -38,12 +38,14 @@ namespace {
 void WarnIfUniverseKeyShorterThanDataKeys(
     uint32_t universe_key_size, encryption::EncryptionAlgorithmPB algorithm) {
   auto data_key_size = encryption::DataKeySize(algorithm);
-  if (data_key_size.ok() && universe_key_size < *data_key_size) {
+  auto recommended_universe_key_size = encryption::UniverseKeySize(algorithm);
+  if (data_key_size.ok() && recommended_universe_key_size.ok() &&
+      universe_key_size < *data_key_size) {
     LOG(WARNING) << Format(
         "The latest universe key is $0-bit, shorter than the $1-bit data keys of $2, so it limits "
         "their protection to $0 bits. Rotate to a $3-byte universe key.",
         universe_key_size * 8, *data_key_size * 8, encryption::EncryptionAlgorithmName(algorithm),
-        encryption::EncryptionParams::kUniverseKeyPrefixSize + *data_key_size);
+        *recommended_universe_key_size);
   }
 }
 

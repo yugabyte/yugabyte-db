@@ -123,6 +123,7 @@ Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
 }
 
 Result<EncryptionParamsPtr> EncryptionParams::FromSlice(const Slice& s) {
+  static_assert(sizeof(nonce) + sizeof(counter) == kUniverseKeyPrefixSize);
   if (s.size() < kUniverseKeyPrefixSize) {
     return STATUS_FORMAT(
         InvalidArgument, "Expect at least $0 bytes of nonce and counter, found $1",
