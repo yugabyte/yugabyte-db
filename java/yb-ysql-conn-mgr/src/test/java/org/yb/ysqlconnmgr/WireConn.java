@@ -20,6 +20,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -58,12 +60,18 @@ public class WireConn implements AutoCloseable {
   }
 
   public Pipeline createPipeline() {
+    return createPipeline(StandardCharsets.UTF_8);
+  }
+
+  // charset is the client_encoding the session is on: it encodes query() text and decodes the
+  // DataRow and ParameterStatus values the pipeline reads.
+  public Pipeline createPipeline(Charset charset) {
     if (tailUnread) {
       throw new IllegalStateException(
           "The previous pipeline declared allowUnreadTail(), so unread responses are still queued"
           + " on this connection and would be misread as the new pipeline's");
     }
-    return new Pipeline(this);
+    return new Pipeline(this, charset);
   }
 
   public void sendRaw(byte[] bytes) throws IOException {
