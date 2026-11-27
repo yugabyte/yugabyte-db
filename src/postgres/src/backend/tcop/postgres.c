@@ -5502,16 +5502,31 @@ YBIsTransactionControlCommandTag(CommandTag command_tag)
 			command_tag == CMDTAG_RELEASE);
 }
 
+typedef enum YbRetryKind
+{
+	YB_RETRY_NONE,
+	YB_RETRY_STATEMENT,			/* retry just the statement (READ COMMITTED) */
+	YB_RETRY_TRANSACTION,		/* restart the whole transaction */
+} YbRetryKind;
+
 /*
- * Whether we are allowed to restart current query/txn.
- *
+ * Records whether a portal from an earlier statement in this transaction is
+ * still open. This is relevant in determining whether the transaction can be
+ * retried. This is recorded before the first attempt becuase portals the failed
+ * attempt itself created (PL/pgSQL loops and cursors) must be dropped by the
+ * restart and not block it.
+ */
+static bool yb_open_portal_at_stmt_start = false;
+
+/*
  * Design/rationale for query-layer retries: see the README in this directory.
  */
-static bool
+static YbRetryKind
 yb_is_retry_possible(ErrorData *edata, int attempt,
 					 const YBQueryRetryData *retry_data)
 {
 	CommandTag	command_tag;
+	YbRetryKind retry_kind = YB_RETRY_NONE;
 
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG,
@@ -5528,7 +5543,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "query layer retry isn't possible, YB is not enabled");
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5553,8 +5568,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "query layer retry isn't possible, txn error isn't one of "
 				 "kConflict/kReadRestart/kDeadlock/kAborted");
-		return false;
+		return YB_RETRY_NONE;
 	}
+
+	if (IsYBReadCommitted() && IsTransactionBlock() && (is_conflict_error || is_read_restart_error))
+		retry_kind = YB_RETRY_STATEMENT;
+	else
+		retry_kind = YB_RETRY_TRANSACTION;
 
 	/* Only one of detail_log or detail can be set */
 	if (edata->detail_log)
@@ -5574,7 +5594,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5607,7 +5627,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5628,7 +5648,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5650,7 +5670,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5670,7 +5690,26 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
+	}
+
+	/*
+	 * A transaction restart drops every portal of the transaction since their
+	 * resource owners are freed. Portals opened by an earlier statement could
+	 * still be executed later in the transaction, so refuse to restart the
+	 * transaction, rather than lose it.
+	 */
+	if (yb_open_portal_at_stmt_start && retry_kind == YB_RETRY_TRANSACTION)
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "a portal or cursor opened by an earlier "
+								 "statement would not survive the "
+								 "transaction restart");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5695,7 +5734,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5718,7 +5757,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	if (attempt >= yb_max_query_layer_retries)
@@ -5729,7 +5768,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	if (!retry_data)
@@ -5740,7 +5779,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/* can only restart SELECT queries */
@@ -5752,7 +5791,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	command_tag = retry_data->query.command_tag;
@@ -5777,7 +5816,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
 				elog(LOG, "%s", retry_err);
-			return false;
+			return YB_RETRY_NONE;
 		}
 
 		/* Multi-statement queries were rejected above. */
@@ -5807,7 +5846,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 				edata->message = psprintf("%s (%s)", edata->message, retry_err);
 				if (yb_debug_log_internal_restarts)
 					elog(LOG, "%s", retry_err);
-				return false;
+				return YB_RETRY_NONE;
 			}
 			command_tag = prepared_stmt->plansource->commandTag;
 		}
@@ -5836,7 +5875,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
 
-		return false;
+		return YB_RETRY_NONE;
 	}
 
 	/*
@@ -5876,7 +5915,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
 				elog(LOG, "%s", retry_err);
-			return false;
+			return YB_RETRY_NONE;
 		}
 
 		if (!rc_carveout && YbProcRetryBlocked())
@@ -5891,7 +5930,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 			edata->message = psprintf("%s (%s)", edata->message, user_err);
 			if (yb_debug_log_internal_restarts)
 				elog(LOG, "%s", user_err);
-			return false;
+			return YB_RETRY_NONE;
 		}
 	}
 	else if (!(is_read || is_dml))
@@ -5909,7 +5948,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
 				elog(LOG, "%s", retry_err);
-			return false;
+			return YB_RETRY_NONE;
 		}
 	}
 
@@ -5930,10 +5969,10 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
-		return false;
+		return YB_RETRY_NONE;
 	}
 
-	return true;
+	return retry_kind;
 }
 
 /*
@@ -6277,9 +6316,11 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 }
 
 static void
-yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, bool statement_retry_possible)
+yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, YbRetryKind retry_kind)
 {
-	if (IsYBReadCommitted() && IsTransactionBlock() && statement_retry_possible)
+	Assert(retry_kind != YB_RETRY_NONE);
+
+	if (retry_kind == YB_RETRY_STATEMENT)
 	{
 		/*
 		 * If using RC, we can retry the failed statement by just undoing it
@@ -6315,7 +6356,7 @@ yb_is_retryable_error(YbTxnError kind)
 
 static void
 yb_perform_retry_on_error(int attempt, ErrorData *edata,
-						  const char *portal_name)
+						  const char *portal_name, YbRetryKind retry_kind)
 {
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
@@ -6345,7 +6386,7 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 	PG_TRY();
 	{
 		yb_prepare_transaction_for_retry(attempt, txn_error_kind == YB_TXN_RESTART_READ,
-										 txn_error_kind == YB_TXN_CONFLICT || txn_error_kind == YB_TXN_RESTART_READ /* statement_retry_possible */ );
+										 retry_kind);
 	}
 	PG_CATCH();
 	{
@@ -6392,7 +6433,9 @@ yb_attempt_to_retry_on_error(int attempt, const YBQueryRetryData *retry_data,
 	MemoryContextSwitchTo(exec_context);
 	ErrorData  *edata = CopyErrorData();
 
-	if (yb_is_retry_possible(edata, attempt, retry_data))
+	YbRetryKind retry_kind = yb_is_retry_possible(edata, attempt, retry_data);
+
+	if (retry_kind != YB_RETRY_NONE)
 	{
 		/*
 		 * We shouldn't be retrying schema version mismatches here.
@@ -6401,7 +6444,8 @@ yb_attempt_to_retry_on_error(int attempt, const YBQueryRetryData *retry_data,
 		Assert(!YBTableSchemaVersionMismatchError(edata, NULL));
 
 		FlushErrorState();
-		yb_perform_retry_on_error(attempt, edata, retry_data->portal_name);
+		yb_perform_retry_on_error(attempt, edata, retry_data->portal_name,
+								  retry_kind);
 	}
 	else
 	{
@@ -6470,6 +6514,8 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 	 * that have already committed work.
 	 */
 	yb_is_non_atomic_commit_done = false;
+
+	yb_open_portal_at_stmt_start = YbHasOpenPortal(retry_data->portal_name);
 
 	for (int attempt = 0; retry; ++attempt)
 	{

@@ -9471,3 +9471,13 @@ YbIsFlushRequiredForCommandTag(CommandTag commandTag)
 
 	return true;
 }
+
+/*
+ * Cleanup after a YB query-layer transaction restart. Analogous to plpgsql_xact_cb.
+ */
+void
+yb_plpgsql_txn_restart_cb(void *arg)
+{
+	simple_econtext_stack = NULL;
+	shared_simple_eval_resowner = NULL;
+}

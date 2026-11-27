@@ -550,6 +550,10 @@ extern void YBCommitTransactionIntermediate(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void YBCRestartWriteTransaction(void);
+
+typedef void (*YbTxnRestartCallback) (void *arg);
+extern void YbRegisterTxnRestartCallback(YbTxnRestartCallback callback, void *arg);
+
 extern void YbSetTxnUsesTempRel(void);
 extern void YBMarkTxnUsesTempRelAndSetTxnId();
 extern bool YbCurrentTxnUsesTempRel(void);
