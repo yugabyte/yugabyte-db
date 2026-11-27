@@ -34,6 +34,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -144,6 +145,8 @@ public class Pipeline {
   }
 
   private final WireConn conn;
+  // Encodes query() text and decodes DataRow and ParameterStatus values.
+  private final Charset charset;
   private final List<Step> steps = new ArrayList<>();
   private final List<PgMessage> transcript = new ArrayList<>();
   private final List<Pair<String, String>> parameterStatuses = new ArrayList<>();
@@ -152,8 +155,9 @@ public class Pipeline {
   private PgMessage pushback;
   private Step currentStep;
 
-  Pipeline(WireConn conn) {
+  Pipeline(WireConn conn, Charset charset) {
     this.conn = conn;
+    this.charset = charset;
   }
 
   // ---- Building: extended query protocol ------------------------------------
@@ -226,7 +230,7 @@ public class Pipeline {
 
   public Pipeline query(String sql) {
     add(Kind.QUERY, "Q(" + abbreviate(sql) + ")", "query(" + abbreviate(sql) + ")",
-        bytes(() -> PgWireProtocol.buildQuery(sql)));
+        bytes(() -> PgWireProtocol.buildQuery(sql, charset)));
     last().boundary = !last().skipped;
     return this;
   }
@@ -438,7 +442,14 @@ public class Pipeline {
 
   private void readStep(Step step) {
     if (step.expectsError) {
-      ErrorResponse error = ErrorResponse.parse(expect(step, BE_ERROR_RESPONSE).body);
+      PgMessage errorMsg = step.kind == Kind.QUERY
+          ? expect(step, BE_ROW_DESCRIPTION, BE_ERROR_RESPONSE)
+          : expect(step, BE_ERROR_RESPONSE);
+      // A simple query that fails while producing its rows has already sent RowDescription.
+      if (errorMsg.type == BE_ROW_DESCRIPTION) {
+        errorMsg = expect(step, BE_ERROR_RESPONSE);
+      }
+      ErrorResponse error = ErrorResponse.parse(errorMsg.body);
       if (step.errSqlState != null && !step.errSqlState.equals(error.sqlstate())) {
         throw failure(step, "expected sqlstate " + step.errSqlState + ", got " + error);
       }
@@ -537,7 +548,7 @@ public class Pipeline {
         case BE_EMPTY_QUERY_RESPONSE:
           break;
         case BE_DATA_ROW:
-          rows.add(PgWireProtocol.parseDataRow(msg.body));
+          rows.add(PgWireProtocol.parseDataRow(msg.body, charset));
           break;
         case BE_COMMAND_COMPLETE:
           checkTag(step, msg);
@@ -559,7 +570,7 @@ public class Pipeline {
         pushBack(msg);
         break;
       }
-      rows.add(PgWireProtocol.parseDataRow(msg.body));
+      rows.add(PgWireProtocol.parseDataRow(msg.body, charset));
     }
     step.dataRows = rows;
     checkRows(step);
@@ -630,7 +641,7 @@ public class Pipeline {
         transcript.add(msg);
         LOG.debug("received {}", describe(msg));
         if (msg.type == BE_PARAMETER_STATUS) {
-          parameterStatuses.add(PgWireProtocol.parseParameterStatus(msg.body));
+          parameterStatuses.add(PgWireProtocol.parseParameterStatus(msg.body, charset));
         }
       }
       if (currentStep != null) {
@@ -729,7 +740,7 @@ public class Pipeline {
     }
   }
 
-  private static String describeAll(List<PgMessage> messages) {
+  private String describeAll(List<PgMessage> messages) {
     StringBuilder sb = new StringBuilder();
     for (PgMessage msg : messages) {
       if (sb.length() > 0) {
@@ -740,7 +751,7 @@ public class Pipeline {
     return sb.toString();
   }
 
-  private static String describe(PgMessage msg) {
+  private String describe(PgMessage msg) {
     switch (msg.type) {
       case BE_ERROR_RESPONSE:
       case BE_NOTICE_RESPONSE:
@@ -748,9 +759,9 @@ public class Pipeline {
       case BE_COMMAND_COMPLETE:
         return msg.typeToString() + " \"" + PgWireProtocol.parseCommandComplete(msg.body) + "\"";
       case BE_DATA_ROW:
-        return msg.typeToString() + " " + PgWireProtocol.parseDataRow(msg.body);
+        return msg.typeToString() + " " + PgWireProtocol.parseDataRow(msg.body, charset);
       case BE_PARAMETER_STATUS:
-        return msg.typeToString() + " " + PgWireProtocol.parseParameterStatus(msg.body);
+        return msg.typeToString() + " " + PgWireProtocol.parseParameterStatus(msg.body, charset);
       default:
         return msg.typeToString();
     }

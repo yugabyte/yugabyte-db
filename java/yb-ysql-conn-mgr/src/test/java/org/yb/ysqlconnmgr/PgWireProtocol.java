@@ -18,6 +18,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -258,11 +259,16 @@ public final class PgWireProtocol {
   }
 
   public static byte[] buildQuery(String query) throws IOException {
+    return buildQuery(query, StandardCharsets.UTF_8);
+  }
+
+  public static byte[] buildQuery(String query, Charset charset) throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeByte('Q');
     d.writeInt(0); // placeholder
-    writeString(d, query);
+    d.write(query.getBytes(charset));
+    d.writeByte(0);
     d.flush();
     byte[] msg = buf.toByteArray();
     ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
@@ -351,6 +357,10 @@ public final class PgWireProtocol {
   }
 
   public static List<String> parseDataRow(byte[] body) {
+    return parseDataRow(body, StandardCharsets.UTF_8);
+  }
+
+  public static List<String> parseDataRow(byte[] body, Charset charset) {
     ByteBuffer bb = ByteBuffer.wrap(body);
     int numCols = bb.getShort() & 0xffff;
     List<String> columns = new ArrayList<>(numCols);
@@ -362,7 +372,7 @@ public final class PgWireProtocol {
       }
       byte[] data = new byte[len];
       bb.get(data);
-      columns.add(new String(data, StandardCharsets.UTF_8));
+      columns.add(new String(data, charset));
     }
     return columns;
   }
@@ -376,6 +386,10 @@ public final class PgWireProtocol {
   }
 
   public static Pair<String, String> parseParameterStatus(byte[] body) {
+    return parseParameterStatus(body, StandardCharsets.UTF_8);
+  }
+
+  public static Pair<String, String> parseParameterStatus(byte[] body, Charset charset) {
     int nameEnd = 0;
     while (body[nameEnd] != 0) {
       nameEnd++;
@@ -384,8 +398,8 @@ public final class PgWireProtocol {
     while (body[valueEnd] != 0) {
       valueEnd++;
     }
-    return new Pair<>(new String(body, 0, nameEnd, StandardCharsets.UTF_8),
-        new String(body, nameEnd + 1, valueEnd - nameEnd - 1, StandardCharsets.UTF_8));
+    return new Pair<>(new String(body, 0, nameEnd, charset),
+        new String(body, nameEnd + 1, valueEnd - nameEnd - 1, charset));
   }
 
   // ---- Wire helpers: reading backend messages -------------------------------
