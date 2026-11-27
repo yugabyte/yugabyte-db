@@ -68,6 +68,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
@@ -678,19 +679,29 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         univ -> {
           Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
           primary.placementInfo.cloudList.get(0).defaultRegion = defaultRegionUuid;
+          Cluster readReplica = new Cluster(ClusterType.ASYNC, primary.userIntent.clone());
+          readReplica.setUuid(UUID.randomUUID());
+          readReplica.placementInfo = rf3Placement(Region.getByProvider(providerUuid).get(0));
+          univ.getUniverseDetails().clusters.add(readReplica);
           univ.setUniverseDetails(univ.getUniverseDetails());
         },
         false);
     when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
         .thenReturn(true);
 
-    ClusterSpec primary =
-        getPrimaryClusterSpec(
-            new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec());
+    UniverseSpec spec = new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primary = getPrimaryClusterSpec(spec);
 
     assertTrue(CollectionUtils.isEmpty(primary.getPartitionsSpec()));
     assertThat(
         primary.getPlacementSpec().getCloudList().get(0).getDefaultRegion(), is(defaultRegionUuid));
+    // Read replicas are converted to a single default partition regardless.
+    ClusterSpec readReplica =
+        spec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.ASYNC)
+            .findAny()
+            .orElseThrow();
+    assertEquals(1, readReplica.getPartitionsSpec().size());
   }
 
   private void setOldGeoPartitioning() {
@@ -774,7 +785,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
-  public void testAddClusterV2OldGeoPartitionedConversionDisabled() throws ApiException {
+  public void testAddClusterV2OldGeoPartitionedWithPartitions() throws ApiException {
     setOldGeoPartitioning();
     when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
         .thenReturn(true);
@@ -788,17 +799,13 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                 .replicationFactor(3)
                 .placement(toPlacementSpec(placement))));
     clusterAddSpec.setNumNodes(PlacementInfoUtil.getNodeCountInPlacement(placement));
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
 
-    ApiException ex =
-        assertThrows(
-            ApiException.class,
-            () -> new UniverseApi().addCluster(customer.getUuid(), universeUuid, clusterAddSpec));
-    assertEquals(400, ex.getCode());
-    assertThat(ex.getResponseBody(), containsString("cannot be converted to plain universe"));
-    assertThat(
-        ex.getResponseBody(),
-        containsString(UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()));
-    verify(mockCommissioner, never())
+    // Only converting the primary is gated by the runtime config.
+    new UniverseApi().addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
+    verify(mockCommissioner)
         .submit(eq(TaskType.ReadOnlyClusterCreate), any(UniverseConfigureTaskParams.class));
   }
 
