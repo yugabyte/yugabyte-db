@@ -28,7 +28,8 @@ namespace yb::pgwrapper {
 
 Status StreamSlotAndAcknowledge(
     const std::string& conn_str, const std::string& slot_name, const std::string& publication_name,
-    const std::string& needle, MonoDelta timeout, std::vector<std::string>* inserted_rows) {
+    const std::string& needle, MonoDelta timeout, std::vector<std::string>* inserted_rows,
+    uint64_t* acknowledged_lsn) {
   const auto replication_conn_str = conn_str + " replication=database";
   PGConnPtr conn(PQconnectdb(replication_conn_str.c_str()));
   SCHECK_EQ(PQstatus(conn.get()), CONNECTION_OK, IllegalState, PQerrorMessage(conn.get()));
@@ -83,6 +84,9 @@ Status StreamSlotAndAcknowledge(
   SCHECK_FORMAT(
       ack_lsn, TimedOut, "Slot $0 did not stream a committed change containing $1", slot_name,
       needle);
+  if (acknowledged_lsn) {
+    *acknowledged_lsn = *ack_lsn;
+  }
   return Status::OK();
 }
 

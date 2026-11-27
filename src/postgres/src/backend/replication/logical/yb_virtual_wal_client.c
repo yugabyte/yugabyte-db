@@ -103,7 +103,7 @@ typedef struct YbUnackedTransactionInfo
 	TransactionId xid;
 	XLogRecPtr	begin_lsn;
 	XLogRecPtr	commit_lsn;
-	/* The output plugin skipped it as empty, so the client never receives it. */
+	/* The client never receives it. See YBCTrackSkippedTransaction. */
 	bool		skipped;
 } YBUnackedTransactionInfo;
 
@@ -977,9 +977,10 @@ YBCTrackFilteredTransaction(XLogRecPtr commit_lsn)
 }
 
 /*
- * Mark a streamed transaction that the output plugin skipped as empty, such as
- * one that changed only unpublished tables of a colocated tablet. The client
- * never acknowledges it, since it never receives it.
+ * Mark a streamed transaction that the client never receives: one the output
+ * plugin skipped as empty, such as one that changed only unpublished tables of
+ * a colocated tablet, or one with no changes to decode. The client never
+ * acknowledges it.
  */
 void
 YBCTrackSkippedTransaction(TransactionId xid)
@@ -996,18 +997,20 @@ YBCTrackSkippedTransaction(TransactionId xid)
 	}
 
 	/*
-	 * Not found if the client already acknowledged it, which it can do in a
-	 * reply processed while the transaction is decoded, e.g. pg_recvlogical
-	 * flushing a keepalive's LSN.
+	 * Only a client that acknowledged an LSN it hadn't received yet can have
+	 * removed it.
 	 */
+	elog(DEBUG1, "Skipped transaction %u is no longer unacknowledged", xid);
 }
 
 /*
  * Acknowledge the transactions dropped by the decoder since the last
- * GetConsistentChanges call, and the transactions skipped by the output plugin
- * whose preceding transactions are all acknowledged. Otherwise a skipped
- * transaction is acknowledged only by the client's acknowledgement of a later
- * one.
+ * GetConsistentChanges call. After an empty GetConsistentChanges response,
+ * also acknowledge the skipped transactions whose preceding transactions are
+ * all acknowledged. Otherwise a skipped transaction is acknowledged only by
+ * the client's acknowledgement of a later one. While there are more changes to
+ * stream, the client's acknowledgements cover them, and acknowledging them here
+ * would cost a cdc_state write per batch.
  */
 static void
 AckFilteredOrSkippedTransactions(void)
@@ -1015,35 +1018,47 @@ AckFilteredOrSkippedTransactions(void)
 	XLogRecPtr	slot_confirmed_flush;
 	XLogRecPtr	confirmed_flush;
 	XLogRecPtr	restart_lsn;
-	ListCell   *lc;
 
 	SpinLockAcquire(&MyReplicationSlot->mutex);
 	slot_confirmed_flush = MyReplicationSlot->data.confirmed_flush;
 	SpinLockRelease(&MyReplicationSlot->mutex);
 
-	confirmed_flush = Max(slot_confirmed_flush, last_filtered_commit_lsn);
-
-	foreach(lc, unacked_transactions)
+	confirmed_flush = slot_confirmed_flush;
+	if (last_filtered_commit_lsn > confirmed_flush)
 	{
-		YBUnackedTransactionInfo *txn = (YBUnackedTransactionInfo *) lfirst(lc);
+		elog(DEBUG1,
+			 "Acking transactions filtered by the decoder upto commit_lsn %lu",
+			 last_filtered_commit_lsn);
+		confirmed_flush = last_filtered_commit_lsn;
+	}
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 
-		if (txn->commit_lsn <= confirmed_flush)
-			continue;
-		if (!txn->skipped)
-			break;
-		confirmed_flush = txn->commit_lsn;
+	if (last_getconsistentchanges_response_empty)
+	{
+		XLogRecPtr	skipped_commit_lsn = InvalidXLogRecPtr;
+		ListCell   *lc;
+
+		foreach(lc, unacked_transactions)
+		{
+			YBUnackedTransactionInfo *txn = (YBUnackedTransactionInfo *) lfirst(lc);
+
+			if (txn->commit_lsn <= confirmed_flush)
+				continue;
+			if (!txn->skipped)
+				break;
+			skipped_commit_lsn = txn->commit_lsn;
+			confirmed_flush = skipped_commit_lsn;
+		}
+
+		if (skipped_commit_lsn != InvalidXLogRecPtr)
+			elog(DEBUG1,
+				 "Acking transactions the client never received upto "
+				 "commit_lsn %lu",
+				 skipped_commit_lsn);
 	}
 
 	if (confirmed_flush == slot_confirmed_flush)
-	{
-		last_filtered_commit_lsn = InvalidXLogRecPtr;
 		return;
-	}
-
-	elog(DEBUG1,
-		 "Acking transactions filtered by the decoder upto commit_lsn %lu "
-		 "and skipped by the output plugin using confirmed_flush %lu",
-		 last_filtered_commit_lsn, confirmed_flush);
 
 	restart_lsn = YBCCalculatePersistAndGetRestartLSN(confirmed_flush);
 
@@ -1052,12 +1067,6 @@ AckFilteredOrSkippedTransactions(void)
 	if (restart_lsn != InvalidXLogRecPtr)
 		MyReplicationSlot->data.restart_lsn = restart_lsn;
 	SpinLockRelease(&MyReplicationSlot->mutex);
-
-	/*
-	 * Reset the last filtered commit_lsn to prevent unncessary rpcs to VWAL
-	 * when nothing was filtered.
-	 */
-	last_filtered_commit_lsn = InvalidXLogRecPtr;
 }
 
 XLogRecPtr
