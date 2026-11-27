@@ -422,7 +422,10 @@ generic_option:
 					$$ = makeDefElem($1, (Node *) makeInteger($2), -1);
 				}
 
-			/* YB: the values of lsn_type and ordering_mode are keywords. */
+			/*
+			 * YB: these are keywords for the legacy option syntax, so an option
+			 * value can be one of them too, as in (lsn_type HYBRID_TIME).
+			 */
 			| ident_or_keyword yb_keyword
 				{
 					$$ = makeDefElem($1, (Node *) makeString($2), -1);
