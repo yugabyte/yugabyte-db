@@ -165,8 +165,8 @@ class CDCStateTable {
   Status UpsertEntries(
       const std::vector<CDCStateTableEntry>& entries, const bool replace_full_map = false,
       const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
-  // Updates only the entries whose vwal_instance_id is still the given one. Leaving the other
-  // entries unchanged is not an error.
+  // Updates each entry only if its vwal_instance_id equals the given one. If it doesn't, the entry
+  // is left unchanged and the call still returns OK.
   Status UpdateEntriesIfVWALInstanceId(
       const std::vector<CDCStateTableEntry>& entries, const std::string& vwal_instance_id)
       EXCLUDES(mutex_);
