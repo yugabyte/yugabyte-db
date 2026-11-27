@@ -1541,10 +1541,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 				ReleaseSysCache(tuple);
 				/*
-				 * Skip yb alter for primary key columns (the table will be
-				 * rewritten)
+				 * Skip yb alter for key and INCLUDE columns of the primary
+				 * key (the table will be rewritten)
 				 */
-				if (YbIsAttrPrimaryKeyColumn(rel, attnum))
+				if (YbIsAttrInPrimaryKey(rel, attnum))
 					break;
 				Assert(list_length(handles) == 1);
 				YbcPgStatement drop_col_handle = (YbcPgStatement) lfirst(list_head(handles));
