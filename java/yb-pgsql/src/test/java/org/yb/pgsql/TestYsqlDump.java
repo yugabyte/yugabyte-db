@@ -831,12 +831,14 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   /**
-   * With transactional DDL, yb_stats_restore_defer_catalog_version_increment has no effect: a
-   * statistics write increments the catalog version, so that with object locking other backends
-   * refresh their cached pg_class row before they can lock the relation.
+   * With transactional DDL and global object locking, a statistics write uses the DDL transaction
+   * state, and yb_stats_restore_defer_catalog_version_increment has no effect: the write
+   * increments the catalog version, so that other backends refresh their cached pg_class row
+   * before they can lock the relation.
    */
   @Test
-  public void ysqlDumpStatisticsDeferCatalogVersionIncrementIgnoredWithTxnDdl() throws Exception {
+  public void ysqlDumpStatisticsDeferCatalogVersionIncrementIgnoredWithGlobalObjectLocks()
+      throws Exception {
     assertStatisticsDeferCatalogVersionIncrement(/* useLegacyDdlMode */ false);
   }
 
@@ -846,6 +848,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> tserverFlags = getTServerFlags();
     toggleDDLMode(masterFlags, useLegacyDdlMode);
     toggleDDLMode(tserverFlags, useLegacyDdlMode);
+    // toggleDDLMode turns object locking on with transactional DDL; make sure the transactions
+    // also take global object locks.
+    tserverFlags.put("disable_global_object_locks", "false");
     restartClusterWithFlags(masterFlags, tserverFlags);
 
     final String versionQuery = "SELECT current_version FROM pg_yb_catalog_version " +
@@ -877,9 +882,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> tserverFlags = getTServerFlags();
     toggleDDLMode(masterFlags, useLegacyDdlMode);
     toggleDDLMode(tserverFlags, useLegacyDdlMode);
-    if (disableGlobalObjectLocks) {
-      tserverFlags.put("disable_global_object_locks", "true");
-    }
+    tserverFlags.put("disable_global_object_locks", String.valueOf(disableGlobalObjectLocks));
     restartClusterWithFlags(masterFlags, tserverFlags);
 
     final int numTables = 3;
