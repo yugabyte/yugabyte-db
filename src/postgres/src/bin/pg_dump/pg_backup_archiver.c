@@ -5395,6 +5395,27 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
 }
 
 /*
+ * YB: whether the script restores a STATISTICS DATA entry.
+ *
+ * It scans the TOC rather than setting a flag when _printTocEntry prints such
+ * an entry, because a parallel restore prints entries in forked workers,
+ * whose flag would not reach the leader that emits the final increment.
+ */
+static bool
+ybRestoresStatisticsData(ArchiveHandle *AH)
+{
+	TocEntry   *te;
+
+	for (te = AH->toc->next; te != AH->toc; te = te->next)
+	{
+		if ((te->reqs & REQ_STATS) != 0 &&
+			strcmp(te->desc, "STATISTICS DATA") == 0)
+			return true;
+	}
+	return false;
+}
+
+/*
  * YB: increment the catalog version once after restoring statistics.
  *
  * The fixed output state of a --include-yb-metadata script with statistics
@@ -5426,20 +5447,6 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
  * the row, which stays until they are enabled again; nothing reads it
  * meanwhile.
  */
-static bool
-ybRestoresStatisticsData(ArchiveHandle *AH)
-{
-	TocEntry   *te;
-
-	for (te = AH->toc->next; te != AH->toc; te = te->next)
-	{
-		if ((te->reqs & REQ_STATS) != 0 &&
-			strcmp(te->desc, "STATISTICS DATA") == 0)
-			return true;
-	}
-	return false;
-}
-
 static void
 ybEmitStatsRestoreCatalogVersionIncrement(ArchiveHandle *AH)
 {

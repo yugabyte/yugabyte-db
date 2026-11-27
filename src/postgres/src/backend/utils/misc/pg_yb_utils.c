@@ -11601,7 +11601,9 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
  * the catalog version with no invalidation messages, which makes the backends
  * of the database refresh their whole catalog cache.  Until then, other
  * backends of the database keep the pg_class and pg_statistic tuples they
- * cached before the restore: they plan with the old statistics, and a DDL
+ * cached before the restore, and new connections on other nodes can load them
+ * from those nodes' catalog response caches, which the silent commits do not
+ * reach: they plan with the old statistics, and a DDL
  * that rewrites a restored relation's pg_class row from its cached copy, such
  * as ALTER TABLE, writes the old relpages, reltuples and relallvisible back
  * over the restored ones.  Usually there are no such backends: clone keeps
@@ -11612,32 +11614,39 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
  *
  * Only per-database catalog version mode defers: the restore script
  * increments the version of its own database.
+ *
+ * YbStatsCatalogWriteBegin returns whether it used the DDL transaction state
+ * (transactional DDL) rather than a separate DDL transaction, and
+ * YbStatsCatalogWriteEnd takes that value, so that the two always pair.
  */
 bool		yb_stats_restore_defer_catalog_version_increment = false;
 
-void
+bool
 YbStatsCatalogWriteBegin(void)
 {
 	YbDdlMode	mode = YB_DDL_MODE_BREAKING_CHANGE;
+	bool		use_regular_txn_block;
 
 	if (!IsYugaByteEnabled())
-		return;
+		return false;
 	if (yb_stats_restore_defer_catalog_version_increment &&
 		YBIsDBCatalogVersionMode())
 		mode = YB_DDL_MODE_SILENT_ALTERING;
 
-	if (YBIsDdlTransactionBlockEnabled())
+	use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
+	if (use_regular_txn_block)
 		YBAddDdlTxnState(mode);
 	else
 		YBIncrementDdlNestingLevel(mode);
+	return use_regular_txn_block;
 }
 
 void
-YbStatsCatalogWriteEnd(void)
+YbStatsCatalogWriteEnd(bool use_regular_txn_block)
 {
 	if (!IsYugaByteEnabled())
 		return;
-	if (YBIsDdlTransactionBlockEnabled())
+	if (use_regular_txn_block)
 		YBMergeDdlTxnState();
 	else
 		YBDecrementDdlNestingLevel();

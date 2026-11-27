@@ -79,6 +79,8 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	bool		nulls[3] = {0};
 	int			nreplaces = 0;
 
+	bool		yb_use_regular_txn_block;
+
 	stats_check_required_arg(fcinfo, relarginfo, RELSCHEMA_ARG);
 	stats_check_required_arg(fcinfo, relarginfo, RELNAME_ARG);
 
@@ -127,7 +129,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	 */
 	crel = table_open(RelationRelationId, RowExclusiveLock);
 
-	YbStatsCatalogWriteBegin();
+	yb_use_regular_txn_block = YbStatsCatalogWriteBegin();
 
 	ctup = SearchSysCache1(RELOID, ObjectIdGetDatum(reloid));
 	if (!HeapTupleIsValid(ctup))
@@ -169,7 +171,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 
 	ReleaseSysCache(ctup);
 
-	YbStatsCatalogWriteEnd();
+	YbStatsCatalogWriteEnd(yb_use_regular_txn_block);
 
 	/* release the lock, consistent with vac_update_relstats() */
 	table_close(crel, RowExclusiveLock);

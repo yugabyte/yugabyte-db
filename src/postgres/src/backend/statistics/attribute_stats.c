@@ -807,7 +807,7 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 {
 	HeapTuple	newtup;
 
-	YbStatsCatalogWriteBegin();
+	bool		yb_use_regular_txn_block = YbStatsCatalogWriteBegin();
 
 	if (HeapTupleIsValid(oldtup))
 	{
@@ -821,7 +821,7 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 		CatalogTupleInsert(starel, newtup);
 	}
 
-	YbStatsCatalogWriteEnd();
+	YbStatsCatalogWriteEnd(yb_use_regular_txn_block);
 
 	heap_freetuple(newtup);
 
@@ -838,13 +838,15 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 	HeapTuple	oldtup;
 	bool		result = false;
 
+	bool		yb_use_regular_txn_block;
+
 	/* Is there already a pg_statistic tuple for this attribute? */
 	oldtup = SearchSysCache3(STATRELATTINH,
 							 ObjectIdGetDatum(reloid),
 							 Int16GetDatum(attnum),
 							 BoolGetDatum(stainherit));
 
-	YbStatsCatalogWriteBegin();
+	yb_use_regular_txn_block = YbStatsCatalogWriteBegin();
 
 	if (HeapTupleIsValid(oldtup))
 	{
@@ -853,7 +855,7 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 		result = true;
 	}
 
-	YbStatsCatalogWriteEnd();
+	YbStatsCatalogWriteEnd(yb_use_regular_txn_block);
 
 	table_close(sd, RowExclusiveLock);
 
