@@ -38,7 +38,10 @@
 
 #include <boost/function.hpp>
 
+#include "yb/common/transaction.h"
+
 #include "yb/tablet/operations/operation.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations.messages.h"
 
 namespace yb::tablet {
@@ -71,6 +74,12 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   }
 
   void SetAsyncWrite(AsyncWriteCallback callback);
+
+  // The leader's admission reservation for this batch's intra-transaction write IDs; the
+  // operation carries it from here (see AddedAsPending).
+  void SetIntraTxnWriteIdReservation(IntraTxnWriteIdReservation reservation) {
+    intra_txn_write_id_reservation_ = std::move(reservation);
+  }
 
   void SubmittedToLeaderQueue() override;
 
@@ -109,9 +118,24 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
 
   HybridTime WriteHybridTime() const override;
 
+  // Pending-apply accounting for the intra-transaction write-ID cap (IntraTxnWriteIdLedger):
+  // a transactional batch's write-ID bound is outstanding on this replica from the moment it
+  // is accepted into the log (inheriting the leader's admission reservation when there is one)
+  // until it applies -- released by the apply itself, atomically with the counter it advances
+  // -- or aborts, released here. This is what lets
+  // TransactionParticipant::ReserveIntraTxnWriteIds be exact, including on a new leader whose
+  // log still holds unapplied batches from the previous term.
+  void AddedAsPending(const TabletPtr& tablet) override;
+  void RemovedFromPending(const TabletPtr& tablet) override;
+
   AsyncWriteCallback async_write_callback_;
 
   bool apply_completed_ = false;
+
+  IntraTxnWriteIdReservation intra_txn_write_id_reservation_;
+  // Nonzero only while this operation's bound is outstanding and apply has not released it.
+  uint64_t pending_intra_txn_write_ids_ = 0;
+  TransactionId pending_intra_txn_write_ids_txn_ = TransactionId::Nil();
 };
 
 bool IsTxnAborted(const Status& status);

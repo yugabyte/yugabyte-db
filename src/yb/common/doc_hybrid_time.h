@@ -32,6 +32,13 @@ constexpr IntraTxnWriteId kMinWriteId = 0;
 constexpr IntraTxnWriteId kDefaultWriteId = kMinWriteId;
 constexpr IntraTxnWriteId kMaxWriteId = std::numeric_limits<IntraTxnWriteId>::max();
 
+// Exclusive upper bound on intra-transaction write IDs (#33499). The counter previously
+// wrapped silently at 2^32, breaking the intra-transaction write-ID ordering that
+// commit-time intent application relies on. The write path enforces the limit before Raft
+// submission. Capping at half the space keeps every transaction far below the wrap point
+// while reserving [2^31, 2^32) for future write-ID domains.
+constexpr IntraTxnWriteId kIntraTxnWriteIdLimit = 0x80000000;
+
 // An aggressive upper bound on the length of a DocDB-encoded hybrid time with a write id.
 // This could happen in the degenerate case when all three VarInts in encoded representation of a
 // DocHybridTime take 10 bytes (the maximum length for a VarInt-encoded int64_t).
