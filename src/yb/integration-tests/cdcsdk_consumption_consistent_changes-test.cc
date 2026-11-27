@@ -108,6 +108,41 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
   ASSERT_NOK(GetConsistentChangesFromCDC(stream_id, kVWALSessionId3));
 }
 
+// The slot's active_pid belongs to the VirtualWAL that last started streaming the slot. A previous
+// VirtualWAL of the slot can be destroyed after that, and must not reset it.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDestroyVirtualWALKeepsActivePidOfNextSession) {
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto init_virtual_wal = [&](uint64_t session_id, uint64_t active_pid) {
+    return InitVirtualWAL(
+        stream_id, {table.table_id()}, session_id, nullptr /* slot_hash_range */,
+        false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+        false /* pub_all_tables */, RetryInit::kTrue, active_pid);
+  };
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto active_pid = [&]() -> Result<uint64_t> {
+    auto slot_entry = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+        {kCDCSDKSlotEntryTabletId, stream_id}, CDCStateTableEntrySelector().IncludeActivePid()));
+    SCHECK(slot_entry && slot_entry->active_pid, NotFound, "Slot entry has no active_pid");
+    return *slot_entry->active_pid;
+  };
+
+  constexpr uint64_t kPreviousPid = 100;
+  constexpr uint64_t kNextPid = 200;
+  ASSERT_OK(init_virtual_wal(kVWALSessionId1, kPreviousPid));
+  ASSERT_OK(init_virtual_wal(kVWALSessionId2, kNextPid));
+
+  // The previous session expires only now.
+  CDCService(test_cluster()->mini_tablet_server(0)->server())
+      ->DestroyVirtualWALBatchForCDC({kVWALSessionId1});
+  ASSERT_EQ(ASSERT_RESULT(active_pid()), kNextPid);
+
+  ASSERT_OK(DestroyVirtualWAL(kVWALSessionId2));
+  ASSERT_EQ(ASSERT_RESULT(active_pid()), 0);
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForSingleShardTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;

@@ -101,6 +101,8 @@ struct CDCStateTableEntry {
   std::optional<uint32_t> start_hash_range;
   std::optional<uint32_t> end_hash_range;
   std::optional<uint64_t> active_pid;
+  // Instance id of the VirtualWAL that set active_pid.
+  std::optional<std::string> vwal_instance_id;
 
   std::string ToString() const;
 };
@@ -163,6 +165,11 @@ class CDCStateTable {
   Status UpsertEntries(
       const std::vector<CDCStateTableEntry>& entries, const bool replace_full_map = false,
       const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
+  // Updates only the entries whose vwal_instance_id is still the given one. Leaving the other
+  // entries unchanged is not an error.
+  Status UpdateEntriesIfVWALInstanceId(
+      const std::vector<CDCStateTableEntry>& entries, const std::string& vwal_instance_id)
+      EXCLUDES(mutex_);
   Status DeleteEntries(const std::vector<CDCStateTableKey>& entry_keys) EXCLUDES(mutex_);
 
   Result<CDCStateTableRange> GetTableRange(
@@ -182,6 +189,12 @@ class CDCStateTable {
   void Shutdown();
 
  private:
+  // Write condition on an entry of the data map column: data[key] = value.
+  struct DataEntryCondition {
+    std::string key;
+    std::string value;
+  };
+
   // Returns ShutdownInProgress if the client initializer published a null client, which happens
   // when the server shuts down before the client could be built.
   Result<client::YBClient&> client();
@@ -190,18 +203,23 @@ class CDCStateTable {
   Status WaitForCreateTableToFinishWithoutCache();
   Result<std::shared_ptr<client::TableHandle>> GetTable() EXCLUDES(mutex_);
   Result<std::shared_ptr<client::TableHandle>> OpenTable();
+
+  // data_entry_condition, when set, is the condition of the write instead of condition_op.
   template <class CDCEntry>
   Status WriteEntriesAsync(
       const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
       StdStatusCallback callback, QLOperator condition_op = QL_OP_NOOP,
-      const bool replace_full_map = false, const std::vector<std::string>& keys_to_delete = {})
+      const bool replace_full_map = false, const std::vector<std::string>& keys_to_delete = {},
+      const std::optional<DataEntryCondition>& data_entry_condition = std::nullopt)
       EXCLUDES(mutex_);
 
   template <class CDCEntry>
   Status WriteEntries(
       const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
       QLOperator condition_op = QL_OP_NOOP, const bool replace_full_map = false,
-      const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
+      const std::vector<std::string>& keys_to_delete = {},
+      const std::optional<DataEntryCondition>& data_entry_condition = std::nullopt)
+      EXCLUDES(mutex_);
 
   std::shared_mutex mutex_;
   std::shared_future<client::YBClient*> client_future_;

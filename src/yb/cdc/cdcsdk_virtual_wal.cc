@@ -24,6 +24,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "yb/util/uuid.h"
 
 // TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
 #define YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \
@@ -156,6 +157,7 @@ CDCSDKVirtualWAL::CDCSDKVirtualWAL(
     : cdc_service_(cdc_service),
       stream_id_(stream_id),
       vwal_session_id_(session_id),
+      instance_id_(Uuid::Generate().ToString()),
       log_prefix_(Format("VWAL [$0:$1]: ", stream_id_, vwal_session_id_)),
       slot_lsn_type_(lsn_type),
       consistent_snapshot_time_(consistent_snapshot_time) {}
@@ -1617,8 +1619,12 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   return record_metadata.commit_lsn;
 }
 
-xrepl::StreamId CDCSDKVirtualWAL::GetStreamId() {
+xrepl::StreamId CDCSDKVirtualWAL::GetStreamId() const {
   return stream_id_;
+}
+
+const std::string& CDCSDKVirtualWAL::GetInstanceId() const {
+  return instance_id_;
 }
 
 Status CDCSDKVirtualWAL::TruncateMetaMap(const uint64_t restart_lsn) {

@@ -71,6 +71,7 @@ static const char* const kCDCSDKLastDecidedPubRefreshTime = "last_decided_pub_re
 static const char* const kCDCSDKStartHashRange = "start_hash_range";
 static const char* const kCDCSDKEndHashRange = "end_hash_range";
 static const char* const kCDCSDKActivePid = "active_pid";
+static const char* const kCDCSDKVWALInstanceId = "vwal_instance_id";
 
 namespace {
 const client::YBTableName kCdcStateYBTableName(
@@ -179,6 +180,11 @@ void SerializeEntry(
           get_map_value_pb(), kCDCSDKActivePid, AsString(*entry.active_pid));
     }
 
+    if (entry.vwal_instance_id) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKVWALInstanceId, *entry.vwal_instance_id);
+    }
+
     if (entry.pub_refresh_times) {
       client::AddMapEntryToColumn(
           get_map_value_pb(), kCDCSDKPubRefreshTimes, AsString(*entry.pub_refresh_times));
@@ -249,6 +255,11 @@ void SerializeEntry(
           AsString(*entry.active_pid));
     }
 
+    if (entry.vwal_instance_id) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKVWALInstanceId, *entry.vwal_instance_id);
+    }
+
     if (entry.pub_refresh_times) {
       client::UpdateMapUpsertKeyValue(
           req, cdc_table->ColumnId(kCdcData), kCDCSDKPubRefreshTimes,
@@ -272,6 +283,18 @@ void SerializeEntry(
           req, cdc_table->ColumnId(kCdcData), kCDCSDKEndHashRange, AsString(*entry.end_hash_range));
     }
   }
+}
+
+void SetDataEntryCondition(
+    int32_t data_column_id, std::string_view key, std::string_view value, QLWriteRequestMsg* req) {
+  auto* condition = req->mutable_if_expr()->mutable_condition();
+  condition->set_op(QL_OP_EQUAL);
+  auto* data_entry = condition->add_operands()->mutable_subscripted_col();
+  data_entry->set_column_id(data_column_id);
+  SetStringValue(*data_entry->add_subscript_args()->mutable_value(), key);
+  SetStringValue(*condition->add_operands()->mutable_value(), value);
+  // The condition is evaluated on the columns that the write reads.
+  req->mutable_column_refs()->add_ids(data_column_id);
 }
 
 Status DeserializeColumn(
@@ -335,6 +358,8 @@ Status DeserializeColumn(
     if (active_pid_result) {
       entry->active_pid = *active_pid_result;
     }
+
+    entry->vwal_instance_id = GetValueFromMap(map_value, kCDCSDKVWALInstanceId);
 
     entry->pub_refresh_times = GetValueFromMap(map_value, kCDCSDKPubRefreshTimes);
 
@@ -485,6 +510,10 @@ std::string CDCStateTableEntry::ToString() const {
     result += Format(", ActivePid: $0", *active_pid);
   }
 
+  if (vwal_instance_id) {
+    result += Format(", VWALInstanceId: $0", *vwal_instance_id);
+  }
+
   return result;
 }
 
@@ -579,7 +608,8 @@ template <class CDCEntry>
 Status CDCStateTable::WriteEntriesAsync(
     const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
     StdStatusCallback callback, QLOperator condition_op, const bool replace_full_map,
-    const std::vector<std::string>& keys_to_delete) {
+    const std::vector<std::string>& keys_to_delete,
+    const std::optional<DataEntryCondition>& data_entry_condition) {
   if (entries.empty()) {
     callback(Status::OK());
     return Status::OK();
@@ -596,7 +626,11 @@ Status CDCStateTable::WriteEntriesAsync(
 
     SerializeEntry(entry, cdc_table.get(), req, replace_full_map);
 
-    if (condition_op != QL_OP_NOOP) {
+    if (data_entry_condition) {
+      SetDataEntryCondition(
+          cdc_table->ColumnId(kCdcData), data_entry_condition->key, data_entry_condition->value,
+          req);
+    } else if (condition_op != QL_OP_NOOP) {
       auto* condition = req->mutable_if_expr()->mutable_condition();
       condition->set_op(condition_op);
     }
@@ -638,14 +672,15 @@ template <class CDCEntry>
 Status CDCStateTable::WriteEntries(
     const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
     QLOperator condition_op, const bool replace_full_map,
-    const std::vector<std::string>& keys_to_delete) {
+    const std::vector<std::string>& keys_to_delete,
+    const std::optional<DataEntryCondition>& data_entry_condition) {
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   // The callback holds a weak reference, so returning on an error without waiting is safe even if
   // the callback runs later.
   auto sync = std::make_shared<Synchronizer>();
   RETURN_NOT_OK(WriteEntriesAsync<CDCEntry>(
       entries, statement_type, Synchronizer::AsStdStatusCallback(sync), condition_op,
-      replace_full_map, keys_to_delete));
+      replace_full_map, keys_to_delete, data_entry_condition));
   return sync->Wait();
 }
 
@@ -680,6 +715,14 @@ Status CDCStateTable::UpsertEntries(
   VLOG_WITH_FUNC(1) << yb::ToString(entries);
   return WriteEntries(
       entries, QLWriteRequestPB::QL_STMT_UPDATE, QL_OP_NOOP, replace_full_map, keys_to_delete);
+}
+
+Status CDCStateTable::UpdateEntriesIfVWALInstanceId(
+    const std::vector<CDCStateTableEntry>& entries, const std::string& vwal_instance_id) {
+  VLOG_WITH_FUNC(1) << yb::ToString(entries) << ", vwal_instance_id: " << vwal_instance_id;
+  return WriteEntries(
+      entries, QLWriteRequestPB::QL_STMT_UPDATE, QL_OP_NOOP, /*replace_full_map=*/false,
+      /*keys_to_delete=*/{}, DataEntryCondition{kCDCSDKVWALInstanceId, vwal_instance_id});
 }
 
 Status CDCStateTable::DeleteEntries(const std::vector<CDCStateTableKey>& entry_keys) {

@@ -5486,11 +5486,18 @@ Result<tablet::TabletPeerPtr> CDCServiceImpl::GetServingTablet(const TabletId& t
 }
 
 Status CDCServiceImpl::PersistActivePidInSlotEntry(
-    const xrepl::StreamId& stream_id, uint64_t active_pid) {
-  cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
+    const CDCSDKVirtualWAL& virtual_wal, uint64_t active_pid) {
+  cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, virtual_wal.GetStreamId());
   entry.active_pid = active_pid;
+  entry.vwal_instance_id = virtual_wal.GetInstanceId();
   RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
   return Status::OK();
+}
+
+Status CDCServiceImpl::ResetActivePidInSlotEntry(const CDCSDKVirtualWAL& virtual_wal) {
+  cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, virtual_wal.GetStreamId());
+  entry.active_pid = 0;
+  return cdc_state_table_->UpdateEntriesIfVWALInstanceId({entry}, virtual_wal.GetInstanceId());
 }
 
 void CDCServiceImpl::GetLagMetrics(
@@ -5628,7 +5635,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     stream_to_session_[stream_id] = session_id;
   }
 
-  Status curr_status = PersistActivePidInSlotEntry(stream_id, req->active_pid());
+  Status curr_status = PersistActivePidInSlotEntry(*virtual_wal, req->active_pid());
   RPC_CHECK_AND_RETURN_ERROR(
     curr_status.ok(),
     STATUS_FORMAT(InternalError, "Failed to populate active_pid for stream: $0", stream_id),
@@ -5784,7 +5791,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
 
   // Get an exclusive lock to prevent multiple threads from trying to delete the same VirtualWAL
   // instance.
-  auto stream_id = xrepl::StreamId::Nil();
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
   {
     std::lock_guard l(mutex_);
     RPC_CHECK_AND_RETURN_ERROR(
@@ -5792,16 +5799,20 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
         STATUS_FORMAT(
             NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
-    stream_id = session_virtual_wal_[session_id]->GetStreamId();
-    stream_to_session_.erase(stream_id);
+    virtual_wal = session_virtual_wal_[session_id];
+    // A later VirtualWAL of the stream replaces this one in stream_to_session_.
+    auto stream_it = stream_to_session_.find(virtual_wal->GetStreamId());
+    if (stream_it != stream_to_session_.end() && stream_it->second == session_id) {
+      stream_to_session_.erase(stream_it);
+    }
     session_virtual_wal_.erase(session_id);
   }
 
   // mutex_ is a spinlock, so the blocking cdc_state write must stay outside of it. During tserver
   // shutdown that write retries until client RPCs are aborted, and the heartbeat thread spinning
   // on mutex_ would keep TabletServer::Shutdown from ever reaching that abort.
-  if (!PersistActivePidInSlotEntry(stream_id, 0ULL).ok()) {
-    VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
+  if (!ResetActivePidInSlotEntry(*virtual_wal).ok()) {
+    VLOG(2) << "Failed to reset active_pid for stream_id: " << virtual_wal->GetStreamId();
   }
 
   LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
@@ -5819,7 +5830,7 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
   VLOG_WITH_FUNC(2) << "Received expired session ids: " << AsString(expired_session_ids)
                     << " for virtual WAL batch cleanup";
 
-  std::vector<xrepl::StreamId> stream_ids;
+  std::vector<std::shared_ptr<CDCSDKVirtualWAL>> virtual_wals;
   {
     std::lock_guard l(mutex_);
     for (auto it = expired_session_ids.begin(); it != expired_session_ids.end(); ++it) {
@@ -5828,11 +5839,16 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
                           << " does not have a virtual WAL associated with it";
         continue;
       }
-      const auto stream_id = session_virtual_wal_[*it]->GetStreamId();
+      const auto& virtual_wal = session_virtual_wal_[*it];
+      const auto stream_id = virtual_wal->GetStreamId();
       LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request for session_id: " << *it
                           << " and stream_id: " << stream_id;
-      stream_ids.push_back(stream_id);
-      stream_to_session_.erase(stream_id);
+      virtual_wals.push_back(virtual_wal);
+      // A later VirtualWAL of the stream replaces this one in stream_to_session_.
+      auto stream_it = stream_to_session_.find(stream_id);
+      if (stream_it != stream_to_session_.end() && stream_it->second == *it) {
+        stream_to_session_.erase(stream_it);
+      }
       if (session_virtual_wal_.erase(*it)) {
         LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }
@@ -5840,9 +5856,9 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
   }
 
   // Persist outside mutex_, see DestroyVirtualWALForCDC.
-  for (const auto& stream_id : stream_ids) {
-    if (!PersistActivePidInSlotEntry(stream_id, 0ULL).ok()) {
-      VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
+  for (const auto& virtual_wal : virtual_wals) {
+    if (!ResetActivePidInSlotEntry(*virtual_wal).ok()) {
+      VLOG(2) << "Failed to reset active_pid for stream_id: " << virtual_wal->GetStreamId();
     }
   }
 }
