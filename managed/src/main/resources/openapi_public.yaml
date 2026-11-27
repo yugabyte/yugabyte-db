@@ -308,6 +308,116 @@ paths:
         checkOnlyPermission: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+  /customers/{cUUID}/backup-schedules:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createBackupSchedule
+      summary: Create a backup schedule
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Creates a backup schedule and
+        returns the task that sets it up (resource_uuid is the new
+
+        schedule''s UUID). The request checks the spec, that the universe and the
+        storage
+
+        configuration exist, that the configuration is ACTIVE and that the name is
+        free among the
+
+        universe''s schedules. It saves the schedule in state CREATING, so get and
+        list show it at
+
+        once. The task checks that the configuration''s storage can be used, from
+        YBA unless
+
+        yb.backup.skip_config_based_preflight_validation is set for the universe,
+        and from the
+
+        universe for YB-Controller backups. It upgrades YB-Controller on the universe
+        when it is
+
+        older than YBA''s, and for point_in_time_restore sets the history retention
+        the backups need.
+
+        It then makes the schedule ACTIVE. If the task fails, the schedule is removed,
+        so the name is
+
+        free for a retry; the failed task''s error says why. If YBA restarts while
+        the create task
+
+        runs, the schedule is left in ERROR; delete it before creating one with the
+        same name. A
+
+        point-in-time-restore schedule whose task fails after changing the universe''s
+        history
+
+        retention is left in ERROR; delete it to restore the retention. Only YSQL
+        and YCQL schedules
+
+        can be created; each keyspaces entry needs its keyspace. Retry with the same
+        Idempotency-Key
+
+        to get the task of a request whose response was lost.
+
+        '
+      tags:
+      - Backup Schedule
+      requestBody:
+        $ref: '#/components/requestBodies/BackupScheduleCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/YBATaskResp'
+        '400':
+          description: Invalid input, such as an interval shorter than an hour, an
+            invalid cron expression, an incremental interval not shorter than the
+            full backups' interval, a REDIS backup_type or a keyspaces entry without
+            its keyspace
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no backup permission on
+            the universe
+        '404':
+          description: The customer has no universe with universe_uuid, or no storage
+            configuration with storage_config_uuid
+        '409':
+          description: error.code is BACKUP_SCHEDULE_NAME_CONFLICT when the universe
+            already has a schedule with this name, with error.backup_schedule_uuid
+            and error.backup_schedule_state naming it, and STORAGE_CONFIG_NOT_ACTIVE
+            when the storage configuration is being validated or deleted. Also returned
+            while a request with the same Idempotency-Key is still in progress.
+        '500':
+          description: Server error
+        '422':
+          description: The Idempotency-Key was already used for a different request
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: Schedule
+        auditTargetId: obj.getResourceUuid().toString()
+        auditActionType: CreateBackupSchedule
+        taskUuid: obj.getTaskUuid()
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: backup_restore
+        resourceLocation:
+          path: universe_uuid
+          sourceType: request_body
+      x-yba-api-idempotent: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+      parameters:
+      - &id001
+        $ref: '#/components/parameters/IdempotencyKey'
   /customers/{cUUID}/backup-schedules/page:
     parameters:
     - name: cUUID
@@ -506,8 +616,7 @@ paths:
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
       parameters:
-      - &id001
-        $ref: '#/components/parameters/IdempotencyKey'
+      - *id001
   /customers/{cUUID}/auto-yba-backups:
     parameters:
     - name: cUUID
@@ -5971,97 +6080,6 @@ components:
           items:
             $ref: '#/components/schemas/Backup'
           description: Backups in the incremental chain for this page.
-    BackupScheduleState:
-      title: BackupScheduleState
-      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2026.2.0.0 that could change.</b></p>BackupScheduleState
-
-
-        State of a backup schedule. CREATING, EDITING and DELETING while a task creates,
-        edits or
-
-        deletes it. ACTIVE schedules take backups; PAUSED ones don''t until resumed.
-        ERROR means a task
-
-        that created, edited or deleted the schedule failed. Part of BackupScheduleInfo.
-
-        '
-      type: string
-      readOnly: true
-      enum:
-      - CREATING
-      - ACTIVE
-      - PAUSED
-      - EDITING
-      - DELETING
-      - ERROR
-      x-enum-varnames:
-      - BackupScheduleCreating
-      - BackupScheduleActive
-      - BackupSchedulePaused
-      - BackupScheduleEditing
-      - BackupScheduleDeleting
-      - BackupScheduleError
-      x-yba-api-since: 2026.2.0.0
-      x-yba-api-visibility: preview
-    BackupScheduleApiFilter:
-      title: BackupScheduleApiFilter
-      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2026.2.0.0 that could change.</b></p>BackupScheduleApiFilter
-
-
-        Filters of the paged list of backup schedules. A schedule is listed when it
-        matches every filter
-
-        given. Part of BackupSchedulePagedQuerySpec.
-
-        '
-      type: object
-      properties:
-        name:
-          description: Only schedules with this name
-          type: string
-          minLength: 1
-        universe_uuids:
-          description: Only schedules of these universes
-          type: array
-          items:
-            type: string
-            format: uuid
-        storage_config_uuids:
-          description: Only schedules that store their backups with these storage
-            configurations
-          type: array
-          items:
-            type: string
-            format: uuid
-        states:
-          description: Only schedules in these states
-          type: array
-          items:
-            $ref: '#/components/schemas/BackupScheduleState'
-      x-yba-api-since: 2026.2.0.0
-      x-yba-api-visibility: preview
-    BackupSchedulePagedQuerySpec:
-      title: BackupSchedulePagedQuerySpec
-      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2026.2.0.0 that could change.</b></p>BackupSchedulePagedQuerySpec
-
-
-        Paged list of the customer''s backup schedules. Rows are ordered by name (case-insensitive),
-        then
-
-        UUID. The order is ascending by default. Part of BackupSchedulePagedReq.
-
-        '
-      type: object
-      allOf:
-      - $ref: '#/components/schemas/PaginationSpec'
-      properties:
-        filter:
-          $ref: '#/components/schemas/BackupScheduleApiFilter'
-      x-yba-api-since: 2026.2.0.0
-      x-yba-api-visibility: preview
     BackupScheduleTableType:
       title: BackupScheduleTableType
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
@@ -6335,6 +6353,122 @@ components:
         use_roles:
           description: Whether the backups include the global YSQL roles (YSQL)
           type: boolean
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    YBATask:
+      title: YBATask
+      description: 'YBATask
+
+
+        YugabyteDB Anywhere Task object is used to represent a task that is being
+        executed on a resource. This Task object can be polled for progress and status
+        of the task. This object is returned as a response to most of the YugabyteDB
+        Anywhere API calls.
+
+        '
+      type: object
+      properties:
+        resource_uuid:
+          description: UUID of the resource being modified by the task
+          type: string
+          format: uuid
+          example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+          readOnly: true
+        task_uuid:
+          description: Task UUID
+          type: string
+          format: uuid
+          example: 89a46d52-4edd-4736-922a-35177a0b990c
+          readOnly: true
+    BackupScheduleState:
+      title: BackupScheduleState
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleState
+
+
+        State of a backup schedule. CREATING, EDITING and DELETING while a task creates,
+        edits or
+
+        deletes it. ACTIVE schedules take backups; PAUSED ones don''t until resumed.
+        ERROR means a task
+
+        that created, edited or deleted the schedule failed. Part of BackupScheduleInfo.
+
+        '
+      type: string
+      readOnly: true
+      enum:
+      - CREATING
+      - ACTIVE
+      - PAUSED
+      - EDITING
+      - DELETING
+      - ERROR
+      x-enum-varnames:
+      - BackupScheduleCreating
+      - BackupScheduleActive
+      - BackupSchedulePaused
+      - BackupScheduleEditing
+      - BackupScheduleDeleting
+      - BackupScheduleError
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleApiFilter:
+      title: BackupScheduleApiFilter
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleApiFilter
+
+
+        Filters of the paged list of backup schedules. A schedule is listed when it
+        matches every filter
+
+        given. Part of BackupSchedulePagedQuerySpec.
+
+        '
+      type: object
+      properties:
+        name:
+          description: Only schedules with this name
+          type: string
+          minLength: 1
+        universe_uuids:
+          description: Only schedules of these universes
+          type: array
+          items:
+            type: string
+            format: uuid
+        storage_config_uuids:
+          description: Only schedules that store their backups with these storage
+            configurations
+          type: array
+          items:
+            type: string
+            format: uuid
+        states:
+          description: Only schedules in these states
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupScheduleState'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupSchedulePagedQuerySpec:
+      title: BackupSchedulePagedQuerySpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupSchedulePagedQuerySpec
+
+
+        Paged list of the customer''s backup schedules. Rows are ordered by name (case-insensitive),
+        then
+
+        UUID. The order is ascending by default. Part of BackupSchedulePagedReq.
+
+        '
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/PaginationSpec'
+      properties:
+        filter:
+          $ref: '#/components/schemas/BackupScheduleApiFilter'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     BackupScheduleInfo:
@@ -6644,31 +6778,6 @@ components:
           description: The name of the directory to restore the most recent back from.
           type: string
           example: YBA.1.2.3.4
-    YBATask:
-      title: YBATask
-      description: 'YBATask
-
-
-        YugabyteDB Anywhere Task object is used to represent a task that is being
-        executed on a resource. This Task object can be polled for progress and status
-        of the task. This object is returned as a response to most of the YugabyteDB
-        Anywhere API calls.
-
-        '
-      type: object
-      properties:
-        resource_uuid:
-          description: UUID of the resource being modified by the task
-          type: string
-          format: uuid
-          example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
-          readOnly: true
-        task_uuid:
-          description: Task UUID
-          type: string
-          format: uuid
-          example: 89a46d52-4edd-4736-922a-35177a0b990c
-          readOnly: true
     CustomerRegistrationSpec:
       title: CustomerRegistrationSpec
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
@@ -15017,6 +15126,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedResp'
+    YBATaskResp:
+      description: task accepted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/YBATask'
     BackupSchedulePagedResp:
       description: A page of backup schedules
       content:
@@ -15055,12 +15170,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ContinuousBackup'
-    YBATaskResp:
-      description: task accepted
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/YBATask'
     CustomerRegistrationResp:
       description: Registered customer
       content:
@@ -15321,6 +15430,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedQuerySpec'
+    BackupScheduleCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BackupScheduleSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     BackupSchedulePagedReq:
       required: true
       content:

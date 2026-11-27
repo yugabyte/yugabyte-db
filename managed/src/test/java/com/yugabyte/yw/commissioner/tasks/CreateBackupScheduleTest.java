@@ -1,8 +1,14 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
@@ -13,6 +19,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -21,12 +28,16 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.CommonTypes.TableType;
 
 public class CreateBackupScheduleTest extends CommissionerBaseTest {
+  private static final long DAY = 24 * 3600_000L;
+
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
   private Users defaultUser;
@@ -58,12 +69,21 @@ public class CreateBackupScheduleTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(BackupRequestParams scheduleParams) {
+    return submitTask(scheduleParams, null);
+  }
+
+  /** {@code createdScheduleUUID}: the schedule a v2 create saved, or null for v1. */
+  private TaskInfo submitTask(BackupRequestParams scheduleParams, UUID createdScheduleUUID) {
     try {
       BackupScheduleTaskParams params =
           UniverseControllerRequestBinder.deepCopy(
               defaultUniverse.getUniverseDetails(), BackupScheduleTaskParams.class);
       params.scheduleParams = scheduleParams;
       params.customerUUID = defaultCustomer.getUuid();
+      if (createdScheduleUUID != null) {
+        params.createdScheduleUUID = createdScheduleUUID;
+        params.validateStorageConfigInTask = true;
+      }
       UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, params);
       // Set http context
       TestUtils.setFakeHttpContext(defaultUser);
@@ -168,5 +188,141 @@ public class CreateBackupScheduleTest extends CommissionerBaseTest {
     PlatformServiceException ex =
         assertThrows(PlatformServiceException.class, () -> submitTask(params));
     assertEquals("Cannot assign base backup in scheduled backups", ex.getMessage());
+  }
+
+  @Test
+  public void testV2CreateWhoseStorageCheckFailsRemovesTheSchedule() {
+    BackupRequestParams params =
+        createScheduleBackupParams(DAY, TimeUnit.DAYS, 0L, null, null, false, "v2-schedule");
+    params.customerUUID = defaultCustomer.getUuid();
+    // As the v2 create saves it.
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            params,
+            TaskType.CreateBackup,
+            params.schedulingFrequency,
+            null,
+            true /* useLocalTimezone */,
+            params.frequencyTimeUnit,
+            params.scheduleName,
+            Schedule.State.Creating);
+    doThrow(new PlatformServiceException(BAD_REQUEST, "The bucket can't be reached"))
+        .when(mockBackupHelper)
+        .validateStorageConfig(any());
+
+    TaskInfo taskInfo = submitTask(params, schedule.getScheduleUUID());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // The caller learns why from the task: its failed precheck subtask.
+    assertTrue(
+        taskInfo.getErrorMessage(),
+        taskInfo.getErrorMessage().contains("BackupStorageConfigValidate"));
+    TaskInfo precheck =
+        taskInfo.getSubTasks().stream()
+            .filter(subTask -> subTask.getTaskType() == TaskType.BackupStorageConfigValidate)
+            .findFirst()
+            .orElseThrow();
+    assertEquals(TaskInfo.State.Failure, precheck.getTaskState());
+    assertTrue(precheck.getErrorMessage(), precheck.getErrorMessage().contains("can't be reached"));
+    // And the name is free for a retry.
+    assertFalse(Schedule.maybeGet(schedule.getScheduleUUID()).isPresent());
+    // The universe isn't left locked.
+    assertFalse(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .updateInProgress);
+  }
+
+  /** A point-in-time-restore schedule as the v2 create saves it. */
+  private Schedule savePitSchedule(BackupRequestParams params) {
+    params.customerUUID = defaultCustomer.getUuid();
+    return Schedule.create(
+        defaultCustomer.getUuid(),
+        defaultUniverse.getUniverseUUID(),
+        params,
+        TaskType.CreateBackup,
+        params.schedulingFrequency,
+        null,
+        true /* useLocalTimezone */,
+        params.frequencyTimeUnit,
+        params.scheduleName,
+        Schedule.State.Creating);
+  }
+
+  @Test
+  public void testV2PitCreateWhoseStorageCheckFailsRemovesTheSchedule() {
+    BackupRequestParams params =
+        createScheduleBackupParams(DAY, TimeUnit.DAYS, 0L, null, null, true, "v2-pit");
+    Schedule schedule = savePitSchedule(params);
+    doThrow(new PlatformServiceException(BAD_REQUEST, "The bucket can't be reached"))
+        .when(mockBackupHelper)
+        .validateStorageConfig(any());
+
+    TaskInfo taskInfo = submitTask(params, schedule.getScheduleUUID());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // The history retention wasn't touched, so the schedule is removed.
+    assertFalse(Schedule.maybeGet(schedule.getScheduleUUID()).isPresent());
+  }
+
+  @Test
+  public void testV2PitCreateFailingAfterTheRetentionChangeKeepsTheScheduleInError() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.task.verify_cluster_state", "false");
+    BackupRequestParams params =
+        createScheduleBackupParams(DAY, TimeUnit.DAYS, 0L, null, null, true, "v2-pit");
+    Schedule schedule = savePitSchedule(params);
+    // The tserver conf file update of the history retention fails.
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .thenThrow(new RuntimeException("Can't update the conf file"));
+
+    TaskInfo taskInfo = submitTask(params, schedule.getScheduleUUID());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        getSubTaskTypes(taskInfo).toString(),
+        getSubTaskTypes(taskInfo).contains(TaskType.AnsibleConfigureServers));
+    // Kept, so that deleting it restores the retention.
+    assertEquals(
+        Schedule.State.Error,
+        Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID())
+            .getStatus());
+    assertFalse(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .updateInProgress);
+  }
+
+  private static List<TaskType> getSubTaskTypes(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
+  }
+
+  @Test
+  public void testV2CreateWhoseSubmitCheckFailsRemovesTheSchedule() {
+    // No frequency time unit: the check when the task is submitted fails.
+    BackupRequestParams params =
+        createScheduleBackupParams(DAY, null, 0L, null, null, false, "v2-schedule");
+    params.customerUUID = defaultCustomer.getUuid();
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            params,
+            TaskType.CreateBackup,
+            params.schedulingFrequency,
+            null,
+            true /* useLocalTimezone */,
+            TimeUnit.DAYS,
+            params.scheduleName,
+            Schedule.State.Creating);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class, () -> submitTask(params, schedule.getScheduleUUID()));
+
+    assertEquals("Frequency time unit cannot be null", ex.getMessage());
+    assertFalse(Schedule.maybeGet(schedule.getScheduleUUID()).isPresent());
   }
 }

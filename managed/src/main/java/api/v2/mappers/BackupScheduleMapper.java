@@ -17,6 +17,7 @@ import api.v2.models.TimeUnitType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -31,6 +32,7 @@ import org.apache.commons.lang3.time.DateUtils;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 /**
@@ -258,6 +260,92 @@ public interface BackupScheduleMapper {
     return new BackupScheduleDuration()
         .amount(millis / UNIT_MILLIS.get(chosen))
         .unit(TimeUnitType.valueOf(chosen.name()));
+  }
+
+  /**
+   * The v1 params of a schedule to create from {@code spec}, which the caller has checked. Options
+   * the spec doesn't have keep v1's defaults.
+   */
+  static BackupRequestParams toBackupRequestParams(UUID customerUUID, BackupScheduleSpec spec) {
+    BackupRequestParams params = new BackupRequestParams();
+    params.customerUUID = customerUUID;
+    params.scheduleName = spec.getName();
+    params.setUniverseUUID(spec.getUniverseUuid());
+    params.storageConfigUUID = spec.getStorageConfigUuid();
+    params.backupType = toV1TableType(spec.getBackupType());
+    params.keyspaceTableList = new ArrayList<>();
+    if (spec.getKeyspaces() != null) {
+      for (BackupScheduleKeyspace keyspace : spec.getKeyspaces()) {
+        KeyspaceTable keyspaceTable = new KeyspaceTable();
+        keyspaceTable.keyspace = keyspace.getKeyspace();
+        if (keyspace.getTableUuids() != null) {
+          keyspaceTable.tableUUIDList = new ArrayList<>(keyspace.getTableUuids());
+        }
+        params.keyspaceTableList.add(keyspaceTable);
+      }
+    }
+    if (spec.getFrequency() instanceof BackupScheduleCronFrequency cron) {
+      params.cronExpression = cron.getCronExpression();
+      params.useLocalTimezone = !Boolean.FALSE.equals(cron.getUseLocalTimezone());
+    } else if (spec.getFrequency() instanceof BackupScheduleIntervalFrequency interval) {
+      params.schedulingFrequency = toMillis(interval.getInterval());
+      params.frequencyTimeUnit = toV1TimeUnit(interval.getInterval());
+    }
+    if (spec.getIncrementalInterval() != null) {
+      params.incrementalBackupFrequency = toMillis(spec.getIncrementalInterval());
+      params.incrementalBackupFrequencyTimeUnit = toV1TimeUnit(spec.getIncrementalInterval());
+    }
+    if (spec.getRetention() != null) {
+      params.timeBeforeDelete = toMillis(spec.getRetention());
+      params.expiryTimeUnit = toV1TimeUnit(spec.getRetention());
+    }
+    if (spec.getMinBackupsToRetain() != null) {
+      params.minNumBackupsToRetain = spec.getMinBackupsToRetain();
+    }
+    params.kmsConfigUUID = spec.getKmsConfigUuid();
+    params.sse = Boolean.TRUE.equals(spec.getSse());
+    params.tableByTableBackup = Boolean.TRUE.equals(spec.getTableByTableBackup());
+    params.enablePointInTimeRestore = Boolean.TRUE.equals(spec.getPointInTimeRestore());
+    params.useTablespaces = Boolean.TRUE.equals(spec.getUseTablespaces());
+    params.setUseRoles(Boolean.TRUE.equals(spec.getUseRoles()));
+    return params;
+  }
+
+  /** The v1 table type of a backup type; null for none. */
+  static TableType toV1TableType(@Nullable BackupScheduleTableType type) {
+    if (type == null) {
+      return null;
+    }
+    switch (type) {
+      case BackupScheduleTableTypeYSQL:
+        return TableType.PGSQL_TABLE_TYPE;
+      case BackupScheduleTableTypeYCQL:
+        return TableType.YQL_TABLE_TYPE;
+      case BackupScheduleTableTypeREDIS:
+        return TableType.REDIS_TABLE_TYPE;
+      default:
+        throw new IllegalArgumentException("Unknown backup type " + type);
+    }
+  }
+
+  /** The v1 unit of a duration, or null when v1 has no millisecond count for it. */
+  static TimeUnit toV1TimeUnit(BackupScheduleDuration duration) {
+    TimeUnit unit = TimeUnit.valueOf(duration.getUnit().name());
+    return UNIT_MILLIS.containsKey(unit) ? unit : null;
+  }
+
+  /**
+   * A duration in milliseconds, a month being 30 days and a year 365.
+   *
+   * @throws IllegalArgumentException for a unit smaller than a millisecond
+   * @throws ArithmeticException when it doesn't fit in a long
+   */
+  static long toMillis(BackupScheduleDuration duration) {
+    TimeUnit unit = toV1TimeUnit(duration);
+    if (unit == null) {
+      throw new IllegalArgumentException("Unit " + duration.getUnit() + " is shorter than 1 ms");
+    }
+    return Math.multiplyExact(duration.getAmount(), UNIT_MILLIS.get(unit));
   }
 
   private static TimeUnit timeUnit(JsonNode params, String field) {

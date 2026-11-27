@@ -125,6 +125,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
@@ -7674,16 +7675,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Start Schedule backup methods
 
+  /**
+   * @param createdScheduleUUID the schedule the request already saved in state Creating, or null to
+   *     create it (or reuse the one with its name, on a retry)
+   */
   protected void addAllCreateBackupScheduleTasks(
       Runnable backupScheduleSubTasks,
       BackupRequestParams scheduleParams,
       UUID customerUUID,
-      String stableYbcVersion) {
+      String stableYbcVersion,
+      @Nullable UUID createdScheduleUUID) {
     addAllCreateBackupScheduleTasks(
         backupScheduleSubTasks,
         scheduleParams,
         customerUUID,
         stableYbcVersion,
+        createdScheduleUUID,
         null /* kubernetesStatus */);
   }
 
@@ -7692,16 +7699,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       String stableYbcVersion,
+      @Nullable UUID createdScheduleUUID,
       @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
     Universe universe = getUniverse();
     Schedule schedule = null;
-
-    // Lock universe
-    lockAndFreezeUniverseForUpdate(
-        universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+    boolean locked = false;
+    // Whether the subtasks that change the universe's history retention may have run.
+    boolean retentionMayHaveChanged = false;
     try {
+      // Lock universe. This runs the prechecks, so a failure there reaches the catch below too.
+      lockAndFreezeUniverseForUpdate(
+          universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+      locked = true;
       // Create schedule
-      schedule = Schedule.getOrCreateSchedule(customerUUID, scheduleParams);
+      schedule =
+          createdScheduleUUID != null
+              ? Schedule.getOrBadRequest(customerUUID, createdScheduleUUID)
+              : Schedule.getOrCreateSchedule(customerUUID, scheduleParams);
       UUID scheduleUUID = schedule.getScheduleUUID();
       log.info(
           "Creating backup schedule for customer {}, schedule uuid = {}.",
@@ -7743,6 +7757,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
       if (scheduleParams.enablePointInTimeRestore) {
+        // Run the checks above first, so that a failure in them is told apart from one after the
+        // history retention may have changed.
+        getRunnableTask().runSubTasks();
+        retentionMayHaveChanged = true;
         backupScheduleSubTasks.run();
       }
 
@@ -7760,8 +7778,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      // Update schedule state to Error
-      if (schedule != null) {
+      if (createdScheduleUUID != null && !retentionMayHaveChanged) {
+        // The v2 create: remove the schedule the request saved, so that the name is free for a
+        // retry. The task fails with this error. Once the history retention may have changed,
+        // the schedule is kept in Error as in v1, so that deleting it restores the retention.
+        BackupScheduleTaskParams.removeCreatingSchedule(customerUUID, createdScheduleUUID);
+      } else if (schedule != null) {
+        // Update schedule state to Error
         schedule =
             Schedule.updateStatusAndSave(
                 customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
@@ -7772,8 +7795,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       throw t;
     } finally {
-      // Unlock the universe.
-      unlockUniverseForUpdate(universe.getUniverseUUID());
+      // Unlock the universe. A failed lock call unlocks it itself.
+      if (locked) {
+        unlockUniverseForUpdate(universe.getUniverseUUID());
+      }
     }
   }
 

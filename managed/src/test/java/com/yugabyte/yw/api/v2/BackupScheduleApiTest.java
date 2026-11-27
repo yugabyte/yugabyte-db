@@ -8,7 +8,16 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import api.v2.handlers.BackupScheduleHandler;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
@@ -17,6 +26,7 @@ import com.yugabyte.yba.v2.client.models.BackupSchedule;
 import com.yugabyte.yba.v2.client.models.BackupScheduleApiFilter;
 import com.yugabyte.yba.v2.client.models.BackupScheduleCronFrequency;
 import com.yugabyte.yba.v2.client.models.BackupScheduleDuration;
+import com.yugabyte.yba.v2.client.models.BackupScheduleFrequency;
 import com.yugabyte.yba.v2.client.models.BackupScheduleFrequencyType;
 import com.yugabyte.yba.v2.client.models.BackupScheduleInfo;
 import com.yugabyte.yba.v2.client.models.BackupScheduleIntervalFrequency;
@@ -27,17 +37,25 @@ import com.yugabyte.yba.v2.client.models.BackupScheduleSpec;
 import com.yugabyte.yba.v2.client.models.BackupScheduleState;
 import com.yugabyte.yba.v2.client.models.BackupScheduleTableType;
 import com.yugabyte.yba.v2.client.models.TimeUnitType;
+import com.yugabyte.yba.v2.client.models.YBATask;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.ebean.DB;
@@ -47,6 +65,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -58,9 +77,25 @@ public class BackupScheduleApiTest extends FakeDBApplication {
   private Customer customer;
   private BackupScheduleApi backupScheduleApi;
 
+  private Universe universe;
+  private CustomerConfig storageConfig;
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    universe =
+        ModelFactory.createUniverse(
+            "backed-up",
+            UUID.randomUUID(),
+            customer.getId(),
+            Common.CloudType.aws,
+            null,
+            null,
+            true /* enableYbc */);
+    storageConfig = ModelFactory.createS3StorageConfig(customer, "s3");
+    when(mockCommissioner.submit(eq(TaskType.CreateBackupSchedule), any(ITaskParams.class)))
+        // CustomerTask rows carry a foreign key onto task_info, so the task has to really exist.
+        .thenAnswer(invocation -> buildTaskInfo(null, TaskType.CreateBackupSchedule));
     Users user = ModelFactory.testUser(customer);
     ApiClient v2Client = Configuration.getDefaultApiClient();
     String basePath = String.format("http://localhost:%d/api/v2", port);
@@ -233,6 +268,204 @@ public class BackupScheduleApiTest extends FakeDBApplication {
 
   private static BackupScheduleDuration duration(long amount, TimeUnitType unit) {
     return new BackupScheduleDuration().amount(amount).unit(unit);
+  }
+
+  /** A daily YSQL schedule of the test universe, to the test storage config. */
+  private BackupScheduleSpec createSpec(String name) {
+    return new BackupScheduleSpec()
+        .name(name)
+        .universeUuid(universe.getUniverseUUID())
+        .storageConfigUuid(storageConfig.getConfigUUID())
+        .backupType(BackupScheduleTableType.BackupScheduleTableTypeYSQL)
+        .frequency(
+            new BackupScheduleFrequency(
+                new BackupScheduleIntervalFrequency()
+                    .frequencyType(BackupScheduleFrequencyType.BackupScheduleFrequencyInterval)
+                    .interval(duration(1, TimeUnitType.DAYS))));
+  }
+
+  /** The params of the CreateBackupSchedule task submitted last. */
+  private BackupScheduleTaskParams submittedCreate(int submits) {
+    ArgumentCaptor<ITaskParams> params = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner, times(submits))
+        .submit(eq(TaskType.CreateBackupSchedule), params.capture());
+    return (BackupScheduleTaskParams) params.getValue();
+  }
+
+  private static JsonNode error(ApiException e) {
+    return Json.parse(e.getResponseBody()).get("error");
+  }
+
+  @Test
+  public void createSavesTheScheduleAndSubmitsTheTask() throws ApiException {
+    UUID tableUUID = UUID.randomUUID();
+    BackupScheduleSpec spec =
+        createSpec("daily")
+            .backupType(BackupScheduleTableType.BackupScheduleTableTypeYCQL)
+            .keyspaces(
+                List.of(new BackupScheduleKeyspace().keyspace("ks").tableUuids(List.of(tableUUID))))
+            .incrementalInterval(duration(2, TimeUnitType.HOURS))
+            .retention(duration(1, TimeUnitType.MONTHS))
+            .minBackupsToRetain(5)
+            .useTablespaces(true);
+
+    YBATask task = backupScheduleApi.createBackupSchedule(customer.getUuid(), spec, null);
+
+    // The schedule shows at once, in CREATING, with the spec it was created with.
+    BackupSchedule got =
+        backupScheduleApi.getBackupSchedule(customer.getUuid(), task.getResourceUuid());
+    assertEquals(BackupScheduleState.BackupScheduleCreating, got.getInfo().getState());
+    // Unset options come back with v1's defaults.
+    assertEquals(
+        spec.sse(false).tableByTableBackup(false).pointInTimeRestore(false).useRoles(false),
+        got.getSpec());
+    // The incremental interval is checked against the full backups' one, in milliseconds.
+    verify(mockBackupHelper)
+        .validateIncrementalScheduleFrequency(eq(2 * HOUR), eq(DAY), any(Universe.class));
+
+    BackupScheduleTaskParams params = submittedCreate(1);
+    assertEquals(task.getResourceUuid(), params.createdScheduleUUID);
+    assertTrue(params.validateStorageConfigInTask);
+    assertEquals(customer.getUuid(), params.getCustomerUUID());
+    assertEquals(universe.getUniverseUUID(), params.getUniverseUUID());
+    assertEquals(DAY, params.scheduleParams.schedulingFrequency);
+    assertEquals(TimeUnit.DAYS, params.scheduleParams.frequencyTimeUnit);
+    assertEquals(2 * HOUR, params.scheduleParams.incrementalBackupFrequency);
+    assertEquals(30 * DAY, params.scheduleParams.timeBeforeDelete);
+    assertEquals(TimeUnit.MONTHS, params.scheduleParams.expiryTimeUnit);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(task.getTaskUuid());
+    assertEquals(CustomerTask.TargetType.Schedule, customerTask.getTargetType());
+    assertEquals(CustomerTask.TaskType.Create, customerTask.getType());
+  }
+
+  @Test
+  public void createOnACron() throws ApiException {
+    BackupScheduleSpec spec =
+        createSpec("nightly")
+            .frequency(
+                new BackupScheduleFrequency(
+                    new BackupScheduleCronFrequency()
+                        .frequencyType(BackupScheduleFrequencyType.BackupScheduleFrequencyCron)
+                        .cronExpression("0 2 * * *")
+                        .useLocalTimezone(false)));
+
+    YBATask task = backupScheduleApi.createBackupSchedule(customer.getUuid(), spec, null);
+
+    Schedule schedule = Schedule.getOrBadRequest(customer.getUuid(), task.getResourceUuid());
+    assertEquals("0 2 * * *", schedule.getCronExpression());
+    assertFalse(schedule.isUseLocalTimezone());
+    assertEquals(0, submittedCreate(1).scheduleParams.schedulingFrequency);
+  }
+
+  @Test
+  public void createNameConflict() throws ApiException {
+    YBATask first =
+        backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), null);
+
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () ->
+                backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), null));
+    assertEquals(409, e.getCode());
+    assertEquals(BackupScheduleHandler.NAME_CONFLICT, error(e).get("code").asText());
+    assertEquals(first.getResourceUuid().toString(), error(e).get("backup_schedule_uuid").asText());
+    assertEquals("CREATING", error(e).get("backup_schedule_state").asText());
+    submittedCreate(1);
+  }
+
+  @Test
+  public void createMissingOrInactiveReferences() {
+    assertCreateError(createSpec("a").universeUuid(UUID.randomUUID()), 404);
+    // Another customer's universe.
+    Customer other = ModelFactory.testCustomer("other-customer");
+    assertCreateError(
+        createSpec("a").universeUuid(ModelFactory.createUniverse(other.getId()).getUniverseUUID()),
+        404);
+    assertCreateError(createSpec("a").storageConfigUuid(UUID.randomUUID()), 404);
+    assertCreateError(
+        createSpec("a")
+            .storageConfigUuid(ModelFactory.createS3StorageConfig(other, "other").getConfigUUID()),
+        404);
+
+    storageConfig.setState(CustomerConfig.ConfigState.QueuedForDeletion);
+    storageConfig.save();
+    ApiException e = assertCreateError(createSpec("a"), 409);
+    assertEquals(BackupScheduleHandler.STORAGE_CONFIG_NOT_ACTIVE, error(e).get("code").asText());
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
+  }
+
+  @Test
+  public void createInvalidSpecs() {
+    assertCreateError(
+        createSpec("a").backupType(BackupScheduleTableType.BackupScheduleTableTypeREDIS), 400);
+    assertCreateError(
+        createSpec("a").keyspaces(List.of(new BackupScheduleKeyspace().tableUuids(List.of()))),
+        400);
+    // Shorter than v1's hour.
+    assertCreateError(
+        createSpec("a")
+            .frequency(
+                new BackupScheduleFrequency(
+                    new BackupScheduleIntervalFrequency()
+                        .frequencyType(BackupScheduleFrequencyType.BackupScheduleFrequencyInterval)
+                        .interval(duration(30, TimeUnitType.MINUTES)))),
+        400);
+    assertCreateError(
+        createSpec("a")
+            .frequency(
+                new BackupScheduleFrequency(
+                    new BackupScheduleCronFrequency()
+                        .frequencyType(BackupScheduleFrequencyType.BackupScheduleFrequencyCron)
+                        .cronExpression("not a cron"))),
+        400);
+    // Not shorter than the full backups' interval. BackupHelper is a mock in these tests, so it is
+    // made to reject the request the way the real one does.
+    doThrow(new PlatformServiceException(400, "Incremental backup frequency should be lower"))
+        .when(mockBackupHelper)
+        .validateIncrementalScheduleFrequency(eq(DAY), eq(DAY), any(Universe.class));
+    assertCreateError(createSpec("a").incrementalInterval(duration(1, TimeUnitType.DAYS)), 400);
+    assertCreateError(createSpec("a").retention(duration(Long.MAX_VALUE, TimeUnitType.YEARS)), 400);
+    assertCreateError(createSpec("a").retention(duration(5, TimeUnitType.NANOSECONDS)), 400);
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
+    assertEquals(
+        0, Schedule.getAllByCustomerUUIDAndType(customer.getUuid(), TaskType.CreateBackup).size());
+  }
+
+  private ApiException assertCreateError(BackupScheduleSpec spec, int code) {
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () -> backupScheduleApi.createBackupSchedule(customer.getUuid(), spec, null));
+    assertEquals(e.getResponseBody(), code, e.getCode());
+    return e;
+  }
+
+  @Test
+  public void createIsIdempotent() throws ApiException {
+    String key = UUID.randomUUID().toString();
+
+    YBATask first =
+        backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), key);
+    YBATask retry =
+        backupScheduleApi.createBackupSchedule(customer.getUuid(), createSpec("x"), key);
+
+    assertEquals(first.getTaskUuid(), retry.getTaskUuid());
+    assertEquals(first.getResourceUuid(), retry.getResourceUuid());
+    submittedCreate(1);
+  }
+
+  @Test
+  public void createRemovesTheScheduleWhenTheSubmitFails() {
+    when(mockCommissioner.submit(eq(TaskType.CreateBackupSchedule), any(ITaskParams.class)))
+        .thenThrow(new PlatformServiceException(400, "Universe is paused"));
+
+    assertCreateError(createSpec("x"), 400);
+
+    assertFalse(
+        Schedule.maybeGetScheduleByUniverseWithName(
+                "x", universe.getUniverseUUID(), customer.getUuid())
+            .isPresent());
   }
 
   @Test
