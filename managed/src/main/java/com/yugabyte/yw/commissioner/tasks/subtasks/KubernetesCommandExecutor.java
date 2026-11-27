@@ -88,6 +88,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -430,14 +431,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
-        kubernetesManagerFactory.getManager().createNamespace(config, taskParams().namespace);
+        kubernetesManagerFactory
+            .getManager()
+            .createNamespace(config, taskParams().namespace, getHelmCommonLabels());
         break;
       case APPLY_SECRET:
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
           kubernetesManagerFactory
               .getManager()
-              .applySecret(config, taskParams().namespace, pullSecret);
+              .applySecret(config, taskParams().namespace, pullSecret, getHelmCommonLabels());
         } else {
           log.debug("Pull secret is missing, skipping the pull secret creation.");
         }
@@ -864,6 +867,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           universe.setUniverseDetails(universeDetails);
         };
     saveUniverseDetails(updater);
+  }
+
+  // The labels for the namespace and pull secret. placementInfo holds every AZ that deploys into
+  // the namespace; subtasks queued before it was set have none, and get no labels.
+  private Map<String, String> getHelmCommonLabels() {
+    if (taskParams().placementInfo == null) {
+      return Collections.emptyMap();
+    }
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    return KubernetesUtil.getHelmCommonLabels(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent,
+        universe.getConfig(),
+        taskParams().placementInfo.azStream().map(az -> az.uuid).collect(Collectors.toList()));
   }
 
   private String getPullSecret() {
@@ -1718,14 +1734,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         .universeConfig
         .getOrDefault(Universe.LABEL_K8S_RESOURCES, "false")
         .equals("true")) {
-      String sanitizedUniverseName =
-          Util.sanitizeKubernetesNamespace(
-              taskParams().universeDetails.getPrimaryCluster().userIntent.universeName, 0);
-      Map<String, String> labels = new HashMap<>();
-      labels.put("yugabyte.io/universe-name", sanitizedUniverseName);
-      labels.put("app.kubernetes.io/part-of", sanitizedUniverseName);
-      labels.put("yugabyte.io/zone", placementZone);
-      overrides.put("commonLabels", labels);
+      overrides.put(
+          "commonLabels",
+          KubernetesUtil.getUniverseResourceLabels(
+              taskParams().universeDetails.getPrimaryCluster().userIntent.universeName,
+              placementZone));
     }
 
     // Conditionally enable yugabyteDUI if running in community mode.

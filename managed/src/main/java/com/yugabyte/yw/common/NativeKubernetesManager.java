@@ -6,6 +6,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Node;
@@ -36,6 +37,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -97,21 +99,38 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void createNamespace(Map<String, String> config, String namespace) {
+  public void createNamespace(
+      Map<String, String> config, String namespace, Map<String, String> labels) {
     try (KubernetesClient client = getClient(config)) {
       client
           .namespaces()
           .createOrReplace(
-              new NamespaceBuilder().withNewMetadata().withName(namespace).endMetadata().build());
+              new NamespaceBuilder()
+                  .withNewMetadata()
+                  .withName(namespace)
+                  .withLabels(labels)
+                  .endMetadata()
+                  .build());
     }
   }
 
   @Override
-  public void applySecret(Map<String, String> config, String namespace, String pullSecret) {
+  public void applySecret(
+      Map<String, String> config, String namespace, String pullSecret, Map<String, String> labels) {
+    Map<String, String> commonLabels = Objects.requireNonNullElse(labels, Map.of());
     try (KubernetesClient client = getClient(config);
         InputStream pullSecretStream =
             Files.newInputStream(Paths.get(pullSecret), StandardOpenOption.READ); ) {
-      client.load(pullSecretStream).inNamespace(namespace).createOrReplace();
+      List<HasMetadata> resources = client.load(pullSecretStream).items();
+      // Labels already in the provider's pull secret win.
+      for (HasMetadata resource : resources) {
+        Map<String, String> resourceLabels = new HashMap<>(commonLabels);
+        if (resource.getMetadata().getLabels() != null) {
+          resourceLabels.putAll(resource.getMetadata().getLabels());
+        }
+        resource.getMetadata().setLabels(resourceLabels);
+      }
+      client.resourceList(resources).inNamespace(namespace).createOrReplace();
     } catch (IOException e) {
       throw new RuntimeException("Unable to get the pullSecret ", e);
     }
@@ -151,7 +170,8 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public boolean dbNamespaceExists(Map<String, String> config, String namespace) {
+  public boolean dbNamespaceExists(
+      Map<String, String> config, String namespace, Map<String, String> labels) {
     throw new UnsupportedOperationException("Unimplemented method 'dbNamespaceExists'");
   }
 

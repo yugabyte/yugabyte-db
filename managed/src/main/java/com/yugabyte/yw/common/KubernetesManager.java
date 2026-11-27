@@ -672,7 +672,7 @@ public abstract class KubernetesManager {
     }
 
     HelmUtils.mergeYaml(universeOverridesCopy, azOverridesCopy);
-    String mergedOverrides = createTempFile(universeOverridesCopy);
+    String mergedOverrides = writeTempYaml(List.of(universeOverridesCopy), "values");
 
     List<String> commandList =
         ImmutableList.of(
@@ -715,7 +715,6 @@ public abstract class KubernetesManager {
    * @param overridesFile Path to the helm overrides YAML file
    * @return Formatted labels string (key1=value1,key2=value2) or null if no labels found
    */
-  @SuppressWarnings("unchecked")
   private String extractAndFormatCommonLabels(String overridesFile) {
     if (overridesFile == null || overridesFile.isEmpty()) {
       return null;
@@ -723,25 +722,13 @@ public abstract class KubernetesManager {
     try {
       String yamlContent = Files.readString(Path.of(overridesFile));
       Map<String, Object> overrides = new Yaml().load(yamlContent);
-      if (overrides == null || !overrides.containsKey("commonLabels")) {
-        return null;
-      }
-      Object commonLabelsObj = overrides.get("commonLabels");
-      if (!(commonLabelsObj instanceof Map)) {
-        return null;
-      }
-      Map<String, Object> commonLabels = (Map<String, Object>) commonLabelsObj;
+      Map<String, String> commonLabels = KubernetesUtil.getCommonLabels(overrides);
       if (commonLabels.isEmpty()) {
         return null;
       }
       // Format as key1=value1,key2=value2
-      // Convert values to strings to handle non-string types (numbers, booleans, etc.)
       return commonLabels.entrySet().stream()
-          .map(
-              entry ->
-                  entry.getKey()
-                      + "="
-                      + (entry.getValue() != null ? entry.getValue().toString() : ""))
+          .map(entry -> entry.getKey() + "=" + entry.getValue())
           .collect(Collectors.joining(","));
     } catch (Exception e) {
       LOG.warn(
@@ -752,17 +739,17 @@ public abstract class KubernetesManager {
     }
   }
 
-  private String createTempFile(Map<String, Object> valuesMap) {
-    Path tempFile;
+  /** Writes the YAML documents to a new temp file and returns its path. */
+  protected String writeTempYaml(List<?> docs, String namePrefix) {
     try {
-      tempFile = fileHelperService.createTempFile("values", ".yml");
-      try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile())); ) {
-        new Yaml().dump(valuesMap, bw);
-        return tempFile.toAbsolutePath().toString();
+      Path tempFile = fileHelperService.createTempFile(namePrefix, ".yml");
+      try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()))) {
+        new Yaml().dumpAll(docs.iterator(), bw);
       }
+      return tempFile.toAbsolutePath().toString();
     } catch (IOException e) {
       LOG.error(e.getMessage());
-      throw new RuntimeException("Error writing values map to temp file!");
+      throw new RuntimeException("Error writing " + namePrefix + " YAML file.", e);
     }
   }
 
@@ -1024,9 +1011,11 @@ public abstract class KubernetesManager {
 
   /* kubernetes interface */
 
-  public abstract void createNamespace(Map<String, String> config, String universePrefix);
+  public abstract void createNamespace(
+      Map<String, String> config, String namespace, Map<String, String> labels);
 
-  public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
+  public abstract void applySecret(
+      Map<String, String> config, String namespace, String pullSecret, Map<String, String> labels);
 
   public abstract Pod getPodObject(Map<String, String> config, String namespace, String podName);
 
@@ -1048,7 +1037,8 @@ public abstract class KubernetesManager {
     return namespaceNames.contains(namespace);
   }
 
-  public abstract boolean dbNamespaceExists(Map<String, String> config, String namespace);
+  public abstract boolean dbNamespaceExists(
+      Map<String, String> config, String namespace, Map<String, String> labels);
 
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);

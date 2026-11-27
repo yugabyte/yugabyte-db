@@ -9,12 +9,16 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -69,10 +73,16 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
               .filter(namespace -> !targetNamespaces.contains(namespace))
               .collect(Collectors.toSet());
       if (!targetNamespacesNotExistOnSourceUniverse.isEmpty()) {
-        createNamespaces(targetNamespacesNotExistOnSourceUniverse, sourceUniverse);
+        createNamespaces(
+            targetNamespacesNotExistOnSourceUniverse,
+            getHelmCommonLabelsPerNamespace(targetUniverse),
+            sourceUniverse);
       }
       if (!sourceNamespacesNotExistOnTargetUniverse.isEmpty()) {
-        createNamespaces(sourceNamespacesNotExistOnTargetUniverse, targetUniverse);
+        createNamespaces(
+            sourceNamespacesNotExistOnTargetUniverse,
+            getHelmCommonLabelsPerNamespace(sourceUniverse),
+            targetUniverse);
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -81,7 +91,49 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  private void createNamespaces(Set<String> namespaces, Universe universe) {
+  // The labels of each of the universe's namespaces: the helm commonLabels of the AZs that deploy
+  // into it. They are best effort: if they can't be computed, the namespaces are created without
+  // them, as they were before, rather than the replication being skipped.
+  private static Map<String, Map<String, String>> getHelmCommonLabelsPerNamespace(
+      Universe universe) {
+    try {
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
+      Map<String, Set<UUID>> azsPerNamespace = new HashMap<>();
+      for (NodeDetails node : details.nodeDetailsSet) {
+        if (node.azUuid != null && node.getK8sNamespace() != null) {
+          azsPerNamespace
+              .computeIfAbsent(node.getK8sNamespace(), ns -> new HashSet<>())
+              .add(node.azUuid);
+        }
+      }
+      Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
+      azsPerNamespace.forEach(
+          (namespace, azUUIDs) ->
+              labelsPerNamespace.put(
+                  namespace,
+                  KubernetesUtil.getHelmCommonLabels(
+                      primaryIntent, universe.getConfig(), azUUIDs)));
+      return labelsPerNamespace;
+    } catch (RuntimeException e) {
+      log.warn(
+          "Unable to compute the namespace labels of universe {}, creating the namespaces without"
+              + " them: {}",
+          universe.getUniverseUUID(),
+          e.getMessage());
+      return Collections.emptyMap();
+    }
+  }
+
+  /**
+   * Creates the namespaces in the universe's Kubernetes clusters.
+   *
+   * @param labelsPerNamespace the labels of each namespace in the universe it is replicated from
+   */
+  private void createNamespaces(
+      Set<String> namespaces,
+      Map<String, Map<String, String>> labelsPerNamespace,
+      Universe universe) {
     log.info("Creating namespaces: {} on universe: {}", namespaces, universe);
     Set<UUID> visitedProviderUUIDS = new HashSet<>();
     KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
@@ -112,7 +164,8 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
                         kubeConfig);
                   } else {
                     log.debug("Creating namespace: {}, kubeconfig: {}", namespace, kubeConfig);
-                    kubernetesManager.createNamespace(config, namespace);
+                    kubernetesManager.createNamespace(
+                        config, namespace, labelsPerNamespace.get(namespace));
                   }
                 }
               }

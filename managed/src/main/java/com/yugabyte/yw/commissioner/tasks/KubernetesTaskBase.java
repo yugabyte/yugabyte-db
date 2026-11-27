@@ -478,6 +478,27 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       throw new RuntimeException("Parsing overrides failed!", e.getCause());
     }
 
+    // The AZs that deploy into each AZ's namespace, which the AZs in one Kubernetes cluster share
+    // with the new naming style. The namespace and pull secret subtasks of all of them then apply
+    // the same labels. AZs in other clusters have their own namespace of the same name.
+    Map<String, PlacementInfo> placementPerNamespace = new HashMap<>();
+    Map<UUID, PlacementInfo> namespacePlacementPerAZ = new HashMap<>();
+    for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
+      String clusterNamespace =
+          KubernetesUtil.getKubernetesNamespace(
+              isMultiAz,
+              taskParams().nodePrefix,
+              isMultiAz ? AvailabilityZone.get(entry.getKey()).getCode() : null,
+              entry.getValue(),
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster,
+              true /* addKubeClusterPrefix */);
+      PlacementInfo namespacePlacement =
+          placementPerNamespace.computeIfAbsent(clusterNamespace, ns -> new PlacementInfo());
+      PlacementInfoUtil.addPlacementZone(entry.getKey(), namespacePlacement);
+      namespacePlacementPerAZ.put(entry.getKey(), namespacePlacement);
+    }
+
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
@@ -602,6 +623,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               createKubernetesExecutorTask(
                   universeName,
                   KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE,
+                  namespacePlacementPerAZ.get(azUUID),
                   azCode,
                   config,
                   isReadOnlyCluster));
@@ -612,6 +634,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             createKubernetesExecutorTask(
                 universeName,
                 KubernetesCommandExecutor.CommandType.APPLY_SECRET,
+                namespacePlacementPerAZ.get(azUUID),
                 azCode,
                 config,
                 isReadOnlyCluster));
@@ -2092,7 +2115,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     return podsToRemove;
   }
 
-  // Create Kubernetes Executor task for creating the namespaces and pull secrets.
   public KubernetesCommandExecutor createKubernetesExecutorTask(
       String universeName,
       KubernetesCommandExecutor.CommandType commandType,
@@ -2100,7 +2122,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config,
       boolean isReadOnlyCluster) {
     return createKubernetesExecutorTask(
-        universeName, commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
+        universeName, commandType, null, az, config, isReadOnlyCluster);
+  }
+
+  // Create Kubernetes Executor task for creating the namespaces and pull secrets. pi holds the AZs
+  // that deploy into the namespace, whose helm commonLabels the namespace and pull secret get.
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      Map<String, String> config,
+      boolean isReadOnlyCluster) {
+    return createKubernetesExecutorTask(
+        universeName, commandType, pi, az, null, null, config, null, null, isReadOnlyCluster);
   }
 
   public KubernetesCommandExecutor createKubernetesExecutorTask(
