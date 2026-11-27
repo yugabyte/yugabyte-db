@@ -1803,6 +1803,10 @@ WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId 
 	bool		pending_writes = false;
 	bool		end_xact = ctx->end_xact;
 
+	/* YB: The client never receives a skipped transaction to acknowledge. */
+	if (IsYugaByteEnabled() && skipped_xact && end_xact)
+		YBCTrackSkippedTransaction(xid);
+
 	/*
 	 * Track lag no more than once per WALSND_LOGICAL_LAG_TRACK_INTERVAL_MS to
 	 * avoid flooding the lag tracker when we commit frequently.
