@@ -7,6 +7,7 @@
 SET enable_partitionwise_join to true;
 -- YB: explicitly set enable_partitionwise_aggregate to original pg default.
 SET enable_partitionwise_aggregate to false;
+SET yb_enable_cbo = on; -- YB: use the YB cost model so plans match upstream more closely
 
 --
 -- partitioned by a single column
@@ -110,7 +111,7 @@ SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS 
 SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS (SELECT 1 FROM prt2 t2 WHERE t1.a = t2.b);
 
 -- lateral reference
-EXPLAIN (COSTS OFF)
+EXPLAIN (COSTS OFF) -- YB: Hash Join between t2 and t3 where upstream uses Nested Loop
 SELECT * FROM prt1 t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t3.a AS t3a, least(t1.a,t2.a,t3.b) FROM prt1 t2 JOIN prt2 t3 ON (t2.a = t3.b)) ss
 			  ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
@@ -946,7 +947,7 @@ SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t
 
 -- anti join; currently we can't do partitioned join if there are no matched
 -- partitions on the nullable side
-EXPLAIN (COSTS OFF)
+EXPLAIN (COSTS OFF) -- YB: Hash Anti Join where upstream uses Hash Right Anti Join
 SELECT t1.* FROM plt2_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt1_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
 
 -- full join; currently we can't do partitioned join if there are no matched
@@ -1276,7 +1277,7 @@ ANALYZE plt3_adv;
 -- merge_list_bounds(), process_outer_partition() returns an already-assigned
 -- merged partition when re-called with plt1_adv_p1 for the second list value
 -- '0001' of that partition
-EXPLAIN (COSTS OFF)
+EXPLAIN (COSTS OFF) -- YB: Merge Joins where upstream uses Hash Joins, except the plt1_adv_p2 full join
 SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM (plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c)) FULL JOIN plt3_adv t3 ON (t1.a = t3.a AND t1.c = t3.c) WHERE coalesce(t1.a, 0) % 5 != 3 AND coalesce(t1.a, 0) % 5 != 4 ORDER BY t1.c, t1.a, t2.a, t3.a;
 SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM (plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c)) FULL JOIN plt3_adv t3 ON (t1.a = t3.a AND t1.c = t3.c) WHERE coalesce(t1.a, 0) % 5 != 3 AND coalesce(t1.a, 0) % 5 != 4 ORDER BY t1.c, t1.a, t2.a, t3.a;
 
