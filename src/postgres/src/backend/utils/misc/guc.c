@@ -3085,7 +3085,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_stats_restore_defer_catalog_version_increment", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, in per-database catalog version mode "
-						 "and with yb_ddl_transaction_block_enabled off, "
+						 "and when they run in a separate DDL transaction, "
 						 "the pg_restore_*_stats() and pg_clear_*_stats() "
 						 "statistics functions write the catalog without "
 						 "incrementing the catalog version. The caller must "

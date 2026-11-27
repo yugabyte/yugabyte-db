@@ -774,12 +774,26 @@ public class TestYsqlDump extends BasePgSQLTest {
    * Restoring a relation's statistics is a catalog-version-incrementing DDL per
    * pg_restore_*_stats() call, and a dump has one call per column.  A --include-yb-metadata
    * restore script (backup restore, clone) wraps each relation's calls in a transaction block,
-   * so with transactional DDL restoring the statistics adds one catalog version per relation.
+   * so with transactional DDL restoring the statistics adds one catalog version per relation,
+   * plus the script's final increment, which the script runs whenever the server has
+   * yb_stats_restore_defer_catalog_version_increment.
    */
   @Test
   public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionPerRelation() throws Exception {
-    assertStatisticsRestoreCatalogVersions(
-        /* useLegacyDdlMode */ false, /* includeYbMetadata */ true);
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ false,
+        /* disableGlobalObjectLocks */ false, /* includeYbMetadata */ true);
+  }
+
+  /**
+   * With transactional DDL but without global object locks, each pg_restore_*_stats() call runs
+   * in its own DDL transaction, so the server defers the increments as without transactional
+   * DDL, and restoring the statistics adds one catalog version.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnceWithoutGlobalObjectLocks()
+      throws Exception {
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ false,
+        /* disableGlobalObjectLocks */ true, /* includeYbMetadata */ true);
   }
 
   /**
@@ -791,8 +805,8 @@ public class TestYsqlDump extends BasePgSQLTest {
   @Test
   public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnceLegacyDdlMode()
       throws Exception {
-    assertStatisticsRestoreCatalogVersions(
-        /* useLegacyDdlMode */ true, /* includeYbMetadata */ true);
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ true,
+        /* disableGlobalObjectLocks */ false, /* includeYbMetadata */ true);
   }
 
   /**
@@ -802,8 +816,8 @@ public class TestYsqlDump extends BasePgSQLTest {
   @Test
   public void ysqlDumpStatisticsRestoreWithoutYbMetadataIncrementsCatalogVersionPerCall()
       throws Exception {
-    assertStatisticsRestoreCatalogVersions(
-        /* useLegacyDdlMode */ false, /* includeYbMetadata */ false);
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ false,
+        /* disableGlobalObjectLocks */ false, /* includeYbMetadata */ false);
   }
 
   /**
@@ -857,12 +871,15 @@ public class TestYsqlDump extends BasePgSQLTest {
     }
   }
 
-  private void assertStatisticsRestoreCatalogVersions(
-      boolean useLegacyDdlMode, boolean includeYbMetadata) throws Exception {
+  private void assertStatisticsRestoreCatalogVersions(boolean useLegacyDdlMode,
+      boolean disableGlobalObjectLocks, boolean includeYbMetadata) throws Exception {
     Map<String, String> masterFlags = getMasterFlags();
     Map<String, String> tserverFlags = getTServerFlags();
     toggleDDLMode(masterFlags, useLegacyDdlMode);
     toggleDDLMode(tserverFlags, useLegacyDdlMode);
+    if (disableGlobalObjectLocks) {
+      tserverFlags.put("disable_global_object_locks", "true");
+    }
     restartClusterWithFlags(masterFlags, tserverFlags);
 
     final int numTables = 3;
@@ -949,7 +966,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     assertEquals(
         String.format("catalog versions: %s", versions),
         !includeYbMetadata ? (long) numStatsCalls
-            : useLegacyDdlMode ? 1L : (long) numStatsEntries,
+            : (useLegacyDdlMode || disableGlobalObjectLocks) ? 1L : numStatsEntries + 1L,
         versions.get("stats_restored") - versions.get("stats_none"));
   }
 

@@ -810,8 +810,7 @@ COMMIT;
 -- YB: increment the catalog version once for the restored statistics
 DO $$
 BEGIN
-  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on'
-     AND current_setting('yb_ddl_transaction_block_enabled', true) IS DISTINCT FROM 'on' THEN
+  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
     PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
       (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
       false, NULL, 2147483647);
