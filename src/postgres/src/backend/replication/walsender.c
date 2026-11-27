@@ -1110,9 +1110,9 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			action = defGetString(defel);
 			lsn_type_given = true;
 
-			if (strcmp(action, "SEQUENCE") == 0)
+			if (pg_strcasecmp(action, "SEQUENCE") == 0)
 				*lsn_type = CRS_SEQUENCE;
-			else if (strcmp(action, "HYBRID_TIME") == 0)
+			else if (pg_strcasecmp(action, "HYBRID_TIME") == 0)
 				*lsn_type = CRS_HYBRID_TIME;
 			else
 				ereport(ERROR,
@@ -1134,9 +1134,9 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			action = defGetString(defel);
 			ordering_mode_given = true;
 
-			if (strcmp(action, "ROW") == 0)
+			if (pg_strcasecmp(action, "ROW") == 0)
 				*ordering_mode = YB_CRS_ROW;
-			else if (strcmp(action, "TRANSACTION") == 0)
+			else if (pg_strcasecmp(action, "TRANSACTION") == 0)
 				*ordering_mode = YB_CRS_TRANSACTION;
 			else
 				ereport(ERROR,
