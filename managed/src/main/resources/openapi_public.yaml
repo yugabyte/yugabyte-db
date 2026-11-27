@@ -665,8 +665,6 @@ paths:
         '
       tags:
       - Backup Schedule
-      requestBody:
-        $ref: '#/components/requestBodies/BackupSchedulePauseReq'
       responses:
         '200':
           $ref: '#/components/responses/BackupScheduleResp'
@@ -700,6 +698,7 @@ paths:
           sourceType: endpoint
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+      x-yba-no-request-body: true
   /customers/{cUUID}/backup-schedules/{bsUUID}/resume:
     parameters:
     - name: cUUID
@@ -6812,24 +6811,6 @@ components:
           items:
             $ref: '#/components/schemas/BackupSchedule'
           description: Backup schedules for this page.
-    BackupSchedulePauseSpec:
-      title: BackupSchedulePauseSpec
-      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2026.2.0.0 that could change.</b></p>BackupSchedulePauseSpec
-
-
-        Options for pausing a backup schedule.
-
-        '
-      type: object
-      properties:
-        reason:
-          description: Optional human-readable reason for the pause, recorded in the
-            audit log.
-          type: string
-          example: Storage bucket migration
-      x-yba-api-since: 2026.2.0.0
-      x-yba-api-visibility: preview
     BackupScheduleResumeSpec:
       title: BackupScheduleResumeSpec
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
@@ -6847,10 +6828,6 @@ components:
             due time. Omitted: the yb.backup.run_immediate_backup_on_resume runtime
             config of the universe decides.'
           type: boolean
-        reason:
-          description: Optional human-readable reason for the resume, recorded in
-            the audit log.
-          type: string
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     GflagMetadata:
@@ -15742,14 +15719,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/BackupScheduleSpec'
-      x-yba-api-since: 2026.2.0.0
-      x-yba-api-visibility: preview
-    BackupSchedulePauseReq:
-      required: false
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/BackupSchedulePauseSpec'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     BackupScheduleResumeReq:

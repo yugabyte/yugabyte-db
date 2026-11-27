@@ -883,8 +883,7 @@ public class BackupScheduleApiTest extends FakeDBApplication {
   }
 
   private BackupSchedule pause(Schedule schedule) throws ApiException {
-    return backupScheduleApi.pauseBackupSchedule(
-        customer.getUuid(), schedule.getScheduleUUID(), null);
+    return backupScheduleApi.pauseBackupSchedule(customer.getUuid(), schedule.getScheduleUUID());
   }
 
   private BackupSchedule resume(Schedule schedule, Boolean runBackupNow) throws ApiException {

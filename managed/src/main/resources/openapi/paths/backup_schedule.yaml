@@ -248,8 +248,6 @@
       here.
     tags:
       - Backup Schedule
-    requestBody:
-      $ref: "../components/requestBodies/BackupSchedulePauseReq.yaml"
     responses:
       '200':
         $ref: "../components/responses/BackupScheduleResp.yaml"
@@ -277,6 +275,7 @@
           sourceType: endpoint
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+    x-yba-no-request-body: true
 '/customers/{cUUID}/backup-schedules/{bsUUID}/resume':
   parameters:
     - name: cUUID
