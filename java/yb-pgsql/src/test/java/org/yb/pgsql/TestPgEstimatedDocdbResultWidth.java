@@ -604,27 +604,51 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
   @Test
   public void testDocdbResultWidthEstimationRecheckColumns() throws Exception {
-    /* TODO(#20956): In some cases columns with pushed down filters are returned
-     * to PG for result rechecking. This is not correctly modeled in the cost
-     * model.
+    /* An index scan requests the columns of its index conditions, to recheck the conditions, so
+     * DocDB returns them along with the columns of the select list (#20956).
      */
     try (Statement stmt = connection.createStatement()) {
 
       stmt.execute("CREATE TABLE t_20956 (i1 INT, i2 INT, PRIMARY KEY (i1 ASC))");
+      stmt.execute("CREATE INDEX t_20956_i2_idx ON t_20956 (i2 ASC) INCLUDE (i1)");
       stmt.execute("INSERT INTO t_20956 values (1, 1)");
       stmt.execute("ANALYZE t_20956");
 
-      /* Both filters on i1 are marked eligible to be pushed down as index
-       * filters so we should only receive the value of i2 for the matching rows
-       * from DocDB. Instead, only one filter on i1 is actually used as an
-       * index condition and the value of i1 is also returned to PG. The second
-       * filter is applied on PG side.
-       *
-       * Actual size of docdb result width is 10, but we estimate it to be 5.
+      /* Both conditions on i1 are index conditions. DocDB returns i1 for them and i2 for the
+       * select list.
        */
       testDocdbResultWidhEstimationHelper(stmt, "/*+IndexScan(t_20956)*/ SELECT i2 FROM t_20956 " +
           "WHERE i1 = 1 and i1 in (2, 3, 4)",
-          "t_20956", 5);
+          "t_20956", 10);
+
+      /* The same through a secondary index: i2 for the index condition, i1 for the select list. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexScan(t_20956 t_20956_i2_idx)*/ SELECT i1 FROM t_20956 WHERE i2 >= 1",
+          "t_20956", 10);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexOnlyScan(t_20956 t_20956_i2_idx)*/ SELECT i1 FROM t_20956 WHERE i2 >= 1",
+          "t_20956", 10);
+    }
+  }
+
+  @Test
+  public void testDocdbResultWidthEstimationLongStrings() throws Exception {
+    /* The statistics count a 4-byte length header for a value longer than 126 bytes, where a
+     * shorter value has a 1-byte header. DocDB sends neither: the result holds 1 byte for the
+     * null indicator, 8 bytes for the size and 1 byte for null termination, as for the shorter
+     * strings above.
+     */
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_long_strings (k INT, c CHAR(200), v VARCHAR(200), " +
+                   "PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_long_strings VALUES (1, repeat('a', 200), repeat('b', 200))");
+      stmt.execute("ANALYZE t_long_strings");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT c FROM t_long_strings", "t_long_strings", 210);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT v FROM t_long_strings", "t_long_strings", 210);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT c, v FROM t_long_strings", "t_long_strings", 420);
     }
   }
 

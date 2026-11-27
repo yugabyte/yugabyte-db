@@ -627,12 +627,11 @@ order by qid;
 -- scan, estimated as if every key of the batch had its 10 rows: 4907 rows
 -- against 1131 per batch on ce.rC.  rt_rank
 -- ranks by read_reqs (then rows_scanned), as in the 1xx section, so cost_rank
--- disagrees with it on ce.rC and on the ce.r semi and anti joins.  On the
--- ce.r inner and left joins BNL's extra request ranks it behind HJ and MJ by
--- work as well, though not by the 2.6 times its cost says, so those rows are
--- not printed; at batch size 512 the ce.r semi and anti joins agree too.  The
--- left join ranks like the inner join, as the 1xx left joins do on the unique
--- keys.
+-- disagrees with it on ce.rC and on the ce.r semi join.  On the ce.r inner,
+-- anti and left joins BNL's extra request ranks it behind HJ and MJ by work
+-- as well, though not by the 2.6 times its cost says, so those rows are not
+-- printed; at batch size 512 the ce.r semi join agrees too.  The left join
+-- ranks like the inner join, as the 1xx left joins do on the unique keys.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, total_cost, actual_rows,

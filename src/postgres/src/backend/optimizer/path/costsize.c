@@ -7178,10 +7178,10 @@ yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
  * and no local filters. Additionally, this also happens when the select
  * list contains count(*). In these cases, pathtarget->width is 0.
  *
- * One exception to the above rule is when no columns are being projected
- * but filters are used in the query which are pushed down as index
- * conditions for Index Scan. In this case also, the pathtarget->width is
- * 0, but DocDB returns the index key columns that are used in the filters.
+ * An Index Scan or Index Only Scan also requests the columns its index
+ * conditions use, to recheck the conditions (ybcBuildRequiredAttrs()), so
+ * DocDB returns them whether or not the select list or a local filter uses
+ * them.
  *
  * When columns are being projected, either in select list or in local
  * filters then these columns are returned from DocDB.
@@ -7228,9 +7228,8 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 		index_path = (IndexPath *) path;
 	}
 
-	if (is_index_path &&
-		path->pathtarget->width == 0 &&
-		list_length(local_clauses) == 0)
+	/* The columns of the index conditions, which the scan rechecks. */
+	if (is_index_path)
 	{
 		foreach(lc, index_conditions)
 		{
@@ -7241,53 +7240,50 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 									YBFirstLowInvalidAttributeNumber + 1);
 		}
 	}
-	else
+
+	/*
+	 * Collect the attributes used in each expression in the target
+	 * list.
+	 */
+
+	/*
+	 * TODO(#20955) : pathtarget->exprs may have aggregate functions
+	 * which are pushed down to DocDB. We cannot detect aggregate
+	 * pushdown during query planning at this time. So we haven't
+	 * modeled this properly here for now.
+	 *
+	 * We assume that agg functions cannot be pushed down, and all
+	 * columns used as input to these functions will need to be
+	 * transferred. This produces inaccurate results in some cases,
+	 * documented in the test TestPgEstimatedDocdbResultWidth.java in
+	 * method testDocdbResultWidthEstimationAggregateFunctions().
+	 */
+	foreach(lc, path->pathtarget->exprs)
 	{
-		/*
-		 * Collect the attributes used in each expression in the target
-		 * list.
-		 */
+		Node	   *expr = (Node *) lfirst(lc);
 
-		/*
-		 * TODO(#20955) : pathtarget->exprs may have aggregate functions
-		 * which are pushed down to DocDB. We cannot detect aggregate
-		 * pushdown during query planning at this time. So we haven't
-		 * modeled this properly here for now.
-		 *
-		 * We assume that agg functions cannot be pushed down, and all
-		 * columns used as input to these functions will need to be
-		 * transferred. This produces inaccurate results in some cases,
-		 * documented in the test TestPgEstimatedDocdbResultWidth.java in
-		 * method testDocdbResultWidthEstimationAggregateFunctions().
-		 */
-		foreach(lc, path->pathtarget->exprs)
-		{
-			Node	   *expr = (Node *) lfirst(lc);
+		pull_varattnos_min_attr(expr, baserel->relid, &attrs,
+								YBFirstLowInvalidAttributeNumber + 1);
+	}
 
-			pull_varattnos_min_attr(expr, baserel->relid, &attrs,
-									YBFirstLowInvalidAttributeNumber + 1);
-		}
+	/*
+	 * Collect the attributes used in each expression in the local
+	 * filters.
+	 */
+	foreach(lc, local_clauses)
+	{
+		Node	   *node = lfirst(lc);
+		Expr	   *local_qual = (IsA(node, RestrictInfo) ?
+								  ((RestrictInfo *) node)->clause :
+								  (Expr *) node);
 
-		/*
-		 * Collect the attributes used in each expression in the local
-		 * filters.
-		 */
-		foreach(lc, local_clauses)
-		{
-			Node	   *node = lfirst(lc);
-			Expr	   *local_qual = (IsA(node, RestrictInfo) ?
-									  ((RestrictInfo *) node)->clause :
-									  (Expr *) node);
-
-			pull_varattnos_min_attr((Node *) local_qual, baserel->relid, &attrs,
-									YBFirstLowInvalidAttributeNumber + 1);
-		}
+		pull_varattnos_min_attr((Node *) local_qual, baserel->relid, &attrs,
+								YBFirstLowInvalidAttributeNumber + 1);
 	}
 
 	/* True if the per-attribute loop below sees ybctid in its source set. */
 	bool		ybctid_in_pathtarget_or_local_clauses = false;
 
-	/* TODO(#20956): Columns needed for rechecking need to be added */
 	if (bms_num_members(attrs) > 0)
 	{
 		int			bms_index = -1;
@@ -7319,6 +7315,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 
 			Relation	baserel = table_open(baserel_oid, NoLock);
 			Form_pg_attribute att = TupleDescAttr(baserel->rd_att, attnum - 1);
+			int32		avg_width = get_attavgwidth(baserel_oid, attnum);
 
 			if (att->attlen < 0)
 			{
@@ -7327,10 +7324,20 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 				 * prefixes the value with the 8 bytes length.
 				 */
 				result_width += 8;
+
+				/*
+				 * The average width counts the varlena header, which DocDB
+				 * does not send: one byte for a value of up to
+				 * VARATT_SHORT_MAX bytes, as much as the terminator DocDB
+				 * adds to a string, and VARHDRSZ bytes for a longer value.
+				 * Take off the longer header's extra bytes.
+				 */
+				if (att->attlen == -1 && avg_width > VARATT_SHORT_MAX)
+					avg_width -= VARHDRSZ - VARHDRSZ_SHORT;
 			}
 			table_close(baserel, NoLock);
 
-			result_width += get_attavgwidth(baserel_oid, attnum);
+			result_width += avg_width;
 		}
 	}
 

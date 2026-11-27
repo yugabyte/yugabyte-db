@@ -694,42 +694,42 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 >= 4 AND k3 >= 4",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 452, 116394, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 452, 116394, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 >= 4 AND k3 = 4",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 686, 8168, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 686, 8168, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 >= 4 AND k3 IN (4, 8, 12)",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 1379, 23141, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 1379, 23141, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 = 4 AND k3 IN (4, 8, 12)",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 81, 1363, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 81, 1363, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 IN (4, 8, 12) AND k3 IN (4, 8, 12)",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 246, 4091, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 246, 4091, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 IN (4, 8, 12) AND k3 >= 4",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 82, 20547, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 82, 20547, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 IN (4, 8, 12) AND k3 = 4",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 124, 1389, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 124, 1389, 1, 0, 15);
       testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
         String.format(" SELECT k2 FROM %s "
           + "WHERE k1 = 4 AND k3 = 4",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
-        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 40, 482, 1, 0, 5);
+        T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, 40, 482, 1, 0, 15);
 
       testSeekAndNextEstimationIndexScanHelper(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 = 4",
