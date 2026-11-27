@@ -71,7 +71,7 @@ In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on target, then CREATE TABLE on source, making sure that you force the Colocation ID to be identical to that on target.
 - If you try to make a DDL change on source and it fails, you must also make the same attempt on target and get the same failure.
-- In semi-automatic, manual, and non-transactional modes, TRUNCATE TABLE is not replicated. Pause replication, truncate the table on both source and target, and resume replication. Starting in v2025.1.1, in transactional automatic mode, run TRUNCATE TABLE on the source.
+- In v2025.1.0, and in semi-automatic, manual, and non-transactional modes, TRUNCATE TABLE is not replicated. Pause replication, truncate the table on both source and target, and resume replication. Starting in v2025.1.1, in transactional automatic mode, run TRUNCATE TABLE on the source.
 
 Use the following guidance when managing tables and indexes in universes with replication configured.
 
