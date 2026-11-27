@@ -5375,8 +5375,9 @@ DeCloneArchive(ArchiveHandle *AH)
  * ybEmitStatsRestoreCatalogVersionIncrement), is one commit without an
  * increment.  Without transactional DDL, each call still commits its own DDL
  * transaction.  When the script runs without ON_ERROR_STOP, a failing
- * statistics call discards the statistics of its whole relation, not only
- * its own.
+ * statistics call discards the statistics of its whole relation with
+ * transactional DDL; without it, the calls before it stay committed, and it
+ * and the calls after it in the block are lost.
  *
  * Only plain-text output needs this.  When restoring directly to a database,
  * the entry is sent as a single request, which already runs as one implicit

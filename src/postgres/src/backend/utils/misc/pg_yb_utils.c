@@ -11600,12 +11600,15 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
  * scripts do not call them.  ysql_dump --include-yb-metadata scripts increment
  * the catalog version with no invalidation messages, which makes the backends
  * of the database refresh their whole catalog cache.  Until then, other
- * backends of the database keep the statistics they cached before the
- * restore.  Usually there are none: clone keeps its target database closed to
- * other connections, and backup restore normally creates the database it
- * restores into.  A backup restore that applies the schema to an existing
- * database (YBC with ignore_restore_errors) leaves that window open until the
- * final increment.
+ * backends of the database keep the pg_class and pg_statistic tuples they
+ * cached before the restore: they plan with the old statistics, and a DDL
+ * that rewrites a restored relation's pg_class row from its cached copy, such
+ * as ALTER TABLE, writes the old relpages, reltuples and relallvisible back
+ * over the restored ones.  Usually there are no such backends: clone keeps
+ * its target database closed to other connections, and backup restore
+ * normally creates the database it restores into.  A backup restore that
+ * applies the schema to an existing database (YBC with ignore_restore_errors)
+ * leaves that window open until the final increment.
  *
  * Only per-database catalog version mode defers: the restore script
  * increments the version of its own database.
