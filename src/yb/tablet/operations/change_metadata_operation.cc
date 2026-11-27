@@ -53,8 +53,9 @@
 #include "yb/util/trace.h"
 
 DEFINE_RUNTIME_bool(change_metadata_use_mvcc, true,
-    "Whether a tablet leader tracks change metadata operations in MVCC, so that the safe time "
-    "and the history cutoff of every replica stay below such an operation until it is applied.");
+    "Whether a tablet leader marks the change metadata operations it creates for MVCC tracking. "
+    "A replica that gets the mark keeps its safe time and history cutoff below such an operation "
+    "until it applies it.");
 
 DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  "Used in tests to ignore applying change metadata operation"
