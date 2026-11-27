@@ -15,6 +15,7 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -399,6 +400,57 @@ public class TestParseErrors extends BaseYsqlConnMgr {
            .run()
            .intValue("pid"));
     }
+  }
+
+  // Malformed Parse/Bind/Describe/Close messages get the same 08P01 error
+  // PostgreSQL raises and the session survives, inside a transaction too.
+  // A malformed Parse after a failed Parse in the same pipeline gets no second error.
+  @Test
+  public void testMalformedExtendedQueryMessages() throws Exception {
+    final String badString = "invalid string in message";
+    try (WireConn c = connect()) {
+      c.createPipeline()
+       .raw('P', ascii("s1")).expectConnMgrError("08P01", badString)
+       .sync()
+       .raw('P', new byte[0]).expectConnMgrError("08P01", badString)
+       .sync()
+       .raw('B', ascii("portal")).expectConnMgrError("08P01", badString)
+       .sync()
+       .raw('B', ascii("\0s1")).expectConnMgrError("08P01", badString)
+       .sync()
+       .raw('D', ascii("Sname")).expectConnMgrError("08P01", badString)
+       .sync()
+       .raw('D', new byte[0]).expectConnMgrError("08P01", null)
+       .sync()
+       .raw('C', ascii("Sname")).expectConnMgrError("08P01", badString)
+       .sync()
+       .raw('C', new byte[0]).expectConnMgrError("08P01", null)
+       .sync()
+       .raw('D', ascii("Xname\0"))
+           .expectConnMgrError("08P01", "invalid DESCRIBE message subtype 88")
+       .sync()
+       .raw('D', new byte[] {(byte) 0xC8, 'n', 0})
+           .expectConnMgrError("08P01", "invalid DESCRIBE message subtype 200")
+       .sync()
+       .parse(SYNTAX_ERROR_SQL).expectError("42601", "syntax error")
+       .raw('P', ascii("s1"))
+       .sync()
+       .query("SELECT 1").row("1")
+       .run();
+
+      c.createPipeline()
+       .query("BEGIN")
+       .raw('P', ascii("s1")).expectConnMgrError("08P01", badString)
+       .sync()
+       .query("SELECT 1").expectError("25P02", "current transaction is aborted")
+       .query("ROLLBACK")
+       .query("SELECT 1").row("1")
+       .run();
+    }
+  }
+
+  private static byte[] ascii(String s) {
+    return s.getBytes(StandardCharsets.US_ASCII);
   }
 
   private void createTable(String tableName) throws Exception {

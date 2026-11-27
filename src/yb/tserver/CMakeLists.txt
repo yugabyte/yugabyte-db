@@ -468,6 +468,7 @@ if (NOT APPLE)
   ADD_YB_TEST(tserver_cgroup_manager-test)
 endif()
 ADD_YB_TEST(header_manager_impl-test)
+ADD_YB_TEST(encryption_key_report-test)
 ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(clone_operation-test)
 
@@ -483,3 +484,4 @@ ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
 ADD_YB_TEST(xcluster_ddl_queue_handler-test)
 
 ADD_YB_TEST(pg_request_sequencer-test)
+ADD_YB_TEST(pg_sequence_cache-test)

@@ -1609,6 +1609,9 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testInequalitiesRangePartitioned() throws Exception {
       setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+      // getNumDocdbRequests() is cluster-wide, so the bootstrap must finish first. It runs again
+      // when the line above recreates the cluster.
+      waitForListenNotifyBootstrap();
       String query = "CREATE TABLE sample (key int, val int, primary key(key asc) ) " +
                      "SPLIT AT VALUES ((65535), (2000000000), (2100000000) )";
       try (Statement statement = connection.createStatement()) {
@@ -1668,6 +1671,9 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testINQueriesRangePartitioned() throws Exception {
       setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+      // getNumDocdbRequests() is cluster-wide, so the bootstrap must finish first. It runs again
+      // when the line above recreates the cluster.
+      waitForListenNotifyBootstrap();
 
       // Creating a table with the same schema that is created for the previous test
       // testInequalitiesRangePartitioned.

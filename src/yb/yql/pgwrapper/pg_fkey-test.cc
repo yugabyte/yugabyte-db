@@ -100,6 +100,9 @@ class PgFKeyTest : public PgMiniTestBase {
     // Tests assert for expected rpc counts from ysql which change with object locking enabled.
     ToggleDDLMode(/* use_legacy = */ true);
     PgMiniTestBase::SetUp();
+    // The tserver-wide Perform metric below would attribute the bootstrap's RPCs to the
+    // statement under test.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 

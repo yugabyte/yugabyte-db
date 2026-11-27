@@ -7,12 +7,16 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.DeltaEvaluator;
+import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import java.util.Comparator;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import play.libs.Json;
 
 /** Captures a before-to-target state transition for an in-flight universe task. */
@@ -21,7 +25,10 @@ import play.libs.Json;
 @AllArgsConstructor
 public class StateTransitionDetails {
   private boolean rollbackSafe;
-  private JsonNode delta;
+
+  // Holds the universe's sensitive gflags, such as LDAP bind passwords, in clear, so a log line
+  // that prints these details must not print it.
+  @ToString.Exclude private JsonNode delta;
 
   /**
    * Validates that this transition can be rolled back (delta present and still within the safe
@@ -64,7 +71,11 @@ public class StateTransitionDetails {
     return beforePrimary.userIntent.dedicatedNodes != targetPrimary.userIntent.dedicatedNodes;
   }
 
-  /** Reconstructs pre-task universe details from {@code delta}. */
+  /**
+   * Reconstructs pre-task universe details from {@code delta}. The delta keeps the target's cluster
+   * order, and a checkpoint written by an older build can have the primary after the read replica,
+   * so the primary is moved back to the front.
+   */
   @JsonIgnore
   public UniverseDefinitionTaskParams getBeforeUniverseDetails() {
     JsonNode beforeJson = DeltaEvaluator.generateOldValue(requireDelta());
@@ -72,7 +83,12 @@ public class StateTransitionDetails {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot roll back: generateOldValue returned null");
     }
-    return Json.fromJson(beforeJson, UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams before =
+        Json.fromJson(beforeJson, UniverseDefinitionTaskParams.class);
+    if (before.clusters != null) {
+      before.clusters.sort(Comparator.comparing(c -> c.clusterType != ClusterType.PRIMARY));
+    }
+    return before;
   }
 
   /** Reconstructs the failed task's target universe details from {@code delta}. */
@@ -87,32 +103,16 @@ public class StateTransitionDetails {
   }
 
   /**
-   * Builds restored pre-task details (edit-owned topology) while preserving lock fields owned by
-   * the current rollback task so {@code unlockUniverseForUpdate} still works, YBC fields that may
-   * have been updated by a YBC upgrade outside this edit, and {@code sequenceNumber} advanced by
-   * {@code UpdateConsistencyCheck} after freeze (must not be restored from the checkpoint).
-   *
-   * <p>Fields that other tasks write while the failed task waits are kept too: YBC throttle flags,
-   * the node agent flags and the Perf Advisor registration (PA sync can clear the collector; the
-   * endpoint is kept with it). The rolled-back tasks never write them (an edit pins its {@code
-   * ybcFlags} to the universe's on every run), so the current value is the right one.
+   * Builds restored pre-task details (edit-owned topology) while keeping the current values of the
+   * fields annotated with {@link DeltaEvaluator.DeltaRetainLatest}: the lock fields owned by the
+   * current rollback task so {@code unlockUniverseForUpdate} still works, {@code sequenceNumber}
+   * advanced by {@code UpdateConsistencyCheck} after freeze, and the fields other tasks write while
+   * the failed task waits (YBC version and throttle flags, node agent flags, Perf Advisor
+   * registration). Clusters are matched by uuid; a cluster missing in current keeps its own values.
    */
   public UniverseDefinitionTaskParams applyBeforeTo(UniverseDefinitionTaskParams current) {
     UniverseDefinitionTaskParams before = getBeforeUniverseDetails();
-    before.updateInProgress = current.updateInProgress;
-    before.updatingTask = current.updatingTask;
-    before.updatingTaskUUID = current.updatingTaskUUID;
-    before.placementModificationTaskUuid = current.placementModificationTaskUuid;
-    before.updateSucceeded = current.updateSucceeded;
-    before.setYbcSoftwareVersion(current.getYbcSoftwareVersion());
-    before.setEnableYbc(current.isEnableYbc());
-    before.setYbcInstalled(current.isYbcInstalled());
-    before.sequenceNumber = current.sequenceNumber;
-    before.installNodeAgent = current.installNodeAgent;
-    before.nodeAgentMissing = current.nodeAgentMissing;
-    before.setPaCollectorUuid(current.getPaCollectorUuid());
-    before.setPaEndpointUuid(current.getPaEndpointUuid());
-    before.copyYbcFlagsFrom(current);
+    DeltaEvaluator.mergeWithLatest(before, current, new NodeDetailsArrayComparator());
     return before;
   }
 

@@ -70,7 +70,7 @@ while attempt < max_attempts:
         cursor = cxn.cursor()
         cursor.execute("BEGIN");
 
-        # Execute transaction statments here
+        # Execute transaction statements here
 
         cursor.execute("COMMIT");
         break

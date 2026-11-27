@@ -2005,6 +2005,22 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *key-id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of *key-path* as a byte[].
 
+#### set_encryption_algorithm
+
+Sets the encryption algorithm for newly written data files. With `AES_256_CTR`, new data files use 256-bit (AES-256) data keys. Existing files keep their keys until compaction rewrites them. Encryption at rest must be enabled, and any upgrade of the cluster must be finalized.
+
+Clusters that enable encryption at rest for the first time already use `AES_256_CTR`. Use this command to [migrate a cluster](../../secure/encryption-at-rest/#migrate-an-existing-cluster-to-aes-256) that enabled encryption at rest earlier.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> set_encryption_algorithm <algorithm>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *algorithm*: `AES_256_CTR` or `AES_128_CTR`.
+
 #### disable_encryption_in_memory
 
 Disables the in-memory encryption at rest for newly-written data files.
@@ -2491,7 +2507,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *stream-ids*: Comma-separated list of stream IDs.
 * *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* `minus <interval>`: The same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [restore_snapshot_schedule](#restore-snapshot-schedule).
+* `minus <interval>`: A relative time, using the same formats as [restore_snapshot_schedule](#restore-snapshot-schedule).
 
 **Example**
 

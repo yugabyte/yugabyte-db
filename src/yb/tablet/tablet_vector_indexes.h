@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_set>
@@ -20,6 +21,8 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/hnsw/hnsw_fwd.h"
+
+#include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/rocksdb/listener.h"
 
@@ -102,8 +105,18 @@ class TabletVectorIndexes :
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
       EXCLUDES(vector_indexes_mutex_);
 
-  // Removes specified index, also destroying its data on disk.
-  Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+  // Takes the index out of the tablet and stops it, see DocVectorIndex::StartDestroy. Marks its
+  // storage as removed, see docdb::MarkRemovedVectorIndexStorage, for PrepareAddIndex. Returns the
+  // completion of the removal, which destroys the storage, in the background unless the index was
+  // skipped, see ScheduleDestroy. The caller runs it once the tablet metadata no longer lists the
+  // index; dropping it keeps the storage.
+  Result<std::function<void()>> Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+
+  // Called before the tablet metadata lists the vector index. Waits for the destroy that an earlier
+  // removal of the index scheduled, since it deletes the storage the index uses, and deletes that
+  // storage if a crash left it, see Remove. Only Raft applies remove indexes, one at a time like
+  // the caller, so none is queued after the wait.
+  Status PrepareAddIndex(const TableId& table_id, const qlexpr::IndexInfo& index_info);
 
   // Instantiates vector indexes of the given indexed table that were skipped because the indexed
   // column was missing from the schema (see DoCreateIndex), once an alter brings the column back.
@@ -170,6 +183,9 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
+
+  // Waits for the destroys of the removed indexes, see Remove.
+  void WaitPendingDestroys();
   bool ShutdownStarted() const { return !shutdown_controller_.IsRunning(); }
   // Adds finished and failed vector index backfills to the tablet status.
   void FillBackfillStatus(TabletStatusPB& tablet_status);
@@ -201,7 +217,9 @@ class TabletVectorIndexes :
       EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const override;
+
+  HybridTime MinRunningHybridTime() const override;
 
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);
@@ -244,7 +262,12 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
       REQUIRES(vector_indexes_mutex_);
 
-  void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+  void DestroySkippedIndexStorage(const TableInfoPtr& table_info);
+
+  // Destroy waits for the inserts of the index queued in the shared insert pool, e.g. a whole
+  // chunk of a backfill, so the Raft apply that removes the index does not run it, unless the pool
+  // refuses the task on tserver shutdown, see PendingDestroys::Task.
+  void ScheduleDestroy(docdb::DocVectorIndexPtr index);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexCompactionTokenProvider compaction_token_provider_;
@@ -261,6 +284,11 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   ShutdownController shutdown_controller_;
+
+  // Removed indexes not destroyed yet. Shared with the task that destroys them, which still uses it
+  // after Wait returns.
+  class PendingDestroys;
+  const std::shared_ptr<PendingDestroys> pending_destroys_;
 
   rpc::Scheduler* scheduler_ = nullptr;
   // Serializes ScheduledTaskTracker::Schedule, which aborts the pending task and overwrites its id

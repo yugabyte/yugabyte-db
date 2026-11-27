@@ -17,6 +17,7 @@
 
 #include "yb/docdb/deadline_info.h"
 
+#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
@@ -404,6 +405,13 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   thread_holder.Stop();
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_txn_get_status_delay_ms) = 0;
+
+  // ysck Checksum RPCs block an rpc worker while resolving intents via a local
+  // GetTransactionStatus queued on the same pool, so they must not take all 4 rpc workers.
+  ClusterVerifier verifier(cluster_.get());
+  verifier.SetScanConcurrency(1);
+  ASSERT_NO_FATALS(verifier.CheckCluster());
+  DontVerifyClusterBeforeNextTearDown();
 }
 
 int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
@@ -668,6 +676,63 @@ TEST_F(CqlIndexTest, ConcurrentInsert2Columns) {
 
 TEST_F(CqlIndexTest, ConcurrentUpdate2Columns) {
   TestConcurrentModify2Columns("UPDATE t SET $0 = ? WHERE key = ?");
+}
+
+// A delete that gives the hash key but no range key removes every row of the partition in one
+// write operation, which has to produce one index delete per row for each index. Primary-key-only
+// indexes are maintained by the tablet server too in this case, so one of them is checked as well.
+TEST_F(CqlIndexTest, RangeDeleteWithIndex) {
+  constexpr auto kNumRows = 16;
+  constexpr auto kNamespace = "test";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_index_table_read_write) = true;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (h INT, r INT, value INT, PRIMARY KEY ((h), r)) WITH "
+      "transactions = { 'enabled' : true }"));
+  const std::vector<std::string> indexes = {"value_idx", "pk_only_idx"};
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX value_idx ON t (value)"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX pk_only_idx ON t (r)"));
+  for (const auto& index : indexes) {
+    ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+        client::YBTableName(YQL_DATABASE_CQL, kNamespace, "t"),
+        client::YBTableName(YQL_DATABASE_CQL, kNamespace, index),
+        IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  }
+
+  // A second partition that must be left alone.
+  for (int h = 1; h <= 2; ++h) {
+    for (int r = 1; r <= kNumRows; ++r) {
+      ASSERT_OK(session.ExecuteQuery(
+          Format("INSERT INTO t (h, r, value) VALUES ($0, $1, $2)", h, r, h * 100 + r)));
+    }
+  }
+  for (const auto& index : indexes) {
+    ASSERT_EQ(
+        ASSERT_RESULT(session.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0", index))),
+        2 * kNumRows);
+  }
+
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE h = 1"));
+
+  // Exactly the rows of the other partition must remain, in the table and in both indexes.
+  auto fetch_rows = [&session](const std::string& query) -> Result<std::vector<std::string>> {
+    auto rows = StringSplit(VERIFY_RESULT(session.ExecuteAndRenderToString(query)), ';');
+    std::sort(rows.begin(), rows.end());
+    return rows;
+  };
+  // An index table lists the columns it stores in the order of the indexed table.
+  std::vector<std::string> table_rows, pk_only_idx_rows;
+  for (int r = 1; r <= kNumRows; ++r) {
+    table_rows.push_back(Format("2,$0,$1", r, 200 + r));
+    pk_only_idx_rows.push_back(Format("2,$0", r));
+  }
+  std::sort(table_rows.begin(), table_rows.end());
+  std::sort(pk_only_idx_rows.begin(), pk_only_idx_rows.end());
+  ASSERT_EQ(ASSERT_RESULT(fetch_rows("SELECT h, r, value FROM t")), table_rows);
+  ASSERT_EQ(ASSERT_RESULT(fetch_rows("SELECT * FROM value_idx")), table_rows);
+  ASSERT_EQ(ASSERT_RESULT(fetch_rows("SELECT * FROM pk_only_idx")), pk_only_idx_rows);
 }
 
 TEST_F(CqlIndexTest, SlowIndexResponse) {

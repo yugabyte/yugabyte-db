@@ -68,8 +68,9 @@ docdb::BoundedRocksDbIterator CreateFullScanIterator(
       /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse));
 }
 
-void ReleaseWaiters(const std::vector<Synchronizer*>& waiters, const Status& status) {
-  for (auto* waiter : waiters) {
+void ReleaseWaiters(
+    const std::vector<std::shared_ptr<Synchronizer>>& waiters, const Status& status) {
+  for (const auto& waiter : waiters) {
     waiter->StatusCB(status);
   }
 }
@@ -164,8 +165,12 @@ class TransactionLoader::Executor {
       current_key_.Clear();
       docdb::AppendTransactionKeyPrefix(id, &current_key_);
       if (key.empty()) { // The key only contains a transaction id - it is metadata record.
-        if (FLAGS_TEST_inject_load_transaction_delay_ms > 0) {
-          std::this_thread::sleep_for(FLAGS_TEST_inject_load_transaction_delay_ms * 1ms);
+        // Re-reads the flag, so a test can change the delay while the loader waits.
+        for (auto start = std::chrono::steady_clock::now();
+             std::chrono::steady_clock::now() <
+                 start + FLAGS_TEST_inject_load_transaction_delay_ms * 1ms;) {
+          RETURN_NOT_OK(CheckForShutdown());
+          std::this_thread::sleep_for(10ms);
         }
         RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
@@ -326,7 +331,7 @@ class TransactionLoader::Executor {
         std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
         pending_apply ? &*pending_apply : nullptr,
         HybridTime::FromPB(metadata_pb.first_write_ht()));
-    std::vector<Synchronizer*> reached;
+    std::vector<std::shared_ptr<Synchronizer>> reached;
     {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
@@ -358,10 +363,10 @@ class TransactionLoader::Executor {
            intents_iterator_.key()[current_key_.size()] !=
                dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime &&
            intents_iterator_.key().starts_with(current_key_)) {
-      // The delete-list record of a batch holds vector ids, not an intent key.
+      // The delete list record of a batch holds vector ids, not an intent key.
       // With the inverted key it sorts after the strong write intents of its batch, with the old
       // plain key before all intents of the transaction.
-      if (intents_iterator_.value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+      if (dockv::IsVectorIndexRecord(intents_iterator_.value())) {
         intents_iterator_.Prev();
         continue;
       }
@@ -461,13 +466,14 @@ void TransactionLoader::Start(
   }
 }
 
-Status TransactionLoader::WaitLoaded(const TransactionId& id) {
+Status TransactionLoader::WaitLoaded(const TransactionId& id, CoarseTimePoint deadline) {
   // ::WaitLoaded seems to executed in the following paths -
   // 1. transaction handling - add/ apply/cleanup etc
   // 2. tablet shutdown - to abort active transactions
+  // 3. ResolveIntents, from the backup, xCluster and CDCSDK RPC handlers on a leader
   //
   // It looks like state_ != TransactionLoaderState::kNotStarted would always hold true here.
-  // In case of 1, tablet open would have succeeded => loader was successfully started.
+  // In case of 1 and 3, tablet open would have succeeded => loader was successfully started.
   // In 2, we only abort transactions in TransactionParticipant::Impl::transactions_. If tablet
   // open failed before launching loader => transactions_ would be empty. Else loader would have
   // been launched => state_ != TransactionLoaderState::kNotStarted.
@@ -477,16 +483,18 @@ Status TransactionLoader::WaitLoaded(const TransactionId& id) {
   if (RSTATUS_DCHECK_RESULT(Completed())) {
     return Status::OK();
   }
-  Synchronizer synchronizer;
+  auto synchronizer = std::make_shared<Synchronizer>();
   {
     std::lock_guard lock(mutex_);
     if (state_.load(std::memory_order_acquire) != TransactionLoaderState::kLoading ||
         last_loaded_ >= id) {
       return load_status_;
     }
-    waiters_.emplace(id, &synchronizer);
+    waiters_.emplace(id, synchronizer);
   }
-  return synchronizer.Wait();
+  RETURN_NOT_OK_PREPEND(
+      synchronizer->WaitUntil(ToSteady(deadline)), "Waiting for transactions to be loaded");
+  return Status::OK();
 }
 
 Status TransactionLoader::WaitLoaded(const TransactionIdApplyOpIdMap& txns) {
@@ -500,8 +508,8 @@ Status TransactionLoader::WaitLoaded(const TransactionIdApplyOpIdMap& txns) {
   return WaitLoaded(max_txn->first);
 }
 
-Status TransactionLoader::WaitAllLoaded() {
-  return WaitLoaded(TransactionId::Max());
+Status TransactionLoader::WaitAllLoaded(CoarseTimePoint deadline) {
+  return WaitLoaded(TransactionId::Max(), deadline);
 }
 
 std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingApply(
@@ -517,6 +525,31 @@ std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingAppl
   return it->second;
 }
 
+std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::TakePendingApply(
+    const TransactionId& id) {
+  DCHECK_EQ(state_.load(std::memory_order_acquire), TransactionLoaderState::kCompleted);
+  if (pending_applies_removed_.load(std::memory_order_acquire)) {
+    return std::nullopt;
+  }
+  std::lock_guard lock(pending_applies_mtx_);
+  auto node = pending_applies_.extract(id);
+  if (!node) {
+    return std::nullopt;
+  }
+  return std::move(node.mapped());
+}
+
+void TransactionLoader::AddPendingApply(
+    const TransactionId& id, const docdb::ApplyStateWithCommitInfo& apply) {
+  LOG_IF(DFATAL, pending_applies_removed_.load(std::memory_order_acquire))
+      << "Pending apply added after pending applies were taken: " << id;
+  std::lock_guard lock(pending_applies_mtx_);
+  auto [it, inserted] = pending_applies_.try_emplace(id, apply);
+  LOG_IF(DFATAL, !inserted)
+      << "Pending apply already exists: " << id << ", existing: " << it->second.ToString()
+      << ", new: " << apply.ToString();
+}
+
 void TransactionLoader::StartShutdown() {
   std::lock_guard lock(mutex_);
   shutdown_requested_ = true;
@@ -528,11 +561,11 @@ void TransactionLoader::CompleteShutdown() {
   }
 }
 
-std::vector<Synchronizer*> TransactionLoader::ExtractReachedWaiters() {
+std::vector<std::shared_ptr<Synchronizer>> TransactionLoader::ExtractReachedWaiters() {
   const auto end = waiters_.upper_bound(last_loaded_);
-  std::vector<Synchronizer*> result;
+  std::vector<std::shared_ptr<Synchronizer>> result;
   for (auto it = waiters_.begin(); it != end; ++it) {
-    result.push_back(it->second);
+    result.push_back(std::move(it->second));
   }
   waiters_.erase(waiters_.begin(), end);
   return result;
@@ -540,13 +573,13 @@ std::vector<Synchronizer*> TransactionLoader::ExtractReachedWaiters() {
 
 void TransactionLoader::SetFinalStateAndReleaseWaiters(
     TransactionLoaderState state, const Status& status) {
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::lock_guard lock(mutex_);
     load_status_ = status;
     state_.store(state, std::memory_order_release);
-    for (const auto& [id, synchronizer] : waiters_) {
-      waiters.push_back(synchronizer);
+    for (auto& [id, synchronizer] : waiters_) {
+      waiters.push_back(std::move(synchronizer));
     }
     waiters_.clear();
   }

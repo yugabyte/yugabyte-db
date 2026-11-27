@@ -71,6 +71,10 @@ class ChangeMetadataOperation
 
   ~ChangeMetadataOperation();
 
+  // Allocates the request of an operation this replica creates as the leader, and decides whether
+  // MVCC tracks it. Hides OperationBase::AllocateRequest, so every leader-side creation decides.
+  LWChangeMetadataRequestPB* AllocateRequest(const ChangeMetadataRequestPB& source);
+
   // schema_ is set during Prepare() but can be read concurrently by ToString() (e.g. from
   // OperationTracker::WaitForAllToFinish() while the tablet is being deleted), so access it
   // atomically to avoid a data race.
@@ -114,6 +118,11 @@ class ChangeMetadataOperation
   log::Log* log() const { return log_; }
 
   log::Log* mutable_log() { return log_; }
+
+  // Followers do what the leader that created the operation decided, see AllocateRequest.
+  bool use_mvcc() const override {
+    return request()->use_mvcc();
+  }
 
   virtual std::string ToString() const override;
 

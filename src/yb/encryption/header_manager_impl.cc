@@ -138,6 +138,10 @@ class HeaderManagerImpl : public HeaderManager {
     return universe_key_manager_->IsEncryptionEnabled();
   }
 
+  Result<EncryptionAlgorithmPB> GetEncryptionAlgorithm() override {
+    return universe_key_manager_->GetEncryptionAlgorithm();
+  }
+
  private:
   Status CheckSliceCanBeDecoded(const Slice& s, uint32_t expected_length, const string& field) {
     if (s.size() < expected_length) {

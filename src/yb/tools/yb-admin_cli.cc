@@ -53,6 +53,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
@@ -1008,6 +1010,16 @@ Status list_tablets_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
           arguments.second.Test(ListTabletsFlags::JSON),
           arguments.second.Test(ListTabletsFlags::INCLUDE_FOLLOWERS)),
       Format("Unable to list tablets of table $0", table_name));
+  return Status::OK();
+}
+
+const auto get_table_tier_info_args = "<table>";
+Status get_table_tier_info_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  const auto table_name = VERIFY_RESULT(ResolveSingleTableName(client, args.begin(), args.end()));
+  RETURN_NOT_OK_PREPEND(
+      client->GetTableTierInfo(table_name),
+      Format("Unable to get storage tier info of table $0", table_name));
   return Status::OK();
 }
 
@@ -2297,6 +2309,17 @@ Status rotate_universe_key_in_memory_action(
   return Status::OK();
 }
 
+Status SetEncryptionAlgorithmAction(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  const auto algorithm = VERIFY_RESULT(encryption::ParseEncryptionAlgorithm(args[0]));
+  RETURN_NOT_OK_PREPEND(
+      client->SetEncryptionAlgorithm(algorithm), "Unable to set the encryption algorithm.");
+  return Status::OK();
+}
+
 const auto disable_encryption_in_memory_args = "";
 Status disable_encryption_in_memory_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2497,6 +2520,48 @@ Status disable_dynamic_table_addition_on_change_data_stream_action(
   string msg = Format("Failed to disable dynamic table addition on CDC stream $0", stream_id);
 
   RETURN_NOT_OK_PREPEND(client->DisableDynamicTableAdditionOnCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
+const auto set_replication_slot_catalog_barrier_args = "<replication_slot_name>";
+Status set_replication_slot_catalog_barrier_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->SetReplicationSlotCatalogBarrier(args[0]),
+      Format("Failed to set the catalog barrier of replication slot $0", args[0]));
+  return Status::OK();
+}
+
+const auto pause_replication_slot_args = "<replication_slot_name> [<timeout_secs> (default 1800)]";
+Status pause_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1 && args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  auto timeout = MonoDelta::FromMinutes(30);
+  if (args.size() == 2) {
+    const auto timeout_secs = VERIFY_RESULT(CheckedStoi(args[1]));
+    SCHECK_GT(timeout_secs, 0, InvalidArgument, "Timeout must be positive");
+    timeout = MonoDelta::FromSeconds(timeout_secs);
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->PauseReplicationSlot(args[0], timeout),
+      Format("Failed to pause replication slot $0", args[0]));
+  return Status::OK();
+}
+
+const auto release_replication_slot_args = "<replication_slot_name>";
+Status release_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->ReleaseReplicationSlot(args[0]),
+      Format("Failed to release replication slot $0", args[0]));
   return Status::OK();
 }
 
@@ -3538,6 +3603,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_tables);
   REGISTER_COMMAND(list_tables_with_db_types);
   REGISTER_COMMAND(list_tablets);
+  REGISTER_COMMAND(get_table_tier_info);
   REGISTER_COMMAND(modify_table_placement_info);
   REGISTER_COMMAND(modify_placement_info);
   REGISTER_COMMAND(clear_placement_info);
@@ -3615,6 +3681,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(add_universe_key_to_all_masters);
   REGISTER_COMMAND(all_masters_have_universe_key_in_memory);
   REGISTER_COMMAND(rotate_universe_key_in_memory);
+  Register(
+      "set_encryption_algorithm",
+      "<" + JoinStrings(encryption::EncryptionAlgorithmNames(), "|") + ">",
+      SetEncryptionAlgorithmAction);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
@@ -3630,6 +3700,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(get_change_data_stream_info);
   REGISTER_COMMAND(prepare_replication_slots_for_transactional_ddl);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
+  REGISTER_COMMAND(set_replication_slot_catalog_barrier);
+  REGISTER_COMMAND(pause_replication_slot);
+  REGISTER_COMMAND(release_replication_slot);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
   REGISTER_COMMAND(cleanup_stale_cdc_streams);

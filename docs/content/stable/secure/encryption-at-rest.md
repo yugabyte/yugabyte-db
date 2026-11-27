@@ -22,6 +22,10 @@ type: docs
 
 You can enable and disable encryption at rest in a YugabyteDB cluster with a self-generated key.
 
+YugabyteDB uses two layers of keys. Each data file (SST file or WAL segment) is encrypted with its own randomly generated data key, using AES in CTR mode. The data key is stored in the file header, encrypted with the cluster-wide _universe key_ that you supply. The strength of the universe key depends on the length of the key file you generate, as described in the following section.
+
+The data key size is recorded when encryption at rest is enabled for the first time. Clusters that enable encryption at rest for the first time use 256-bit (AES-256) data keys. Clusters that enabled it earlier keep 128-bit (AES-128) data keys, including after an upgrade, until you [migrate them to AES-256](#migrate-an-existing-cluster-to-aes-256).
+
 Note that encryption can be applied at the following levels:
 
 - At the database layer, in which case the encryption process and its associated capabilities, such as key rotation, are cluster-wide.
@@ -35,13 +39,13 @@ Note that encryption can be applied at the following levels:
 
 You enable encryption as follows:
 
-1. Generate the universe key data of length 32, 40, or 48 by executing the following command on your local file system:
+1. Generate a 48-byte universe key by executing the following command on your local file system:
 
     ```sh
-    openssl rand -out /path/to/universe_key [ 32 | 40 | 48 ]
+    openssl rand -out /path/to/universe_key 48
     ```
 
-    Note that larger keys are more secure with slightly worse performance.
+    The first 16 bytes of the key file are used as the nonce and counter, and the rest is the AES key. A 48-byte file is therefore an AES-256 key. Key files of 32 and 40 bytes are also accepted, and give AES-128 and AES-192 respectively.
 
 1. Copy the key to master nodes. In the following example, assume a 3-node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip2:7100,ip3:7100`. Choose any string `<key_id>` for this key and use yb-admin to copy the key to each of the masters:
 
@@ -84,7 +88,7 @@ You can rotate the new key as follows:
 1. Create the key to be rotated by executing the following command:
 
     ```sh
-    openssl rand -out /path_to_universe_key_2 [ 32 | 40 | 48 ]
+    openssl rand -out /path_to_universe_key_2 48
     ```
 
     Make sure to use a different key path to avoid overwriting the previous key file.
@@ -104,7 +108,7 @@ You can rotate the new key as follows:
     yb-admin --master_addresses $MASTER_ADDRESSES rotate_universe_key_in_memory <key_id_2>
     ```
 
-    The new universe key encrypts new data. Existing files stay under the previous universe key until compaction rewrites them. There is no indicator of how much data is still under an earlier universe key. Keep every rotated universe key; the cluster needs it to read that data.
+    The new universe key encrypts new data. Existing files stay under the previous universe key until compaction rewrites them. The [encryption key report](#migrate-an-existing-cluster-to-aes-256) on each YB-TServer shows how many files are still under each universe key. Keep every rotated universe key; the cluster needs it to read that data.
 
 1. Verify the new key. To do this, check that the new key is encrypting the cluster, as follows:
 
@@ -119,6 +123,46 @@ You can rotate the new key as follows:
     ```
 
     `<key_id_2>` must be different from the previous `<key_id>`.
+
+## Migrate an existing cluster to AES-256
+
+Clusters that enabled encryption at rest before AES-256 became the default, or with a 32-byte universe key, have data protected by 128-bit keys. They remain supported. You can move such a cluster to AES-256 in place, without downtime, as follows. If you are upgrading the cluster, finalize the upgrade first.
+
+1. Rotate to a 48-byte universe key by following the steps in [Rotate new key](#rotate-new-key).
+
+1. Switch new data files to 256-bit data keys:
+
+    ```sh
+    yb-admin --master_addresses $MASTER_ADDRESSES set_encryption_algorithm AES_256_CTR
+    ```
+
+    YB-TServers pick up the change on their next heartbeat to the YB-Master leader.
+
+1. Perform a rolling restart of the YB-TServers, one node at a time.
+
+    The restart is not needed for the new key size: after the previous step, new data files, including those written by compaction, already use 256-bit keys. It is needed for each tablet's RocksDB `MANIFEST` file, which records the key range of every data file. A tablet keeps appending to the same `MANIFEST`, under the key it was created with, until the tablet is reopened, so without a restart the `MANIFEST` stays on its 128-bit key after every data file has been rewritten.
+
+1. Rewrite existing data by running a full compaction of every table, including indexes. For example:
+
+    ```sh
+    yb-admin --master_addresses $MASTER_ADDRESSES compact_table ysql.yugabyte table_name 3600
+    ```
+
+    Compaction rewrites every data file under the new keys. Because it is the first change to each tablet's file list since the restart, it also makes RocksDB write a new `MANIFEST` and `CURRENT` file under the new keys. Restarting alone does not replace them, so compact after the restart, not before. Compaction adds disk I/O and CPU load, so compact one table at a time during a low-traffic period.
+
+1. Account for files that compaction does not rewrite:
+
+    - Snapshots, including those taken by [snapshot schedules](../../manage/backup-restore/point-in-time-recovery/), keep the files they reference until the snapshot is deleted or expires.
+    - WAL segments retained for xCluster replication, CDC, or WAL retention settings keep their keys until they are garbage-collected.
+    - Each tablet's RocksDB `IDENTITY` file, which holds only a randomly generated identifier, is never rewritten.
+
+1. Verify the result on each YB-TServer:
+
+    ```sh
+    curl "http://<tserver-host>:9000/api/v1/encryption-key-report?list_aes128_files"
+    ```
+
+    The report groups the files on the node by category (`Data`, `Wal`, `Snapshot`, `Metadata`), file type, data key size (`data_key_bits`), and the universe key that encrypts the data key (`universe_key_id`, `universe_key_bits`). `aes128_files` is the number of files still protected by a 128-bit key; with `list_aes128_files`, the report also lists their paths, up to 1000, and sets `aes128_paths_truncated` if there are more. `unreadable_files` counts files whose header could not be read, and `undecodable_files` counts encrypted files whose universe key is missing from the cluster, so their key sizes are unknown. Migration is complete when both are 0 and only the files described in the previous step remain on 128-bit keys. The report reads the header of every file on the node, so avoid running it frequently on nodes with many files.
 
 ## Disable encryption
 

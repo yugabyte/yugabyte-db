@@ -7918,6 +7918,29 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		if (!rawEnt->missingMode)
 			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+
+		/*
+		 * YB: Existing rows of a YB table come from DocDB, which never sees
+		 * attmissingval.  If PG stored a missing value but
+		 * YBCPrepareAlterTableCmd did not give DocDB one, those rows would
+		 * read NULL for the new column, and the NOT NULL check below would
+		 * be skipped.  Fill them by rewriting the table instead.  This only
+		 * guards against the PG and YB missing-value decisions drifting
+		 * apart.  If yb_enable_alter_table_rewrite is off, ATRewriteTables
+		 * fails the ALTER instead, which is still better than NULL rows.
+		 *
+		 * It does not apply when yb_enable_add_column_missing_default is off.
+		 * That AutoFlag is held back during an upgrade until external peers
+		 * such as xCluster targets have upgraded, and ADD COLUMN must keep its
+		 * legacy, rewrite-free behavior then.  In that mode existing rows
+		 * still read NULL for the new column, even if it is NOT NULL; see
+		 * #38681.
+		 */
+		if (IsYBRelation(rel) && yb_enable_add_column_missing_default &&
+			TupleDescAttr(rel->rd_att, attribute.attnum - 1)->atthasmissing &&
+			!YbAddColumnUsesDocdbMissingValue((Expr *) build_column_default(rel,
+																		  attribute.attnum)))
+			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
 	}
 
 	/*
@@ -13056,7 +13079,8 @@ validateForeignKeyConstraint(char *conname,
 	 * of a child row that the check passed and leave that child orphaned.
 	 */
 	if ((!IsYBRelation(rel) ||
-		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
+		 (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		  yb_enable_batchednl)) &&
 		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
@@ -16476,10 +16500,23 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	/* Get the orig and new tablespace OIDs */
 	orig_tablespaceoid = get_tablespace_oid(stmt->orig_tablespacename, false);
 	new_tablespaceoid = get_tablespace_oid(stmt->new_tablespacename, false);
-	yb_orig_tablegroup_name = get_implicit_tablegroup_name(orig_tablespaceoid);
+
+yb_lookup_tablegroups:
 	yb_new_tablegroup_name = get_implicit_tablegroup_name(new_tablespaceoid);
-	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
-	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
+	/* YB: Found by tablespace, since the name need not be colocation_<oid>. */
+	if (MyDatabaseColocated)
+	{
+		/* Relations with no tablespace are in the default tablegroup. */
+		if (orig_tablespaceoid == MyDatabaseTableSpace)
+			yb_orig_tablegroup_oid =
+				get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
+		else
+			shdepFindImplicitTablegroup(orig_tablespaceoid,
+										&yb_orig_tablegroup_oid);
+		shdepFindImplicitTablegroup(new_tablespaceoid,
+									&yb_new_tablegroup_oid);
+	}
+	yb_orig_tablegroup_name = get_tablegroup_name(yb_orig_tablegroup_oid);
 	/*
 	 * YB: If a relation name is passed with the ALTER TABLE ALL ... COLOCATED
 	 * WITH ... SET TABLESPACE ... CASCADE command then we get the relation
@@ -16507,6 +16544,22 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 				 errmsg("cannot move colocated relations to tablespace %s,"
 						" as it contains existing colocated relation",
 						stmt->new_tablespacename)));
+
+	/* YB: A move renames the tablegroup, and the default is found by name. */
+	if (MyDatabaseColocated && yb_orig_tablegroup_name != NULL &&
+		strcmp(yb_orig_tablegroup_name, DEFAULT_TABLEGROUP_NAME) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move the default tablegroup"
+						" to another tablespace")));
+
+	/* YB: The tablegroup would have to become or join the default one. */
+	if (MyDatabaseColocated && OidIsValid(yb_orig_tablegroup_oid) &&
+		new_tablespaceoid == MyDatabaseTableSpace)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move colocated relations to the database"
+						" default tablespace")));
 
 	/*
 	 * YB: If CASCADE is not specified and the original tablespace contains
@@ -16558,6 +16611,16 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(new_tablespaceoid));
 	}
+
+	/*
+	 * YB: The checks passed, so lock the tablegroup that moves and the
+	 * tablespace it moves to. If that took a lock, look up and check again.
+	 */
+	if (yb_cascade && MyDatabaseColocated &&
+		OidIsValid(yb_orig_tablegroup_oid) &&
+		YbLockImplicitTablegroupForMove(yb_orig_tablegroup_oid,
+										new_tablespaceoid))
+		goto yb_lookup_tablegroups;
 
 	/*
 	 * Now that the checks are done, check if we should set either to
@@ -20554,7 +20617,7 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 		/* commit the transaction and start new txn with the same ddl state. */
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate();
+			YbCommitTransactionCommandIntermediateExtended(false /* block_ddl_concurrency_in_db */ );
 		else
 		{
 			/* Make updated catalog entry visible */
@@ -20575,6 +20638,10 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		SET_LOCKTAG_RELATION(tag, MyDatabaseId, parentrelid);
 		WaitForLockersMultiple(list_make1(&tag), AccessExclusiveLock, false);
+
+		/* YB: Take the database DDL lock only after the wait. */
+		if (IsYugaByteEnabled() && YBCPgIsDdlMode())
+			YbLockDatabaseToBlockDdlConcurrency(YBGetCurrentDdlMode());
 
 		/*
 		 * Now acquire locks in both relations again.  Note they may have been

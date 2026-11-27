@@ -14,6 +14,8 @@
 #include "yb/tablet/tablet_vector_indexes.h"
 
 #include <algorithm>
+#include <condition_variable>
+#include <deque>
 #include <functional>
 
 #include "yb/common/read_hybrid_time.h"
@@ -26,6 +28,7 @@
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/doc_key.h"
@@ -45,6 +48,7 @@
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/vector_index_checker.h"
 
 #include "yb/util/operation_counter.h"
@@ -104,8 +108,8 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
  public:
   Status Init(
       const Tablet& tablet, const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) {
-    // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
-    // all callers handle errors from the underlying iterator gracefully.
+    // Using non-blocking operation to avoid deadlock during shutdown. A compaction that gets
+    // TryAgain here fails the index, so compactions must not start while operations are paused.
     rocksdb_op_ = tablet.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
@@ -270,6 +274,123 @@ bool TEST_vector_index_force_parent_data_not_compacted = false;
 // explicit Tablet::TriggerPostSplitCompactionIfNeeded() to compact the indexes.
 bool TEST_skip_vector_index_post_split_compaction = false;
 
+class TabletVectorIndexes::PendingDestroys
+    : public std::enable_shared_from_this<PendingDestroys> {
+ public:
+  explicit PendingDestroys(Env& env) : env_(env) {}
+
+  // Queues the index, and schedules Process on the pool unless a task is processing the queue.
+  void Add(
+      docdb::DocVectorIndexPtr index, rpc::ThreadPool& thread_pool, const std::string& log_prefix)
+      EXCLUDES(mutex_);
+
+  // Waits until Process empties the queue.
+  void Wait() EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
+    WaitOnConditionVariable(&cond_, &lock, [this]() NO_THREAD_SAFETY_ANALYSIS {
+      return !processing_;
+    });
+  }
+
+  // Waits until no index of this table is queued.
+  void WaitDestroyed(const TableId& table_id) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
+    WaitOnConditionVariable(&cond_, &lock, [this, &table_id]() NO_THREAD_SAFETY_ANALYSIS {
+      return std::ranges::none_of(queue_, [&table_id](const auto& entry) {
+        return entry.table_id == table_id;
+      });
+    });
+  }
+
+ private:
+  class Task;
+
+  struct Entry {
+    explicit Entry(docdb::DocVectorIndexPtr vector_index)
+        : table_id(vector_index->table_id()), index(std::move(vector_index)) {}
+
+    TableId table_id;
+    // Null while Process destroys the index.
+    docdb::DocVectorIndexPtr index;
+  };
+
+  // Destroys the queued indexes until the queue is empty.
+  void Process(const std::string& log_prefix) EXCLUDES(mutex_) {
+    for (;;) {
+      docdb::DocVectorIndexPtr index;
+      {
+        std::lock_guard lock(mutex_);
+        if (queue_.empty()) {
+          processing_ = false;
+          break;
+        }
+        // Leaves the entry, with its table id, queued until the index is destroyed, so that
+        // WaitDestroyed sees that the index of the table is being destroyed.
+        index = std::move(queue_.front().index);
+      }
+      auto status = index->Destroy();
+      if (status.ok()) {
+        // Destroy leaves the removal mark.
+        status = docdb::DeleteVectorIndexStorage(env_, index->path());
+      }
+      // The tserver deletes the storage on startup, see DeleteUnlistedVectorIndexStorages.
+      LOG_IF(WARNING, !status.ok())
+          << log_prefix << "Failed to destroy vector index " << index->table_id() << ": " << status;
+      // Before the pop, since the index refers to the tablet. Outside the lock, since its
+      // destructor frees the in-memory chunks.
+      index.reset();
+      {
+        std::lock_guard lock(mutex_);
+        queue_.pop_front();
+      }
+      cond_.notify_all();
+    }
+    cond_.notify_all();
+  }
+
+  Env& env_;
+  std::mutex mutex_;
+  std::condition_variable cond_;
+  std::deque<Entry> queue_ GUARDED_BY(mutex_);
+  // Process is scheduled or running.
+  bool processing_ GUARDED_BY(mutex_) = false;
+};
+
+// The pool also calls Done of a task it refuses or drops on shutdown, without running it. Done runs
+// Process then, or Wait would never return.
+class TabletVectorIndexes::PendingDestroys::Task : public rpc::ThreadPoolTask {
+ public:
+  Task(std::shared_ptr<PendingDestroys> pending_destroys, std::string log_prefix)
+      : pending_destroys_(std::move(pending_destroys)), log_prefix_(std::move(log_prefix)) {}
+
+ private:
+  void Run() override {
+    pending_destroys_->Process(log_prefix_);
+  }
+
+  void Done(const Status& status) override {
+    if (!status.ok()) {
+      pending_destroys_->Process(log_prefix_);
+    }
+    delete this;
+  }
+
+  const std::shared_ptr<PendingDestroys> pending_destroys_;
+  const std::string log_prefix_;
+};
+
+void TabletVectorIndexes::PendingDestroys::Add(
+    docdb::DocVectorIndexPtr index, rpc::ThreadPool& thread_pool, const std::string& log_prefix) {
+  {
+    std::lock_guard lock(mutex_);
+    queue_.emplace_back(std::move(index));
+    if (std::exchange(processing_, true)) {
+      return;
+    }
+  }
+  thread_pool.Enqueue(new Task(shared_from_this(), log_prefix));
+}
+
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
     const VectorIndexThreadPoolProvider& thread_pool_provider,
@@ -281,7 +402,8 @@ TabletVectorIndexes::TabletVectorIndexes(
       compaction_token_provider_(compaction_token_provider),
       block_cache_(block_cache),
       mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())),
-      metric_registry_(metric_registry) {
+      metric_registry_(metric_registry),
+      pending_destroys_(std::make_shared<PendingDestroys>(env())) {
 }
 
 Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
@@ -349,6 +471,22 @@ Status TabletVectorIndexes::CreateSkippedIndexes(
     RETURN_NOT_OK(DoCreateIndex(*table_info, indexed_table, bootstrap));
   }
   return Status::OK();
+}
+
+Status TabletVectorIndexes::PrepareAddIndex(
+    const TableId& table_id, const qlexpr::IndexInfo& index_info) {
+  TEST_SYNC_POINT("TabletVectorIndexes::PrepareAddIndex");
+  pending_destroys_->WaitDestroyed(table_id);
+  auto storage_dir = metadata().vector_index_dir(index_info.vector_idx_options());
+  if (!docdb::IsVectorIndexStorageMarkedRemoved(env(), storage_dir)) {
+    return Status::OK();
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Deleting the storage the removal of vector index " << table_id << " left at "
+      << storage_dir;
+  // Fails the apply on an error, since the index must not use this storage. The replay after the
+  // restart retries.
+  return docdb::DeleteVectorIndexStorage(env(), storage_dir);
 }
 
 // TODO(vector_index): Can insert in front of existing indexes and so shift their positions, which
@@ -1106,12 +1244,19 @@ void TabletVectorIndexes::StartShutdown() {
   }
 }
 
+void TabletVectorIndexes::WaitPendingDestroys() {
+  pending_destroys_->Wait();
+}
+
 void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) {
   auto scope = shutdown_controller_.CompleteShutdown();
   if (!scope) {
     LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
     return;
   }
+
+  // A destroy uses the tablet and its DBs, and a restore can bring the storage of its index back.
+  pending_destroys_->Wait();
 
   docdb::DocVectorIndexesPtr list;
   {
@@ -1414,11 +1559,11 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
   return nullptr;
 }
 
-Status TabletVectorIndexes::Remove(const TableId& table_id) {
+Result<std::function<void()>> TabletVectorIndexes::Remove(const TableId& table_id) {
   VLOG_WITH_FUNC(2) << "table_id: " << table_id;
   docdb::DocVectorIndexPtr index;
   // Not an early return: has_vector_indexes_ stays false when the only vector index of the tablet
-  // was skipped, whose storage still has to be destroyed below.
+  // was skipped, whose storage still has to be destroyed.
   if (has_vector_indexes_.load()) {
     UniqueLock lock(vector_indexes_mutex_);
     auto it = vector_indexes_map_.find(table_id);
@@ -1429,34 +1574,54 @@ Status TabletVectorIndexes::Remove(const TableId& table_id) {
       vector_indexes_map_.erase(it);
     }
   }
-  if (!index) {
-    DestroySkippedIndexStorage(table_id);
-    return Status::OK();
+  if (index) {
+    RETURN_NOT_OK(docdb::MarkRemovedVectorIndexStorage(env(), index->path()));
+    index->StartDestroy();
+    // The tablet shutdown stops only the listed indexes.
+    return [this, index = std::move(index)]() mutable { ScheduleDestroy(std::move(index)); };
   }
-  return index->Destroy();
+  // Looked up now: the caller removes the table from the metadata before completing the removal.
+  auto table_info = metadata().GetTableInfo(table_id);
+  if (table_info.ok() && (*table_info)->NeedVectorIndex()) {
+    auto storage_dir =
+        metadata().vector_index_dir((*table_info)->index_info->vector_idx_options());
+    if (env().DirExists(storage_dir)) {
+      // Unlike the deletion, not best effort: without the mark, a replayed re-add of the index
+      // would use this storage.
+      RETURN_NOT_OK(docdb::MarkRemovedVectorIndexStorage(env(), storage_dir));
+    }
+  }
+  return [this, info = table_info.ok() ? *table_info : nullptr] {
+    DestroySkippedIndexStorage(info);
+  };
 }
 
-void TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
+void TabletVectorIndexes::DestroySkippedIndexStorage(const TableInfoPtr& table_info) {
   // An index skipped by DoCreateIndex (its column missing from the schema) can still have storage
-  // on disk, e.g. written before a PITR restore removed the column. The caller erases the table
-  // from the metadata next, and DeleteTabletData only cleans up indexes still listed there
-  // (#35063).
-  auto table_info = metadata().GetTableInfo(table_id);
-  if (!table_info.ok() || !(*table_info)->NeedVectorIndex()) {
+  // on disk, e.g. written before a PITR restore removed the column. DeleteTabletData only cleans up
+  // indexes still listed in the metadata (#35063).
+  if (!table_info || !table_info->NeedVectorIndex()) {
     return;
   }
-  auto storage_dir = metadata().vector_index_dir((*table_info)->index_info->vector_idx_options());
-  if (!env().FileExists(storage_dir)) {
-    return;
+  auto storage_dir = metadata().vector_index_dir(table_info->index_info->vector_idx_options());
+  if (env().DirExists(storage_dir)) {
+    LOG_WITH_PREFIX(INFO)
+        << "Destroying storage of not instantiated vector index " << table_info->table_id
+        << " at " << storage_dir;
   }
-  LOG_WITH_PREFIX(INFO)
-      << "Destroying storage of not instantiated vector index " << table_id << " at "
-      << storage_dir;
   // Leak the directory rather than fail the apply, which would fail the tablet.
-  auto status = env().DeleteRecursively(storage_dir);
+  auto status = docdb::DeleteVectorIndexStorage(env(), storage_dir);
   LOG_IF_WITH_PREFIX(WARNING, !status.ok())
-      << "Failed to destroy storage of vector index " << table_id << " at " << storage_dir << ": "
-      << status;
+      << "Failed to destroy storage of vector index " << table_info->table_id << " at "
+      << storage_dir << ": " << status;
+}
+
+void TabletVectorIndexes::ScheduleDestroy(docdb::DocVectorIndexPtr index) {
+  // Not the insert pool, whose queued tasks Destroy waits for. In this one, Destroy waits only for
+  // a running obsolete file removal.
+  pending_destroys_->Add(
+      std::move(index), *thread_pool_provider_(VectorIndexThreadPoolType::kBackground),
+      LogPrefix());
 }
 
 Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
@@ -1471,6 +1636,34 @@ Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
     vector_index = it->second;
   }
   return CheckVectorIndex(tablet(), *vector_index, max_inconsistencies, deadline);
+}
+
+HybridTime TabletVectorIndexes::MinRunningHybridTime() const {
+  auto* participant = tablet().transaction_participant();
+  if (!participant) {
+    return HybridTime::kMax;
+  }
+
+  // The participant does not track the transactions replicated to an xCluster target. Such a
+  // transaction is applied from its external intents when its apply record arrives, and they are
+  // deleted after the regular DB write of the apply, so the iterator created after this check
+  // sees the records of the transactions whose external intents are gone. The external intents
+  // of a transaction aborted on the source are kept for at least external_intent_cleanup_secs,
+  // until an intents DB compaction removes them.
+  auto has_external_intents = tablet().HasExternalIntents();
+  if (!has_external_intents.ok()) {
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !has_external_intents.status().IsShutdownInProgress())
+        << "Failed to look for external intents: " << has_external_intents.status();
+    return HybridTime::kMin;
+  }
+
+  if (*has_external_intents) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "External intents present";
+    return HybridTime::kMin;
+  }
+
+  // Invalid until the transactions are loaded, any of them could be applied later.
+  return participant->MinRunningHybridTime().GetValueOr(HybridTime::kMin);
 }
 
 Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(

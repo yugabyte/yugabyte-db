@@ -507,7 +507,7 @@ class TabletRetentionPolicyTest : public TabletTestBase<StringKeyTestSetup> {
   std::unique_ptr<TabletRetentionPolicy> NewPolicy() {
     return std::make_unique<TabletRetentionPolicy>(
         hybrid_clock_, [this](RaftGroupMetadata*) { return allowed_cutoff_; },
-        tablet()->metadata());
+        tablet()->metadata(), /*is_transactional_xcluster_target_provider=*/nullptr);
   }
 
   void Allow(HybridTime primary) {

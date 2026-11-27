@@ -277,7 +277,7 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
@@ -2880,9 +2880,9 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     // are present in the stream metadata's replica identity map.
     // - If the tablet is sys catalog, we check the replica identities of only tables
     // 'pg_publication_rel', 'pg_class', 'pg_replication_origin', 'pg_publication' and, when
-    // ysql_yb_enable_replication_slot_transactional_ddl is enabled, 'pg_attribute' and
-    // 'pg_publication_rel_prpubid_index' residing in it. If before image is active for any such
-    // tables then we should return true.
+    // ysql_yb_enable_replication_slot_transactional_ddl is enabled, 'pg_attribute', 'pg_namespace'
+    // and 'pg_publication_rel_prpubid_index' residing in it. If before image is active for any
+    // such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
       bool replica_identity_found_for_any_table = false;
@@ -3264,6 +3264,14 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
   }
 }
 
+Status CDCServiceImpl::ReleaseSysCatalogRetentionBarriers() {
+  TabletCDCCheckpointInfo checkpoint_info;
+  checkpoint_info.cdc_sdk_op_id = OpId::Max();
+  return UpdateTabletPeerWithCheckpoint(
+      master::kSysCatalogTabletId, &checkpoint_info, false /* enable_update_local_peer_min_index */,
+      false /* ignore_rpc_failures */);
+}
+
 Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
     bool enable_update_local_peer_min_index, bool ignore_rpc_failures,
@@ -3526,6 +3534,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       UpdateMetrics();
       time_since_update_metrics = MonoTime::Now();
     }
+    // Fires on each iteration while CDC is enabled, so a test can wait out a pass that began before
+    // it disabled metrics.
+    TEST_SYNC_POINT_CALLBACK("UpdatePeersAndMetrics::AfterUpdateMetrics", this);
 
     const auto& update_peers_interval = MonoDelta::FromSeconds(get_update_peers_interval_());
     if (!FLAGS_enable_log_retention_by_op_idx ||
@@ -3775,7 +3786,8 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // 2. Logical replication streams which don't poll sys_catalog tablet.
     // 3. gRPC streams (which never poll sys_catalog tablet)
     // Streams of type 2 and 3 won't have stream_metadata.GetDetectPublicationChangesImplicitly()
-    // set to true.
+    // set to true. A type 2 stream being converted to type 1 also has a sys_catalog entry, holding
+    // its catalog barrier.
 
     const bool is_logical_replication_stream = stream_metadata.IsLogicalReplicationStream();
     // To update the restart time of a gRPC stream entry, we need to track min(cdc_sdk_safe_time)
@@ -3820,8 +3832,8 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
       continue;
     }
 
-    // sys_catalog tablet-stream entry which occurs only for 'Type 1' streams. Collect WAL, intent
-    // barriers and active_time.
+    // sys_catalog tablet-stream entry, of a 'Type 1' stream or a 'Type 2' stream being converted.
+    // Collect WAL, intent barriers and active_time.
     if (entry.key.tablet_id == master::kSysCatalogTabletId && entry.checkpoint.has_value() &&
         *entry.checkpoint != OpId::Invalid()) {
       int64_t last_active_time = static_cast<int64_t>(*entry.active_time);
@@ -4948,9 +4960,10 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   std::vector<TableId> table_ids;
   auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid));
-    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelPrpubidIndexOid));
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids.push_back(GetPgsqlTableId(pg_database_oid, table_oid));
+    }
   }
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));

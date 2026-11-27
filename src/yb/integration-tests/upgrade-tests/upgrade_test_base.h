@@ -112,6 +112,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   uint32 UpgradeCompatibilityGucValue(MajorUpgradeCompatibilityType type) const;
   bool IsYsqlMajorVersionUpgrade() const { return is_ysql_major_version_upgrade_; }
 
+  // Tests that cannot connect to YSQL after the upgrade set this to false.
+  bool wait_for_listen_notify_bootstrap_ = true;
+
  private:
   const BuildInfo old_version_info_;
   VersionInfoPB current_version_info_;

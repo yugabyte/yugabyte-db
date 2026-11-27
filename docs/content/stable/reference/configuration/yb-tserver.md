@@ -470,7 +470,9 @@ Enables advanced folding of multiple conditions on the same index column when bi
 
 For example, when an IN array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of fetching the full array and discarding rows after DocDB returns them.
 
-Available in v2026.1.0.0 and later. In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
+Available in v2026.1.0.0 and later.
+
+In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
 
 ##### yb_enable_cbo
 
@@ -715,7 +717,9 @@ Default: `on`
 
 Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
 
-Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+Available in v2026.1.2 and later.
+
+Any user can change this setting; superuser privileges are not required. You cannot set it to a value with `SET` after the first query of a transaction has run, or in a function's `SET` clause. `RESET` and `SET ... TO DEFAULT` are accepted at any time; a change made after the transaction has started using the optimization takes effect from the next transaction.
 
 Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
 
@@ -1426,7 +1430,7 @@ Available in v2026.1 and later.
 
 When set to `true`, modifications to a publication are reflected implicitly in logical replication streams, providing PostgreSQL-like semantics for dynamic tables.
 
-When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the bahavior in versions earlier than v2026.1.)
+When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the behavior in versions earlier than v2026.1.)
 
 For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
@@ -1642,7 +1646,7 @@ For tables with a `default_time_to_live` table property, sets a size threshold a
 
 Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
 
-If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accomodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
+If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accommodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
 
 ##### --sst_files_soft_limit
 

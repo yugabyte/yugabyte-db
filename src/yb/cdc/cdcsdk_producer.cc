@@ -105,15 +105,30 @@ DEFINE_RUNTIME_bool(cdc_send_null_before_image_if_not_exists,
                     false,
                     "When this flag is set to true, GetChanges will return a null before image if "
                     "it is not able to find one.");
+
 DEFINE_NON_RUNTIME_bool(cdc_enable_intra_transactional_before_image,
-                        false,
+                        true,
                         "If 'true', before image is populated for the intra-transactional DMLs.");
+
+DEFINE_RUNTIME_bool(cdc_process_change_metadata_op_below_request_safe_time, true,
+                    "If 'true', GetChanges processes a CHANGE_METADATA_OP at or below the request "
+                    "safe time, but above the consistent snapshot time, instead of skipping it as "
+                    "already streamed. Such an op can still be uncommitted when an earlier "
+                    "response's safe time passes it, and skipping it leaves a stale cached "
+                    "schema.");
 
 DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "If 'true', CDC streaming will filter out intents from aborted "
                     "subtransactions (rolled-back savepoints). This prevents CDC consumers "
                     "from receiving data that was never actually committed. This flag is only "
                     "used for YSQL tables.");
+
+DEFINE_RUNTIME_bool(cdc_reload_schema_after_txn_schema_change, true,
+                    "When this flag is set to true, GetChanges will reload the schema of a table "
+                    "after streaming a transaction whose records were decoded with a schema other "
+                    "than the one at its commit, so that the records streamed after the "
+                    "transaction use the current schema. Only takes effect when "
+                    "ysql_yb_enable_replication_slot_transactional_ddl is true.");
 
 DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
                  "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
@@ -122,7 +137,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -133,6 +148,88 @@ using dockv::SchemaPackingStorage;
 
 namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
+
+// Tracks the schema version of the last decoded intent for every table while decoding a batch of
+// transaction's intents. Also tracks whether its schema was loaded during the transaction so that
+// cached schema details are checked against the schema at commit post this transaction.
+class IntentSchemaState {
+ public:
+  explicit IntentSchemaState(SchemaDetailsMap* cached_schema_details)
+      : cached_schema_details_(cached_schema_details),
+        enabled_(
+            FLAGS_cdc_reload_schema_after_txn_schema_change &&
+            FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto& [table_id, details] : *cached_schema_details_) {
+      tables_.emplace(table_id, TableState{details.schema_version, details.loaded_in_txn});
+    }
+  }
+
+  // Marks the table's cached schema as loaded in the transaction when the table had no cached
+  // schema before the batch, or when the version differs from the one decoded before it. A table
+  // whose cached schema predates the batch and keeps its version stays unmarked, so a transaction
+  // that doesn't change the schema needs no lookup at its commit. A marked table is marked again on
+  // every call, since a schema erased and reloaded at the same version comes back unmarked.
+  void MarkIfLoadedInTxn(const TableId& table_id, SchemaVersion version) {
+    auto [it, inserted] = tables_.try_emplace(
+        table_id, TableState{.version = version, .loaded_in_txn = true});
+    auto& state = it->second;
+    if (state.version != version) {
+      state = TableState{.version = version, .loaded_in_txn = true};
+    }
+    if (!enabled_ || !state.loaded_in_txn) {
+      return;
+    }
+    auto cached = cached_schema_details_->find(table_id);
+    if (cached != cached_schema_details_->end()) {
+      cached->second.loaded_in_txn = true;
+    }
+  }
+
+ private:
+  struct TableState {
+    SchemaVersion version;
+    bool loaded_in_txn;
+  };
+
+  SchemaDetailsMap* const cached_schema_details_;
+  const bool enabled_;
+  std::unordered_map<TableId, TableState> tables_;
+};
+
+// Erases each cached schema loaded while decoding a transaction's intents whose version differs
+// from the table's schema at the transaction's commit. The next record then reloads the schema and
+// sends a DDL record for it. If the schema at commit can't be read, the tablet's current schema
+// version stands in for it, as in GetOrPopulateRequiredSchemaDetails: the tablet has already
+// applied the transaction's schema changes.
+void EraseSchemasLoadedInTxn(
+    client::YBClient* client, const tablet::RaftGroupMetadata& tablet_metadata,
+    HybridTime commit_time, SchemaDetailsMap* cached_schema_details) {
+  for (auto it = cached_schema_details->begin(); it != cached_schema_details->end();) {
+    auto& [table_id, details] = *it;
+    if (!details.loaded_in_txn) {
+      ++it;
+      continue;
+    }
+    details.loaded_in_txn = false;
+    SchemaVersion commit_version;
+    auto commit_schema = client->GetTableSchemaFromSysCatalog(table_id, commit_time.ToUint64());
+    if (commit_schema.ok()) {
+      commit_version = commit_schema->second;
+    } else {
+      commit_version = tablet_metadata.schema_version(table_id);
+      LOG(WARNING) << "Failed to get the schema of table " << table_id << " at commit time "
+                   << commit_time << ", using the tablet's schema version " << commit_version
+                   << ": " << commit_schema.status();
+    }
+    if (commit_version != details.schema_version) {
+      VLOG(1) << "Erasing cached schema version " << details.schema_version << " of table "
+              << table_id << ", its schema version at commit is " << commit_version;
+      it = cached_schema_details->erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 
 Result<bool> IsPackedRowUpdate(const dockv::ValueEntryType value_type, Slice value_slice) {
   if (value_type != dockv::ValueEntryType::kPackedRowV2) {
@@ -671,7 +768,7 @@ Result<size_t> DoPopulatePackedRows(
     auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
         col.marked_for_deletion()) {
       continue;
     }
@@ -782,6 +879,24 @@ void FillDDLInfo(
   throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
+// Whether the table's latest DDL record in the response already has this schema version. A cache
+// entry can be dropped and reloaded with the same version for each row, e.g. when the sys catalog
+// at the row's hybrid time is ahead of the row's packing.
+// Compare against the response, not the cache: the cache can hold a version whose DDL record was
+// never sent, e.g. after a CHANGE_METADATA_OP that only marks columns for deletion, or after the
+// CacheMissError retry, which clears the response but keeps the cache.
+bool IsLastDDLRecordInResponse(
+    const GetChangesResponsePB& resp, const TableId& table_id, SchemaVersion schema_version) {
+  const auto& records = resp.cdc_sdk_proto_records();
+  for (auto it = records.rbegin(); it != records.rend(); ++it) {
+    const auto& row_message = it->row_message();
+    if (row_message.op() == RowMessage_Op_DDL && row_message.table_id() == table_id) {
+      return row_message.schema_version() == schema_version;
+    }
+  }
+  return false;
+}
+
 Result<TableName> GetColocatedTableName(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& req_table_id) {
   for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
@@ -842,7 +957,9 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
+    if (!IsLastDDLRecordInResponse(*resp, cur_table_id, schema_details.schema_version)) {
+      FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
+    }
 
     return schema_details;
   }
@@ -942,7 +1059,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     auto it = cached_schema_details->find(table_id);
     if (it != cached_schema_details->end() &&
         (resolve_schema_packing_from_sys_catalog ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           it->second.schema_version != pr_schema_version))) {
       (*cached_schema_details).erase(it);
     }
@@ -1098,6 +1215,7 @@ Status PopulateCDCSDKIntentRecord(
   dockv::SubDocKey prev_decoded_key;
   std::unordered_set<std::string> null_value_columns;
   bool is_packed_row_record = false;
+  IntentSchemaState intent_schema_state(cached_schema_details);
 
   for (size_t i = 0; i < intents.size(); i++) {
     const docdb::IntentKeyValueForCDC& intent = intents[i];
@@ -1127,6 +1245,7 @@ Status PopulateCDCSDKIntentRecord(
           tablet_peer, tablet->metadata()->table_id(), intent.intent_ht.hybrid_time().ToUint64(),
           cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
           client, resp, throughput_metrics));
+      intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
 
       record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
       table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(table_id));
@@ -1211,6 +1330,7 @@ Status PopulateCDCSDKIntentRecord(
             tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(), cached_schema_details,
             schema_packing_storage, IsPackedRow(value_type), value_slice, client, resp,
             throughput_metrics));
+        intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
 
         table_name = table_info->table_name;
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
@@ -1305,11 +1425,12 @@ Status PopulateCDCSDKIntentRecord(
 
         if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId) {
           auto column = schema.column_by_id(column_id_opt->GetColumnId());
-          if (!column.ok() && FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+          if (!column.ok() && FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
               IsColumnIdNotFound(column.status())) {
             std::tie(schema_version, schema) = VERIFY_RESULT(ReloadSchemaAtIntentTime(
                 tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(),
                 cached_schema_details, client, resp, throughput_metrics));
+            intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
             column = schema.column_by_id(column_id_opt->GetColumnId());
           }
           const ColumnSchema& col = VERIFY_RESULT(std::move(column));
@@ -1903,7 +2024,7 @@ void FillBeginRecord(
   }
   // The walsender's catalog reads within the transaction need it to skip the intents of
   // subtransactions rolled back to a savepoint.
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
       request_source == CDCSDKRequestSource::WALSENDER && !aborted.IsEmpty()) {
     aborted.ToPB(row_message->mutable_aborted_subtxns()->mutable_set());
   }
@@ -2000,6 +2121,10 @@ Status ProcessIntents(
         enum_oid_label_map, composite_atts_map, request_source, cached_schema_details,
         schema_packing_storages, resp, consumption, &write_id, &reverse_index_key, commit_time,
         client, end_of_transaction, throughput_metrics));
+  }
+
+  if (end_of_transaction && FLAGS_cdc_reload_schema_after_txn_schema_change) {
+    EraseSchemasLoadedInTxn(client, *tablet->metadata(), commit_time, cached_schema_details);
   }
 
   if (end_of_transaction) {
@@ -2265,6 +2390,7 @@ Status GetConsistentWALRecords(
           *last_seen_op_id, *consistent_safe_time, deadline, /* fetch_single_entry */ false,
           &last_readable_opid_index));
     }
+    TEST_SYNC_POINT_CALLBACK("GetConsistentWALRecords::AfterReadOps", &read_ops);
 
     if (read_ops.read_from_disk_size && mem_tracker) {
       (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
@@ -2896,15 +3022,15 @@ Status GetChangesForCDCSDK(
 
     have_more_messages = HaveMoreMessages(true);
 
-    if (wal_records.empty()) {
-      RSTATUS_DCHECK(
-          wait_for_wal_update, IllegalState,
-          Format(
-            "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
-            OpId::FromPB(from_op_id),
-            tablet_id,
-            stream_id));
+    RSTATUS_DCHECK(
+        !wal_records.empty() || wait_for_wal_update, IllegalState,
+        Format(
+          "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
+          OpId::FromPB(from_op_id),
+          tablet_id,
+          stream_id));
 
+    if (wait_for_wal_update) {
       VLOG(1) << "Returning empty response while resuming partial txn."
               << " tablet_id: " << tablet_id << ", stream_id: " << stream_id
               << ", from_op_id: " << OpId::FromPB(from_op_id)
@@ -3081,15 +3207,22 @@ Status GetChangesForCDCSDK(
         // In case of a connector failure we may get a wal_segment_index that is obsolete.
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
-        // safe_hybrid_time_req.
+        // safe_hybrid_time_req, and CHANGE_METADATA_OP messages above the consistent snapshot time
+        // (all of them if the stream has no consistent snapshot time): one without use_mvcc is not
+        // MVCC-tracked, so a previous response's safe time can pass it before it is committed.
+        // Skipping it would leave a stale schema in cached_schema_details. Processing one again
+        // only resends its DDL record.
         uint64_t commit_time_threshold =
             GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
+        const auto commit_time = GetTransactionCommitTime(msg);
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
-        VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
+        VLOG(3) << "Txn commit time       = " << commit_time;
 
-        if (FLAGS_cdc_enable_consistent_records &&
-            GetTransactionCommitTime(msg) <= commit_time_threshold &&
-            msg->op_type() != yb::consensus::OperationType::SPLIT_OP) {
+        if (FLAGS_cdc_enable_consistent_records && commit_time <= commit_time_threshold &&
+            msg->op_type() != yb::consensus::OperationType::SPLIT_OP &&
+            (msg->op_type() != yb::consensus::OperationType::CHANGE_METADATA_OP ||
+             !FLAGS_cdc_process_change_metadata_op_below_request_safe_time ||
+             (consistent_snapshot_time && commit_time <= *consistent_snapshot_time))) {
           VLOG_WITH_FUNC(2)
               << "Received a message in wal_segment with commit_time <= request safe time."
                  " Will ignore this message. consistent_stream_safe_time: "

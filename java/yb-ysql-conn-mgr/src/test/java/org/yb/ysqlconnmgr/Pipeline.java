@@ -64,6 +64,7 @@ import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
  * sync()                                 S      Z
  * query(sql)                             Q      (T? D* C | I)+ Z
  * functionCall(oid)                      F      V Z
+ * raw(type, body)                        type   E (needs an expectError)
  * copyData(s) / copyDone() / copyFail()  d c f  nothing / C / E
  * </pre>
  *
@@ -95,7 +96,7 @@ public class Pipeline {
 
   private enum Kind {
     PARSE, BIND, DESCRIBE, EXECUTE, CLOSE, SYNC, QUERY, FUNCTION_CALL, COPY_DATA, COPY_DONE,
-    COPY_FAIL, PAUSE
+    COPY_FAIL, PAUSE, RAW
   }
 
   private enum CopyOverride { NONE, COPY_IN, COPY_OUT, IGNORED }
@@ -238,6 +239,11 @@ public class Pipeline {
     return this;
   }
 
+  public Pipeline raw(char type, byte[] body) {
+    return add(Kind.RAW, "raw(" + type + ")", "raw(" + type + ")",
+        bytes(() -> PgWireProtocol.buildRaw(type, body)));
+  }
+
   // ---- Building: COPY -------------------------------------------------------
 
   public Pipeline copyData(String data) {
@@ -357,6 +363,11 @@ public class Pipeline {
   // ---- Running --------------------------------------------------------------
 
   public PipelineResult run() throws Exception {
+    for (Step step : steps) {
+      if (step.kind == Kind.RAW && !step.skipped && !step.expectsError) {
+        throw new IllegalStateException(step.call + " needs an expectError");
+      }
+    }
     LOG.info("sent   {}", sentNotation());
     LOG.info("expect {}", expectedNotation());
 
@@ -816,6 +827,7 @@ public class Pipeline {
       case DESCRIBE:
       case EXECUTE:
       case CLOSE:
+      case RAW:
         return true;
       default:
         return false;

@@ -39,6 +39,10 @@ Before running an upgrade, execute the following command to obtain the latest ve
 helm repo update
 ```
 
+Starting with v2025.2.9.0, the PostgreSQL database bundled with YugabyteDB Anywhere is upgraded from version 14 to version 18. The upgrade runs automatically during the Helm upgrade, using the standard PostgreSQL major version upgrade (`pg_upgrade`) in an init container, and no action is required.
+
+For [OpenShift installations](../../install-yugabyte-platform/install-software/openshift/) that use the `yugaware-openshift` Helm chart, starting with v2025.2.9.1, the bundled PostgreSQL database is upgraded from version 13 to version 18. The migration runs automatically in place during the Helm upgrade, and no action is required.
+
 ## Upgrade using Helm
 
 To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:

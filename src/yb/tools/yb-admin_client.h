@@ -60,6 +60,8 @@
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_fwd.h"
@@ -195,6 +197,10 @@ class ClusterAdminClient {
                      int max_tablets,
                      bool json,
                      bool followers);
+
+  // Tiered storage: where every replica of this table sits relative to its target tier, as the
+  // master last heard from the tablet servers.
+  Status GetTableTierInfo(const client::YBTableName& table_name);
 
   // Per Tablet list of all tablet servers
   Status ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -436,6 +442,8 @@ class ClusterAdminClient {
 
   Status RotateUniverseKeyInMemory(const std::string& key_id);
 
+  Status SetEncryptionAlgorithm(encryption::EncryptionAlgorithmPB algorithm);
+
   Status DisableEncryptionInMemory();
 
   Status WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
@@ -466,6 +474,12 @@ class ClusterAdminClient {
   Status InvalidateCDCStreamMetadataCaches();
 
   Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
+
+  Status SetReplicationSlotCatalogBarrier(const std::string& slot_name);
+
+  Status PauseReplicationSlot(const std::string& slot_name, MonoDelta timeout);
+
+  Status ReleaseReplicationSlot(const std::string& slot_name);
 
   Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);
 

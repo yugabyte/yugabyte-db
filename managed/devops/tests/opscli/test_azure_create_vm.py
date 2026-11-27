@@ -11,6 +11,7 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from azure.core.exceptions import HttpResponseError
 from azure.mgmt.compute.models import DiskCreateOption
 import azure.mgmt.compute.models as compute_models
 from msrest.serialization import Serializer
@@ -38,6 +39,17 @@ def as_vm(data_disks):
         disks.append(disk)
     vm.storage_profile.data_disks = disks
     return vm
+
+
+def azure_error(code, message):
+    error = HttpResponseError(message="({}) {}".format(code, message))
+    error.error = MagicMock()
+    error.error.code = code
+    return error
+
+
+LOCKED = azure_error(
+    "OperationNotAllowed", "Disk is being attached to VM, therefore operation is not allowed.")
 
 
 class TestAzureCreateVm(TestCase):
@@ -214,3 +226,123 @@ class TestAzureCreateVm(TestCase):
             self.assertEqual("Attach", data_disk["createOption"])
             self.assertEqual(
                 "/disks/{}".format(self.DISK_NAMES[lun]), data_disk["managedDisk"]["id"])
+
+
+class TestAzureDestroyInstance(TestCase):
+    """Covers the disks of a failed VM, which Azure keeps locked for a while after the VM delete."""
+
+    VM_NAME = "yb-test-n1"
+    DISK_NAMES = ["yb-test-n1-Disk-1", "yb-test-n1-Disk-2"]
+    OS_DISK = "yb-test-n1-os"
+
+    def setUp(self):
+        patcher = patch.multiple(
+            azure_utils,
+            get_credentials=MagicMock(),
+            ComputeManagementClient=MagicMock(),
+            NetworkManagementClient=MagicMock())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        sleep = patch.object(azure_utils.time, "sleep")
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+
+        self.admin = AzureCloudAdmin({})
+        self.compute = MagicMock()
+        self.network = MagicMock()
+        self.admin.compute_client = self.compute
+        self.admin.network_client = self.network
+        self.admin.is_public_ip_assigned = MagicMock(return_value=False)
+
+        vm = as_vm([{"lun": i, "name": name} for i, name in enumerate(self.DISK_NAMES)])
+        vm.storage_profile.os_disk.name = self.OS_DISK
+        self.compute.virtual_machines.get.return_value = vm
+
+        self.events = []
+        self.compute.virtual_machines.begin_delete.side_effect = \
+            lambda *args: self.events.append("vm") or MagicMock()
+        self.network.network_interfaces.begin_delete.side_effect = \
+            lambda *args: self.events.append("nic") or MagicMock()
+
+    def fail_disk_deletes(self, errors_per_disk, on_wait=False):
+        """Each disk delete raises the listed errors in turn, then succeeds."""
+        attempts = {}
+
+        def begin_delete(resource_group, disk_name):
+            self.events.append(disk_name)
+            attempt = attempts.get(disk_name, 0)
+            attempts[disk_name] = attempt + 1
+            errors = errors_per_disk.get(disk_name, [])
+            error = errors[attempt] if attempt < len(errors) else None
+            poller = MagicMock()
+            if error is not None and not on_wait:
+                raise error
+            if error is not None:
+                poller.wait.side_effect = error
+            return poller
+
+        self.compute.disks.begin_delete.side_effect = begin_delete
+        return attempts
+
+    def destroy(self):
+        self.admin.destroy_instance(self.VM_NAME, "node-1")
+
+    def test_disks_locked_after_vm_delete_are_retried(self):
+        attempts = self.fail_disk_deletes({self.DISK_NAMES[0]: [LOCKED, LOCKED]})
+
+        self.destroy()
+
+        self.assertEqual("vm", self.events[0])
+        self.assertEqual(3, attempts[self.DISK_NAMES[0]])
+        self.assertEqual(1, attempts[self.DISK_NAMES[1]])
+        self.assertEqual(1, attempts[self.OS_DISK])
+        self.assertEqual(2, self.sleep.call_count)
+        # The NIC goes last, once the disks are released.
+        self.assertEqual("nic", self.events[-1])
+
+    def test_lock_reported_by_wait_is_retried(self):
+        attempts = self.fail_disk_deletes({self.DISK_NAMES[1]: [LOCKED]}, on_wait=True)
+
+        self.destroy()
+
+        self.assertEqual(2, attempts[self.DISK_NAMES[1]])
+        self.assertEqual(1, self.sleep.call_count)
+
+    def test_disk_not_found_counts_as_deleted(self):
+        attempts = self.fail_disk_deletes(
+            {self.DISK_NAMES[0]: [azure_error("ResourceNotFound", "Disk not found.")]})
+
+        self.destroy()
+
+        self.assertEqual(1, attempts[self.DISK_NAMES[0]])
+        self.assertEqual(0, self.sleep.call_count)
+
+    def test_other_disk_errors_are_raised_without_retry(self):
+        error = azure_error("AuthorizationFailed", "Not allowed.")
+        attempts = self.fail_disk_deletes({self.DISK_NAMES[0]: [error]})
+
+        with self.assertRaises(HttpResponseError):
+            self.destroy()
+
+        self.assertEqual(1, attempts[self.DISK_NAMES[0]])
+        self.assertEqual(0, self.sleep.call_count)
+
+    def test_disk_still_locked_after_all_attempts_is_raised(self):
+        attempts = self.fail_disk_deletes({self.DISK_NAMES[0]: [LOCKED] * 20})
+
+        with self.assertRaises(HttpResponseError):
+            self.destroy()
+
+        self.assertEqual(10, attempts[self.DISK_NAMES[0]])
+        self.assertEqual(9, self.sleep.call_count)
+        self.assertNotIn("nic", self.events)
+
+    def test_vm_without_os_disk_is_destroyed(self):
+        # A VM whose allocation failed (e.g. ZonalAllocationFailed) never got an OS disk.
+        self.compute.virtual_machines.get.return_value.storage_profile.os_disk.name = None
+        attempts = self.fail_disk_deletes({self.DISK_NAMES[0]: [LOCKED]})
+
+        self.destroy()
+
+        self.assertEqual({self.DISK_NAMES[0]: 2, self.DISK_NAMES[1]: 1}, attempts)
+        self.assertEqual("nic", self.events[-1])

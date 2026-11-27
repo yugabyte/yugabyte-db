@@ -38,6 +38,7 @@ class YsqlMajorUpgradeTest : public YsqlMajorUpgradeTestBase {
   constexpr static auto kYugabyte = "yugabyte";
   constexpr static auto kPostgres = "postgres";
   constexpr static auto kSystemPlatform = "system_platform";
+  constexpr static auto kYbSystem = "yb_system";
 
   // Stops the tserver running on the yb-master leader node.
   // The tserver must be restarted before the test completes for it to succeed the shutdown in the
@@ -170,6 +171,27 @@ TEST_F(YsqlMajorUpgradeTest, SimpleTableRollback) {
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 #endif
+}
+
+// The catalog upgrade connects as yugabyte and replays each role's stored, pre-hashed password:
+// yugabyte's is its own change, app_user's is not. Binary upgrade must load both even when the
+// masters give that session a password reuse window, and both are recorded in the history.
+TEST_F(YsqlMajorUpgradeTest, PrehashedPasswordWithReuseWindow) {
+  ASSERT_OK(ExecuteStatements(
+      {"ALTER ROLE yugabyte PASSWORD 'yb_pw_one'",
+       "CREATE ROLE app_user LOGIN PASSWORD 'app_pw_one'"}));
+  for (auto* master : cluster_->master_daemons()) {
+    master->AddExtraFlag("ysql_pg_conf_csv", "yb_password_reuse_history=3");
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<std::string>(
+                "SELECT pwdhstrole::regrole::text FROM pg_yb_password_history "
+                "WHERE pwdhstrole IN ('yugabyte'::regrole, 'app_user'::regrole) ORDER BY 1")),
+            (std::vector<std::string>{"app_user", "yugabyte"}));
 }
 
 TEST_F(YsqlMajorUpgradeTest, BackslashD) {
@@ -515,7 +537,7 @@ TEST_F(YsqlMajorUpgradeTest, YB_RELEASE_ONLY_TEST(MultipleDatabases)) {
                                    const std::optional<size_t> ts_id, const int count) {
     int db_number = 0;
     for (const auto& [db_name, db_info] : dbs) {
-      if (db_name.starts_with("template"))
+      if (db_name.starts_with("template") || db_name == kYbSystem)
         continue;
 
       auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, ts_id));
@@ -583,6 +605,9 @@ TEST_F(YsqlMajorUpgradeTest, YB_RELEASE_ONLY_TEST(MultipleDatabases)) {
   ASSERT_NO_FATALS(add_row_check_rows(db_map, kMixedModeTserverPg15, ++inserted_row_count));
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // The bootstrap is suppressed during the upgrade, so yb_system appears only at finalize.
+  db_map[kYbSystem] = DbInfo();
 
   ASSERT_NO_FATALS(check_dbs(kAnyTserver));
 
@@ -1177,6 +1202,7 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
 TEST_F(YsqlMajorUpgradeTestWithAuth, NoYugabyteUserPassword) {
   ASSERT_OK(ExecuteStatement("ALTER USER yugabyte WITH PASSWORD NULL"));
   ASSERT_NOK_STR_CONTAINS(cluster_->ConnectToDB(), "password authentication failed");
+  wait_for_listen_notify_bootstrap_ = false;
 
   // We should still be able to upgrade the cluster.
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));

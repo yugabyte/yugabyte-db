@@ -142,7 +142,8 @@ DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_replication_slot_transactional_ddl, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_transactional_ddl,
+    kLocalPersisted, false, true,
     "When set, logical replication with transactional DDL support is enabled.");
 
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
@@ -236,23 +237,40 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     kEnableObjectLockingForTableLocks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
-    "implement pg table locks.");
+    "implement pg table locks. Before turning this off on a running cluster, turn "
+    "disable_global_object_locks on with a rolling restart: once no node takes global object "
+    "locks, every CREATE INDEX waits for all backends to reach its catalog version instead of "
+    "waiting for lock holders.");
+DEFINE_NON_RUNTIME_bool(disable_global_object_locks, false,
+    "When true, transactions on this node take no global object locks, and each DDL runs in a "
+    "separate transaction. Locks up to ROW EXCLUSIVE, which reads and writes take, still go to "
+    "the local object lock manager, so a DDL on another node that takes global object locks "
+    "waits for them. Stronger locks and session locks take no object lock.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
-    "DEPRECATED: no-op. Use ysql_yb_enable_object_locking_infra.");
-// Gates the new mode for DDLs/DMLs: transactional DDL, object locking for table locks, and
-// concurrent DDL. While it is false, a transaction runs in legacy mode, as if those features
-// were off.
+    "DEPRECATED: no-op. Use ysql_yb_enable_global_object_locking_infra.");
+// Gates global object locking and what depends on it: DDL-strength and session object locks,
+// transactional DDL, and concurrent DDL. A transaction latches it at start. While it is false, or
+// while disable_global_object_locks is true, the transaction runs without global object locking:
+// its DDLs run in separate DDL transactions and take no object locks, and its requests keep the
+// tablets' catalog version check. With enable_object_locking_for_table_locks true, it still takes
+// the object locks of its reads and writes (up to ROW EXCLUSIVE) locally, so that DDLs with global
+// object locks wait for it (#36572, #37355).
 //
 // Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote. As an AutoFlag
-// that starts unpromoted on upgrade, it keeps every transaction in legacy mode until finalize,
-// i.e. until all nodes run the new binary. So the mixed-mode handling only has to deal with new
-// mode and legacy mode transactions that both come from new binaries. This assumes the pre-upgrade
-// cluster has the features off. If they are on, upgraded tservers drop back to legacy mode until
-// finalize, while the not-yet-upgraded ones keep using the features.
-DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_object_locking_infra, kLocalPersisted, false, true,
-    "Auto flag that controls whether table-level object locking can be safely enabled "
-    "during upgrade. Both this flag and enable_object_locking_for_table_locks "
-    "must be true to enable the feature.");
+// that starts unpromoted on upgrade, it keeps every transaction without global object locking
+// until finalize, i.e. until all nodes run the new binary. So the mixed-mode handling only has to
+// deal with transactions with and without global object locking that both come from new binaries.
+// This assumes the pre-upgrade cluster has the features off. If they are on, upgraded tservers run
+// without global object locking until finalize, while the not-yet-upgraded ones keep using the
+// features.
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_global_object_locking_infra, kLocalPersisted, false,
+    true,
+    "Auto flag that gates global object locking during upgrade. With this flag and "
+    "enable_object_locking_for_table_locks both true, and disable_global_object_locks false, a "
+    "transaction runs with global object locking: DDL-strength object locks, transactional DDL "
+    "and concurrent DDL. Otherwise, with enable_object_locking_for_table_locks true, it takes "
+    "the object locks of its reads and writes (up to ROW EXCLUSIVE) locally, and with it false it "
+    "takes no object locks.");
 
 DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
     kEnableObjectLockingForTableLocks,
@@ -274,19 +292,20 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
-    "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
-    "support.] Use this flag to toggle support for concurrent DDLs.");
-DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+    "Takes effect only when enable_object_locking_for_table_locks is true and "
+    "disable_global_object_locks is false. When true, DDLs on unrelated objects run "
+    "concurrently, and object locks order DDLs on related objects. When false, the DDLs in a "
+    "database that increment the catalog version run one at a time, even on unrelated objects. "
+    "DDLs that do not increment the catalog version and ANALYZEs from the auto-analyze service "
+    "do not wait. A DDL that increments the catalog version of every database, such as one that "
+    "changes a shared catalog, waits only for the DDLs in the database it runs in. Set the same "
+    "value on every tserver: a DDL on a tserver where it is true does not wait.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(
@@ -427,7 +446,8 @@ DEFINE_RUNTIME_int32(db_history_retention_pin_min_txn_age_sec, 300,
     "value must be less than timestamp_history_retention_interval_sec to prevent "
     "snapshot too old errors.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_listen_notify, kLocalPersisted, false, true,
+    "Enable YSQL LISTEN/NOTIFY.");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notify_queue_max_pages, 0,
     "When positive, artificially limits the NOTIFY queue to this many pages for testing.");
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,

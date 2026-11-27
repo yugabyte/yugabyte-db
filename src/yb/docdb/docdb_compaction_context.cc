@@ -59,6 +59,12 @@ DEFINE_RUNTIME_bool(docdb_keep_unmerged_column_tombstones_over_packed_row, true,
     "old behavior of garbage-collecting such tombstones, which resurrects deleted column "
     "values.");
 
+DEFINE_RUNTIME_uint32(xcluster_colocated_missing_schema_rows_retention_sec, 24 * 3600,
+    "On an xCluster target, compaction keeps rows of a colocated table with no schema until they "
+    "are this many seconds below the history cutoff. The target gets an index's backfill rows "
+    "before it runs the CREATE INDEX, so set this above the longest expected backfill. "
+    "0 disables.");
+
 METRIC_DEFINE_counter(tablet, docdb_column_tombstones_kept_unmerged,
     "Unmerged Column Tombstones Kept over Packed Row",
     yb::MetricUnit::kKeys,
@@ -180,11 +186,15 @@ class PackedRowData {
   }
 
   bool active_coprefix_missing_schema_has_table_tombstone() const {
-    return active_coprefix_missing_schema_has_table_tombstone_;
+    return !active_coprefix_missing_schema_table_tombstone_ht_.is_min();
   }
 
-  void set_active_coprefix_missing_schema_has_table_tombstone() {
-    active_coprefix_missing_schema_has_table_tombstone_ = true;
+  const EncodedDocHybridTime& active_coprefix_missing_schema_table_tombstone_ht() const {
+    return active_coprefix_missing_schema_table_tombstone_ht_;
+  }
+
+  void set_active_coprefix_missing_schema_table_tombstone(const EncodedDocHybridTime& doc_ht) {
+    active_coprefix_missing_schema_table_tombstone_ht_.MakeAtLeast(doc_ht);
   }
 
   bool can_start_packing() const {
@@ -564,7 +574,7 @@ class PackedRowData {
     }
     RETURN_NOT_OK(Flush());
 
-    active_coprefix_missing_schema_has_table_tombstone_ = false;
+    active_coprefix_missing_schema_table_tombstone_ht_ = DocHybridTime::EncodedMin();
 
     auto packing = GetCompactionSchemaInfo(coprefix);
     if (!packing.ok()) {
@@ -628,10 +638,11 @@ class PackedRowData {
   // True if the active coprefix is for a table that does not exist.
   bool active_coprefix_missing_schema_ = false;
 
-  // True if a table-level tombstone has been seen for the current missing-schema coprefix.
-  // When set, row-level tombstones for this coprefix are redundant and can be dropped.
+  // Newest table-level tombstone kept for the current missing-schema coprefix, min if none.
+  // When there is one, row-level tombstones for this coprefix are redundant and can be dropped.
   // Otherwise, we keep the row-level tombstones to not reveal older data for this coprefix.
-  bool active_coprefix_missing_schema_has_table_tombstone_ = false;
+  EncodedDocHybridTime active_coprefix_missing_schema_table_tombstone_ht_ =
+      DocHybridTime::EncodedMin();
 
   CompactionSchemaInfo new_packing_;
   std::optional<dockv::RowPackerVariant> packer_;
@@ -766,15 +777,26 @@ class VectorMetadataFilter {
     const auto& entry = VERIFY_RESULT_REF(iterator()->Fetch());
 
     // Make sure extracted entry matches the specified key.
-    if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
-      // Single tombstone with no vector_id -> ybctid mapping left in the tablet: safe to drop
-      // as the mapping pair has been already dropped somewhere in the past, otherwise it should
-      // have been found by the Seek() above.
+    if (!entry || !entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
+      // No mapping entry for the tombstone. Either it was already removed, e.g. by an earlier
+      // iteration of this post-split compaction, or the transaction which wrote the vector is
+      // committed but not applied yet and writes the entry at apply time, below the tombstone.
+      // That transaction started before the tombstone was written and counts as running until it
+      // is applied, so min running is not newer than its start: a tombstone which is not older
+      // than min running is kept, and is removed later by a regular compaction. On an xCluster
+      // target, min running is kMin while the tablet holds external intents of such a transaction.
+      // On a non-transactional target, a regular compaction can remove the tombstone before
+      // the apply, see GH #38648.
+      EncodedDocHybridTime encoded_doc_ht;
+      RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
+      const auto keep = encoded_doc_ht >= encoded_min_running_ht_;
       VLOG_WITH_FUNC(2)
-          << "Discarding orphaned vector index reverse mapping tombstone"
+          << (keep ? "Keeping" : "Discarding")
+          << " vector index reverse mapping tombstone without mapping entry"
           << ", expected: " << key.Prefix(dockv::kEncodedDocVectorKeyStaticSize).ToDebugHexString()
-          << ", located: " << entry.key.ToDebugHexString();
-      return rocksdb::FilterDecision::kDiscard;
+          << ", located: " << (entry ? entry.key.ToDebugHexString() : "<end>")
+          << ", min running ht: " << encoded_min_running_ht_.ToString();
+      return keep ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
     }
 
     return DoFilterValue(entry.value);
@@ -832,6 +854,8 @@ class VectorMetadataFilter {
       return Status::OK();
     }
     SCHECK_NOTNULL(iterator_provider_);
+    encoded_min_running_ht_ =
+        EncodedDocHybridTime(iterator_provider_->MinRunningHybridTime(), kMinWriteId);
     iterator_holder_ =
         VERIFY_RESULT(iterator_provider_->CreateVectorMetadataIterator(
             ReadHybridTime::Max(), nullptr));
@@ -849,6 +873,7 @@ class VectorMetadataFilter {
   HistoryCutoff history_cutoff_;
   DocVectorMetadataIteratorProvider* iterator_provider_;
   IntentAwareIteratorWithBounds iterator_holder_;
+  EncodedDocHybridTime encoded_min_running_ht_;
 };
 
 std::unique_ptr<VectorMetadataFilter> CreateVectorMetadataFilter(
@@ -860,6 +885,19 @@ std::unique_ptr<VectorMetadataFilter> CreateVectorMetadataFilter(
   return std::make_unique<VectorMetadataFilter>(
       compaction_reason, key_bounds, schema_packing_provider, history_cutoff,
       vector_metadata_iterator_provider);
+}
+
+HybridTime MissingSchemaHistoryCutoff(const HistoryRetentionDirective& retention) {
+  const auto history_cutoff = retention.history_cutoff.primary_cutoff_ht;
+  const uint64_t retention_us = FLAGS_xcluster_colocated_missing_schema_rows_retention_sec *
+                                MonoTime::kMicrosecondsPerSecond;
+  if (!retention.is_transactional_xcluster_target || retention_us == 0 ||
+      history_cutoff.is_special()) {
+    return history_cutoff;
+  }
+  const auto cutoff_us = history_cutoff.GetPhysicalValueMicros();
+  return cutoff_us > retention_us ? HybridTime::FromMicros(cutoff_us - retention_us)
+                                  : HybridTime::kMin;
 }
 
 class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed {
@@ -879,6 +917,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
         // Use max write id, to be sure that entries with hybrid time equals to history cutoff
         // would not be garbage collected.
         encoded_history_cutoff_information_(retention_directive_.history_cutoff),
+        encoded_missing_schema_cutoff_(
+            MissingSchemaHistoryCutoff(retention_directive_), kMaxWriteId),
         key_bounds_(key_bounds),
         // We use min write id for two fields below to correctly handle entries with
         // matching hybrid time.
@@ -1001,6 +1041,25 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
     return ht >= encoded_min_other_data_ht_;
   }
 
+  // DecodeDocKeyAndSubKeyEnds pushes no doc-key end for the empty DocKey of a table tombstone,
+  // leaving only the coprefix end.
+  Result<bool> IsTableTombstone(Slice value) const {
+    return sub_key_ends_.size() == 1 && VERIFY_RESULT(dockv::Value::IsTombstoned(value));
+  }
+
+  // An xCluster target gets an index's backfill rows before it runs the CREATE INDEX, so they
+  // have no schema yet. Keep such rows up to xcluster_colocated_missing_schema_rows_retention_sec
+  // below the history cutoff, unless a table tombstone covers them.
+  bool InXClusterMissingSchemaRetentionWindow(
+      dockv::KeyEntryType key_type, const EncodedDocHybridTime& doc_ht,
+      const EncodedDocHybridTime& history_cutoff) const {
+    return key_type == dockv::KeyEntryType::kColocationId &&
+           packed_row_.active_coprefix_missing_schema() &&
+           doc_ht <= history_cutoff &&
+           doc_ht > encoded_missing_schema_cutoff_ &&
+           doc_ht > packed_row_.active_coprefix_missing_schema_table_tombstone_ht();
+  }
+
   inline Expiration CalcExpiration(
       bool is_ttl_row, const Expiration& popped_exp, MonoDelta ttl,
       LazyHybridTime* doc_ht) {
@@ -1036,6 +1095,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   rocksdb::CompactionFeed& next_feed_;
   const HistoryRetentionDirective retention_directive_;
   EncodedHistoryCutoff encoded_history_cutoff_information_;
+  const EncodedDocHybridTime encoded_missing_schema_cutoff_;
   const KeyBounds* key_bounds_;
   const EncodedDocHybridTime encoded_min_other_data_ht_;
   const EncodedDocHybridTime encoded_repack_min_ht_;
@@ -1339,6 +1399,14 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     chosen_doc_ht =
         retention_directive_.history_cutoff.cotables_cutoff_ht;
   }
+  if (InXClusterMissingSchemaRetentionWindow(key_type, encoded_doc_ht, encoded_chosen_doc_ht)) {
+    // Record the time of a table tombstone at or below the cutoff, so the window still honors it.
+    if (VERIFY_RESULT(IsTableTombstone(value))) {
+      packed_row_.set_active_coprefix_missing_schema_table_tombstone(encoded_doc_ht);
+    }
+    // Use the lower cutoff, so the check below keeps this entry.
+    encoded_chosen_doc_ht = encoded_missing_schema_cutoff_;
+  }
   VLOG_WITH_FUNC(4) << "Chosen hybrid time cutoff: " << encoded_chosen_doc_ht.ToString();
 
   if (encoded_doc_ht > encoded_chosen_doc_ht) {
@@ -1365,20 +1433,16 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // During partial compaction, removing tombstones may expose older records from SST files not
     // included in this compaction. This is relevant because cotable_id/colocation_id can be
     // reused. For example: https://github.com/yugabyte/yugabyte-db/issues/28314.
-    auto value_slice = value;
-    RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
-    if (value_slice.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) &&
-        CanHaveOtherDataBefore(encoded_doc_ht)) {
+    if (CanHaveOtherDataBefore(encoded_doc_ht)) {
       // If a table-level tombstone (empty DocKey) is present, it masks all row-level data,
-      // making individual row tombstones redundant. We detect table tombstones via
-      // sub_key_ends_.size() == 1: DecodeDocKeyAndSubKeyEnds skips the doc-key end for table
-      // tombstones, leaving only the coprefix end.
-      if (sub_key_ends_.size() == 1) {
-        packed_row_.set_active_coprefix_missing_schema_has_table_tombstone();
+      // making individual row tombstones redundant.
+      if (VERIFY_RESULT(IsTableTombstone(value))) {
+        packed_row_.set_active_coprefix_missing_schema_table_tombstone(encoded_doc_ht);
         VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping table-level tombstone";
         return ForwardToNextFeed(internal_key, value);
       }
-      if (!packed_row_.active_coprefix_missing_schema_has_table_tombstone()) {
+      if (!packed_row_.active_coprefix_missing_schema_has_table_tombstone() &&
+          VERIFY_RESULT(dockv::Value::IsTombstoned(value))) {
         // Having a row-level tombstone without a table-level tombstone for a missing-schema
         // coprefix is not generally expected. However, let's be conservative here and keep
         // the row-level tombstone. Maybe some info/warning would be useful here.
@@ -1821,7 +1885,8 @@ HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() 
   LOG(INFO) << "Retention directive from manual policy " << history_cutoff_;
   return { history_cutoff_,
           table_ttl_.load(std::memory_order_acquire),
-          ShouldRetainDeleteMarkersInMajorCompaction::kFalse };
+          ShouldRetainDeleteMarkersInMajorCompaction::kFalse,
+          is_transactional_xcluster_target_.load(std::memory_order_acquire) };
 }
 
 // TODO(Sanket): Is this even used anywhere?
@@ -1843,6 +1908,10 @@ void ManualHistoryRetentionPolicy::SetHistoryCutoff(HistoryCutoff history_cutoff
 
 void ManualHistoryRetentionPolicy::SetTableTTLForTests(MonoDelta ttl) {
   table_ttl_.store(ttl, std::memory_order_release);
+}
+
+void ManualHistoryRetentionPolicy::SetIsTransactionalXClusterTargetForTests(bool value) {
+  is_transactional_xcluster_target_.store(value, std::memory_order_release);
 }
 
 HistoryCutoff ConstructMinCutoff(HistoryCutoff a, HistoryCutoff b) {

@@ -42,6 +42,15 @@ extern void yb_extract_pushdown_clauses(List *restrictinfo_list,
 										List **rel_colrefs, List **idx_remote_quals,
 										List **idx_colrefs, Oid relid,
 										Bitmapset *non_pushable_attnums);
+extern void yb_extract_pushdown_restrictinfos(List *restrictinfo_list,
+											  IndexOptInfo *indexinfo,
+											  bool bitmapindex,
+											  List **local_quals,
+											  List **rel_remote_quals,
+											  List **rel_colrefs,
+											  List **idx_remote_quals,
+											  List **idx_colrefs, Oid relid,
+											  Bitmapset *non_pushable_attnums);
 
 extern void yb_extract_pushdown_clauses_from_index_predicate(List *expr_list, List **local_quals,
 													   List **rel_remote_quals, List **rel_colrefs,

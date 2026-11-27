@@ -15,6 +15,7 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -126,9 +127,15 @@ public class PlacementInfoUtil {
       return false;
     }
     Map<UUID, Integer> replicaCountOld = new HashMap<>();
-    oldPlacementInfo.azStream().forEach(az -> replicaCountOld.put(az.uuid, az.replicationFactor));
+    oldPlacementInfo
+        .azStream()
+        .filter(az -> az.numNodesInAZ > 0) // Counting only non-empty zones.
+        .forEach(az -> replicaCountOld.put(az.uuid, az.replicationFactor));
     Map<UUID, Integer> replicaCountNew = new HashMap<>();
-    newPlacementInfo.azStream().forEach(az -> replicaCountNew.put(az.uuid, az.replicationFactor));
+    newPlacementInfo
+        .azStream()
+        .filter(az -> az.numNodesInAZ > 0) // Counting only non-empty zones.
+        .forEach(az -> replicaCountNew.put(az.uuid, az.replicationFactor));
     return !replicaCountOld.equals(replicaCountNew);
   }
 
@@ -417,6 +424,13 @@ public class PlacementInfoUtil {
                 }
               }
             });
+    if (cluster.getPartitions() != null) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        PlacementInfoUtil.removeUnusedPlacementAZs(partition.getPlacement());
+      }
+    } else {
+      PlacementInfoUtil.removeUnusedPlacementAZs(cluster.placementInfo);
+    }
     verifyPlacement(cluster, taskParams.clusters, taskParams.nodeDetailsSet);
     cluster.placementInfo = cluster.getOverallPlacement();
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
@@ -800,10 +814,6 @@ public class PlacementInfoUtil {
         return true;
       }
       if (UniverseCRUDHandler.isAwsArnChanged(cluster, currentCluster, provider)) {
-        LOG.debug(
-            "awsArnString info has changed from {} to {}",
-            currentCluster.userIntent.awsArnString,
-            cluster.userIntent.awsArnString);
         return true;
       }
       if (UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)) {
@@ -1481,7 +1491,9 @@ public class PlacementInfoUtil {
           PlacementAZ az = region.azList.get(azIdx);
           Integer azNumNodes = azUuidToNumNodes.get(az.uuid);
           if (azNumNodes != null) {
-            LOG.info("Update {} {} {}.", az.name, az.numNodesInAZ, azNumNodes);
+            if (LOG.isTraceEnabled()) {
+              LOG.trace("Update {} {} {}.", az.name, az.numNodesInAZ, azNumNodes);
+            }
             az.numNodesInAZ = azNumNodes;
           } else {
             region.azList.remove(az);
@@ -1554,6 +1566,44 @@ public class PlacementInfoUtil {
                         || serverType == ServerType.MASTER && n.isMaster
                         || serverType == ServerType.TSERVER && n.isTserver))
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Mirrors the duplicate check in {@code CatalogManagerUtil::IsPlacementInfoValid} (yb-master), so
+   * that a placement the master would reject is refused up front with a clear error instead of
+   * failing later in the universe task. Only the duplicate check is mirrored; the master's prefix
+   * and overlap checks are not.
+   *
+   * <p>A zone is identified the way the master does it: {@code cloud code:region code:zone code}.
+   * The zone code is read from the DB by the AZ uuid, because {@link PlacementAZ#name} is not the
+   * code the master sees.
+   *
+   * @param placementInfo placement to validate; {@code null} is accepted and not validated.
+   * @throws PlatformServiceException with {@code BAD_REQUEST} if the same cloud/region/zone appears
+   *     more than once, or if a zone in the placement does not exist.
+   */
+  public static void validateNoZoneDuplicates(PlacementInfo placementInfo) {
+    if (placementInfo == null) {
+      return;
+    }
+    Set<String> allZones = new HashSet<>();
+    UpdatePlacementInfo.ModifyUniverseConfig.mapToCloudInfoPB(
+        placementInfo,
+        (az, block) -> {
+          String zoneId =
+              String.format(
+                  "%s:%s:%s",
+                  block.getPlacementCloud(), block.getPlacementRegion(), block.getPlacementZone());
+          if (!allZones.add(zoneId)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Found duplicate zone: %s in region %s in cloud %s",
+                    block.getPlacementZone(),
+                    block.getPlacementRegion(),
+                    block.getPlacementCloud()));
+          }
+        });
   }
 
   @Data
@@ -1807,8 +1857,9 @@ public class PlacementInfoUtil {
   public static Map<UUID, Integer> getAzUuidToNumNodes(PlacementInfo placement) {
     Map<UUID, Integer> azUuidToNumNodes =
         placement.azStream().collect(Collectors.toMap(az -> az.uuid, az -> az.numNodesInAZ));
-
-    LOG.info("Az placement map {}", azUuidToNumNodes);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Az placement map {}", azUuidToNumNodes);
+    }
 
     return azUuidToNumNodes;
   }
@@ -1845,8 +1896,9 @@ public class PlacementInfoUtil {
 
       azUuidToNumNodes.put(azUuid, azUuidToNumNodes.get(azUuid) + 1);
     }
-
-    LOG.info("Az Map {}", azUuidToNumNodes);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Az Map {}", azUuidToNumNodes);
+    }
 
     return azUuidToNumNodes;
   }
@@ -2020,6 +2072,7 @@ public class PlacementInfoUtil {
     int startIndex = getNextIndexToConfigure(nodesInCluster);
     int iter = 0;
     Map<UUID, Provider> providerMap = new HashMap<>();
+    Map<UUID, AvailabilityZone> zoneMap = new HashMap<>();
     for (PlacementIndexes index : indexes) {
       PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
       PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
@@ -2055,7 +2108,7 @@ public class PlacementInfoUtil {
         if (!added) {
           NodeDetails nodeDetails =
               createNodeDetailsWithPlacementIndex(
-                  cluster, nodesInCluster, index, startIndex + iter);
+                  cluster, nodesInCluster, index, startIndex + iter, zoneMap);
           deltaNodesSet.add(nodeDetails);
         }
       } else if (index.action == Action.REMOVE) {
@@ -2091,7 +2144,9 @@ public class PlacementInfoUtil {
         } else {
           if (node.isActive() && !node.isInTransit()) {
             node.state = NodeState.ToBeRemoved;
-            LOG.trace("Removing node from removed AZ [{}].", node);
+            if (LOG.isTraceEnabled()) {
+              LOG.trace("Removing node from removed AZ [{}].", node);
+            }
           } else if (node.state != NodeState.ToBeRemoved) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
@@ -2138,6 +2193,9 @@ public class PlacementInfoUtil {
    * @param placementInfo The cluster placement info.
    */
   static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
+    if (placementInfo == null) {
+      return Collections.emptySet();
+    }
     Set<UUID> result = new HashSet<>();
     for (PlacementCloud cloud : placementInfo.cloudList) {
       Iterator<PlacementRegion> regionIterator = cloud.regionList.iterator();
@@ -2325,7 +2383,9 @@ public class PlacementInfoUtil {
       throw new IllegalStateException("Should find an active running tserver.");
     } else {
       nodeDetails.state = NodeDetails.NodeState.ToBeRemoved;
-      LOG.trace("Removing node [{}].", nodeDetails);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Removing node [{}].", nodeDetails);
+      }
     }
   }
 
@@ -2335,13 +2395,15 @@ public class PlacementInfoUtil {
    * @param cluster The current cluster.
    * @param index The placement index combination.
    * @param nodeIdx Node index to be used in node name.
+   * @param zoneMap Per-AZ zone cache.
    * @return a NodeDetails object.
    */
   private static NodeDetails createNodeDetailsWithPlacementIndex(
       Cluster cluster,
       Collection<NodeDetails> nodeDetailsSet,
       PlacementIndexes index,
-      int nodeIdx) {
+      int nodeIdx,
+      Map<UUID, AvailabilityZone> zoneMap) {
     NodeDetails nodeDetails = new NodeDetails();
     // Note: node name is set during customer task run time.
     // Set the cluster.
@@ -2366,6 +2428,20 @@ public class PlacementInfoUtil {
     nodeDetails.cloudInfo.az = placementAZ.name;
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
     nodeDetails.cloudInfo.secondary_subnet_id = placementAZ.secondarySubnet;
+    // In case placement lacks subnet/secondarySubnet information, we have to get it from zone.
+    if (placementAZ.subnet == null) {
+      AvailabilityZone zone =
+          zoneMap.computeIfAbsent(
+              placementAZ.uuid, (uuid) -> AvailabilityZone.getOrBadRequest(uuid));
+      nodeDetails.cloudInfo.subnet_id = zone.getSubnet();
+    }
+    if (placementAZ.secondarySubnet == null) {
+      AvailabilityZone zone =
+          zoneMap.computeIfAbsent(
+              placementAZ.uuid, (uuid) -> AvailabilityZone.getOrBadRequest(uuid));
+      nodeDetails.cloudInfo.secondary_subnet_id = zone.getSecondarySubnet();
+    }
+
     nodeDetails.cloudInfo.instance_type = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
     nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;
@@ -2376,13 +2452,15 @@ public class PlacementInfoUtil {
     // We are ready to add this node.
     nodeDetails.state = ToBeAdded;
     nodeDetails.disksAreMountedByUUID = true;
-    LOG.trace(
-        "Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
-        nodeDetails,
-        index.cloudIdx,
-        index.regionIdx,
-        index.azIdx,
-        nodeDetails.azUuid);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(
+          "Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
+          nodeDetails,
+          index.cloudIdx,
+          index.regionIdx,
+          index.azIdx,
+          nodeDetails.azUuid);
+    }
 
     return nodeDetails;
   }
@@ -3243,14 +3321,16 @@ public class PlacementInfoUtil {
     AvailabilityZone az = AvailabilityZone.get(zone);
     Region region = az.getRegion();
     Provider cloud = region.getProvider();
-    LOG.trace(
-        "provider {} ({}), region {} ({}), zone {} ({})",
-        cloud.getCode(),
-        cloud.getUuid(),
-        region.getCode(),
-        region.getUuid(),
-        az.getCode(),
-        az.getUuid());
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(
+          "provider {} ({}), region {} ({}), zone {} ({})",
+          cloud.getCode(),
+          cloud.getUuid(),
+          region.getCode(),
+          region.getUuid(),
+          az.getCode(),
+          az.getUuid());
+    }
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud =
         placementInfo.cloudList.stream()
@@ -3302,10 +3382,120 @@ public class PlacementInfoUtil {
                 });
 
     placementAZ.replicationFactor += rf;
-    LOG.info("Incrementing RF for {} to: {}", az.getName(), placementAZ.replicationFactor);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Incrementing RF for {} to: {}", az.getName(), placementAZ.replicationFactor);
+    }
     placementAZ.numNodesInAZ += numNodes;
-    LOG.info("Number of nodes in {}: {}", az.getName(), placementAZ.numNodesInAZ);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Number of nodes in {}: {}", az.getName(), placementAZ.numNodesInAZ);
+    }
     return placementAZ;
+  }
+
+  /**
+   * Combine placement trees using only the fields already stored on those trees. Clouds, regions,
+   * and AZs are matched by UUID. Placements should be disjoint in terms of AZs. The
+   * IllegalStateException is thrown when the repeated AZ is encountered.
+   */
+  public static PlacementInfo mergePlacements(Collection<PlacementInfo> allPlacements) {
+    PlacementInfo result = new PlacementInfo();
+    if (CollectionUtils.isEmpty(allPlacements)) {
+      return result;
+    }
+    for (PlacementInfo placementInfo : allPlacements) {
+      if (placementInfo == null || CollectionUtils.isEmpty(placementInfo.cloudList)) {
+        continue;
+      }
+      for (PlacementCloud srcCloud : placementInfo.cloudList) {
+        PlacementCloud cloud = mergeCloud(result, srcCloud);
+        if (CollectionUtils.isEmpty(srcCloud.regionList)) {
+          continue;
+        }
+        for (PlacementRegion srcRegion : srcCloud.regionList) {
+          PlacementRegion region = mergeRegion(cloud, srcRegion);
+          if (CollectionUtils.isEmpty(srcRegion.azList)) {
+            continue;
+          }
+          for (PlacementAZ srcAz : srcRegion.azList) {
+            checkAndAddAz(region, srcAz);
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  private static PlacementCloud mergeCloud(PlacementInfo result, PlacementCloud srcCloud) {
+    PlacementCloud cloud =
+        result.cloudList.stream()
+            .filter(existing -> Objects.equals(existing.uuid, srcCloud.uuid))
+            .findFirst()
+            .orElseGet(
+                () -> {
+                  PlacementCloud created = new PlacementCloud();
+                  created.uuid = srcCloud.uuid;
+                  created.code = srcCloud.code;
+                  created.defaultRegion = srcCloud.defaultRegion;
+                  result.cloudList.add(created);
+                  return created;
+                });
+    if (cloud.code == null) {
+      cloud.code = srcCloud.code;
+    }
+    if (cloud.defaultRegion == null) {
+      cloud.defaultRegion = srcCloud.defaultRegion;
+    }
+    return cloud;
+  }
+
+  private static PlacementRegion mergeRegion(PlacementCloud cloud, PlacementRegion srcRegion) {
+    PlacementRegion region =
+        cloud.regionList.stream()
+            .filter(existing -> Objects.equals(existing.uuid, srcRegion.uuid))
+            .findFirst()
+            .orElseGet(
+                () -> {
+                  PlacementRegion created = new PlacementRegion();
+                  created.uuid = srcRegion.uuid;
+                  created.code = srcRegion.code;
+                  created.name = srcRegion.name;
+                  created.lbFQDN = srcRegion.lbFQDN;
+                  cloud.regionList.add(created);
+                  return created;
+                });
+    if (region.code == null) {
+      region.code = srcRegion.code;
+    }
+    if (region.name == null) {
+      region.name = srcRegion.name;
+    }
+    if (region.lbFQDN == null) {
+      region.lbFQDN = srcRegion.lbFQDN;
+    }
+    return region;
+  }
+
+  private static void checkAndAddAz(PlacementRegion region, PlacementAZ srcAz) {
+    Optional<PlacementAZ> az =
+        region.azList.stream()
+            .filter(existing -> Objects.equals(existing.uuid, srcAz.uuid))
+            .findFirst();
+    if (az.isPresent()) {
+      throw new IllegalStateException("Found duplicate AZ: " + srcAz.name + "(" + srcAz.uuid + ")");
+    }
+    PlacementAZ created = new PlacementAZ();
+    created.uuid = srcAz.uuid;
+    created.name = srcAz.name;
+    created.subnet = srcAz.subnet;
+    created.secondarySubnet = srcAz.secondarySubnet;
+    created.isAffinitized = srcAz.isAffinitized;
+    created.lbName = srcAz.lbName;
+    created.tsStsIndex = srcAz.tsStsIndex;
+    created.masterStsIndex = srcAz.masterStsIndex;
+    created.leaderPreference = srcAz.leaderPreference;
+    created.numNodesInAZ = srcAz.numNodesInAZ;
+    created.replicationFactor = srcAz.replicationFactor;
+    region.azList.add(created);
   }
 
   // Removes a given node from universe nodeDetailsSet

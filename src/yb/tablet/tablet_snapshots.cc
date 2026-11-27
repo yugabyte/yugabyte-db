@@ -39,6 +39,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -78,9 +79,21 @@ DEFINE_RUNTIME_int32(tablet_snapshot_op_slow_log_threshold_ms, 1000,
     "milliseconds are logged at INFO level. Faster steps are logged at VLOG(1).");
 TAG_FLAG(tablet_snapshot_op_slow_log_threshold_ms, advanced);
 
+// An AutoFlag because a follower postponing the operation relies on its leader not resending to it
+// immediately, which older leaders do, see PeerMessageQueue::ResponseFromPeer. Until it is promoted
+// nothing waits, since a follower waiting while applying the operation would block UpdateConsensus.
+DEFINE_RUNTIME_AUTO_bool(snapshot_wait_for_pending_applies, kLocalVolatile, false, true,
+    "Wait for transactions committed before a snapshot checkpoint to be written to regular DB "
+    "before creating the checkpoint. Followers postpone applying the operation that creates it "
+    "instead of waiting while applying it.");
+
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
     "checkpoint.");
+
+DEFINE_test_flag(int32, sleep_before_restore_checkpoint_resumes_ops_ms, 0,
+    "Sleep for the specified number of milliseconds at the end of a checkpoint restore, before "
+    "read/write operations on the tablet are resumed.");
 
 DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
     "How much time in milliseconds to delay before exporting tablet metadata during "
@@ -413,6 +426,16 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   RETURN_NOT_OK(scoped_read_operation);
 
   auto step_start = MonoTime::Now();
+  auto* participant = tablet().transaction_participant();
+  if (data.snapshot_hybrid_time && participant && FLAGS_snapshot_wait_for_pending_applies) {
+    // Restore drops intents, so transactions committed at or before the snapshot hybrid time must
+    // be fully written to regular DB. Their APPLY operations precede this one, but large ones are
+    // written by ApplyIntentsTask after it. Followers postpone this operation instead of waiting
+    // here, see TabletPeer::PostponeApply.
+    RETURN_NOT_OK(participant->WaitForPendingApplies(data.snapshot_hybrid_time));
+    step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot wait for pending applies", step_start);
+  }
+
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
@@ -902,20 +925,29 @@ Status TabletSnapshots::RestoreCheckpoint(
   }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
+
+  // Ensure that op_pauses stays in scope throughout this function.
+  for (auto* op_pause : op_pauses.AsArray()) {
+    DFATAL_OR_RETURN_NOT_OK(op_pause->status());
+  }
+
+  // Right before the release, so that in tests a compaction enabled anywhere above, under the
+  // pause, hits the pause and fails.
+  AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
+
+  // A vector index compaction started under the pause fails with TryAgain, and the index keeps
+  // that failure. So compactions are enabled only after the pause is released.
+  op_pauses.Reset();
+
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
-  if (!s.ok()) {
+  s = tablet().EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  if (!s.ok() && !s.IsShutdownInProgress()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
   }
 
   // Schedule post split compaction after compaction enabled on the tablet.
   tablet().TriggerPostSplitCompactionIfNeeded();
-
-  // Ensure that op_pauses stays in scope throughout this function.
-  for (auto* op_pause : op_pauses.AsArray()) {
-    DFATAL_OR_RETURN_NOT_OK(op_pause->status());
-  }
 
   return Status::OK();
 }

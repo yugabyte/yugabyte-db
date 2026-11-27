@@ -688,6 +688,17 @@ Default: `50`
 
 Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
+##### --load_balancer_min_free_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Minimum percentage of a YB-TServer's total disk capacity, summed across all of its data and WAL directories, that must remain free after hosting a new tablet replica. The cluster balancer rejects a YB-TServer as the destination for a replica if hosting it would leave less than this percentage of disk free. Disk usage is estimated from the usage the YB-TServer reported in its last heartbeat, plus the full size of every replica it is already starting. YB-TServers that have not reported their disk capacity are never rejected. The default matches the [--reject_writes_min_disk_space_pct](../yb-tserver/#reject-writes-min-disk-space-pct) threshold past which a YB-TServer rejects writes. Set to `0` to disable the check. This flag can be changed at runtime without restarting the server.
+
 ##### --load_balancer_num_idle_runs
 
 {{% tags/wrap %}}
@@ -977,7 +988,7 @@ Enables automatic tablet splitting of tables covered by Point-In-Time Recovery s
 Default: `false`
 {{% /tags/wrap %}}
 
-v2026.1.3.0 and later
+Available in v2026.1.3.0 and later.
 
 Enables tablet splitting of a YSQL table whose creating DDL transaction has not committed.
 
@@ -1248,7 +1259,7 @@ Available in v2026.1 and later.
 
 When set to `true`, modifications to a publication are reflected implicitly in logical replication streams, providing PostgreSQL-like semantics for dynamic tables.
 
-When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the bahavior in versions earlier than v2026.1.)
+When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the behavior in versions earlier than v2026.1.)
 
 For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
@@ -1335,7 +1346,7 @@ For tables with a `default_time_to_live` table property, sets a size threshold a
 
 Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
 
-If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accomodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
+If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accommodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
 
 ##### --sst_files_soft_limit
 
@@ -1551,7 +1562,7 @@ Enables YSQL backends to generate and consume invalidation messages incrementall
 Default: `true` on a new universe. During an upgrade, `false` until the upgrade is finalized, then `true`.
 {{% /tags/wrap %}}
 
-v2026.1.3.0 and later
+Available in v2026.1.3.0 and later.
 
 When `true`, the YB-Master leader limits how many YSQL catalog prefetches it serves at a time. Ordinary catalog reads stay unlimited.
 
@@ -1568,7 +1579,7 @@ A prefetch past the limit is rejected. The client retries after backing off.
 Default: `-1` (resolved at startup to max(8, 2 × cores))
 {{% /tags/wrap %}}
 
-v2026.1.3.0 and later
+Available in v2026.1.3.0 and later.
 
 Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`.
 
@@ -1583,7 +1594,7 @@ A prefetch beyond the limit is rejected, and the client retries until its RPC de
 Default: `50`
 {{% /tags/wrap %}}
 
-v2026.1.3.0 and later
+Available in v2026.1.3.0 and later.
 
 Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`.
 

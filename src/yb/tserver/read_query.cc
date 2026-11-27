@@ -17,6 +17,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/txn_error_injection.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/common/transaction_error.h"
 #include "yb/dockv/doc_key.h"
@@ -84,6 +85,13 @@ namespace yb {
 namespace tserver {
 
 namespace {
+
+// Whether the database of YSQL table table_id is the target of automatic mode xCluster replication.
+// The namespace id comes from the table id, since tablet metadata may not have it.
+Result<bool> IsXClusterAutomaticModeTarget(TabletServerIf& server, const TableId& table_id) {
+  return server.IsXClusterAutomaticModeTarget(
+      VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)));
+}
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
@@ -903,25 +911,29 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       auto table_info = VERIFY_RESULT(metadata->GetTableInfo(pgsql_read_req.has_index_request()
           ? pgsql_read_req.index_request().table_id()
           : pgsql_read_req.table_id()));
-      if (table_info->index_info && !table_info->IsVectorIndex() && read_time_ &&
+      if (table_info->index_info && read_time_ &&
           PREDICT_TRUE(!FLAGS_TEST_disable_index_birth_time_check)) {
         // Reject reads arriving at index with a read time earlier than the index birth time.
-        // TODO(#33155): index birth_time isn't set for xCluster automatic-mode target (where
-        // backfill is replicated from the source).
-        auto birth_time = table_info->index_info->birth_time();
-        auto birth_ht = HybridTime(birth_time);
+        // TODO(#33155): birth_time of a regular index isn't set on an xCluster automatic-mode
+        // target (where backfill is replicated from the source).
+        // TODO(#38694): Such a target builds a vector index itself, but reads it at the xCluster
+        // safe time, which stays below the index birth time until the DDL is processed. So the
+        // check is skipped there too.
+        const auto birth_time = table_info->index_info->birth_time();
         const auto birth_time_state = table_info->index_info->birth_time_state();
         VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
-                << " birth_time=" << birth_time << " (" << birth_ht << ")"
+                << " birth_time=" << birth_time
                 << " retain_delete_markers="
                 << table_info->schema().table_properties().retain_delete_markers()
                 << " birth_time_state=" << IndexInfoPB::BirthTimeState_Name(birth_time_state)
                 << " read_time=" << read_time_.read;
-        if (birth_time != 0 && !birth_ht.is_special() && read_time_.read < birth_ht) {
+        if (birth_time && read_time_.read < birth_time &&
+            !(table_info->index_info->is_vector_index() &&
+              VERIFY_RESULT(IsXClusterAutomaticModeTarget(server_, table_info->table_id)))) {
           return STATUS(
               SnapshotTooOld,
               Format("Query read time < index birth time: $0 < [$1] $2",
-                     read_time_.read.ToString(), table_info->table_id, birth_ht.ToString()),
+                     read_time_.read, table_info->table_id, birth_time),
               TransactionError(TransactionErrorCode::kSnapshotTooOld));
         }
         // birth_time is not set yet but is still coming: birth_time_state is a PENDING state (for
@@ -929,9 +941,20 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         // finalized. Reject reads with a retryable error meanwhile rather than serve a
         // possibly-incomplete index. retain_delete_markers is a legacy fallback for backfilled
         // indexes created before birth_time_state existed (or while its AutoFlag was off).
-        if (birth_time == 0 &&
-            (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL ||
-             table_info->schema().table_properties().retain_delete_markers())) {
+        //
+        // The transaction that created a nonconcurrently built index is exempt: it wrote the
+        // index, so the index is complete for it, and the index only becomes final once that
+        // transaction commits.
+        const auto retain_delete_markers =
+            table_info->schema().table_properties().retain_delete_markers();
+        const auto read_by_creating_txn =
+            birth_time_state == IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT &&
+            !retain_delete_markers && req_->has_transaction() &&
+            !table_info->index_info->birth_time_pending_txn_id().empty() &&
+            req_->transaction().transaction_id() ==
+                table_info->index_info->birth_time_pending_txn_id();
+        if (!birth_time && !read_by_creating_txn &&
+            (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL || retain_delete_markers)) {
           return STATUS_FORMAT(
               LeaderNotReadyToServe,
               "Index table $0 birth time not yet finalized locally",

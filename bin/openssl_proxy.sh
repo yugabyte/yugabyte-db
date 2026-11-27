@@ -150,7 +150,8 @@ generate_node_certs() {
 generate_key() {
     mkdir -p "$key_path"
 
-    openssl rand -out "$key_path/${keyname}.key" 32
+    # 12-byte nonce + 4-byte counter + 32-byte AES-256 key.
+    openssl rand -out "$key_path/${keyname}.key" 48
 }
 
 while [[ $# -gt 0 ]]; do

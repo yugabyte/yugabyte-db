@@ -24,6 +24,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -226,6 +227,11 @@ Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname, size_t tim
   auto result = VERIFY_RESULT(PGConnBuilder(settings).Connect());
   RETURN_NOT_OK(SetupConnection(&result));
   return result;
+}
+
+Status PgMiniTestBase::WaitForListenNotifyBootstrap() const {
+  return pgwrapper::WaitForListenNotifyBootstrap(
+      [this] { return ConnectToDB(master::kYbSystemDbName); });
 }
 
 Status PgMiniTestBase::SetupConnection(PGConn* conn) const {

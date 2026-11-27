@@ -20,8 +20,10 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/gutil/casts.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
@@ -69,7 +71,6 @@ Status CheckRowColumnsAnnouncedByDDL(
 // first remaining intent is reused for the rest of the txn and misses column ids written after a
 // later ADD COLUMN; decoding then fails with "Column id ... not found".
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlGetChangesFailsAfterRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
@@ -202,7 +203,6 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlGetChangesFailsAfterRestart
 // and after the same column is added again with a different type. Streaming must decode each
 // insert with the columns that existed when it was written.
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddAndDropColumn) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
@@ -312,7 +312,6 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddAndDropColumn) {
 // ALTER in the transaction also writes a schema with a marked column. The ADD COLUMNs after it must
 // still be streamed as DDL records ahead of the rows that write the new columns.
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddColumnAfterDropColumn) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -375,7 +374,6 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddColumnAfterDropColumn) {
 // Packed rows with REPLICA IDENTITY FULL. A restart mid-APPLY must still decode each update in
 // the transactional DDL txn, including columns added and dropped between those updates.
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlPackedFullGetChangesAfterRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
@@ -532,6 +530,189 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlPackedFullGetChangesAfterRe
       }
     }
   }
+}
+
+YB_STRONGLY_TYPED_BOOL(PackedRow);
+YB_STRONGLY_TYPED_BOOL(RestartMidTxn);
+
+class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
+ protected:
+  // A column added and dropped in the same transaction is removed from the schema right away
+  // rather than marked for deletion. Records written after the transaction commits, and the last
+  // DDL record streamed before each of them, must not have the column. With restart_mid_txn, the
+  // tserver restarts after the first batch of the transaction's intents is streamed, before the
+  // records written while the column existed.
+  void TestWritesAfterDropOfAddedColumn(PackedRow packed_row, RestartMidTxn restart_mid_txn);
+};
+
+void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(
+    PackedRow packed_row, RestartMidTxn restart_mid_txn) {
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row.get();
+  // With the rows inserted first, the transaction with the DDLs is streamed over several batches of
+  // intents.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */,
+      true /* add_primary_key */, false /* colocated */, 0 /* table_oid */,
+      false /* enum_value */, "" /* enum_suffix */, "public" /* schema_name */,
+      2 /* num_cols */, {kValue2ColumnName}));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
+
+  constexpr size_t kNumRowsBeforeDdl = 20;
+  // Unpacked UPDATEs, which hold no schema version, keep the transaction going after the DDLs.
+  constexpr size_t kNumRowsUpdatedAfterDdl = 20;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test_table SELECT i, i, i FROM generate_series(101, $0) AS i",
+      100 + kNumRowsBeforeDdl));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN d int"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1, 1, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2, 2, 2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN d"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 20 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 2"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table SET value_2 = value_2 + 1 WHERE key BETWEEN 101 AND $0",
+      100 + kNumRowsUpdatedAfterDdl));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Writes after the commit: single-shard ones and a distributed transaction.
+  ASSERT_OK(UpdateRows(1 /* key */, 30 /* value */, &test_cluster_));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, 3, 3)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 40 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 33 WHERE key = 3"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(DeleteRows(3 /* key */, &test_cluster_));
+
+  constexpr size_t kNumTxnRecords = kNumRowsBeforeDdl + 4 + kNumRowsUpdatedAfterDdl;
+  constexpr size_t kNumRecords = kNumTxnRecords + 5;
+
+  std::vector<CDCSDKProtoRecordPB> records;
+  size_t num_records_before_restart = 0;
+  CDCSDKCheckpointPB checkpoint;
+  const CDCSDKCheckpointPB* checkpoint_ptr = nullptr;
+  if (restart_mid_txn) {
+    bool in_txn = false;
+    for (int i = 0; i < 20 && !in_txn; ++i) {
+      auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, checkpoint_ptr));
+      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+        records.push_back(record);
+        if (IsDMLRecord(record)) {
+          ++num_records_before_restart;
+        }
+      }
+      checkpoint = change_resp.cdc_sdk_checkpoint();
+      checkpoint_ptr = &checkpoint;
+      in_txn = !checkpoint.key().empty() || checkpoint.write_id() != 0;
+    }
+    ASSERT_TRUE(in_txn);
+    ASSERT_GT(num_records_before_restart, 0);
+    ASSERT_LT(num_records_before_restart, kNumRowsBeforeDdl);
+
+    auto* tserver = test_cluster()->mini_tablet_server(0);
+    ASSERT_OK(tserver->Restart());
+    ASSERT_OK(tserver->WaitStarted());
+  }
+
+  auto change_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, checkpoint_ptr, 0 /* tablet_idx */, -1 /* safe_hybrid_time */,
+      0 /* wal_segment_index */,
+      narrow_cast<int>(kNumRecords - num_records_before_restart) /* expected_records_count */);
+  records.insert(records.end(), change_resp.records.begin(), change_resp.records.end());
+
+  std::vector<CDCSDKProtoRecordPB> dml_records;
+  // The columns of the last DDL record streamed before each DML record.
+  std::vector<std::vector<std::string>> ddl_columns_before_dml;
+  std::vector<std::string> ddl_columns;
+  for (const auto& record : records) {
+    if (record.row_message().op() == RowMessage::DDL) {
+      ddl_columns.clear();
+      for (const auto& column : record.row_message().schema().column_info()) {
+        ddl_columns.push_back(column.name());
+      }
+    } else if (IsDMLRecord(record)) {
+      dml_records.push_back(record);
+      ddl_columns_before_dml.push_back(ddl_columns);
+    }
+  }
+  ASSERT_EQ(dml_records.size(), kNumRecords);
+
+  const std::vector<std::string> columns = {kKeyColumnName, kValueColumnName, kValue2ColumnName};
+  const std::vector<std::string> columns_with_d = {
+      kKeyColumnName, kValueColumnName, kValue2ColumnName, "d"};
+
+  for (size_t i = 0; i < kNumRowsBeforeDdl; ++i) {
+    ASSERT_EQ(dml_records[i].row_message().op(), RowMessage::INSERT) << i;
+    ASSERT_NO_FATALS(CheckRecordTuples(dml_records[i], columns, {}));
+  }
+
+  // The next two inserts were written while d existed.
+  for (int32_t key = 1; key <= 2; ++key) {
+    const auto& record = dml_records[kNumRowsBeforeDdl + key - 1];
+    ASSERT_EQ(record.row_message().op(), RowMessage::INSERT);
+    ASSERT_NO_FATALS(CheckRecordTuples(record, columns_with_d, {}));
+    ASSERT_NO_FATALS(AssertKeyValue(record, key, key, true /* validate_third_column */, key));
+    ASSERT_EQ(record.row_message().new_tuple(3).datum_int32(), key);
+  }
+
+  // The UPDATE and DELETE in the transaction are unpacked writes, which hold no schema version, so
+  // they can still carry d. Only their values are checked.
+  const auto& updated = dml_records[kNumRowsBeforeDdl + 2];
+  ASSERT_EQ(updated.row_message().op(), RowMessage::UPDATE);
+  ASSERT_NO_FATALS(AssertKeyValue(updated, 1, 20));
+  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(updated, 1, 1));
+  const auto& deleted = dml_records[kNumRowsBeforeDdl + 3];
+  ASSERT_EQ(deleted.row_message().op(), RowMessage::DELETE);
+  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(deleted, 2, 2));
+  for (size_t i = kNumRowsBeforeDdl + 4; i < kNumTxnRecords; ++i) {
+    ASSERT_EQ(dml_records[i].row_message().op(), RowMessage::UPDATE) << i;
+  }
+
+  ExpectedRecordWithThreeColumns expected_records[] = {
+      {1, 30, 1}, {3, 3, 3}, {1, 40, 1}, {3, 33, 3}, {}};
+  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
+      {1, 20, 1}, {}, {1, 30, 1}, {3, 3, 3}, {3, 33, 3}};
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {0, 1, 3, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+  for (size_t i = kNumTxnRecords; i < kNumRecords; ++i) {
+    ASSERT_EQ(ddl_columns_before_dml[i], columns) << i;
+    ASSERT_NO_FATALS(CheckRecordWithThreeColumns(
+        dml_records[i], expected_records[i - kNumTxnRecords], count,
+        true /* validate_old_tuple */, expected_before_image_records[i - kNumTxnRecords],
+        true /* validate_third_column */));
+  }
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnPacked) {
+  TestWritesAfterDropOfAddedColumn(PackedRow::kTrue, RestartMidTxn::kFalse);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnUnpacked) {
+  TestWritesAfterDropOfAddedColumn(PackedRow::kFalse, RestartMidTxn::kFalse);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnRestartMidTxnPacked) {
+  TestWritesAfterDropOfAddedColumn(PackedRow::kTrue, RestartMidTxn::kTrue);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnRestartMidTxnUnpacked) {
+  TestWritesAfterDropOfAddedColumn(PackedRow::kFalse, RestartMidTxn::kTrue);
 }
 
 }  // namespace cdc

@@ -98,11 +98,14 @@ DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing p
 
 DEFINE_RUNTIME_AUTO_bool(enable_write_pipelining_infra, kLocalVolatile, false, true,
     "Enable the infrastructure required for write pipelining. Pipelined writes are sent with "
-    "use_async_write set and awaited with the WaitForAsyncWrite RPC.");
+    "use_async_write set and awaited with the WaitForAsyncWrite RPC. Picked once per "
+    "transaction, so a change does not affect transactions already in progress.");
 
 DEFINE_RUNTIME_bool(ysql_enable_write_pipelining, true,
     "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
-    "write statements in a transaction are executed concurrently, reducing overall latency.");
+    "write statements in a transaction are executed concurrently, reducing overall latency. "
+    "Picked once per transaction, so a change does not affect transactions already in "
+    "progress.");
 
 using std::pair;
 using std::shared_ptr;
@@ -124,10 +127,10 @@ namespace {
 
 const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTServersMsg);
 
-bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
+bool UseAsyncWrites(YBTableType table_type, const YBTransaction* transaction) {
   // Use async writes for transactional writes in YSQL.
-  return FLAGS_enable_write_pipelining_infra && FLAGS_ysql_enable_write_pipelining &&
-         table_type == YBTableType::PGSQL_TABLE_TYPE && !txn_id.IsNil();
+  return table_type == YBTableType::PGSQL_TABLE_TYPE && transaction &&
+         transaction->UseAsyncWrites();
 }
 
 bool OpSkipIntents(const YBOperation& op) {
@@ -799,13 +802,11 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     case OpGroup::kWrite: [[fallthrough]];
     case OpGroup::kLock: [[fallthrough]];
     case OpGroup::kUnlock: {
-      data.use_async_write = UseAsyncWrites(
-          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      data.use_async_write = UseAsyncWrites(first_op->table()->table_type(), transaction.get());
       return std::make_shared<WriteRpc>(data, pool_tag_);
     }
     case OpGroup::kLeaderRead: {
-      data.use_async_write = UseAsyncWrites(
-          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      data.use_async_write = UseAsyncWrites(first_op->table()->table_type(), transaction.get());
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG, pool_tag_);
     }
     case OpGroup::kConsistentPrefixRead:

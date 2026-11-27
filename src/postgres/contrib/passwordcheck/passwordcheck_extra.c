@@ -71,16 +71,16 @@ check_password(const char *username,
 			   Datum validuntil_time,
 			   bool validuntil_null)
 {
-	int			namelen = strlen(username);
 	int			pwdlen = strlen(password);
-	char		encrypted[MD5_PASSWD_LEN + 1];
 	int			i;
 	int			password_flag = 0;
-	const char *errstr = NULL;
+
+	const char *yb_logdetail = NULL;
 
 	switch (password_type)
 	{
 		case PASSWORD_TYPE_MD5:
+		case PASSWORD_TYPE_SCRAM_SHA_256:	/* YB */
 
 			/*
 			 * Unfortunately we cannot perform exhaustive checks on encrypted
@@ -89,10 +89,12 @@ check_password(const char *username,
 			 * that has its own security disadvantages.)
 			 *
 			 * We only check for username = password.
+			 *
+			 * YB: plain_crypt_verify() checks MD5 and SCRAM alike, as
+			 * upstream PostgreSQL's passwordcheck does.
 			 */
-			if (!pg_md5_encrypt(username, username, namelen, encrypted, &errstr))
-				elog(ERROR, "password encryption failed: %s", errstr);
-			if (strcmp(password, encrypted) == 0)
+			if (plain_crypt_verify(username, password, username,
+								   &yb_logdetail) == STATUS_OK)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("password must not contain user name")));

@@ -5,7 +5,6 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS anon CASCADE;
 
 BEGIN; -- YB: Workaround for read time error, check #25665
-SET yb_non_ddl_txn_for_sys_tables_allowed = true; -- YB: next statement updates pg_seclabel and is not a DDL
 SELECT anon.init();
 COMMIT; -- YB: Workaround for read time error, check #25665
 
@@ -75,8 +74,26 @@ SET anon.salt TO 'a_VeRy_SeCReT_SaLT';
 SELECT anon.pseudo_last_name('bob'::TEXT);
 
 
+-- Shift / XOR
+
+SELECT anon.set_shift(99999);
+
+SELECT anon.pseudo_shift(1) = 100000;
+
+SELECT anon.pseudo_xor(1) = 99998;
+
+
 /* YB: workaround for lack of transactional DDL
 ROLLBACK;
 */ -- YB
 
 DROP EXTENSION anon CASCADE; -- YB: workaround for lack of transactional DDL
+
+-- Issue #582
+CREATE DATABASE "contrib_regression-demo-foo";
+
+ALTER DATABASE "contrib_regression-demo-foo" SET session_preload_libraries = 'anon';
+
+\! ${YB_BUILD_ROOT}/postgres/bin/ysqlsh "contrib_regression-demo-foo" -c "CREATE EXTENSION anon;" # YB: Use ysqlsh
+
+DROP DATABASE "contrib_regression-demo-foo";

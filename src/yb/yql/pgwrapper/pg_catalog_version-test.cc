@@ -10,11 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <future>
+
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/master/master_defaults.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/backoff_waiter.h"
@@ -24,6 +27,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -45,6 +49,8 @@ METRIC_DECLARE_counter(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb {
 namespace pgwrapper {
+
+YB_STRONGLY_TYPED_BOOL(SingleAttempt);
 
 class PgCatalogVersionTest : public LibPqTestBase {
 
@@ -584,7 +590,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(result, expected);
   }
 
-  static size_t CountRelCacheInitFiles(const string& dirpath) {
+  static size_t CountRelCacheInitFiles(const string& dirpath, const string& skip_prefix) {
     auto CloseDir = [](DIR* d) { closedir(d); };
     std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
                                                CloseDir);
@@ -594,6 +600,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     while ((entry = readdir(d.get())) != nullptr) {
       if (strstr(entry->d_name, "pg_internal.init")) {
         LOG(INFO) << "found rel cache init file " << dirpath << "/" << entry->d_name;
+        if (strncmp(entry->d_name, skip_prefix.c_str(), skip_prefix.size()) == 0) {
+          continue;
+        }
         count++;
       }
     }
@@ -604,6 +613,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
     RestartClusterWithDBCatalogVersionMode();
     conn_yugabyte = ASSERT_RESULT(Connect());
+    // The bootstrap backend leaves yb_system's init file after every restart; exclude it.
+    const auto yb_system_prefix = Format("$0_", ASSERT_RESULT(conn_yugabyte.FetchRow<PGOid>(
+        Format("SELECT oid FROM pg_database WHERE datname = '$0'", master::kYbSystemDbName))));
     // Under per-database catalog version mode, there is one shared rel
     // cache init file for each database. Test this by making a second
     // connection to the template1 database.
@@ -611,16 +623,16 @@ class PgCatalogVersionTest : public LibPqTestBase {
     auto data_root = cluster_->data_root();
     auto pg_data_root = JoinPathSegments(data_root, "ts-1", "pg_data");
     auto pg_data_global = JoinPathSegments(pg_data_root, "global");
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 2);
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 2);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global, yb_system_prefix), 2);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root, yb_system_prefix), 2);
 
     // Restart the cluster. The rel cache init files should be removed
     // during postmaster startup.
     cluster_->Shutdown();
     ASSERT_OK(cluster_->Restart());
 
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 0);
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 0);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global, yb_system_prefix), 0);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root, yb_system_prefix), 0);
   }
 
   void VerifyCatCacheRefreshMetricsHelper(
@@ -917,6 +929,91 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
   ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
+}
+
+// A connection that starts while DROP DATABASE removes its database must fail on its own, without
+// crashing its backend (which makes the postmaster restart every backend on that node).
+// The pg_database recheck in InitPostgres reads the startup catalog prefetch, which predates the
+// drop, so it passes. The connection then finds its relcache init file stale and cannot revalidate
+// it, so it rebuilds the file, and that rebuild makes the first live pg_database read.
+//
+// The test runs in the legacy DDL mode (no object locking, no invalidation messages) because there
+// the window is deterministic: the database lock is local to the node, so the DROP on another node
+// commits while the connection is paused after its recheck, and without invalidation messages a
+// stale init file is always rebuilt. With object locking, the DROP has to commit before the
+// connection takes the database lock, and the connection crashes only if its node learns of the
+// drop between the connection resolving its shared memory slot and fetching invalidation messages.
+TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
+  constexpr auto kDelayMs = 10000 * kTimeMultiplier;
+  RestartClusterWithInvalMessageDisabled();
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  // Every backend that starts on node 1 from now on pauses after its database recheck and before
+  // RelationCacheInitializePhase3.
+  auto* ts1 = cluster_->tablet_server(1);
+  ts1->Shutdown();
+  ASSERT_OK(ts1->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_ysql_delay_before_relcache_init_phase3_ms", std::to_string(kDelayMs)}}));
+
+  // Setup connections retry while node 1 comes back up. The racing connection makes a single
+  // attempt, so that a retry cannot hide a backend crash.
+  const auto connect_to_ts1 = [ts1](const std::string& dbname, SingleAttempt single_attempt) {
+    PGConnSettings settings{
+        .host = ts1->bind_host(),
+        .port = ts1->ysql_port(),
+        .dbname = dbname,
+        .connect_timeout = static_cast<size_t>(4 * kDelayMs / 1000),
+    };
+    if (single_attempt) {
+      settings.should_stop = [] { return true; };
+    }
+    return PGConnBuilder(settings).Connect();
+  };
+
+  // Write the test database's relcache init file on node 1, then leave it behind by one catalog
+  // version.
+  ASSERT_RESULT(connect_to_ts1(kTestDatabase, SingleAttempt::kFalse));
+  {
+    auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+    ASSERT_OK(conn_test.Execute("CREATE TABLE t (k INT)"));
+  }
+  WaitForCatalogVersionToPropagate();
+
+  // A bystander session on node 1, which must survive.
+  auto conn_bystander =
+      ASSERT_RESULT(connect_to_ts1(kYugabyteDatabase, SingleAttempt::kFalse));
+
+  const auto db_oid = ASSERT_RESULT(conn_yugabyte.FetchRow<PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kTestDatabase)));
+  LogWaiter delay_started(
+      ts1, Format("delaying $0 ms before RelationCacheInitializePhase3 for database $1",
+                  kDelayMs, db_oid));
+  auto connect_future = std::async(std::launch::async, [&connect_to_ts1] {
+    return ResultToStatus(connect_to_ts1(kTestDatabase, SingleAttempt::kTrue));
+  });
+  // Drop the database once the connection has passed its database recheck and is paused. The
+  // DROP must commit before the pause ends. The pause started a little before the log line
+  // arrived here, so require the DROP to finish within half the pause; if it is slower, fail
+  // with that reason rather than on the connection unexpectedly succeeding.
+  ASSERT_OK(delay_started.WaitFor(MonoDelta::FromMilliseconds(kDelayMs)));
+  const auto log_seen = MonoTime::Now();
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+  const auto drop_time = MonoTime::Now() - log_seen;
+  ASSERT_LT(drop_time, MonoDelta::FromMilliseconds(kDelayMs / 2))
+      << "DROP DATABASE took too long to be sure it committed within the connection's pause";
+  WaitForCatalogVersionToPropagate();
+
+  const auto status = connect_future.get();
+  LOG(INFO) << "Connection status: " << status;
+  ASSERT_NOK(status);
+  // Only the relcache.c check reports this OID form and detail. The InitPostgres recheck would
+  // name the database and say "dropped or renamed".
+  ASSERT_STR_CONTAINS(status.ToString(), Format("database $0 does not exist", db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "It seems to have just been dropped.");
+  ASSERT_OK(conn_bystander.Fetch("SELECT 1"));
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.
@@ -2424,6 +2521,9 @@ DROP TABLE tempTable2;
 
   auto ts_index = static_cast<int>(RandomUniformInt(0UL, cluster_->num_tablet_servers() - 1));
   auto hostport = cluster_->ysql_hostport(ts_index);
+  // ysqlsh does not retry its connect, so it can still see "the database system is starting up".
+  // Connect once with retries first.
+  ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(ts_index), "postgres"));
   YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
   auto output = CHECK_RESULT(ysqlsh_runner.ExecuteSqlScript(
       sample_ddl_script, "sample_ddl" /* tmp_file_prefix */,
@@ -2440,11 +2540,11 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80746U);
-    ASSERT_EQ(fingerprint, 15353702351801463433UL);
+    ASSERT_EQ(result.size(), 81203U);
+    ASSERT_EQ(fingerprint, 12064643112462199543UL);
   } else {
-    ASSERT_EQ(result.size(), 80692U);
-    ASSERT_EQ(fingerprint, 4661495031371014786UL);
+    ASSERT_EQ(result.size(), 81149U);
+    ASSERT_EQ(fingerprint, 16593107344753565685UL);
   }
 }
 
@@ -3218,14 +3318,19 @@ TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
+  // Same as TestConnectionManagerRelCacheInitRpcCount: keep the restarted master's bootstrap
+  // re-run out of the RPC count windows below.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
+  const std::vector<std::string> master_flags = { "--ysql_yb_enable_listen_notify=false" };
   for (int i = 0; i < 2; i++) {
     // Disable auto analyze in this test because it introduce flakiness of metrics.
     if (i == 0) {
-      RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
+      RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" }, master_flags);
     } else {
       RestartClusterWithInvalMessageEnabled(
           { "--ysql_yb_enable_invalidate_table_cache_entry=false",
-            "--ysql_enable_auto_analyze=false" });
+            "--ysql_enable_auto_analyze=false" },
+          master_flags);
     }
     auto conn = CHECK_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
@@ -3329,6 +3434,8 @@ INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerOnlyTest, ::testing::Values
 TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
+  // Keep the bootstrap's master reads out of the RPC-count windows below.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
   // Create the first logical connection to warm up the tserver cache
   // for later auth backends to use.
   auto conn = ASSERT_RESULT(Connect());
@@ -3389,7 +3496,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
 TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRelCacheInitRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
-  RestartClusterWithInvalMessageEnabled({ "--ysql_use_relcache_file=false" });
+  // Let the first bootstrap finish, then keep the restarted master from re-running it. A wait
+  // cannot tell when a re-run ends, and its master reads would land in the windows below.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_use_relcache_file=false" }, { "--ysql_yb_enable_listen_notify=false" });
   // Create the first logical connection to warm up the tserver cache
   // for later auth backends to use.
   auto conn = ASSERT_RESULT(Connect());
@@ -4294,6 +4405,14 @@ COMMIT;
 
 class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
  protected:
+  // The tests restart the master right away. A bootstrap that has not finished by then runs its
+  // CREATE TABLE after the restart, and that DDL's status report refreshes the catalog version
+  // cache past the failure injection the tests rely on.
+  void SetUp() override {
+    PgCatalogVersionTest::SetUp();
+    ASSERT_OK(WaitForListenNotifyBootstrap());
+  }
+
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgCatalogVersionTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");

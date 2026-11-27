@@ -222,7 +222,7 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 		if viper.GetString("postgres.useExisting.pg_restore_path") != "" {
 			args = append(args, "--pg_restore_path", viper.GetString(
 				"postgres.useExisting.pg_restore_path"))
-			if viper.GetString("postgress.useExisting.password") != "" {
+			if viper.GetString("postgres.useExisting.password") != "" {
 				createPgPass()
 				args = append(args, "--pgpass_path", common.PgpassPath())
 			}
@@ -292,13 +292,7 @@ func addYbdbArgs(args []string) []string {
 }
 
 func createPgPass() {
-	data := []byte(fmt.Sprintf("%s:%s:yugaware:%s:%s",
-		viper.GetString("postgres.useExisting.host"),
-		viper.GetString("postgres.useExisting.port"),
-		viper.GetString("postgres.useExisting.username"),
-		viper.GetString("postgres.useExisting.password"),
-	))
-	err := os.WriteFile(common.PgpassPath(), data, 0600)
+	err := os.WriteFile(common.PgpassPath(), []byte(common.PgpassEntry()), 0600)
 	if err != nil {
 		log.Fatal("could not create pgpass file: " + err.Error())
 	}

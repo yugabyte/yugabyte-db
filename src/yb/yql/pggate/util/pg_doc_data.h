@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/bfpg/tserver_opcodes.h"
 #include "yb/common/common_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -32,6 +33,21 @@ Status WriteColumn(const LWQLValuePB& col_value, ValueBuffer* buffer);
 
 void WriteBinaryColumn(const Slice& col_value, WriteBuffer* buffer);
 void WriteNullColumn(WriteBuffer* buffer);
+
+// Exact PG wire size of a column value as produced by WriteColumn (no buffer write).
+Result<size_t> ColumnWireSize(const QLValuePB& col_value);
+Result<size_t> ColumnWireSize(const LWQLValuePB& col_value);
+// Wire size from encoding-independent column facts (logical payload_size for varlen types).
+Result<size_t> ColumnWireSize(DataType type, bool is_null, size_t payload_size);
+
+// True only for types where ColumnWireSize(type, /*is_null=*/false, 0) succeeds.
+bool IsFixedWidthDataType(DataType type);
+// COUNT / typed SUM* are always fixed-width; MIN/MAX follow the operand type.
+bool IsFixedWidthAggregate(bfpg::TSOpcode opcode, DataType arg_type);
+// Group keys must be types PgValue::ToQLValuePB converts; any other type LOG(FATAL)s there.
+// VECTOR converts, but grouping by a vector is not supported: its stored value also carries the
+// DocDB vector id, which a plain read strips.
+bool IsSupportedGroupKeyType(DataType type);
 
 class PgDocData : public PgWire {
  public:

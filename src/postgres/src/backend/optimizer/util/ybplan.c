@@ -359,8 +359,9 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 }
 
 /*
- * yb_extract_pushdown_clauses
- *	  Extract actual clauses from RestrictInfo list and distribute them
+ * yb_extract_pushdown_quals
+ *	  Distribute the clauses of a RestrictInfo list, as the actual clauses or
+ *	  as the RestrictInfos ('actual_clauses'),
  * 	  between three groups:
  *	  - local_quals - conditions not eligible for pushdown. They are evaluated
  *	  on the Postgres side on the rows fetched from DocDB;
@@ -381,19 +382,21 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  * Note - If you are modifying this function, consider changing
  * function yb_extract_pushdown_clauses_from_index_predicate as well.
  */
-void
-yb_extract_pushdown_clauses(List *restrictinfo_list,
-							IndexOptInfo *indexinfo, bool bitmapindex,
-							List **local_quals, List **rel_remote_quals,
-							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs, Oid relid,
-							Bitmapset *non_pushable_attnums)
+static void
+yb_extract_pushdown_quals(List *restrictinfo_list,
+						  IndexOptInfo *indexinfo, bool bitmapindex,
+						  bool actual_clauses,
+						  List **local_quals, List **rel_remote_quals,
+						  List **rel_colrefs, List **idx_remote_quals,
+						  List **idx_colrefs, Oid relid,
+						  Bitmapset *non_pushable_attnums)
 {
 	ListCell   *lc;
 
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+		Node	   *qual = actual_clauses ? (Node *) ri->clause : (Node *) ri;
 		List	   *colrefs = NIL;
 
 		/* ignore pseudoconstants */
@@ -431,7 +434,7 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		}
 
 		if (!pushable)
-			*local_quals = lappend(*local_quals, ri->clause);
+			*local_quals = lappend(*local_quals, qual);
 		/*
 		 * If there are both main and secondary (index) relations,
 		 * determine one to pushdown the condition. It is more efficient
@@ -442,14 +445,55 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 				 !is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
 		{
 			*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-			*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
+			*rel_remote_quals = lappend(*rel_remote_quals, qual);
 		}
 		else
 		{
 			*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-			*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
+			*idx_remote_quals = lappend(*idx_remote_quals, qual);
 		}
 	}
+}
+
+/*
+ * yb_extract_pushdown_clauses
+ *	  The groups of yb_extract_pushdown_quals() as actual clauses, for
+ *	  building the quals of a plan node.
+ */
+void
+yb_extract_pushdown_clauses(List *restrictinfo_list,
+							IndexOptInfo *indexinfo, bool bitmapindex,
+							List **local_quals, List **rel_remote_quals,
+							List **rel_colrefs, List **idx_remote_quals,
+							List **idx_colrefs, Oid relid,
+							Bitmapset *non_pushable_attnums)
+{
+	yb_extract_pushdown_quals(restrictinfo_list, indexinfo, bitmapindex,
+							  true,	/* actual_clauses */
+							  local_quals, rel_remote_quals, rel_colrefs,
+							  idx_remote_quals, idx_colrefs, relid,
+							  non_pushable_attnums);
+}
+
+/*
+ * yb_extract_pushdown_restrictinfos
+ *	  The groups of yb_extract_pushdown_quals() as RestrictInfos, for
+ *	  estimating their selectivity: clauselist_selectivity() applies extended
+ *	  statistics to RestrictInfos only.
+ */
+void
+yb_extract_pushdown_restrictinfos(List *restrictinfo_list,
+								  IndexOptInfo *indexinfo, bool bitmapindex,
+								  List **local_quals, List **rel_remote_quals,
+								  List **rel_colrefs, List **idx_remote_quals,
+								  List **idx_colrefs, Oid relid,
+								  Bitmapset *non_pushable_attnums)
+{
+	yb_extract_pushdown_quals(restrictinfo_list, indexinfo, bitmapindex,
+							  false, /* actual_clauses */
+							  local_quals, rel_remote_quals, rel_colrefs,
+							  idx_remote_quals, idx_colrefs, relid,
+							  non_pushable_attnums);
 }
 
 /*
@@ -461,7 +505,7 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
  *	  quals.
  *
  * Note - If you are modifying this function, consider changing
- * function yb_extract_pushdown_clauses as well.
+ * function yb_extract_pushdown_quals as well.
  */
 void
 yb_extract_pushdown_clauses_from_index_predicate(List *expr_list, List **local_quals,

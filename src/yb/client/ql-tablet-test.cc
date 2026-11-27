@@ -1442,6 +1442,28 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "Final"));
 }
 
+// The history cutoff of every replica, capped at its safe time, keeps advancing while the tablet
+// gets no writes, e.g. for TTL expiration in compactions.
+TEST_F(QLTabletTest, HistoryCutoffAdvancesWithoutWrites) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  CreateTable(kTable1Name, &table1_, /* num_tablets= */ 1);
+  FillTable(0, 10, table1_);
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), 30s * kTimeMultiplier, RequireLeaderIsReady::kFalse, WaitForApplied::kTrue));
+
+  auto peers = ListTableActiveTabletPeers(cluster_.get(), table1_.table()->id());
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto last_write_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
+    ASSERT_OK(WaitFor([&tablet, last_write_ht] {
+      return tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff.primary_cutoff_ht >
+             last_write_ht;
+    }, 10s * kTimeMultiplier, Format("$0history cutoff passes the last write", peer->LogPrefix())));
+  }
+}
+
 class QLTabletRf1Test : public QLTabletTest {
  public:
   void SetUp() override {
@@ -2077,7 +2099,10 @@ TEST_F(QLTabletTest, LeaderLeaseRevocation) {
 }
 
 TEST_F(QLTabletTest, LeaderHtLeaseRevocation) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 30000;
+  // The old leader's ht lease must outlive everything after the cutoff: the re-election (split
+  // votes can take ~20s), the step-down to the final leader, the wait for its lease, and the
+  // write's retry window. Otherwise the write succeeds once the lease expires.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 600000;
   TestLeaderLeaseRevocation(/* ht_lease= */ true);
 }
 

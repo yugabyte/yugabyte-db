@@ -5,6 +5,7 @@ set client_min_messages to warning;
 
 analyze r;
 analyze s;
+analyze rd;
 
 set yb_enable_cbo = on;
 set yb_enable_bitmapscan = on;
@@ -106,7 +107,15 @@ insert into queries values
 
     (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33$$),
 
-    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$)
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$),
+
+    -- k = 5 implies s = 0 (rd_k_s).  The Index Scan and the Bitmap Index Scan
+    -- should both estimate the rows of the condition on k alone.
+    (DEFAULT, $$/*+ IndexScan(rd) */
+        select pk from rd where k = 5 and s = 0$$),
+
+    (DEFAULT, $$/*+ BitmapScan(rd) */
+        select pk from rd where k = 5 and s = 0$$)
 ;
 
 drop type if exists index_plan_rows cascade;

@@ -5,6 +5,7 @@ package api.v2.handlers;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -81,5 +82,35 @@ public class ContinuousBackupHandlerTest extends FakeDBApplication {
         () -> handler.editContinuousBackup(customer.getUuid(), existing.getUuid(), spec("after")));
 
     assertEquals("before", ContinuousBackupConfig.get(existing.getUuid()).get().getBackupDir());
+  }
+
+  @Test
+  public void testConfigBeingValidatedIsRejected() {
+    // Created through v2 and still being checked: it is deleted if its check fails.
+    storageConfig.setState(CustomerConfig.ConfigState.Validating);
+    storageConfig.update();
+
+    PlatformServiceException create =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.createContinuousBackup(customer.getUuid(), spec("test")));
+    assertEquals(BAD_REQUEST, create.getHttpStatus());
+    assertTrue(create.getMessage(), create.getMessage().contains("only an active storage config"));
+    assertFalse(ContinuousBackupConfig.get().isPresent());
+
+    ContinuousBackupConfig existing =
+        ContinuousBackupConfig.create(
+            ModelFactory.createS3StorageConfig(customer, "active").getConfigUUID(),
+            5,
+            TimeUnit.MINUTES,
+            3,
+            "before");
+    PlatformServiceException edit =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.editContinuousBackup(
+                    customer.getUuid(), existing.getUuid(), spec("after")));
+    assertTrue(edit.getMessage(), edit.getMessage().contains("only an active storage config"));
   }
 }

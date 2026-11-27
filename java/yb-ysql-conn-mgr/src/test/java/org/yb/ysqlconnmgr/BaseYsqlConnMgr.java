@@ -68,7 +68,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final long QUEUED_CLIENT_SERVED_TIMEOUT_MS = 30000;
   protected static final String EXCLUSIONS_FLAG =
       "ysql_yb_conn_mgr_reversible_stickiness_exclusions";
-  private static final String[] STICKY_SOURCES = {"replication_origin"};
+  private static final String[] STICKY_SOURCES =
+      {"replication_origin", "prepare", "listen", "cursor", "advisory_lock"};
   private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
       30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
@@ -742,11 +743,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     private final Thread thread;
     private volatile Exception error;
 
-    private QueuedClient() {
+    private QueuedClient(ConnectionBuilder builder) {
       thread = new Thread(() -> {
-        try (Connection conn = getConnectionBuilder()
-                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                .connect();
+        try (Connection conn = builder.connect();
              Statement stmt = conn.createStatement()) {
           stmt.execute("SELECT 1");
         } catch (Exception e) {
@@ -772,7 +771,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected QueuedClient startQueuedClient() {
-    return new QueuedClient();
+    return startQueuedClient(getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR));
+  }
+
+  protected QueuedClient startQueuedClient(ConnectionBuilder builder) {
+    return new QueuedClient(builder);
   }
 
   protected void assertQueuedClientServed() throws Exception {

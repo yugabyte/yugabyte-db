@@ -16,6 +16,10 @@ report the rest at **MEDIUM**.
 A fix or new check on one path must hold on its siblings, or the PR must say why a sibling is out
 of scope. Check each that applies:
 
+For a security fix, ask for the out-of-scope reasoning in the JIRA ticket, not on the PR: a public
+list of paths that still lack the fix is what the repo-root
+[REVIEW.md](../REVIEW.md#review-comments-are-public) rules out.
+
 - **API versions:** v1 controllers and request binders (`controllers/`,
   `UniverseControllerRequestBinder`) and v2 handlers and mappers (`api/v2/handlers/`,
   `api/v2/mappers/`). A validation added to one is often missing from the other.

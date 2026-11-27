@@ -6,7 +6,7 @@ description: >-
   before opening a PR/diff, or to file a standalone bug/feature request — and
   whenever the user asks to file a JIRA ticket for DB code, which must go to
   GitHub unless it is sensitive.
-allowed-tools: Bash(gh issue create *), Bash(gh issue view *), Bash(gh auth status), Read
+allowed-tools: Bash(gh issue create *), Bash(gh issue view *), Bash(gh issue comment *), Bash(gh issue edit *), Bash(gh search issues *), Bash(gh auth status), Read
 model: sonnet
 ---
 
@@ -15,7 +15,7 @@ model: sonnet
 Create a tracking issue for a YugabyteDB change: either a **GitHub issue** in
 `yugabyte/yugabyte-db` (the default for core DB code) or a **JIRA ticket** (the
 default for YBA/platform work). Return the resulting issue number / JIRA key so
-it can feed into `/create-pr` or `/create-diff`.
+it can feed into `/create-pr`.
 
 ## Confidentiality — read before you write anything public
 
@@ -69,23 +69,30 @@ For JIRA tickets, the Atlassian MCP tool `createJiraIssue` must be available
 
 ### Step 1: Decide the tracker — GitHub vs JIRA
 
-First decide whether the issue is **sensitive**: it can't be described without
-something on the Confidentiality list above, e.g. customer data or schema, an
-unfixed security vulnerability, or unreleased internal plans. If the sensitive
-part can be scrubbed or replaced with a placeholder, it isn't sensitive. Then:
-
 - Core DB code (`src/`, `java/`, `cmake_modules/`, `build-support/`, `.github/`,
-  `.claude/`):
-  - Not sensitive → **GitHub issue** in `yugabyte/yugabyte-db`, even if the
-    user asked for a JIRA ticket. GitHub issues sync to JIRA `DB` tickets
-    automatically, so filing in GitHub gets you a JIRA key too.
-  - Sensitive → **JIRA ticket** in `DB`, with the sensitive-information field
-    set to `Yes` (Step 3b).
+  `.claude/`): follow
+  [filing-issues.md](../../../.github/issue-guides/filing-issues.md). It
+  defines "sensitive" and routes the issue: a GitHub issue (Step 3a), a JIRA
+  ticket in the `DB` (core database) project with the sensitive-information
+  field set to `Yes` (Step 3b), a `Vulnerability` ticket (below), or a
+  security report. For a security report, draft it in the policy's format and
+  hand it to the user to send; file no issue. Then check for duplicates as it
+  describes.
 - YBA / platform code (`managed/`) → **JIRA ticket**.
+- A security vulnerability found by an internal filer, in any part of the
+  repo → **JIRA ticket** of type `Vulnerability`, never `Task` or `Bug` and
+  never a GitHub issue. Give it the CVE IDs if there are any, the affected
+  package and its location, a severity, and the Target Version. Don't set Fix
+  Version; automation fills it in when the fix lands. See `src/AGENTS.md`
+  § Security and customer-sensitive changes. An external filer sends a
+  security report instead, as above.
+
+Ask the user whether they are an internal (Yugabyte) filer when the issue is
+sensitive. Don't infer it.
 
 If the user has already named a tracker or project, honor it, except for core
 DB code, where the routing above applies whichever tracker the user named:
-non-sensitive → GitHub, sensitive → JIRA `DB`.
+non-sensitive → GitHub, sensitive → as above.
 
 Why `DB` works this way: the GitHub ↔ JIRA sync never copies a JIRA
 description to GitHub. When a ticket is created in `DB` first, its summary and
@@ -113,6 +120,8 @@ issue from being created at all.
 
 3. **Description** — the "what / why": what the issue is, repro steps for a bug,
    or the motivation for a feature. Draft it and confirm with the user.
+   **YSQL:** read [ysql.md](../../../.github/issue-guides/ysql.md) and
+   build the description from it.
 
 ### Step 3a: Create a GitHub issue
 
@@ -187,8 +196,18 @@ issue from being created at all.
 Output:
 
 - The issue URL (from `gh issue create`) or the JIRA key + link.
-- The reference in the form you'd hand to `/create-pr` or `/create-diff`
+- The reference in the form you'd hand to `/create-pr`
   (a GitHub number like `#31151`, or a JIRA key like `PLAT-20518`).
+
+For a security report (Step 1), report that no issue was filed and that the
+user has the draft to send; there is no tracker reference.
+
+If the duplicate check found an existing issue instead, report
+its number and say that no new issue was filed. An open issue serves as the
+tracker. A closed one can't be used as is. Read it first: if it was fixed in
+a later version than the one the problem was found on, report that fix
+instead. Otherwise ask the user whether to reopen it, or, if the problem is
+different, file a new issue.
 
 Then clean up any temp files created during this run.
 
@@ -199,6 +218,5 @@ Then clean up any temp files created during this run.
   issue.
 - The GitHub title the template proposes (e.g. `[DocDB] Title`) is the raw issue
   title. The `[<issue>,...] <Component>: <Title>` PR/commit format is applied
-  later by `/create-pr` or `/create-diff` — don't pre-format the issue title that
-  way.
+  later by `/create-pr` — don't pre-format the issue title that way.
 - This skill only *creates* the tracker. Opening the PR/diff is a separate step.

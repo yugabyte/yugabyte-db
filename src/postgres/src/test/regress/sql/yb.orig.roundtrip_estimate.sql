@@ -19,6 +19,9 @@ delete from queries;
 --          for the colocated tables.  Scan kind 6 in 1xxxx and 4 in
 --          3xxxx/4xxxx are Distinct Index Only Scans on ce.r(a); kinds 7 and
 --          5 are the same scans without DISTINCT.
+--   9xxxx: filters on dependent columns under dependency statistics (PK
+--          Index Scan, non-PK Index Scan, Index Only Scan); +1000 for the
+--          colocated table.
 
 -- generate colocation x scan kind x index cond range combinations
 insert into queries (qid, query)
@@ -233,6 +236,17 @@ insert into queries values
     (81702, $$select g from sn.rpC where g <= 100$$),
     (81703, $$select g from sn.rpC where g in (1, 100, 1000)$$),
     (81801, $$select g from sn.rpC order by g desc$$);
+
+-- filters on dependent columns: k = 5 implies s = 0, and the dependency
+-- statistics on (k, s) give the scans the rows of the condition on k alone.
+-- The ordered ones are Index Scans on the primary key.
+insert into queries values
+    (90001, $$select * from ce.rd where k = 5 and s = 0 order by pk$$),
+    (90002, $$select v from ce.rd where k = 5 and s = 0$$),
+    (90003, $$select k from ce.rd where k = 5 and s = 0$$),
+    (91001, $$select * from ce.rdC where k = 5 and s = 0 order by pk$$),
+    (91002, $$select v from ce.rdC where k = 5 and s = 0$$),
+    (91003, $$select k from ce.rdC where k = 5 and s = 0$$);
 
 set enable_seqscan = off;
 set enable_bitmapscan = off;

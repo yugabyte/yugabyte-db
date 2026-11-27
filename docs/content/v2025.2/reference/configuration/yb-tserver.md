@@ -246,7 +246,9 @@ Disable callhome diagnostics.
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+Available in v2025.2.8.1 and later.
+
+Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
 
 ### Metric export flags
 
@@ -414,7 +416,9 @@ During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
+Available in v2025.2.8.1 and later.
+
+Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
 
 On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
 
@@ -753,6 +757,29 @@ Default: `false`
 When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
 
 During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
+
+##### yb_password_validity
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Available in v2025.2.9.0 and later.
+
+Sets how long, in minutes, a newly set or changed password remains valid. When non-zero, YugabyteDB sets the role's password expiration to the current time plus this duration. You can specify a unit, for example `90d`. The default value of `0` means passwords do not expire.
+
+This parameter applies only when a password is stored, that is, when you run `CREATE ROLE` or `ALTER ROLE ... PASSWORD`. It does not change the expiration of existing passwords. If the statement includes a `VALID UNTIL` clause, that clause takes precedence over this parameter.
+
+This parameter applies only to roles that authenticate using passwords stored in YugabyteDB. It has no effect on LDAP or OIDC users.
+
+This is a superuser-only parameter. Set it in one of the following ways:
+
+- Server-wide, using [ysql_pg_conf_csv](#ysql-pg-conf-csv).
+- For a specific role, using `ALTER ROLE <role> SET yb_password_validity = <value>`.
+- For all roles, using `ALTER ROLE ALL SET yb_password_validity = <value>`.
+
+You cannot set this parameter for a session, for a database (`ALTER DATABASE ... SET`), for a role in a specific database, or for a role that cannot log in.
 
 ## Networking
 
@@ -1533,7 +1560,7 @@ For tables with a `default_time_to_live` table property, sets a size threshold a
 
 Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
 
-If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accomodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
+If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accommodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
 
 ##### --sst_files_soft_limit
 
@@ -1690,7 +1717,9 @@ Enables the YB-TServer catalog cache, which reduces YB-Master overhead for start
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
+Available in v2025.2.8.1 and later.
+
+Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
 
 See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
 

@@ -194,6 +194,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
+DEFINE_test_flag(uint32, ysql_delay_before_relcache_init_phase3_ms, 0,
+    "Delay a starting YSQL backend after it has checked that its database exists and before "
+    "RelationCacheInitializePhase3.");
+
 DEFINE_test_flag(bool, enable_obj_tuple_locks, false,
     "Enable object tuple locks in the lock manager.");
 
@@ -210,7 +214,6 @@ DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
@@ -306,6 +309,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
+      .ysql_enable_concurrent_ddl = &FLAGS_ysql_enable_concurrent_ddl,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_bypass_anonymous_savepoint_ddl_check =
@@ -327,11 +331,11 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_ysql_delay_before_relcache_init_phase3_ms =
+          &FLAGS_TEST_ysql_delay_before_relcache_init_phase3_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
-      .TEST_ysql_yb_enable_replication_slot_transactional_ddl =
-          &FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
       .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,

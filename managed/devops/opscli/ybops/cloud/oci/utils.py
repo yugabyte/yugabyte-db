@@ -152,6 +152,7 @@ YUGABYTE_SG_PREFIX = "yugabyte-sl-{}"
 DEFAULT_BOOT_VOLUME_SIZE_GB = 50
 MIN_BOOT_VOLUME_SIZE_GB = 50
 BOOT_VOLUME_REPLACEMENT_TIMEOUT_SECONDS = 600
+BOOT_VOLUME_HYDRATION_TIMEOUT_SECONDS = 1800
 OCI_WORK_REQUEST_TERMINAL_STATES = ("SUCCEEDED", "FAILED", "CANCELED")
 # Instance tags replace_boot_volume copies to the boot volume it keeps.
 NODE_TAG_KEYS = ("universe-uuid", "node-uuid")
@@ -1124,6 +1125,9 @@ class OciCloudAdmin:
     def _set_boot_volume_vpus(self, boot_volume, vpus_per_gb):
         if vpus_per_gb is None or boot_volume.vpus_per_gb == vpus_per_gb:
             return
+        # OCI rejects the change with 409 while a new volume is still copying its image.
+        if boot_volume.is_hydrated is False:
+            self._wait_for_boot_volume_hydration(boot_volume.id)
         logging.info("[app] Setting boot volume {} to {} VPUs/GB".format(
             boot_volume.id, vpus_per_gb))
         self.blockstorage_client.update_boot_volume(
@@ -1137,6 +1141,16 @@ class OciCloudAdmin:
                     "Timeout waiting for boot volume {} to reach {} VPUs/GB".format(
                         boot_volume.id, vpus_per_gb))
             time.sleep(5)
+
+    def _wait_for_boot_volume_hydration(self, boot_volume_id):
+        logging.info("[app] Waiting for boot volume {} to finish hydrating".format(boot_volume_id))
+        start_time = time.time()
+        while self.blockstorage_client.get_boot_volume(boot_volume_id).data.is_hydrated is False:
+            if time.time() - start_time >= BOOT_VOLUME_HYDRATION_TIMEOUT_SECONDS:
+                raise YBOpsRuntimeError(
+                    "Timeout waiting for boot volume {} to finish hydrating".format(
+                        boot_volume_id))
+            time.sleep(10)
 
     def _get_previous_boot_volume(self, instance, boot_volume):
         """The newest boot volume kept for the node that is older than boot_volume."""
@@ -1247,8 +1261,17 @@ class OciCloudAdmin:
 
     def update_volume_size(self, volume_id, new_size_in_gbs):
         from oci.core.models import UpdateVolumeDetails
+        # A retry can find the earlier resize still running, or the volume already resized. OCI
+        # only accepts a larger size.
+        volume = self._wait_for_volume_state(volume_id, "AVAILABLE")
+        if volume.size_in_gbs >= new_size_in_gbs:
+            return
         update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
         self.blockstorage_client.update_volume(volume_id, update_details)
+        # The resize is asynchronous.
+        self._wait_for_volume_state(
+            volume_id, "AVAILABLE",
+            ready_check=lambda volume: volume.size_in_gbs >= new_size_in_gbs)
 
     def list_volumes_by_tags(self, tags, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
@@ -1355,15 +1378,19 @@ class OciCloudAdmin:
         raise YBOpsRuntimeError(
             "Timeout waiting for work request {} to finish".format(work_request_id))
 
-    def _wait_for_volume_state(self, volume_id, target_state, timeout=300):
+    def _wait_for_volume_state(self, volume_id, target_state, timeout=300, ready_check=None):
         start_time = time.time()
+        last_seen = None
         while time.time() - start_time < timeout:
             volume = self.blockstorage_client.get_volume(volume_id).data
             if volume.lifecycle_state == target_state:
-                return volume
+                if ready_check is None or ready_check(volume):
+                    return volume
+            last_seen = "{} at {} GB".format(volume.lifecycle_state, volume.size_in_gbs)
             time.sleep(5)
         raise YBOpsRuntimeError(
-            "Timeout waiting for volume {} to reach state {}".format(volume_id, target_state))
+            "Timeout waiting for volume {} to reach state {}, last seen {}".format(
+                volume_id, target_state, last_seen))
 
     def _wait_for_attachment_state(self, attachment_id, target_state, timeout=300):
         start_time = time.time()

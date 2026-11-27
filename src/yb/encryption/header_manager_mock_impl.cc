@@ -70,5 +70,9 @@ Result<bool> HeaderManagerMockImpl::IsEncryptionEnabled() {
 Result<std::string> HeaderManagerMockImpl::GetLatestUniverseKeyId() {
   return universe_key_id_;
 }
+
+Result<EncryptionAlgorithmPB> HeaderManagerMockImpl::GetEncryptionAlgorithm() {
+  return ENCRYPTION_ALGORITHM_AES_256_CTR;
+}
 } // namespace encryption
 } // namespace yb

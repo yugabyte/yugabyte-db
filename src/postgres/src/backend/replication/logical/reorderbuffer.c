@@ -109,13 +109,15 @@
 #include "utils/relfilenodemap.h"
 
 /* YB includes */
+#include "catalog/pg_class.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/catcache.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -2243,7 +2245,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
-						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+						if (yb_enable_replication_slot_transactional_ddl)
 						{
 							const uint32_t *aborted_subtxn_set;
 							int			aborted_subtxn_set_size;
@@ -2516,6 +2518,28 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				case YB_REORDER_BUFFER_CHANGE_DDL:
 					YBCInvalidateCachesForHistoricalReadContext();
+					/*
+					 * The relcache invalidation above leaves the catalog
+					 * caches alone, so a lookup would keep returning the row
+					 * cached for a change before the DDL.
+					 *
+					 * For any DDL record with a table (from a pg_class or a
+					 * pg_attribute change), flush pg_class: output plugins
+					 * such as test_decoding take the schema from it
+					 * (get_rel_namespace), which would keep the old schema
+					 * after ALTER TABLE ... SET SCHEMA. The pg_attribute
+					 * caches are left alone, as the plugins take the columns
+					 * from the relcache's tuple descriptor.
+					 *
+					 * For a DDL record without a table (from a pg_namespace
+					 * change such as ALTER SCHEMA ... RENAME TO), flush
+					 * pg_namespace, or the RELATION message would carry the
+					 * old schema name.
+					 */
+					if (OidIsValid(change->data.yb_ddl.table_oid))
+						CatalogCacheFlushCatalog(RelationRelationId);
+					else
+						CatalogCacheFlushCatalog(NamespaceRelationId);
 					/*
 					 * Inform the output plugin about the schema change so that
 					 * it can send the RELATION message to the client.
