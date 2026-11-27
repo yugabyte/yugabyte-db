@@ -16,6 +16,7 @@ import api.v2.models.BackupScheduleIntervalFrequency;
 import api.v2.models.BackupScheduleKeyspace;
 import api.v2.models.BackupSchedulePagedQuerySpec;
 import api.v2.models.BackupSchedulePagedResp;
+import api.v2.models.BackupScheduleResumeSpec;
 import api.v2.models.BackupScheduleSpec;
 import api.v2.models.BackupScheduleState;
 import api.v2.models.BackupScheduleTableType;
@@ -29,6 +30,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -54,6 +57,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
@@ -98,11 +102,16 @@ public class BackupScheduleHandler {
 
   private final ScheduleTaskHelper scheduleTaskHelper;
   private final BackupHelper backupHelper;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public BackupScheduleHandler(ScheduleTaskHelper scheduleTaskHelper, BackupHelper backupHelper) {
+  public BackupScheduleHandler(
+      ScheduleTaskHelper scheduleTaskHelper,
+      BackupHelper backupHelper,
+      RuntimeConfGetter confGetter) {
     this.scheduleTaskHelper = scheduleTaskHelper;
     this.backupHelper = backupHelper;
+    this.confGetter = confGetter;
   }
 
   public YBATask createBackupSchedule(UUID cUUID, BackupScheduleSpec spec) {
@@ -409,6 +418,80 @@ public class BackupScheduleHandler {
 
   private static PlatformServiceException badRequest(String message) {
     return new PlatformServiceException(BAD_REQUEST, message);
+  }
+
+  /** Pauses the schedule (v1 Stopped); pausing a paused one changes nothing. */
+  public BackupSchedule pauseBackupSchedule(UUID cUUID, UUID bsUUID) {
+    return toggle(cUUID, bsUUID, Schedule.State.Stopped, null);
+  }
+
+  /**
+   * Resumes the schedule; resuming an active one changes nothing. Without run_backup_now, the
+   * universe's runtime config decides, as in v1.
+   */
+  public BackupSchedule resumeBackupSchedule(
+      UUID cUUID, UUID bsUUID, @Nullable BackupScheduleResumeSpec spec) {
+    return toggle(
+        cUUID, bsUUID, Schedule.State.Active, spec == null ? null : spec.getRunBackupNow());
+  }
+
+  /**
+   * v1's toggle, made idempotent and with 409s instead of v1's 400 and 500. The checks and the
+   * change run under the schedule's lock, in one transaction, so an edit or delete task that takes
+   * the schedule meanwhile is seen. A running scheduled backup doesn't block it: pausing only stops
+   * the next ones.
+   */
+  private BackupSchedule toggle(
+      UUID cUUID, UUID bsUUID, Schedule.State target, @Nullable Boolean runBackupNow) {
+    Customer.getOrNotFound(cUUID);
+    Schedule schedule = getSchedule(cUUID, bsUUID);
+    checkNotOperatorControlled(schedule);
+    boolean immediateBackup =
+        target == Schedule.State.Active
+            && (runBackupNow != null
+                ? runBackupNow
+                : Universe.maybeGet(schedule.getOwnerUUID())
+                    .map(
+                        u ->
+                            confGetter.getConfForScope(
+                                u, UniverseConfKeys.runImmediateBackupOnResume))
+                    .orElse(false));
+    Schedule.saveDetails(
+        cUUID,
+        bsUUID,
+        s -> {
+          checkNotOperatorControlled(s);
+          if (s.getStatus() == Schedule.State.Error) {
+            ObjectNode error = Json.newObject();
+            error.put("code", NOT_EDITABLE);
+            error.put(
+                "message",
+                String.format(
+                    "Backup schedule %s is in ERROR and can't be paused or resumed; delete it",
+                    s.getScheduleName()));
+            error.put("backup_schedule_state", BackupScheduleState.BackupScheduleError.toString());
+            throw new PlatformServiceException(CONFLICT, error);
+          }
+          if (target == Schedule.State.Stopped) {
+            if (s.getStatus() == Schedule.State.Stopped || s.getStatus() == Schedule.State.Paused) {
+              return; // Already PAUSED.
+            }
+            // As v1: not while another task holds the schedule.
+            if (s.getStatus() != Schedule.State.Active || s.isRunningState()) {
+              throw busy(s);
+            }
+          } else {
+            if (s.getStatus() == Schedule.State.Active) {
+              return; // Already ACTIVE.
+            }
+            // v1's internal Paused can't move to Active either.
+            if (s.getStatus() != Schedule.State.Stopped) {
+              throw busy(s);
+            }
+          }
+          s.toggle(target, immediateBackup);
+        });
+    return getBackupSchedule(cUUID, bsUUID);
   }
 
   public BackupSchedule getBackupSchedule(UUID cUUID, UUID bsUUID) {

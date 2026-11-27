@@ -451,29 +451,38 @@ public class Schedule extends Model {
           if (s.isRunningState() && newState == State.Stopped) {
             throw new RuntimeException("Schedule is currently locked");
           }
-          s.updateStatus(newState);
-          if (newState == State.Active) {
-            // Run a full backup if requested and if the schedule is expired.
-            if (s.nextScheduleTaskTime != null
-                && Util.isTimeExpired(s.nextScheduleTaskTime)
-                && immediateBackup
-                && s.getTaskType() == TaskType.CreateBackup) {
-              LOG.debug("found expired CreateBackup schedule, setting backlog status to true");
-              s.updateBacklogStatus(true);
-            }
-            if (s.nextIncrementScheduleTaskTime != null
-                && Util.isTimeExpired(s.nextIncrementScheduleTaskTime)
-                && immediateBackup
-                && s.getTaskType() == TaskType.CreateBackup) {
-              LOG.debug(
-                  "found expired CreateBackup incremental schedule, setting increment backlog"
-                      + " status to true");
-              s.updateIncrementBacklogStatus(true);
-            }
-            s.updateNewBackupScheduleTimes();
-          }
+          s.toggle(newState, immediateBackup);
         };
     return saveDetails(customerUUID, scheduleUUID, updater);
+  }
+
+  /**
+   * Pauses (Stopped) or resumes (Active) the schedule, without toggleBackupSchedule's checks; run
+   * it in a {@link #saveDetails} updater. On resume, a backup that came due while the schedule was
+   * stopped runs at the next scheduler run when {@code immediateBackup} is set.
+   */
+  public void toggle(State newState, boolean immediateBackup) {
+    updateStatus(newState);
+    if (newState == State.Active) {
+      // Run a full backup if requested and if the schedule is expired.
+      if (nextScheduleTaskTime != null
+          && Util.isTimeExpired(nextScheduleTaskTime)
+          && immediateBackup
+          && getTaskType() == TaskType.CreateBackup) {
+        LOG.debug("found expired CreateBackup schedule, setting backlog status to true");
+        updateBacklogStatus(true);
+      }
+      if (nextIncrementScheduleTaskTime != null
+          && Util.isTimeExpired(nextIncrementScheduleTaskTime)
+          && immediateBackup
+          && getTaskType() == TaskType.CreateBackup) {
+        LOG.debug(
+            "found expired CreateBackup incremental schedule, setting increment backlog"
+                + " status to true");
+        updateIncrementBacklogStatus(true);
+      }
+      updateNewBackupScheduleTimes();
+    }
   }
 
   // On frequency or cron expression change, modify new full/incremental backup schedule time and

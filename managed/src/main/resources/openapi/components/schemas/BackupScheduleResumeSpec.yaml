@@ -1,0 +1,15 @@
+title: BackupScheduleResumeSpec
+description: |
+  BackupScheduleResumeSpec
+
+  Options for resuming a backup schedule.
+type: object
+properties:
+  run_backup_now:
+    description: 'Run a full or incremental backup that came due while the schedule was paused at the next scheduler run, instead of waiting for the next due time. Omitted: the yb.backup.run_immediate_backup_on_resume runtime config of the universe decides.'
+    type: boolean
+  reason:
+    description: 'Optional human-readable reason for the resume, recorded in the audit log.'
+    type: string
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

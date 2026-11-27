@@ -435,6 +435,125 @@
     x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/backup-schedules/{bsUUID}/pause':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bsUUID
+      in: path
+      description: Backup schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pauseBackupSchedule
+    summary: Pause a backup schedule
+    description: |
+      Pauses an ACTIVE backup schedule: it takes no backups until it is resumed. A backup that is
+      already running finishes. Pausing a PAUSED schedule changes nothing. Returns the schedule.
+      A schedule the YBA Kubernetes operator manages is paused through its custom resource, not
+      here.
+    tags:
+      - Backup Schedule
+    requestBody:
+      $ref: "../components/requestBodies/BackupSchedulePauseReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/BackupScheduleResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no update permission on the customer'
+      '404':
+        description: The customer has no backup schedule with this UUID
+      '409':
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; change its custom resource).'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Schedule
+      auditTargetId: bsUUID.toString()
+      auditActionType: StopPeriodicBackup
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: update
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/backup-schedules/{bsUUID}/resume':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bsUUID
+      in: path
+      description: Backup schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: resumeBackupSchedule
+    summary: Resume a backup schedule
+    description: |
+      Resumes a PAUSED backup schedule. With run_backup_now, a full or incremental backup that came
+      due while the schedule was paused runs at the next scheduler run; otherwise the schedule waits
+      for its next due time. Resuming an ACTIVE schedule changes nothing, and run_backup_now is then
+      ignored. Returns the schedule. A schedule the YBA Kubernetes operator manages is resumed
+      through its custom resource, not here.
+    tags:
+      - Backup Schedule
+    requestBody:
+      $ref: "../components/requestBodies/BackupScheduleResumeReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/BackupScheduleResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no update permission on the customer'
+      '404':
+        description: The customer has no backup schedule with this UUID
+      '409':
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; change its custom resource).'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Schedule
+      auditTargetId: bsUUID.toString()
+      auditActionType: StartPeriodicBackup
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: update
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 /ybc/gflags-metadata:
   get:
     operationId: listYbcGflagsMetadata

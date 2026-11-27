@@ -6,6 +6,8 @@ import api.v2.handlers.BackupScheduleHandler;
 import api.v2.models.BackupSchedule;
 import api.v2.models.BackupSchedulePagedQuerySpec;
 import api.v2.models.BackupSchedulePagedResp;
+import api.v2.models.BackupSchedulePauseSpec;
+import api.v2.models.BackupScheduleResumeSpec;
 import api.v2.models.BackupScheduleSpec;
 import api.v2.models.YBATask;
 import com.google.inject.Inject;
@@ -43,6 +45,24 @@ public class BackupScheduleApiControllerImp extends BackupScheduleApiControllerI
   @Override
   public BackupSchedule getBackupSchedule(Http.Request request, UUID cUUID, UUID bsUUID) {
     return backupScheduleHandler.getBackupSchedule(cUUID, bsUUID);
+  }
+
+  @Override
+  public BackupSchedule pauseBackupSchedule(
+      Http.Request request,
+      UUID cUUID,
+      UUID bsUUID,
+      BackupSchedulePauseSpec backupSchedulePauseSpec) {
+    return backupScheduleHandler.pauseBackupSchedule(cUUID, bsUUID);
+  }
+
+  @Override
+  public BackupSchedule resumeBackupSchedule(
+      Http.Request request,
+      UUID cUUID,
+      UUID bsUUID,
+      BackupScheduleResumeSpec backupScheduleResumeSpec) {
+    return backupScheduleHandler.resumeBackupSchedule(cUUID, bsUUID, backupScheduleResumeSpec);
   }
 
   @Override
