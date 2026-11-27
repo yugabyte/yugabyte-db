@@ -39,6 +39,7 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
   private static final Charset LATIN1 = StandardCharsets.ISO_8859_1;
   private static final String CAFE = "caf\u00e9";
   private static final String EURO = "\u20ac";
+  private static final String POUND = "\u00a3";
   private static final AtomicInteger dbCounter = new AtomicInteger();
 
   @Override
@@ -178,6 +179,29 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
       try (WireConn holder = pinCurrentBackend(db, client)) {
         client.createPipeline(LATIN1)
             .query("SHOW myapp.x").expectBackendError("22P05", null)
+            .query("SHOW client_encoding").row("LATIN1")
+            .run();
+      }
+    }
+  }
+
+  // A startup-packet value is taken as server-encoded bytes whatever client_encoding the same
+  // packet asks for. A LATIN1 client with a non-ASCII one reads it back in LATIN1, before and
+  // after a backend switch.
+  @Test
+  public void testNonAsciiStartupValueForLatin1Client() throws Exception {
+    String db = createDatabase();
+    try (WireConn client = rawConnBuilder().database(db)
+             .startupParam("client_encoding", "LATIN1")
+             .startupParam("myapp.x", POUND)
+             .connect()) {
+      client.createPipeline(LATIN1)
+          .query("SELECT 1").row("1")
+          .query("SHOW myapp.x").row(POUND)
+          .run();
+      try (WireConn holder = pinCurrentBackend(db, client)) {
+        client.createPipeline(LATIN1)
+            .query("SHOW myapp.x").row(POUND)
             .query("SHOW client_encoding").row("LATIN1")
             .run();
       }
