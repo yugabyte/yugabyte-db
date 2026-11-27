@@ -13,12 +13,9 @@
 
 package org.yb.ysqlconnmgr;
 
-import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNotEquals;
-import static org.yb.AssertionWrappers.assertNull;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -33,14 +30,13 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import org.yb.util.Pair;
 import org.yb.util.RequiresLinux;
-import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
 
 @RequiresLinux
 @RunWith(value = YBTestRunner.class)
 public class TestClientEncodingReplay extends BaseYsqlConnMgr {
   private static final Charset LATIN1 = StandardCharsets.ISO_8859_1;
-  private static final Charset UTF8 = StandardCharsets.UTF_8;
   private static final String CAFE = "café";
   private static final String EURO = "€";
   private static final AtomicInteger dbCounter = new AtomicInteger();
@@ -51,61 +47,9 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
     disableWarmupRandomMode(builder);
   }
 
-  private static final class Reply {
-    final List<byte[]> values = new ArrayList<>();
-    final List<PgMessage> parameterStatuses = new ArrayList<>();
-    String sqlState;
-  }
-
-  private static byte[] queryBytes(String sql, Charset charset) {
-    byte[] text = sql.getBytes(charset);
-    return Arrays.copyOf(text, text.length + 1);
-  }
-
-  private static Reply query(WireConn conn, String sql, Charset charset) throws Exception {
-    conn.sendRaw(PgWireProtocol.buildRaw('Q', queryBytes(sql, charset)));
-    Reply reply = new Reply();
-    for (;;) {
-      PgMessage msg = conn.readMessage();
-      switch (msg.type) {
-        case PgWireProtocol.BE_DATA_ROW:
-          reply.values.add(firstColumn(msg.body));
-          break;
-        case PgWireProtocol.BE_PARAMETER_STATUS:
-          reply.parameterStatuses.add(msg);
-          break;
-        case PgWireProtocol.BE_ERROR_RESPONSE:
-          reply.sqlState = PgWireProtocol.parseErrorResponse(msg.body).get('C');
-          break;
-        case PgWireProtocol.BE_READY_FOR_QUERY:
-          return reply;
-        default:
-          break;
-      }
-    }
-  }
-
-  private static Reply queryOk(WireConn conn, String sql, Charset charset) throws Exception {
-    Reply reply = query(conn, sql, charset);
-    assertNull("'" + sql + "' failed with " + reply.sqlState, reply.sqlState);
-    return reply;
-  }
-
-  private static byte[] firstColumn(byte[] body) {
-    ByteBuffer bb = ByteBuffer.wrap(body);
-    bb.getShort();
-    int len = bb.getInt();
-    if (len < 0) {
-      return null;
-    }
-    byte[] data = new byte[len];
-    bb.get(data);
-    return data;
-  }
-
   private static int backendPid(WireConn conn) throws Exception {
-    Reply reply = queryOk(conn, "SELECT pg_backend_pid()", UTF8);
-    return Integer.parseInt(new String(reply.values.get(0), UTF8));
+    return conn.createPipeline().query("SELECT pg_backend_pid()").label("pid").run()
+        .intValue("pid");
   }
 
   private String createDatabase() throws Exception {
@@ -132,56 +76,71 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
   private WireConn pinCurrentBackend(String db, WireConn client) throws Exception {
     int pid = backendPid(client);
     WireConn holder = connect(db, null);
-    queryOk(holder, "BEGIN", UTF8);
+    holder.createPipeline().query("BEGIN").run();
     assertEquals(pid, backendPid(holder));
     assertNotEquals(pid, backendPid(client));
     return holder;
   }
 
-  private static void assertValue(Reply reply, String expected, Charset charset) {
-    assertEquals(1, reply.values.size());
-    assertArrayEquals(expected.getBytes(charset), reply.values.get(0));
-  }
-
+  // A non-ASCII value set after switching to LATIN1 mid-session replays onto a backend that
+  // starts on UTF8 and reads back unchanged in LATIN1.
   @Test
   public void testLatin1ValueReplayedOnUtf8Backend() throws Exception {
     String db = createDatabase();
     try (WireConn client = connect(db, null)) {
-      queryOk(client, "SET client_encoding = LATIN1", UTF8);
-      queryOk(client, "SET myapp.x = '" + CAFE + "'", LATIN1);
+      client.createPipeline(LATIN1)
+          .query("SET client_encoding = LATIN1")
+          .query("SET myapp.x = '" + CAFE + "'")
+          .run();
       try (WireConn holder = pinCurrentBackend(db, client)) {
-        assertValue(queryOk(client, "SHOW myapp.x", LATIN1), CAFE, LATIN1);
-        assertValue(queryOk(client, "SHOW client_encoding", LATIN1), "LATIN1", LATIN1);
+        client.createPipeline(LATIN1)
+            .query("SHOW myapp.x").row(CAFE)
+            .query("SHOW client_encoding").row("LATIN1")
+            .run();
       }
     }
   }
 
+  // LATIN1 comes from the startup packet, so the new backend starts on LATIN1. A value set
+  // after switching to UTF8 must not be reinterpreted as LATIN1 on replay.
   @Test
   public void testUtf8ValueReplayedForLatin1StartupClient() throws Exception {
     String db = createDatabase();
     try (WireConn client = connect(db, "LATIN1")) {
-      queryOk(client, "SET client_encoding = UTF8", UTF8);
-      queryOk(client, "SET myapp.x = '" + CAFE + "'", UTF8);
+      client.createPipeline()
+          .query("SET client_encoding = UTF8")
+          .query("SET myapp.x = '" + CAFE + "'")
+          .run();
       try (WireConn holder = pinCurrentBackend(db, client)) {
-        assertValue(queryOk(client, "SHOW myapp.x", UTF8), CAFE, UTF8);
-        assertValue(queryOk(client, "SHOW client_encoding", UTF8), "UTF8", UTF8);
+        client.createPipeline()
+            .query("SHOW myapp.x").row(CAFE)
+            .query("SHOW client_encoding").row("UTF8")
+            .run();
       }
     }
   }
 
+  // A value set under UTF8 before the client switched to LATIN1 replays and reads back
+  // converted to LATIN1.
   @Test
   public void testUtf8ValueReplayedAfterSwitchToLatin1() throws Exception {
     String db = createDatabase();
     try (WireConn client = connect(db, null)) {
-      queryOk(client, "SET myapp.x = '" + CAFE + "'", UTF8);
-      queryOk(client, "SET client_encoding = LATIN1", UTF8);
+      client.createPipeline()
+          .query("SET myapp.x = '" + CAFE + "'")
+          .query("SET client_encoding = LATIN1")
+          .run();
       try (WireConn holder = pinCurrentBackend(db, client)) {
-        assertValue(queryOk(client, "SHOW myapp.x", LATIN1), CAFE, LATIN1);
-        assertValue(queryOk(client, "SHOW client_encoding", LATIN1), "LATIN1", LATIN1);
+        client.createPipeline(LATIN1)
+            .query("SHOW myapp.x").row(CAFE)
+            .query("SHOW client_encoding").row("LATIN1")
+            .run();
       }
     }
   }
 
+  // session_authorization is GUC_REPORT: the client gets exactly one ParameterStatus for it, in
+  // its own encoding rather than the server-encoded value ConnMgr is sent.
   @Test
   public void testSessionAuthorizationReportedInClientEncoding() throws Exception {
     String db = createDatabase();
@@ -193,29 +152,34 @@ public class TestClientEncodingReplay extends BaseYsqlConnMgr {
       stmt.execute("CREATE ROLE \"" + role + "\" LOGIN");
     }
     try (WireConn client = connect(db, "LATIN1")) {
-      Reply reply = queryOk(client, "SET SESSION AUTHORIZATION \"" + role + "\"", LATIN1);
-      List<byte[]> reported = new ArrayList<>();
-      for (PgMessage msg : reply.parameterStatuses) {
-        byte[] name = "session_authorization\0".getBytes(UTF8);
-        if (msg.body.length > name.length
-            && Arrays.equals(Arrays.copyOf(msg.body, name.length), name)) {
-          reported.add(Arrays.copyOfRange(msg.body, name.length, msg.body.length - 1));
+      PipelineResult result = client.createPipeline(LATIN1)
+          .query("SET SESSION AUTHORIZATION \"" + role + "\"")
+          .run();
+      List<String> reported = new ArrayList<>();
+      for (Pair<String, String> status : result.parameterStatuses()) {
+        if (status.getFirst().equals("session_authorization")) {
+          reported.add(status.getSecond());
         }
       }
-      assertEquals(1, reported.size());
-      assertArrayEquals(role.getBytes(LATIN1), reported.get(0));
+      assertEquals(Arrays.asList(role), reported);
     }
   }
 
+  // A value with no LATIN1 equivalent still replays. Only reading it fails, with 22P05 as in
+  // PG, and the session stays usable.
   @Test
   public void testUntranslatableValueReplayedAfterSwitchToLatin1() throws Exception {
     String db = createDatabase();
     try (WireConn client = connect(db, null)) {
-      queryOk(client, "SET myapp.x = '" + EURO + "'", UTF8);
-      queryOk(client, "SET client_encoding = LATIN1", UTF8);
+      client.createPipeline()
+          .query("SET myapp.x = '" + EURO + "'")
+          .query("SET client_encoding = LATIN1")
+          .run();
       try (WireConn holder = pinCurrentBackend(db, client)) {
-        assertEquals("22P05", query(client, "SHOW myapp.x", LATIN1).sqlState);
-        assertValue(queryOk(client, "SHOW client_encoding", LATIN1), "LATIN1", LATIN1);
+        client.createPipeline(LATIN1)
+            .query("SHOW myapp.x").expectBackendError("22P05", null)
+            .query("SHOW client_encoding").row("LATIN1")
+            .run();
       }
     }
   }
