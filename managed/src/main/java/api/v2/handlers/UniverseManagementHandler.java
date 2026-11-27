@@ -637,9 +637,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
-    // The mapper keeps specs that node_spec omits; the replica must not inherit the primary's.
-    KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.MASTER);
-    KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.TSERVER);
+    if (Util.isKubernetesBased(newReadReplica)) {
+      // The mapper keeps specs that node_spec omits; the replica must not inherit the primary's.
+      KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.MASTER);
+      KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.TSERVER);
+    }
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
     // The UI fills the read replica's gflags from the primary's GET response, which redacts the
     // sensitive ones, so restore them from the primary the way a gflags upgrade does.
