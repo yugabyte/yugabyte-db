@@ -181,20 +181,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     // connection, a later backend switch replays yb_read_time together with the other session
     // GUCs in one multi-statement query, which runs in an implicit transaction block, and the
     // check against setting yb_read_time inside a transaction block rejects it (GH #35719).
-    if (isTestRunningWithConnectionManager()) {
-      setConnMgrReversibleStickinessExclusions("listen");
-      try (Connection conn = getConnectionBuilder().connect()) {
-        waitForCondition(conn,
-            "SELECT CASE WHEN current_setting('yb_conn_mgr_listen_permanent_sticky') = 'on'"
-            + " THEN 1 ELSE 0 END");
-      }
-    }
+    setConnMgrReversibleStickinessExclusions("listen");
     try {
       runDisallowListenWithYbReadTime();
     } finally {
-      if (isTestRunningWithConnectionManager()) {
-        setConnMgrReversibleStickinessExclusions("");
-      }
+      setConnMgrReversibleStickinessExclusions("");
     }
   }
 
