@@ -67,14 +67,18 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
@@ -2109,6 +2113,110 @@ TEST_F(CompactionTest, CheckLastRequestTimePersistence) {
   SleepFor(MonoDelta::FromSeconds(1));
   ASSERT_OK(ExecuteManualCompaction());
   ASSERT_GT(table_info->LockForRead()->pb.last_full_compaction_request_time(), last_request_time);
+}
+
+// Compactions are disabled until Tablet::CompleteStartup, so no compaction should run on a tablet
+// that is still starting up (#39449).
+TEST_F(CompactionTest, YB_DEBUG_ONLY_TEST(NoCompactionsBeforeStartupCompletes)) {
+  constexpr size_t kNumTablets = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, kNumTablets);
+  ASSERT_OK(WriteAtLeastFilesPerDb(2));
+  auto* ts = cluster_->mini_tablet_server(0);
+  TabletId held_tablet_id;
+  {
+    auto peers = ts->server()->tablet_manager()->GetTabletPeersWithTableId(workload_table_id_);
+    ASSERT_EQ(peers.size(), kNumTablets);
+    held_tablet_id = peers[1]->tablet_id();
+  }
+
+  CountDownLatch release(1);
+  std::atomic<bool> held{false};
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "TabletPeer::Start:BeforeStartedNotification",
+      [&held_tablet_id, &release, &held](void* arg) {
+    if (static_cast<tablet::TabletPeer*>(arg)->tablet_id() == held_tablet_id) {
+      held = true;
+      release.Wait();
+    }
+  });
+  sync_point->EnableProcessing();
+  auto release_startup = ScopeExit([&release, sync_point] {
+    release.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(ts->Restart());
+  ASSERT_OK(WaitFor([&held] { return held.load(); }, 30s * kTimeMultiplier, "Startup held"));
+
+  auto* tablet_manager = ts->server()->tablet_manager();
+  tablet::TabletPtr held_tablet;
+  TSTabletManager::TabletPtrs tablets;
+  for (const auto& peer : tablet_manager->GetTabletPeersWithTableId(workload_table_id_)) {
+    tablet::TabletPtr tablet;
+    if (peer->tablet_id() == held_tablet_id) {
+      tablet = held_tablet = peer->shared_tablet_maybe_null();
+      ASSERT_NE(tablet, nullptr);
+    } else {
+      ASSERT_OK(WaitFor(
+          [&peer, &tablet] {
+            tablet = peer->shared_tablet_maybe_null();
+            return tablet && tablet->IsEligibleForFullCompaction();
+          },
+          30s * kTimeMultiplier, "Compactions enabled"));
+    }
+    tablets.push_back(tablet);
+  }
+  ASSERT_EQ(tablets.size(), kNumTablets);
+  ASSERT_NE(held_tablet, nullptr);
+  // Put the held tablet between the others, so it fails after one submission and before another.
+  std::swap(*std::find(tablets.begin(), tablets.end(), held_tablet), tablets[1]);
+
+  // The paths of the full compaction manager, of FlushTablets for all tablets, and of the master's
+  // CompactSysCatalog.
+  ASSERT_FALSE(held_tablet->IsEligibleForFullCompaction());
+  ASSERT_NOK(tablet_manager->TriggerAdminCompaction(
+      tablets,
+      AdminCompactionOptions{ShouldWait::kTrue, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse}));
+  ASSERT_NOK(held_tablet->ForceManualRocksDBCompact());
+  for (const auto& tablet : tablets) {
+    if (tablet == held_tablet) {
+      ASSERT_GE(tablet->GetCurrentVersionNumSSTFiles(), 2);
+    } else {
+      ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
+    }
+  }
+
+  // The master's compaction of explicit tablets waits for startup to complete instead of failing.
+  std::atomic<bool> waiting{false};
+  sync_point->SetCallBack(
+      "TabletServiceAdminImpl::FlushTablets:WaitCompactionsEnabled",
+      [&waiting](void*) { waiting = true; });
+  std::atomic<bool> compacted{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, ts, &held_tablet_id, &compacted] {
+    auto proxy = cluster_->GetTServerProxy<TabletServerAdminServiceProxy>(0);
+    FlushTabletsRequestPB req;
+    req.set_dest_uuid(ts->server()->permanent_uuid());
+    req.add_tablet_ids(held_tablet_id);
+    req.set_operation(FlushTabletsRequestPB::COMPACT);
+    FlushTabletsResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(60s * kTimeMultiplier);
+    ASSERT_OK(proxy.FlushTablets(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+    compacted = true;
+  });
+  ASSERT_OK(WaitFor([&waiting] { return waiting.load(); }, 30s * kTimeMultiplier, "Request waits"));
+  // The held tablet cannot enable compactions until it is released.
+  ASSERT_FALSE(compacted);
+
+  release.CountDown();
+  thread_holder.JoinAll();
+  ASSERT_TRUE(compacted);
+  ASSERT_EQ(held_tablet->GetCurrentVersionNumSSTFiles(), 1);
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/27426. Refer to D44394 for the description.

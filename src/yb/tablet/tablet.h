@@ -1184,6 +1184,13 @@ class Tablet : public AbstractTablet,
   // full compaction.
   bool IsEligibleForFullCompaction();
 
+  // Returns ServiceUnavailable until DoEnableCompactions enables compactions, e.g. during startup.
+  Status CheckCompactionsEnabled() const;
+
+  bool compactions_enabled() const {
+    return compactions_enabled_;
+  }
+
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
 
@@ -1670,6 +1677,10 @@ class Tablet : public AbstractTablet,
     kShutdown
   };
   State state_ = kInitialized;
+
+  // Set by DoEnableCompactions. RocksDB instances are opened with compactions disabled, e.g. at
+  // startup and when a restore reopens them.
+  std::atomic<bool> compactions_enabled_{false};
 
   // Fault hooks. In production code, these will always be nullptr.
   std::shared_ptr<CompactionFaultHooks> compaction_hooks_;

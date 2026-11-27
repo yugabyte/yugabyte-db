@@ -2241,6 +2241,16 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       return;
     }
     case FlushTabletsRequestPB::COMPACT: {
+      // Explicit ids are of RUNNING peers, which can still be completing startup. Without this
+      // wait such a tablet fails the request, and the master retries it with all its tablets.
+      // All tablets can include ones that are still bootstrapping, so they are not waited for.
+      if (!req->all_tablets()) {
+        TEST_SYNC_POINT("TabletServiceAdminImpl::FlushTablets:WaitCompactionsEnabled");
+        for (const auto& tablet_peer : tablet_peers) {
+          RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+              tablet_peer->WaitCompactionsEnabled(context.GetClientDeadline()), resp, &context);
+        }
+      }
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           TriggerCompact(*server_->tablet_manager(), tablet_ptrs, *req),
           resp, &context);
