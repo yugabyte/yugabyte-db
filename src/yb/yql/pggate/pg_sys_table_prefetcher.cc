@@ -515,7 +515,7 @@ class Loader {
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
-          [&response, data_container, &options = options_](OperationInfo& op_info) -> Result<bool> {
+          [&response, data_container](OperationInfo& op_info) -> Result<bool> {
             if (yb_debug_log_catcache_events) {
               LOG(INFO) << "Completed prefetch for op for table "
                         << op_info.table->table_name().table_name();
@@ -528,7 +528,7 @@ class Loader {
                        op_info.index ? op_info.index->relfilenode_id() : PgObjectId(),
                        &op_info.index_targets,
                        std::move(sidecar));
-            return !op_info.operation->PrepareNextRequest(options.fetch_row_limit);
+            return !op_info.operation->PrepareNextRequest();
           }, true /* bad_status_value */);
       std::erase_if(op_info_, remove_predicate);
       RETURN_NOT_OK(remove_predicate_status);

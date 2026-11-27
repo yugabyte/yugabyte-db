@@ -75,7 +75,7 @@ std::string PgsqlReadOp::RequestToString() const {
   return read_request_.ShortDebugString();
 }
 
-bool PgsqlReadOp::PrepareNextRequest(std::optional<uint64_t> row_limit) {
+bool PgsqlReadOp::PrepareNextRequest() {
   // Set up paging state for next request.
   auto& res = *response();
   if (!res.has_paging_state()) {
@@ -112,11 +112,6 @@ bool PgsqlReadOp::PrepareNextRequest(std::optional<uint64_t> row_limit) {
   // Setup backfill_spec for the next request.
   if (res.has_backfill_spec()) {
     req->dup_backfill_spec(res.backfill_spec());
-  }
-
-  if (row_limit) {
-    // Assign the row limit to the top-level request.
-    read_request_.set_limit(*row_limit);
   }
 
   return true;

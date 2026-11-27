@@ -82,13 +82,13 @@ yb_scan_desc_apply_next_parallel_range(TableScanDesc scan)
 											 opaque->pscan);
 }
 
-int
+uint64_t
 yb_scan_desc_get_fetch_row_limit(TableScanDesc scan)
 {
 	return ((YbTableScanDesc) scan)->ybscan->exec_params->yb_fetch_row_limit;
 }
 
-int
+uint64_t
 yb_scan_desc_get_fetch_size_limit(TableScanDesc scan)
 {
 	return ((YbTableScanDesc) scan)->ybscan->exec_params->yb_fetch_size_limit;

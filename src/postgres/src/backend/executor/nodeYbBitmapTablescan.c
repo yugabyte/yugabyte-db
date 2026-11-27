@@ -133,12 +133,11 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 			const int	ybctid_size = (node->average_ybctid_bytes > 0 ?
 									   node->average_ybctid_bytes :
 									   26);
-			const int	row_limit = yb_scan_desc_get_fetch_row_limit(tsdesc);
-			const int	size_limit = (yb_scan_desc_get_fetch_size_limit(tsdesc) /
-									  ybctid_size);
+			const uint64_t	row_limit = yb_scan_desc_get_fetch_row_limit(tsdesc);
+			const uint64_t	size_limit = (yb_scan_desc_get_fetch_size_limit(tsdesc) / ybctid_size);
 
-			const int	count = Min(row_limit > 0 ? row_limit : INT_MAX,
-									size_limit > 0 ? size_limit : INT_MAX);
+			const uint64_t	count = Min(row_limit > 0 ? row_limit : UINT64_MAX,
+										size_limit > 0 ? size_limit : UINT64_MAX);
 
 			node->ybtbmres = ybtbmres = yb_tbm_iterate(node->ybtbmiterator,
 													   count);

@@ -3,9 +3,8 @@
 \c roundtrip_test
 set client_min_messages to 'warning';
 
--- A serial scan under a Limit has its first read request trimmed to
--- LIMIT count + OFFSET (nodeLimit.c / pg_doc_op.cc; later pages revert to
--- the default fetch size); the planner mirrors the executor's cancellation
+-- A serial scan under a Limit tries to read no more than
+-- LIMIT count + OFFSET rows; the planner mirrors the executor's cancellation
 -- rules in yb_first_fetch_limit and reports the bound as "First Fetch
 -- Limit".  The printed roundtrip estimates stay full-pull (consistent with
 -- total_cost), so this suite derives the expected actual roundtrips from

@@ -133,10 +133,8 @@ class PgsqlReadOp : public PgsqlOp {
   std::string RequestToString() const override;
 
   // Prepare the "next page" request. Most importantly, copy paging info from the response.
-  // Optionally update the row limit. First page may use "plan limit", while subsequent pages
-  // should return to default.
   // Returns false if there's no next page (response has no paging info).
-  bool PrepareNextRequest(std::optional<uint64_t> row_limit = std::nullopt);
+  bool PrepareNextRequest();
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;

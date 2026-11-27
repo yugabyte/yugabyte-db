@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <thread>
@@ -86,6 +87,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/tostring.h"
 
 #include "yb/rpc/rpc_context.h"
 
@@ -5541,14 +5543,27 @@ Status AttachOnlineSchemaChangeTriggers(
   return Status::OK();
 }
 
-Result<double> ExplainStorageStat(PGConn* conn, const std::string& dml, const char* key) {
-  auto doc = VERIFY_RESULT(conn->FetchRow<JsonDocument>(
-      Format("EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) $0", dml)));
-  return doc.Root()[0][key].GetDouble();
+constexpr auto kStorageStatFlushRequests = "Storage Flush Requests"sv;
+constexpr auto kStorageStatReadRequests = "Storage Read Requests"sv;
+constexpr auto kStorageStatReadOps = "Storage Read Ops"sv;
+constexpr auto kStorageStatRowsScanned = "Storage Rows Scanned"sv;
+
+Result<JsonDocument> ExplainQuery(PGConn& conn, std::string_view query) {
+  return conn.FetchRow<JsonDocument>(
+      Format("EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) $0", query));
 }
 
-Result<double> ExplainFlushes(PGConn* conn, const std::string& dml) {
-  return ExplainStorageStat(conn, dml, "Storage Flush Requests");
+JsonValue GetStorageStat(std::reference_wrapper<const JsonDocument> explain, std::string_view key) {
+  return explain.get().Root()[0][key];
+}
+
+Result<double> ExplainStorageStat(PGConn& conn, std::string_view dml, std::string_view key) {
+  auto explain = VERIFY_RESULT(ExplainQuery(conn, dml));
+  return GetStorageStat(explain, key).GetDouble();
+}
+
+Result<double> ExplainFlushes(PGConn* conn, std::string_view dml) {
+  return ExplainStorageStat(*conn, dml, kStorageStatFlushRequests);
 }
 
 // The rows t2 should hold for the current rows of t1, and the rows it holds.
@@ -6308,6 +6323,75 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kIters);
   ASSERT_LE(osc_spec, base_spec + 5)
       << "trigger flush defeats yb_speculatively_execute_pl_statements";
+}
+
+// The test checks number of rows fetched from DocDB matches number specified in query's LIMIT
+// clause when the scan reaches a tablet boundary.
+TEST_F_EX(PgMiniTest, PlanLimitAcrossTabletBoundary, PgMiniTestSingleNode) {
+  struct ReadMetrics : EnableStreamOutViaToString<ReadMetrics> {
+    size_t requests;
+    size_t ops;
+    size_t rows_scanned;
+
+    auto ToString() const { return YB_STRUCT_TO_STRING(requests, ops, rows_scanned); }
+
+    bool operator==(const ReadMetrics&) const = default;
+  };
+
+  constexpr auto kLimit = 5;
+  constexpr auto kSplitKey = 10;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t (k INT, v INT, PRIMARY KEY (k ASC)) SPLIT AT VALUES (($0))", kSplitKey));
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE tmp_t(LIKE t)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 2000) AS i"));
+
+  auto fetcher = [&conn](std::string_view query) -> Result<std::pair<std::string, ReadMetrics>> {
+    LOG(INFO) << "Checking query " << query;
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto stat =
+        [explain = VERIFY_RESULT(ExplainQuery(conn, Format("INSERT INTO tmp_t $0", query)))](
+            auto key) {
+          return GetStorageStat(explain, key).GetUint32();
+        };
+    auto result = VERIFY_RESULT(conn.FetchAllAsString("SELECT * FROM tmp_t ORDER BY k"));
+    RETURN_NOT_OK(conn.RollbackTransaction());
+    return std::make_pair(
+        std::move(result),
+        ReadMetrics{
+            .requests = VERIFY_RESULT(stat(kStorageStatReadRequests)),
+            .ops = VERIFY_RESULT(stat(kStorageStatReadOps)),
+            .rows_scanned = VERIFY_RESULT(stat(kStorageStatRowsScanned))
+        });
+  };
+
+  const auto query_pattern = "SELECT * FROM t WHERE k > $0 ORDER BY k LIMIT $1"s;
+
+  {
+    auto [rows, metrics] = ASSERT_RESULT(fetcher(
+        Format(query_pattern, kSplitKey - kLimit - 1, kLimit)));
+    ASSERT_EQ(rows, "5, 5; 6, 6; 7, 7; 8, 8; 9, 9");
+    const ReadMetrics expected_metrics{.requests = 1, .ops = 1, .rows_scanned = kLimit};
+    ASSERT_EQ(metrics, expected_metrics);
+  }
+
+  {
+    auto [rows, metrics] =
+        ASSERT_RESULT(fetcher(Format(query_pattern, kSplitKey - kLimit + 1, kLimit)));
+    ASSERT_EQ(rows, "7, 7; 8, 8; 9, 9; 10, 10; 11, 11");
+    const ReadMetrics expected_metrics{.requests = 2, .ops = 2, .rows_scanned = kLimit};
+    ASSERT_EQ(metrics, expected_metrics);
+  }
+
+  {
+    ASSERT_OK(conn.Execute("SET yb_fetch_row_limit = 3"));
+    auto [rows, metrics] =
+        ASSERT_RESULT(fetcher(Format(query_pattern, kSplitKey - 2, kLimit)));
+    ASSERT_EQ(rows, "9, 9; 10, 10; 11, 11; 12, 12; 13, 13");
+    const ReadMetrics expected_metrics{.requests = 3, .ops = 3, .rows_scanned = kLimit};
+    ASSERT_EQ(metrics, expected_metrics);
+  }
 }
 
 }  // namespace yb::pgwrapper

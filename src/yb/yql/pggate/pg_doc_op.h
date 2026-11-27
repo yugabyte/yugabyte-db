@@ -360,7 +360,7 @@ class PgDocOp {
 
   virtual bool IsWrite() const = 0;
 
-  Result<size_t> CreateRequests();
+  Status CreateRequests();
 
   const PgTable& table() const { return table_; }
 
@@ -401,10 +401,6 @@ class PgDocOp {
 
   // Exec control parameters.
   YbcPgExecParameters exec_params_;
-
-  // Suppress sending new request after processing response.
-  // Next request will be sent in case upper level will ask for additional data.
-  bool suppress_next_result_prefetching_ = false;
 
   // Populated protobuf request.
   std::vector<PgsqlOpPtr> pgsql_ops_;
@@ -458,7 +454,7 @@ class PgDocOp {
 
   virtual Status CompleteProcessResponse() = 0;
 
-  Result<size_t> CompleteRequests();
+  Status CompleteRequests();
 
   // Returns a reference to the in_txn_limit_ht to be used.
   //
@@ -482,6 +478,12 @@ class PgDocOp {
 
   // See ReadHybridTimePB for more details about in_txn_limit.
   uint64_t in_txn_limit_ht_ = 0;
+
+  // Number of rows still to be fetched under the plan limit.
+  // Field is equal to std::nullopt in two cases:
+  // - plan had no limit at all
+  // - required number of rows was already fetched
+  std::optional<uint64_t> remain_plan_limit_;
 
   DISALLOW_COPY_AND_ASSIGN(PgDocOp);
 };
@@ -616,9 +618,6 @@ class PgDocReadOp : public PgDocOp {
 
   // Reset pgsql operators before reusing them with new arguments / inputs from Postgres.
   void ResetInactivePgsqlOps();
-
-  // Analyze options and pick the appropriate prefetch limit.
-  Status SetRequestPrefetchLimit();
 
   // Set the backfill_spec field of our read request.
   void SetBackfillSpec();

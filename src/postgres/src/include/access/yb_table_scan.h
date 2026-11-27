@@ -58,8 +58,8 @@ extern void yb_scan_desc_exec_select(TableScanDesc scan);
 extern void yb_scan_desc_fetch_next(TableScanDesc scan,
 									TupleTableSlot *slot, Oid relid);
 extern bool yb_scan_desc_apply_next_parallel_range(TableScanDesc scan);
-extern int	yb_scan_desc_get_fetch_row_limit(TableScanDesc scan);
-extern int	yb_scan_desc_get_fetch_size_limit(TableScanDesc scan);
+extern uint64_t	yb_scan_desc_get_fetch_row_limit(TableScanDesc scan);
+extern uint64_t	yb_scan_desc_get_fetch_size_limit(TableScanDesc scan);
 extern void yb_scan_desc_fetch_ybctids(TableScanDesc scan,
 									   YbcConstSliceVector ybctids);
 extern void yb_scan_desc_apply_primary_pushdown(TableScanDesc scan,
