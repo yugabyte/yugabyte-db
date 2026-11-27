@@ -233,7 +233,7 @@ namespace master {
 
 class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
  public:
-  CDCStreamLoader(
+  explicit CDCStreamLoader(
       CatalogManager* catalog_manager, XClusterManager& xcluster_manager,
       const std::unordered_set<TableId>& tables_with_hidden_tablets)
       : catalog_manager_(catalog_manager),
