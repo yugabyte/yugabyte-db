@@ -21,11 +21,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.security.KeyStore;
-import java.security.Security;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockedStatic;
@@ -38,12 +36,6 @@ public class CustomCAStoreManagerTest extends FakeDBApplication {
 
   @Before
   public void setUp() throws Exception {
-    // Install BC-FIPS the way MainModule does, which tests don't run. The JDK's own EC provider
-    // cannot verify the P-192 test root, so without this the tests pass only when an earlier
-    // test in the same forked JVM installed it.
-    if (Security.getProvider(BouncyCastleFipsProvider.PROVIDER_NAME) == null) {
-      Security.insertProviderAt(new BouncyCastleFipsProvider("C:HYBRID;ENABLE{All};"), 1);
-    }
     customer = ModelFactory.testCustomer();
     customCAStoreManager = app.injector().instanceOf(CustomCAStoreManager.class);
     storagePath = Files.createTempDirectory("castore").toString();
