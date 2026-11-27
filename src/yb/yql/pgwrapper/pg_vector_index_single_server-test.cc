@@ -261,11 +261,11 @@ TEST_P(PgVectorIndexSingleServerTest, SnapshotReadWithConcurrentDelete) {
   ASSERT_OK(read_conn.CommitTransaction());
 }
 
-// Reproduces the "Vector not found" flake from PgVectorIndexTest.SnapshotSchedule by interleaving a
-// committed DELETE's reverse-mapping apply with a vector search: sync points gate the apply to run
-// after the filter reads the live mapping (HandleApplying waits for Search:AfterFilter) and let the
-// query resolve only after it commits (Search:BeforeResolve waits for ApplyIntentsDone). A single
-// tablet server keeps each sync point mapped to one tablet.
+// Reproduces the "Vector not found" flake from PgVectorIndexSnapshotTest.SnapshotSchedule by
+// interleaving a committed DELETE's reverse-mapping apply with a vector search: sync points gate
+// the apply to run after the filter reads the live mapping (HandleApplying waits for
+// Search:AfterFilter) and let the query resolve only after it commits (Search:BeforeResolve waits
+// for ApplyIntentsDone). A single tablet server keeps each sync point mapped to one tablet.
 TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearch) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 10;

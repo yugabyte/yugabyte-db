@@ -86,6 +86,15 @@ extern MonoDelta TEST_sleep_during_flush;
 
 namespace yb::pgwrapper {
 
+class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+ protected:
+  void TestSimple(bool table_exists = false);
+  void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
+  void TestMetric(const std::string& expected);
+  void TestRandom();
+  void TestNullVectorsInIntents(bool commit);
+};
+
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
 
 void PgVectorIndexTest::TestSimple(bool table_exists) {
