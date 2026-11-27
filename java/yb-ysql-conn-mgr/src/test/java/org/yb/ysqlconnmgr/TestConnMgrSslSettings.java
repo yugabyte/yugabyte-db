@@ -14,6 +14,7 @@
 package org.yb.ysqlconnmgr;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assume.assumeTrue;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -436,6 +437,9 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
    * error; what has to hold either way is that neither process is stably running.
    */
   private void assertRestartBlocksStartup(String pgConfCsv) throws Exception {
+    // The restart and the checks below don't connect through the endpoint, so the other
+    // parameter would repeat this run exactly.
+    assumeTrue(connectionEndpoint == ConnectionEndpoint.POSTGRES);
     // Check that the processes are running before the restart.
     getOdysseyPid();
     getPostmasterPid();
@@ -451,7 +455,7 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
       assertNotStablyRunning("Odyssey", BaseYsqlConnMgr::getOdysseyPid);
       assertNotStablyRunning("Postmaster", BaseYsqlConnMgr::getPostmasterPid);
     } finally {
-      restartWithSslGucs("");
+      markClusterNeedsRecreation();
     }
   }
 
