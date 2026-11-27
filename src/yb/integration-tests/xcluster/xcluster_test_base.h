@@ -246,6 +246,12 @@ class XClusterTestBase : public YBTest {
 
   Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 
+  // Waits until the producer table has no xCluster streams, excluding WAL anchor streams.
+  Status WaitForCDCStreamDeleted(const TableId& table_id);
+
+  Status WaitForCDCStreamCount(
+      const TableId& table_id, int expected_count, master::ListCDCStreamsResponsePB* resp);
+
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
   // Waits until the consumer pollers for all the given producer tablets are sleeping due to
