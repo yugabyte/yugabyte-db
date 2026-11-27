@@ -233,8 +233,12 @@ namespace master {
 
 class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
  public:
-  explicit CDCStreamLoader(CatalogManager* catalog_manager, XClusterManager& xcluster_manager)
-      : catalog_manager_(catalog_manager), xcluster_manager_(xcluster_manager) {}
+  CDCStreamLoader(
+      CatalogManager* catalog_manager, XClusterManager& xcluster_manager,
+      const std::unordered_set<TableId>& tables_with_hidden_tablets)
+      : catalog_manager_(catalog_manager),
+        xcluster_manager_(xcluster_manager),
+        tables_with_hidden_tablets_(tables_with_hidden_tablets) {}
 
   void AddDefaultValuesIfMissing(const SysCDCStreamEntryPB& metadata, CDCStreamInfo::WriteLock* l) {
     bool source_type_present = false;
@@ -356,10 +360,29 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     if ((metadata.state() == SysCDCStreamEntryPB::ACTIVE ||
          metadata.state() == SysCDCStreamEntryPB::DELETING_METADATA) &&
         ns && ns->state() == SysNamespaceEntryPB::RUNNING) {
+      // The unprocessed map is in-memory only, so a table dropped before the CDC bg thread
+      // registered it has to be found again here, among the hidden tables. Streams without a
+      // creation time can't tell whether the table was dropped before they were created, so such
+      // a table waiting for them is lost on master restart.
+      const bool collect_hidden_tables =
+          FLAGS_enable_table_rewrite_for_cdcsdk_table && metadata.has_stream_creation_time() &&
+          !stream->IsDynamicTableAdditionDisabled() &&
+          catalog_manager_->IsCdcLogicalReplicationStream(*stream);
+      std::vector<TableInfoPtr> hidden_tables;
       auto eligible_tables_info = catalog_manager_->FindAllTablesForCDCSDK(
           metadata.namespace_id(), metadata.allow_tables_without_primary_key(),
           metadata.has_detect_publication_changes_implicitly() &&
-              metadata.detect_publication_changes_implicitly());
+              metadata.detect_publication_changes_implicitly(),
+          collect_hidden_tables ? &hidden_tables : nullptr);
+      // A HIDING table has no hide time yet and was dropped moments ago, so it is always kept.
+      const auto stream_creation_time = HybridTime::FromMicros(metadata.stream_creation_time());
+      std::erase_if(hidden_tables, [&](const TableInfoPtr& table_info) {
+        if (!tables_with_hidden_tablets_.contains(table_info->id())) {
+          return true;
+        }
+        auto table_lock = table_info->LockForRead();
+        return table_lock->is_hidden() && table_lock->hide_hybrid_time() < stream_creation_time;
+      });
       // A publication bound stream's tables are the publication's members, which the master does
       // not track: the stream gets them from PG at creation. So unless its publication is FOR ALL
       // TABLES (where every eligible table is a member) the only eligible tables for it are its
@@ -368,12 +391,19 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
           !metadata.cdcsdk_ysql_include_new_tables()) {
         auto stream_pg_table_oids =
             catalog_manager_->GetPgTableOidsOfCDCSDKStreamTables(metadata.table_id());
-        std::erase_if(eligible_tables_info, [&](const TableInfoPtr& table_info) {
+        auto is_not_rewrite = [&](const TableInfoPtr& table_info) {
           return !CatalogManager::IsRewriteOfStreamTable(stream_pg_table_oids, *table_info);
-        });
+        };
+        std::erase_if(eligible_tables_info, is_not_rewrite);
+        std::erase_if(hidden_tables, is_not_rewrite);
       }
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
           stream_id, metadata.table_id(), eligible_tables_info, metadata.unqualified_table_id());
+      // Kept out of eligible_tables_info: the checks below treat it as the namespace's live tables.
+      if (!hidden_tables.empty()) {
+        catalog_manager_->FindAllTablesMissingInCDCSDKStream(
+            stream_id, metadata.table_id(), hidden_tables, metadata.unqualified_table_id());
+      }
 
       // Check for any non-eligible tables like indexes, matview etc in CDC stream.
       catalog_manager_->FindAllNonEligibleTablesInCDCSDKStream(
@@ -414,6 +444,8 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
   CatalogManager* catalog_manager_;
   XClusterManager& xcluster_manager_;
+  // Tables that started hiding and still have a hidden tablet that is not yet deleted.
+  const std::unordered_set<TableId>& tables_with_hidden_tablets_;
 
   DISALLOW_COPY_AND_ASSIGN(CDCStreamLoader);
 };
@@ -437,25 +469,36 @@ void CatalogManager::ClearXReplState() {
 
 Status CatalogManager::LoadXReplStream() {
   LOG_WITH_FUNC(INFO) << "Loading CDC streams into memory.";
-  auto cdc_stream_loader = std::make_unique<CDCStreamLoader>(this, *xcluster_manager_);
+  std::unordered_set<TableId> tables_with_hidden_tablets;
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
+    for (const auto& tablet : hidden_tablets_) {
+      if (tablet->table()->started_hiding()) {
+        tables_with_hidden_tablets.insert(tablet->table()->id());
+      }
+    }
+  }
+  auto cdc_stream_loader = std::make_unique<CDCStreamLoader>(
+      this, *xcluster_manager_, tables_with_hidden_tablets);
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(cdc_stream_loader.get()),
       "Failed while visiting CDC streams in sys catalog");
   xrepl_maps_loaded_ = true;
 
-  // The unprocessed map is in-memory only. Rebuild it for tables dropped before the CDC bg thread
-  // registered them, before retention is computed below. FindAllTablesForCDCSDK skips hidden
-  // tables, so the stream loader doesn't find them.
-  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
-    ReseedCDCSDKUnprocessedMapForHiddenTables();
-  }
-
-  // Load retained_by_cdcsdk_ only after loading all CDC streams.
+  // Load retained_by_cdcsdk_ only after loading all CDC streams, which also rebuilds the
+  // unprocessed map that the table-drop check reads.
+  // The table-drop decision is per table, so it is made once for all of a table's tablets.
+  std::unordered_map<TableId, bool> table_drop_retained;
   for (const auto& tablet : hidden_tablets_) {
     TabletDeleteRetainerInfo delete_retainer;
     CDCSDKPopulateDeleteRetainerInfoForTabletDrop(*tablet, delete_retainer);
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
-      CDCSDKPopulateDeleteRetainerInfoForTableDrop(*tablet->table(), delete_retainer);
+      auto [it, inserted] = table_drop_retained.try_emplace(tablet->table()->id(), false);
+      if (inserted) {
+        TabletDeleteRetainerInfo table_delete_retainer;
+        CDCSDKPopulateDeleteRetainerInfoForTableDrop(*tablet->table(), table_delete_retainer);
+        it->second = table_delete_retainer.active_cdcsdk;
+      }
+      delete_retainer.active_cdcsdk |= it->second;
     }
     RecordCDCSDKHiddenTablets({tablet}, delete_retainer);
   }
@@ -479,51 +522,6 @@ Status CatalogManager::LoadXReplStream() {
   }
 
   return Status::OK();
-}
-
-void CatalogManager::ReseedCDCSDKUnprocessedMapForHiddenTables() {
-  std::unordered_set<TableId> visited_tables;
-  for (const auto& tablet : hidden_tablets_) {
-    const auto& table = *tablet->table();
-    if (!table.started_hiding() || !visited_tables.insert(table.id()).second) {
-      continue;
-    }
-    const auto table_info = tablet->table();
-    const auto& ns_id = table.namespace_id();
-    // A HIDING table has no hide time yet; it is only set when the table becomes HIDDEN.
-    std::optional<HybridTime> hide_time;
-    {
-      auto table_lock = table.LockForRead();
-      if (table_lock->is_hidden()) {
-        hide_time = table_lock->hide_hybrid_time();
-      }
-    }
-
-    for (const auto& [stream_id, stream_info] : cdc_stream_map_) {
-      if (stream_info->namespace_id() != ns_id || !IsCdcLogicalReplicationStream(*stream_info)) {
-        continue;
-      }
-      // Streams without a creation time (no consistent snapshot option) can't be told apart, so
-      // they are not reseeded: a table waiting for such a stream is lost on master restart.
-      // A HIDING table has no hide time and was dropped moments ago, so it is never filtered.
-      {
-        auto stream_lock = stream_info->LockForRead();
-        if (!stream_lock->pb.has_stream_creation_time()) {
-          continue;
-        }
-        if (hide_time &&
-            *hide_time < HybridTime::FromMicros(stream_lock->pb.stream_creation_time())) {
-          continue;
-        }
-      }
-      if (WillCDCSDKStreamAcceptTable(stream_info, table_info, nullptr)) {
-        LOG(INFO) << "Re-adding hidden table " << table.id() << " to the unprocessed CDCSDK map";
-        LockGuard lock(cdcsdk_unprocessed_table_mutex_);
-        namespace_to_cdcsdk_unprocessed_table_map_[ns_id].insert(table.id());
-        break;
-      }
-    }
-  }
 }
 
 void CatalogManager::RecordCDCSDKHiddenTablets(
@@ -3002,12 +3000,16 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
 
 std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(
     const NamespaceId& ns_id, const bool allow_tables_without_primary_key,
-    const bool include_catalog_tables) {
+    const bool include_catalog_tables, std::vector<TableInfoPtr>* hidden_tables) {
   std::vector<TableInfoPtr> tables;
 
   for (const auto& table_info : tables_->GetAllTables()) {
     auto ltm = table_info->LockForRead();
-    if (!ltm->visible_to_client() || ltm->namespace_id() != ns_id) {
+    if (ltm->namespace_id() != ns_id) {
+      continue;
+    }
+    const bool is_visible_to_client = ltm->visible_to_client();
+    if (!is_visible_to_client && !(hidden_tables && ltm->started_hiding())) {
       continue;
     }
 
@@ -3017,7 +3019,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(
       continue;
     }
 
-    tables.push_back(table_info);
+    (is_visible_to_client ? tables : *hidden_tables).push_back(table_info);
   }
 
   return tables;

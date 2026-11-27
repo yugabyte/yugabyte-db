@@ -1796,10 +1796,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const CDCSDKStreamTableInfo* stream_table_info) const
       REQUIRES_SHARED(mutex_);
 
-  // Adds hidden tables that a logical replication stream would still have accepted to the
-  // unprocessed map. Used on load, since the map is not persisted.
-  void ReseedCDCSDKUnprocessedMapForHiddenTables() REQUIRES(mutex_);
-
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
@@ -3436,10 +3432,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
   // This method returns all tables in the namespace based on the criteria specified by
-  // 'allows_tables_without_primary_key'.
+  // 'allows_tables_without_primary_key'. If 'hidden_tables' is set, eligible tables that started
+  // hiding are returned in it instead of being skipped.
   std::vector<TableInfoPtr> FindAllTablesForCDCSDK(
       const NamespaceId& ns_id, const bool allow_tables_without_primary_key,
-      const bool include_catalog_tables = false) REQUIRES_SHARED(mutex_);
+      const bool include_catalog_tables = false,
+      std::vector<TableInfoPtr>* hidden_tables = nullptr) REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.
   std::vector<CDCStreamInfoPtr> GetXReplStreamsForTable(
