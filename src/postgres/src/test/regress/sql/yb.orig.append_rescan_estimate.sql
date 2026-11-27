@@ -207,7 +207,7 @@ select qid, descr, node_type from ar.check_append_rescan_estimates
 where node_type is distinct from 'Append'
 order by qid;
 
--- should return only the rows explained below as 'failed'.
+-- should show 'failed' only in the rows explained below.
 -- 32: a key in the partition that is partitioned by v, a column no join
 -- clause equates, runs both of that partition's own partitions, so 1.25
 -- partitions run for each rescan here.  The Append is costed as all five
