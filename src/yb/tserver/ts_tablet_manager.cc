@@ -3014,8 +3014,8 @@ Status TSTabletManager::TriggerAdminCompaction(
 
   for (auto tablet : tablets) {
     // Do not return here: callbacks of already submitted compactions reference this frame.
-    // A tablet object exists once bootstrap is done, so only the rest of TabletPeer::Start can be
-    // left before the tablet enables compactions.
+    // The wait is short: a tablet object exists once bootstrap is done, so it is for the rest of
+    // TabletPeer::Start, or for a truncate or restore that reopened the DB to complete.
     auto status = tablet->WaitCompactionsEnabled(options.deadline);
     if (status.ok()) {
       status = tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options);
