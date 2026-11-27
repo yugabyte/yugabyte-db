@@ -497,6 +497,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  /**
+   * Java twin of WaitForListenNotifyBootstrap (libpq_utils.h): waits until the master's
+   * LISTEN/NOTIFY bootstrap has created pg_yb_notifications and its publication in yb_system.
+   * NOTE: this covers only the first run. A restarted master re-runs the bootstrap as a no-op, and
+   * this returns at once because the publication exists. A recreated cluster starts a first run.
+   */
+  protected void waitForListenNotifyBootstrap() throws Exception {
+    TestUtils.waitFor(() -> {
+      // A failed connect or query means yb_system is not up yet.
+      try (Connection c = getConnectionBuilder().withDatabase("yb_system").connect();
+          Statement s = c.createStatement()) {
+        return s.executeQuery(
+            "SELECT 1 FROM pg_publication"
+            + " WHERE pubname = 'pg_yb_notifications_publication'").next();
+      } catch (Exception e) {
+        return false;
+      }
+    }, 60000);
+  }
+
   public void verifyClusterAcceptsPGConnections(long timeoutMs) throws Exception {
     if (!pg_connection_check_after_startup) {
       return;

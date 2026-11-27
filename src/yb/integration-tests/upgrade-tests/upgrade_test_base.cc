@@ -40,6 +40,7 @@
 
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_defaults.h"
 
 using namespace std::literals;
 
@@ -731,6 +732,13 @@ Status UpgradeTestBase::FinalizeUpgrade() {
       FinalizeYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
 
   RETURN_NOT_OK_PREPEND(PromoteAutoFlags(), "Failed to promote AutoFlags");
+
+  // The promoted AutoFlags start the LISTEN/NOTIFY bootstrap. Its catalog version bumps make a
+  // concurrent CREATE DATABASE in the test fail with a serialization error.
+  if (cluster_->opts_.enable_ysql && wait_for_listen_notify_bootstrap_) {
+    RETURN_NOT_OK(pgwrapper::WaitForListenNotifyBootstrap(
+        [this] { return cluster_->ConnectToDB(master::kYbSystemDbName); }));
+  }
 
   RETURN_NOT_OK_PREPEND(PerformYsqlUpgrade(), "Failed to perform ysql upgrade");
 

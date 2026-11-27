@@ -66,6 +66,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   virtual Result<PGConn> ConnectToDB(const std::string& dbname, size_t timeout = 0) const;
 
+  Status WaitForListenNotifyBootstrap() const;
+
   Status RestartCluster();
 
   Status RestartMaster();

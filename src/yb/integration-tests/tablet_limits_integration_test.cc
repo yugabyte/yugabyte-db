@@ -17,6 +17,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/tablet_creation_limits.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -92,6 +93,13 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
         // Split right after a cluster restart needs a leader before failure detection elects one.
         "--TEST_hinted_leader_election_for_existing_tablets=true"};
     return options;
+  }
+
+  void SetUp() override {
+    CreateTableLimitTestBase::SetUp();
+    // The limit is set relative to a snapshot of the replica count; include the bootstrap's tablet.
+    ASSERT_OK(pgwrapper::WaitForListenNotifyBootstrap(
+        [this] { return PgConnect(master::kYbSystemDbName); }));
   }
 };
 

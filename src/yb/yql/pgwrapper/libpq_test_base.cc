@@ -16,6 +16,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/master/master_defaults.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/json_document.h"
@@ -48,6 +49,11 @@ Result<PGConn> LibPqTestBase::Connect(bool simple_query_protocol) {
 
 Result<PGConn> LibPqTestBase::ConnectToDB(const string& db_name, bool simple_query_protocol) {
   return ConnectToDBAsUser(db_name, PGConnSettings::kDefaultUser, simple_query_protocol);
+}
+
+Status LibPqTestBase::WaitForListenNotifyBootstrap() {
+  return pgwrapper::WaitForListenNotifyBootstrap(
+      [this] { return ConnectToDB(master::kYbSystemDbName); });
 }
 
 Result<PGConn> LibPqTestBase::ConnectToDBAsUser(

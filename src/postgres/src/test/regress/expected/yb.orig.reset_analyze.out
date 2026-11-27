@@ -262,11 +262,11 @@ SELECT * FROM diff_stats
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
  d |  owner   | schemaname |          relname          | k | s | reltuples | ncolstats | xndv | xdep 
 ---+----------+------------+---------------------------+---+---+-----------+-----------+------+------
- - | postgres | pg_catalog | pg_database               | r | t |         6 |        16 |      | 
+ - | postgres | pg_catalog | pg_database               | r | t |         7 |        16 |      | 
  + | postgres | pg_catalog | pg_database               | r | t |        -1 |         0 |      | 
- - | postgres | pg_catalog | pg_database_datname_index | i | t |         6 |         0 |      | 
+ - | postgres | pg_catalog | pg_database_datname_index | i | t |         7 |         0 |      | 
  + | postgres | pg_catalog | pg_database_datname_index | i | t |        -1 |         0 |      | 
- - | postgres | pg_catalog | pg_database_oid_index     | i | t |         6 |         0 |      | 
+ - | postgres | pg_catalog | pg_database_oid_index     | i | t |         7 |         0 |      | 
  + | postgres | pg_catalog | pg_database_oid_index     | i | t |        -1 |         0 |      | 
 (6 rows)
 

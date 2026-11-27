@@ -30,6 +30,7 @@
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_listen_notify);
 
 namespace yb {
 namespace cdc {
@@ -38,6 +39,9 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
  public:
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
+    // The VWAL streams the bootstrap's DDL from the catalog tablet if it lands after stream
+    // creation, and these tests assert exact records and transaction ids.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_listen_notify) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;

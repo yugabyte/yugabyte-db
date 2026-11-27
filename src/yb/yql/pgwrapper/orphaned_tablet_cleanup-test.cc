@@ -53,6 +53,7 @@ DECLARE_bool(master_enable_deletion_check_for_orphaned_tablets);
 DECLARE_bool(TEST_simulate_sys_catalog_data_loss);
 DECLARE_bool(TEST_create_snapshot_schedule_with_null_rpc_context);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_bool(ysql_yb_enable_listen_notify);
 
 using std::string;
 
@@ -131,7 +132,18 @@ TEST_F(OrphanedTabletCleanupTest, SysCatalogCorruption) {
   ASSERT_NO_FATALS(VerifyTabletDataOnTserver(3 /* num_expected_tablet_peers */));
 }
 
-TEST_F(OrphanedTabletCleanupTest, PreviousBehaviorWithNoDeletionCheck) {
+class OrphanedTabletCleanupNoListenNotifyTest : public OrphanedTabletCleanupTest {
+ protected:
+  void SetUp() override {
+    // The test lets the master delete orphaned tablets, transaction status tablets included. A
+    // bootstrap DDL still in flight can then never be verified, and teardown hangs on it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_listen_notify) = false;
+    OrphanedTabletCleanupTest::SetUp();
+  }
+};
+
+TEST_F_EX(OrphanedTabletCleanupTest, PreviousBehaviorWithNoDeletionCheck,
+          OrphanedTabletCleanupNoListenNotifyTest) {
   ASSERT_OK(SetUpWithParams());
   // Test with master_enable_deletion_check_for_orphaned_tablets disabled that if sys catalog is
   // wiped, that tablets that are thought to be orphaned are cleaned up.

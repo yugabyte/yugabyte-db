@@ -71,6 +71,9 @@ class PgSharedMemTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_big_shared_memory_segment_session_expiration_time_ms) = 1000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_big_shared_memory_segment_expiration_time_ms) = 1000;
     PgMiniTestBase::SetUp();
+    // The bootstrap's CREATE TABLE starts tablet-peer threads that stay alive. ConnectionShutdown
+    // must take its thread-count baseline after they exist.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
   }
 
   virtual int GetReadWriteTimeout() const {

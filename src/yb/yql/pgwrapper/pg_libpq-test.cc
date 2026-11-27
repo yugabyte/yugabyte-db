@@ -2580,6 +2580,9 @@ TEST_F_EX(PgLibPqTest, NumberOfInitialRpcs, PgLibPqTestRF1) {
     return result;
   };
 
+  // Keep the bootstrap's master RPCs out of the measured window.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
+
   const auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_succeed());
   ASSERT_RESULT(Connect());
   const auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_succeed()) - rpcs_before;
@@ -3850,6 +3853,14 @@ class PgOidCollisionTestBase : public PgLibPqTest {
     }
     ASSERT_OK(cluster_->Restart());
   }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    // The tests assert exact OIDs from the global allocator. The bootstrap's CREATE TABLE draws
+    // from that allocator at runtime, and a wait cannot give those OIDs back.
+    options->extra_master_flags.emplace_back("--ysql_yb_enable_listen_notify=false");
+  }
+
   bool ysql_enable_create_database_oid_collision_retry = true;
 };
 
