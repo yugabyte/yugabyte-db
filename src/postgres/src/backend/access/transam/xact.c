@@ -5279,12 +5279,16 @@ YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_
  * when its statement succeeds.  The master uses this id to decide whether a
  * dropped column can come back and must be kept until commit.
  *
- * Exception: the current statement's own READ COMMITTED subtransaction is
- * also skipped, although yb_restart_current_stmt() rolls it back on a conflict
- * or read restart.  A column dropped at once by that statement then comes back
- * in the schema, and a compaction in that window can lose its values.  Counting
- * it would keep every column dropped in a later statement until commit, so
- * that re-adding a column with the same name fails.
+ * The current statement's own READ COMMITTED subtransaction is skipped too.
+ * Rolling it back cannot leave a column dropped by the statement restored
+ * without its values.  A retry (yb_restart_current_stmt) re-runs the DROP, and
+ * is refused once the transaction has written past the intents db, the only
+ * way such a column's values reach the regular db, where a compaction can
+ * remove them, before commit.  An error aborts the transaction block, which
+ * then ends only with ROLLBACK or ROLLBACK TO a savepoint taken before the
+ * statement, which this function counts.  Counting the statement's own
+ * subtransaction would keep every column dropped in a later statement until
+ * commit, so that re-adding a column with the same name fails.
  */
 SubTransactionId
 YbGetInnermostSavepointSubTransactionId(void)
