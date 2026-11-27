@@ -200,12 +200,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
 
-  protected static final String GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT =
-      "Skipping this test with Connection Manager enabled. Connection Manager replays " +
-        "session variables at the transaction boundaries, which causes an extra statement to " +
-        "appear in stats or monitoring/observability methods. Since the client is unaware of " +
-        "this statement, the test fails.";
-
   protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
       "Skipping this test with Connection Manager enabled. The connections may not be in the " +
         "expected state due to the way physical connections are attached and detached from " +

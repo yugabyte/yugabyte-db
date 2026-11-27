@@ -29,7 +29,6 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
   }
 
   @Test
-  @BypassConnMgr(reason = BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT)
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pg_stat_monitor"),
