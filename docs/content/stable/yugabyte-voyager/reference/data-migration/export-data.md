@@ -30,7 +30,7 @@ For [live migration](../../../migrate/live-migrate/#export-data-from-source) (wi
 
 If a PostgreSQL live export fails because Debezium stopped while streaming changes, `export data` checks for schema drift and prints the result after the failure message.
 
-During live migration, `export data` skips columns whose type is built on an unsupported data type, and lists them in its unsupported-columns output. This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type, as well as arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types. For the list of unsupported types, see [Datatypes not supported by Voyager during live migration](../../../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+During PostgreSQL live migration, `export data` and `export data from target` fail if any table has columns with unsupported data types. To proceed, exclude those columns from the streamed changes using `--exclude-column-list`; the error message gives the value to use. This applies to columns of an unsupported type, and to columns whose type is a domain, array, composite, or user-defined multirange built on an unsupported type, as well as arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types. For the list of unsupported types, see [Datatypes not supported by Voyager during live migration](../../../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
 
 ### Syntax
 
@@ -135,6 +135,14 @@ export-data:
 ```
 
 | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
+| --exclude-column-list |
+
+```yaml{.nocopy}
+export-data:
+  exclude-column-list:
+```
+
+| Semicolon-separated list of `<table>:<column1>,<column2>,...` entries naming the columns to leave out of the changes streamed in live migration. The snapshot still copies these columns. Only for PostgreSQL source databases, including `export data from target` of a PostgreSQL migration.<br>For example, `--exclude-column-list 'public.orders:note,Meta;"Sales":geom'`. |
 
 | --allow-oracle-clob-data-export |
 
@@ -572,6 +580,14 @@ export-data-from-target:
 ```
 
 | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
+| --exclude-column-list |
+
+```yaml{.nocopy}
+export-data-from-target:
+  exclude-column-list:
+```
+
+| Semicolon-separated list of `<table>:<column1>,<column2>,...` entries naming the columns to leave out of the changes streamed in live migration. The snapshot still copies these columns. Only for PostgreSQL source databases, including `export data from target` of a PostgreSQL migration.<br>For example, `--exclude-column-list 'public.orders:note,Meta;"Sales":geom'`. |
 | -e, --export-dir |
 
 ```yaml{.nocopy}
