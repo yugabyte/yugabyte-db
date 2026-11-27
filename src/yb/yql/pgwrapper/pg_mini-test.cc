@@ -3291,6 +3291,37 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, size_t num_tables) 
   ASSERT_OK(conn->ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", num_tables - 1));
   ASSERT_OK(conn->ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
 
+  // A replica stamps a dropped column with its clock when it applies the ALTER, and its history
+  // cutoff stays at or below its safe time, so wait until each replica's safe time passes both
+  // stamps.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto tables = tablet->metadata()->GetAllColocatedTableInfos();
+      if (tables.size() <= 1) {
+        continue;
+      }
+      auto safe_time = VERIFY_RESULT(tablet->mvcc_manager()->SafeTimeForFollower(
+          HybridTime::kMin, CoarseTimePoint::max()));
+      size_t num_deleted_cols = 0;
+      for (const auto& table : tables) {
+        for (const auto& deleted_col : table->deleted_cols) {
+          if (deleted_col.ht >= safe_time) {
+            return false;
+          }
+          ++num_deleted_cols;
+        }
+      }
+      if (num_deleted_cols != 2) {
+        return false;
+      }
+    }
+    return true;
+  }, 10s * kTimeMultiplier, "Safe time past dropped columns"));
+
   ASSERT_OK(cluster_->CompactTablets());
 
   uint64_t new_files_size = 0;
