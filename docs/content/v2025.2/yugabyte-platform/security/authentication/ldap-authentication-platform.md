@@ -35,6 +35,8 @@ To bind to the LDAP server using TLS, include the `ldaptls=1` option in the `ysq
 host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldapserver.example.org ldapbasedn=""dc=example,dc=org"" ldapsearchattribute=uid ldapbinddn=""cn=admin,dc=example,dc=org"" ldapbindpasswd=secret ldaptls=1"
 ```
 
+If [API redaction of LDAP bind passwords](#redact-ldap-bind-passwords-in-api-responses) is enabled, YugabyteDB Anywhere displays the stored password as `ldapbindpasswd=REDACTED`. If you edit any part of the `ysql_hba_conf_csv` flag value, replace `REDACTED` with the actual password. If you don't change the value, you can leave `REDACTED` in place, and YugabyteDB Anywhere keeps the stored password.
+
 For more information, see [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
 
 When entering the flag value in YugabyteDB Anywhere, do not enclose it in single quotes, as you would in a Linux shell.
@@ -64,6 +66,8 @@ YugabyteDB Anywhere always redacts LDAP bind passwords in logs, audit logs, and 
 
 API redaction is disabled by default. To enable it, set the **Enable gflags sensitive data API redaction** Global Runtime Configuration option (config key `yb.api.enable_gflags_sensitive_data_redaction`) to true. You must be a Super Admin to set global runtime configuration options. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/).
 
+Although the option name refers to sensitive data in flags generally, it applies only to the LDAP bind password values listed in the preceding section.
+
 When the option is enabled, YugabyteDB Anywhere does the following:
 
 - Redacts LDAP bind passwords in API responses.
@@ -75,14 +79,14 @@ Setting the option to false turns off all three behaviors.
 Before you enable or disable the option, note the following:
 
 - Update any automation that reads universe details from API responses and sends them back, such as the YugabyteDB Anywhere Terraform provider or custom API clients. These clients must handle `REDACTED` values and must not send them when creating a universe or when adding a cluster using the v1 API.
-- Reload the YugabyteDB Anywhere UI after changing the option. If you disable the option and then submit an **Edit Flags** form that was open before the change, YugabyteDB Anywhere can write the literal value `REDACTED` to the universe nodes.
+- Refresh the YugabyteDB Anywhere UI in your browser after changing the option. You don't need to restart YugabyteDB Anywhere. If you disable the option and then submit an **Edit Flags** form that was open before the change, YugabyteDB Anywhere can write the literal value `REDACTED` to the universe nodes.
 - Don't use the string `REDACTED` as part of an actual password.
 
 ### Update flags with redaction enabled
 
 When a supported update request includes a `REDACTED` value that came from an API response, YugabyteDB Anywhere replaces it with the stored password. This lets existing workflows that read and resubmit universe details keep working without exposing passwords.
 
-Set or change flags using only the following operations:
+Set or change any universe flags, including the LDAP flags, using only the following operations:
 
 - Create universe
 - Add read replica
