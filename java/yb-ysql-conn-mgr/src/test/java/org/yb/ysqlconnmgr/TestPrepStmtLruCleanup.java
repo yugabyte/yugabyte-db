@@ -28,12 +28,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import com.google.common.net.HostAndPort;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.BuildTypeUtil;
@@ -395,20 +397,38 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       return rs.getInt(1);
     };
 
+    AtomicInteger nextId = new AtomicInteger();
+    Function<Integer, Void> prepareStmts = (n) -> {
+      for (int i = 0; i < n; i++) {
+        String sql = "SELECT * FROM t_flag_change WHERE id = " + nextId.getAndIncrement()
+            + " AND data IS NOT NULL";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+          pstmt.execute();
+        }
+      }
+      return null;
+    };
+
     // --- Phase 1: limit = 3 ---
     // Create 30 unique prepared statements, well beyond 3 per backend.
-    int nextId = 0;
-    for (int i = 0; i < 30; i++) {
-      String sql = "SELECT * FROM t_flag_change WHERE id = " + nextId++
-          + " AND data IS NOT NULL";
-      try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-        pstmt.execute();
-      }
-    }
+    prepareStmts.apply(30);
 
     int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
         STATS_UPDATE_INTERVAL + 2);
     LOG.info("Pool has {} physical backend(s)", numBackends);
+
+    // Round-robin attach makes numBackends consecutive queries visit every
+    // backend once.
+    Function<Integer, Boolean> allBackendsHave = (limit) -> {
+      boolean ok = true;
+      for (int b = 0; b < numBackends; b++) {
+        int count = countPrepStmts.apply(verifyStmt);
+        LOG.info("Waiting for limit {}: backend {} has {} prepared statement(s)",
+            limit, b, count);
+        ok &= count == limit;
+      }
+      return ok;
+    };
 
     for (int b = 0; b < numBackends; b++) {
       int count = countPrepStmts.apply(verifyStmt);
@@ -424,12 +444,17 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       setServerFlag(tServer, "ysql_conn_mgr_max_prepared_statements",
           String.valueOf(reducedLimit));
     }
+    // set_flag returns once Odyssey is sent SIGHUP; detaches use the old limit
+    // until Odyssey's reload finishes, so retry until the new one takes effect.
     // Eviction (ForceClose of excess LRU statements) happens during backend
     // detach, not at prepare time. Running simple queries cycles through
     // backends in round-robin, triggering detach and cleanup on each one.
-    for (int i = 0; i < numBackends; i++) {
-      stmt.execute("SELECT 1");
-    }
+    TestUtils.waitFor(() -> {
+      for (int i = 0; i < numBackends; i++) {
+        stmt.execute("SELECT 1");
+      }
+      return allBackendsHave.apply(reducedLimit);
+    }, 60000);
 
     for (int b = 0; b < numBackends; b++) {
       int count = countPrepStmts.apply(verifyStmt);
@@ -445,13 +470,11 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       setServerFlag(tServer, "ysql_conn_mgr_max_prepared_statements",
           String.valueOf(restoredLimit));
     }
-    for (int i = 0; i < 10; i++) {
-      String sql = "SELECT * FROM t_flag_change WHERE id = " + nextId++
-          + " AND data IS NOT NULL";
-      try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-        pstmt.execute();
-      }
-    }
+    // Until the reload finishes, new prepares are still trimmed to 1.
+    TestUtils.waitFor(() -> {
+      prepareStmts.apply(10);
+      return allBackendsHave.apply(restoredLimit);
+    }, 60000);
 
     for (int b = 0; b < numBackends; b++) {
       int count = countPrepStmts.apply(verifyStmt);
