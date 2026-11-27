@@ -2077,9 +2077,10 @@ TEST_F(QLTabletTest, LeaderLeaseRevocation) {
 }
 
 TEST_F(QLTabletTest, LeaderHtLeaseRevocation) {
-  // The old leader's ht lease must outlive the re-election (split votes can take ~20s) plus the
-  // write's retry window (5s * kTimeMultiplier), otherwise the write succeeds after it expires.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 60000;
+  // The old leader's ht lease must outlive everything after the cutoff: the re-election (split
+  // votes can take ~20s), the step-down to the final leader, the wait for its lease, and the
+  // write's retry window. Otherwise the write succeeds once the lease expires.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 600000;
   TestLeaderLeaseRevocation(/* ht_lease= */ true);
 }
 
