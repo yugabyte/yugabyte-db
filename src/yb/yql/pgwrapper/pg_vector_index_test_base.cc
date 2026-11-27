@@ -224,6 +224,9 @@ void PgVectorIndexTestBase::SetUp() {
   ToggleDDLMode(UseLegacyDdlMode());
 
   PgMiniTestBase::SetUp();
+  // The master's LISTEN/NOTIFY bootstrap DDL can fail concurrent CREATE DATABASE and
+  // CREATE EXTENSION of the tests (GH #35507).
+  ASSERT_OK(WaitForListenNotifyBootstrap());
 
   tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
 }

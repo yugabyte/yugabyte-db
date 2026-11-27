@@ -1243,6 +1243,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CancelCreateIndexDuringBackfill) {
 TEST_P(PgVectorIndexColocationOnlyTest, RemoveIndexDeletesStorageAfterMetadataFlush) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
   ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
   const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
@@ -1303,6 +1304,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, RemoveIndexDeletesStorageAfterMetadataFl
 TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexWaitsForPendingDestroy) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
   ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
   auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
@@ -1366,6 +1368,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexWaitsForPendingDestroy) {
 TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexDeletesStorageLeftByRemoval) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
   ASSERT_OK(cluster_->FlushTablets());
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
   ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
@@ -1430,6 +1433,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, StartupWaitsForDestroyReplayedByBootstra
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
   ASSERT_OK(cluster_->FlushTablets());
 
   // The superblocks and the storages as the crash leaves them.
