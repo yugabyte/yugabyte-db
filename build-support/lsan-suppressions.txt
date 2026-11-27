@@ -54,3 +54,7 @@ leak:parse_ident_line
 
 # https://github.com/yugabyte/yugabyte-db/issues/20788
 leak:call_string_check_hook
+
+# The YCQL JWT ident memory context lives as long as the CQL service and is not deleted at shutdown:
+# hba.c's parsed_ident_lines, which every ident load in the process shares, points into it.
+leak:CQLServiceImpl::LoadIdentConf
