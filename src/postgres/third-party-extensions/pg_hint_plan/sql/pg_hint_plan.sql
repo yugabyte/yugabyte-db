@@ -5,8 +5,6 @@ SET client_min_messages TO log;
 SET yb_enable_bitmapscan = true;
 \set SHOW_CONTEXT always
 
--- In general, for postgres since t1.id and t2.id is sorted, merge joins should be optimal.
--- However, since YB does not support merge join nested loop joins will be used.
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
@@ -138,26 +136,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 
 /*+MergeJoin(t4 t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
--- YB_COMMENT
--- If Merge joins were present, the inner two tables will utilize merge joins as id is a sorted
--- column. Since YB does not support merge join, the inner tables are joined using Nested Loop.
--- Output after Merge join support will look like this.
---                        QUERY PLAN
--- --------------------------------------------------------
---  Hash Join
---    Hash Cond: (t3.id = t1.id)
---    ->  Seq Scan on t3
---    ->  Hash
---          ->  Merge Join
---                Merge Cond: (t1.id = t4.id)
---                ->  Merge Join
---                      Merge Cond: (t1.id = t2.id)
---                      ->  Index Scan using t1_pkey on t1
---                      ->  Index Scan using t2_pkey on t2
---                ->  Sort
---                      Sort Key: t4.id
---                      ->  Seq Scan on t4
--- (13 rows)
 /*+HashJoin(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 /*+NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
