@@ -185,6 +185,205 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
+  public void testEditUniverseV2RemovesZoneWithZeroNodes() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    PlacementCloud placementCloud = primaryClusterSpec.getPlacementSpec().getCloudList().get(0);
+    List<PlacementAZ> azs = placementCloud.getRegionList().get(0).getAzList();
+    assertThat(azs, hasSize(3));
+    // Move all nodes and replicas of the last zone to the first one, keeping the zone in the
+    // payload with 0 nodes.
+    PlacementAZ keptAz = azs.get(0);
+    PlacementAZ emptiedAz = azs.get(2);
+    keptAz.setNumNodesInAz(keptAz.getNumNodesInAz() + emptiedAz.getNumNodesInAz());
+    keptAz.setReplicationFactor(keptAz.getReplicationFactor() + emptiedAz.getReplicationFactor());
+    emptiedAz.setNumNodesInAz(0);
+    emptiedAz.setReplicationFactor(0);
+    UUID emptiedAzUuid = emptiedAz.getUuid();
+
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes())
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), captor.capture());
+    UniverseConfigureTaskParams params = captor.getValue();
+    Cluster primary = params.getPrimaryCluster();
+
+    Set<UUID> placementAzs =
+        primary.placementInfo.azStream().map(az -> az.uuid).collect(Collectors.toSet());
+    assertThat(placementAzs, hasSize(2));
+    assertFalse(placementAzs.contains(emptiedAzUuid));
+    assertThat(primary.userIntent.numNodes, is(primaryClusterSpec.getNumNodes()));
+    for (NodeDetails node : params.getNodesInCluster(primary.uuid)) {
+      if (node.azUuid.equals(emptiedAzUuid)) {
+        assertThat(node.getNodeName(), node.state, is(NodeState.ToBeRemoved));
+      }
+    }
+  }
+
+  // The tests below place the universe in two providers that are copies of each other, so that the
+  // placement has the same cloud:region:zone twice. The master would reject that. Unlike v1, the
+  // v2 edit submits the task itself, so it must validate this on its own.
+
+  /** A multiprovider universe in the current provider and a copy of it, with no duplicate zones. */
+  private UUID setupMultiproviderUniverse(Provider duplicate) throws ApiException, IOException {
+    UniverseCreateSpec createSpec = getUniverseCreateSpecV2DuplicateZones(duplicate);
+    createSpec
+        .getSpec()
+        .getClusters()
+        .get(0)
+        .setPartitionsSpec(geoPartitionsWithDuplicateProvider(duplicate, false));
+    return setupUniverse(createSpec, null);
+  }
+
+  @Test
+  public void testEditUniverseV2MultiproviderDuplicateZones() throws ApiException, IOException {
+    setNewUIEnabled();
+    UUID multiUniverseUuid = setupUniverse(true);
+    Provider duplicate = createDuplicateProvider();
+    UniverseApi api = new UniverseApi();
+    ClusterSpec primaryClusterSpec =
+        api.getUniverse(customer.getUuid(), multiUniverseUuid).getSpec().getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .addProviderSpecsItem(
+                perProviderSpecFor(primaryClusterSpec.getProviderSpecs().get(0), duplicate))
+            .partitionsSpec(geoPartitionsWithDuplicateProvider(duplicate, true));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () -> api.editUniverse(customer.getUuid(), multiUniverseUuid, universeEditSpec));
+
+    assertDuplicateZoneRejected(ex);
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditUniverse), any(UniverseDefinitionTaskParams.class));
+  }
+
+  // Adds a read replica spread over zones of both providers to the universe in the DB. The
+  // universe is not edited by the test, so the read replica is the only cluster to validate.
+  private UUID addMultiproviderReadReplicaInDB(UUID targetUniverseUuid, Provider duplicate) {
+    PlacementInfo pi = new PlacementInfo();
+    for (UUID provider : List.of(providerUuid, duplicate.getUuid())) {
+      Region.getByProvider(provider).get(0).getAllZones().stream()
+          .limit(3)
+          .forEach(az -> PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, 1, 1, false));
+    }
+    PlacementInfoUtil.checkAndSetPerAZRF(pi, 3, null, false);
+    Universe universe =
+        Universe.saveDetails(
+            targetUniverseUuid,
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent rrIntent = details.getPrimaryCluster().userIntent.clone();
+              rrIntent.numNodes = (int) pi.azStream().count();
+              rrIntent.replicationFactor = 3;
+              Cluster rr = details.upsertCluster(rrIntent, null, pi, UUID.randomUUID());
+              int idx = details.nodeDetailsSet.size();
+              for (PlacementInfo.PlacementAZ az : pi.azStream().collect(Collectors.toList())) {
+                NodeDetails node = ApiUtils.getDummyNodeDetails(++idx, NodeState.Live, false);
+                node.placementUuid = rr.uuid;
+                node.azUuid = az.uuid;
+                details.nodeDetailsSet.add(node);
+              }
+              u.setUniverseDetails(details);
+            });
+    return universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+  }
+
+  @Test
+  public void testEditUniverseV2ReadReplicaMultiproviderDuplicateZones()
+      throws ApiException, IOException {
+    setNewUIEnabled();
+    Provider duplicate = createDuplicateProvider();
+    UUID multiUniverseUuid = setupMultiproviderUniverse(duplicate);
+    UUID rrClusterUuid = addMultiproviderReadReplicaInDB(multiUniverseUuid, duplicate);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .addClustersItem(
+                new ClusterEditSpec().uuid(rrClusterUuid).instanceTags(Map.of("zone-test", "1")));
+    UniverseApi api = new UniverseApi();
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () -> api.editUniverse(customer.getUuid(), multiUniverseUuid, universeEditSpec));
+
+    assertDuplicateZoneRejected(ex);
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditUniverse), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testEditUniverseV2AddReadReplicaMultiproviderDuplicateZones()
+      throws ApiException, IOException {
+    setNewUIEnabled();
+    Provider duplicate = createDuplicateProvider();
+    UUID multiUniverseUuid = setupMultiproviderUniverse(duplicate);
+    ClusterSpec primaryClusterSpec =
+        new UniverseApi()
+            .getUniverse(customer.getUuid(), multiUniverseUuid)
+            .getSpec()
+            .getClusters()
+            .get(0);
+    List<PlacementCloud> clouds =
+        List.of(
+            placementFromProvider(providerUuid, 0, 3, 2),
+            placementFromProvider(duplicate.getUuid(), 0, 3, 1));
+    // replication_factor is required for every AZ, including those holding no replica.
+    clouds.stream()
+        .flatMap(c -> c.getRegionList().stream())
+        .flatMap(r -> r.getAzList().stream())
+        .filter(az -> az.getReplicationFactor() == null)
+        .forEach(az -> az.setReplicationFactor(0));
+    ClusterAddSpec clusterAddSpec =
+        getReadReplicaClusterAddSpec()
+            .providerSpecs(primaryClusterSpec.getProviderSpecs())
+            .addPartitionsSpecItem(
+                new ClusterPartitionSpec()
+                    .name("default")
+                    .defaultPartition(true)
+                    .replicationFactor(3)
+                    .placement(new ClusterPlacementSpec().cloudList(clouds)));
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () ->
+                new UniverseApi()
+                    .addCluster(customer.getUuid(), multiUniverseUuid, clusterAddSpec));
+
+    assertDuplicateZoneRejected(ex);
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.ReadOnlyClusterCreate), any(UniverseConfigureTaskParams.class));
+  }
+
+  @Test
   public void testEditUniverseV2_passesWhenInstanceTypeConsistent() throws ApiException {
     Universe.saveDetails(
         universeUuid,
