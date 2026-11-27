@@ -306,6 +306,11 @@ $$;
 -- EXPLAIN prints the estimates only with DEBUG.
 set yb_explain_hide_non_deterministic_fields = off;
 
+-- With these limits the Estimated Table Roundtrips follow the rows that the
+-- scan returns, not only the rows that it fetches.
+set yb_fetch_row_limit = 0;
+set yb_fetch_size_limit = '1kB';
+
 select
   q.cond,
   bts->'Plans'->0->'Index Name' bmis_index,
@@ -327,6 +332,8 @@ from
   lateral to_json(js.explain_line->0->'Plan') bts
 order by q.n;
 
+reset yb_fetch_size_limit;
+reset yb_fetch_row_limit;
 reset yb_explain_hide_non_deterministic_fields;
 
 drop function explain_analyze_debug_json;
