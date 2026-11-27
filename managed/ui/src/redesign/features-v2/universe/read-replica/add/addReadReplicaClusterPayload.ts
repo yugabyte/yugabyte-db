@@ -40,9 +40,21 @@ export function sumReadReplicaNodeCounts(regionsAndAZ: RRRegionsAndAZSettings): 
 /** Read replicas use T-Server flags only; reuse create-universe `mapGFlags` then drop master. */
 function mapReadReplicaGFlags(
   customizeRRFlags: boolean,
-  gFlags: { Name: string; MASTER?: string | boolean | number; TSERVER?: string | boolean | number }[]
+  gFlags: {
+    Name: string;
+    MASTER?: string | boolean | number;
+    TSERVER?: string | boolean | number;
+  }[],
+  primaryTserverGFlags?: Record<string, string>
 ): ClusterGFlags | undefined {
-  if (!customizeRRFlags || !gFlags?.length) {
+  if (!customizeRRFlags) {
+    // Not customized: the read replica follows the primary cluster's T-Server flags.
+    if (!primaryTserverGFlags || !Object.keys(primaryTserverGFlags).length) {
+      return undefined;
+    }
+    return { tserver: _.cloneDeep(primaryTserverGFlags), master: {} };
+  }
+  if (!gFlags?.length) {
     return undefined;
   }
   const { tserver } = mapGFlags(gFlags);
@@ -56,8 +68,7 @@ function mapReadReplicaGFlags(
 export function sumPlacementAzReplicationFactors(regionList: PlacementRegion[]): number {
   return regionList.reduce(
     (sum, region) =>
-      sum +
-      (region.az_list ?? []).reduce((acc, az) => acc + (az.replication_factor ?? 0), 0),
+      sum + (region.az_list ?? []).reduce((acc, az) => acc + (az.replication_factor ?? 0), 0),
     0
   );
 }
@@ -68,45 +79,41 @@ function buildPlacementRegions(
 ): PlacementRegion[] {
   const byUuid = new Map(providerRegions.map((r) => [r.uuid, r]));
   return regionsAndAZ.regions.map((r) => {
-      if (!r.regionUuid) {
-        throw new Error('READ_REPLICA_REGION_REQUIRED');
+    if (!r.regionUuid) {
+      throw new Error('READ_REPLICA_REGION_REQUIRED');
+    }
+    const meta = byUuid.get(r.regionUuid);
+    if (!meta) {
+      throw new Error(`Unknown region: ${r.regionUuid}`);
+    }
+    const az_list: PlacementAZ[] = r.zones.map((z) => {
+      if (!z.zoneUuid) {
+        throw new Error('READ_REPLICA_AZ_REQUIRED');
       }
-      const meta = byUuid.get(r.regionUuid);
-      if (!meta) {
-        throw new Error(`Unknown region: ${r.regionUuid}`);
+      const azMeta = meta.zones.find((zz) => zz.uuid === z.zoneUuid);
+      if (!azMeta) {
+        throw new Error(`Unknown availability zone: ${z.zoneUuid}`);
       }
-      const az_list: PlacementAZ[] = r.zones.map((z) => {
-        if (!z.zoneUuid) {
-          throw new Error('READ_REPLICA_AZ_REQUIRED');
-        }
-        const azMeta = meta.zones.find((zz) => zz.uuid === z.zoneUuid);
-        if (!azMeta) {
-          throw new Error(`Unknown availability zone: ${z.zoneUuid}`);
-        }
-        const rawNodes = Number(z.nodeCount);
-        const num_nodes_in_az =
-          Number.isFinite(rawNodes) && rawNodes >= 1 ? Math.floor(rawNodes) : 1;
-        const rawRf = Number(z.dataCopies);
-        const rf =
-          Number.isFinite(rawRf) && rawRf >= 1
-            ? Math.floor(rawRf)
-            : 1;
-        const replication_factor = Math.max(1, rf);
-        return {
-          uuid: z.zoneUuid,
-          name: azMeta.name,
-          subnet: azMeta.subnet,
-          replication_factor,
-          num_nodes_in_az
-        };
-      });
+      const rawNodes = Number(z.nodeCount);
+      const num_nodes_in_az = Number.isFinite(rawNodes) && rawNodes >= 1 ? Math.floor(rawNodes) : 1;
+      const rawRf = Number(z.dataCopies);
+      const rf = Number.isFinite(rawRf) && rawRf >= 1 ? Math.floor(rawRf) : 1;
+      const replication_factor = Math.max(1, rf);
       return {
-        uuid: r.regionUuid,
-        code: String(meta.code),
-        name: meta.name,
-        az_list
+        uuid: z.zoneUuid,
+        name: azMeta.name,
+        subnet: azMeta.subnet,
+        replication_factor,
+        num_nodes_in_az
       };
     });
+    return {
+      uuid: r.regionUuid,
+      code: String(meta.code),
+      name: meta.name,
+      az_list
+    };
+  });
 }
 
 /**
@@ -160,7 +167,9 @@ function withK8sResourceSpecFallback(
   return next;
 }
 
-function buildCustomReadReplicaNodeSpec(instanceSettings: RRInstanceSettingsProps): ClusterNodeSpec {
+function buildCustomReadReplicaNodeSpec(
+  instanceSettings: RRInstanceSettingsProps
+): ClusterNodeSpec {
   const {
     instanceType,
     deviceInfo,
@@ -283,8 +292,7 @@ export function buildReadReplicaClusterSizingAndPlacement(
   const existingAsync = getReadOnlyCluster(universeData.spec?.clusters ?? []);
   const existingCloud = getExistingAsyncPlacementCloud(existingAsync);
   const defaultRegion =
-    existingCloud?.default_region &&
-    placementRegionUuids.includes(existingCloud.default_region)
+    existingCloud?.default_region && placementRegionUuids.includes(existingCloud.default_region)
       ? existingCloud.default_region
       : regionList[0].uuid;
 
@@ -294,9 +302,7 @@ export function buildReadReplicaClusterSizingAndPlacement(
   }
 
   const hasInvalidAzReplicationFactor = regionList.some((region) =>
-    (region.az_list ?? []).some(
-      (az) => (az.replication_factor ?? 0) > (az.num_nodes_in_az ?? 0)
-    )
+    (region.az_list ?? []).some((az) => (az.replication_factor ?? 0) > (az.num_nodes_in_az ?? 0))
   );
   if (hasInvalidAzReplicationFactor) {
     throw new Error('READ_REPLICA_REPLICATION_FACTOR_EXCEEDS_NODES');
@@ -352,9 +358,16 @@ export function mapAddReadReplicaClusterPayload(
   const { databaseSettings } = context;
   const sizingAndPlacement = buildReadReplicaClusterSizingAndPlacement(context, providerRegions);
 
+  const primary = context.universeData
+    ? (getClusterByType(context.universeData, ClusterSpecClusterType.PRIMARY) as
+        | ClusterSpec
+        | undefined)
+    : undefined;
+
   const gflags = mapReadReplicaGFlags(
     !!databaseSettings?.customizeRRFlags,
-    databaseSettings?.gFlags ?? []
+    databaseSettings?.gFlags ?? [],
+    primary?.gflags?.tserver
   );
 
   const payload: ClusterAddReqBody = {
@@ -381,8 +394,9 @@ export function mapEditReadReplicaClusterSpec(
     };
   }
   const existingReadReplica =
-    (context.universeData?.spec?.clusters ?? []).find((cluster) => cluster.uuid === rrClusterUuid) ??
-    getReadOnlyCluster(context.universeData?.spec?.clusters ?? []);
+    (context.universeData?.spec?.clusters ?? []).find(
+      (cluster) => cluster.uuid === rrClusterUuid
+    ) ?? getReadOnlyCluster(context.universeData?.spec?.clusters ?? []);
   const existingReadReplicaRf = getReadReplicaReplicationFactor(existingReadReplica);
   const num_nodes = Math.max(sizingAndPlacement.num_nodes, existingReadReplicaRf);
 
