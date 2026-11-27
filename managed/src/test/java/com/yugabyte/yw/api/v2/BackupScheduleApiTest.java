@@ -34,6 +34,7 @@ import com.yugabyte.yba.v2.client.models.BackupScheduleIntervalFrequency;
 import com.yugabyte.yba.v2.client.models.BackupScheduleKeyspace;
 import com.yugabyte.yba.v2.client.models.BackupSchedulePagedQuerySpec;
 import com.yugabyte.yba.v2.client.models.BackupSchedulePagedResp;
+import com.yugabyte.yba.v2.client.models.BackupScheduleResumeSpec;
 import com.yugabyte.yba.v2.client.models.BackupScheduleSpec;
 import com.yugabyte.yba.v2.client.models.BackupScheduleState;
 import com.yugabyte.yba.v2.client.models.BackupScheduleTableType;
@@ -879,5 +880,143 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     Schedule otherSchedule =
         createBackupSchedule(other, "other", UUID.randomUUID(), UUID.randomUUID());
     assertEditError(otherSchedule, spec, 404);
+  }
+
+  private BackupSchedule pause(Schedule schedule) throws ApiException {
+    return backupScheduleApi.pauseBackupSchedule(customer.getUuid(), schedule.getScheduleUUID());
+  }
+
+  private BackupSchedule resume(Schedule schedule, Boolean runBackupNow) throws ApiException {
+    return backupScheduleApi.resumeBackupSchedule(
+        customer.getUuid(),
+        schedule.getScheduleUUID(),
+        runBackupNow == null ? null : new BackupScheduleResumeSpec().runBackupNow(runBackupNow));
+  }
+
+  private Schedule reload(Schedule schedule) {
+    return Schedule.getOrBadRequest(customer.getUuid(), schedule.getScheduleUUID());
+  }
+
+  @Test
+  public void pauseAndResume() throws ApiException {
+    Schedule schedule = editableSchedule("daily", false);
+
+    BackupSchedule paused = pause(schedule);
+    assertEquals(BackupScheduleState.BackupSchedulePaused, paused.getInfo().getState());
+    assertNull(paused.getInfo().getNextBackupTime());
+    assertEquals(Schedule.State.Stopped, reload(schedule).getStatus());
+    // Again: nothing changes.
+    assertEquals(BackupScheduleState.BackupSchedulePaused, pause(schedule).getInfo().getState());
+    assertEquals(Schedule.State.Stopped, reload(schedule).getStatus());
+
+    BackupSchedule resumed = resume(schedule, null);
+    assertEquals(BackupScheduleState.BackupScheduleActive, resumed.getInfo().getState());
+    assertNotNull(resumed.getInfo().getNextBackupTime());
+    assertEquals(Schedule.State.Active, reload(schedule).getStatus());
+    // Again: nothing changes.
+    assertEquals(
+        BackupScheduleState.BackupScheduleActive, resume(schedule, true).getInfo().getState());
+    assertFalse(reload(schedule).isBacklogStatus());
+
+    // A running scheduled backup doesn't block a pause: it only stops the next ones.
+    ScheduleTask.create(UUID.randomUUID(), schedule.getScheduleUUID());
+    assertEquals(BackupScheduleState.BackupSchedulePaused, pause(schedule).getInfo().getState());
+  }
+
+  @Test
+  public void resumeRunsAnOverdueBackupWhenAsked() throws ApiException {
+    Date past = new Date(System.currentTimeMillis() - DAY);
+    Schedule now = editableSchedule("now", false);
+    pause(now);
+    now = reload(now);
+    now.updateNextScheduleTaskTime(past);
+    Schedule later = editableSchedule("later", false);
+    pause(later);
+    later = reload(later);
+    later.updateNextScheduleTaskTime(past);
+
+    resume(now, true);
+    resume(later, false);
+
+    // As v1: the overdue backup runs at the next scheduler run.
+    assertTrue(reload(now).isBacklogStatus());
+    assertFalse(reload(later).isBacklogStatus());
+    assertTrue(reload(later).getNextScheduleTaskTime().after(new Date()));
+  }
+
+  private ApiException assertToggleError(Schedule schedule, boolean pause, int code) {
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () -> {
+              if (pause) {
+                pause(schedule);
+              } else {
+                resume(schedule, null);
+              }
+            });
+    assertEquals(e.getResponseBody(), code, e.getCode());
+    return e;
+  }
+
+  @Test
+  public void pauseAndResumeConflicts() throws ApiException {
+    for (Schedule.State state :
+        List.of(Schedule.State.Creating, Schedule.State.Editing, Schedule.State.Deleting)) {
+      Schedule schedule = editableSchedule("busy-" + state, false);
+      schedule.setStatus(state);
+      schedule.save();
+      for (boolean pause : List.of(true, false)) {
+        ApiException e = assertToggleError(schedule, pause, 409);
+        assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+      }
+    }
+
+    Schedule failed = editableSchedule("failed", false);
+    failed.setStatus(Schedule.State.Error);
+    failed.save();
+    for (boolean pause : List.of(true, false)) {
+      ApiException e = assertToggleError(failed, pause, 409);
+      assertEquals(BackupScheduleHandler.NOT_EDITABLE, error(e).get("code").asText());
+      assertEquals("ERROR", error(e).get("backup_schedule_state").asText());
+    }
+
+    Schedule operated = editableSchedule("operated", false);
+    operated.setIsKubernetesOperatorControlled(true);
+    for (boolean pause : List.of(true, false)) {
+      ApiException e = assertToggleError(operated, pause, 409);
+      assertEquals(BackupScheduleHandler.OPERATOR_CONTROLLED, error(e).get("code").asText());
+    }
+
+    // Another task holds it: no pause, as in v1.
+    Schedule held = editableSchedule("held", false);
+    Schedule.modifyScheduleRunningAndSave(customer.getUuid(), held.getScheduleUUID(), true);
+    ApiException e = assertToggleError(held, true, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    assertEquals(Schedule.State.Active, reload(held).getStatus());
+
+    // v1's internal Paused is PAUSED: pausing it changes nothing, and it can't be resumed.
+    Schedule internal = editableSchedule("internal", false);
+    internal.setStatus(Schedule.State.Paused);
+    internal.save();
+    assertEquals(BackupScheduleState.BackupSchedulePaused, pause(internal).getInfo().getState());
+    e = assertToggleError(internal, false, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+  }
+
+  @Test
+  public void pauseAndResumeMissing() {
+    Schedule missing = editableSchedule("missing", false);
+    missing.delete();
+    assertToggleError(missing, true, 404);
+    assertToggleError(missing, false, 404);
+    Schedule otherSchedule =
+        createBackupSchedule(
+            ModelFactory.testCustomer("other-customer"),
+            "other",
+            UUID.randomUUID(),
+            UUID.randomUUID());
+    assertToggleError(otherSchedule, true, 404);
+    assertToggleError(otherSchedule, false, 404);
   }
 }

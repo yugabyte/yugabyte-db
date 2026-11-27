@@ -127,6 +127,9 @@ rules:
         assertions:
           disallowed:
             - deprecated
+            # An action that takes no input, such as pausing a backup schedule, declares
+            # x-yba-no-request-body: true instead of a body schema with no properties.
+            - x-yba-no-request-body
     assertions:
       required:
         - requestBody
