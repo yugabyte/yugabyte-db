@@ -73,9 +73,9 @@ Provides a list of all replication slots that currently exist on the database cl
 
 Lists WAL senders on the node you are connected to. On a multi-node universe, an empty result means no consumer is attached to that node. Connect to every node before you conclude that nothing is consuming.
 
-[`pg_replication_slots`](#pg-replication-slots) lists every slot in the cluster, but `active_pid` doesn't say which node the process is on. Match it to `pid` in this view on the node where the sender is running. Nothing locks a slot to a single consumer (issue {{<issue 20755>}}), so this per-node check is how you see what is attached.
+[pg_replication_slots](#pg-replication-slots) lists every slot in the cluster, but `active_pid` doesn't say which node the process is on. Match it to `pid` in this view on the node where the sender is running. Nothing locks a slot to a single consumer (issue {{<issue 20755>}}), so this per-node check is how you see what is attached.
 
-List the nodes with [`yb_servers()`](../../../../api/ysql/exprs/func_yb_servers/), connect to each `host` and `port`, and run:
+List the nodes using [yb_servers()](../../../../api/ysql/exprs/func_yb_servers/), connect to each `host` and `port`, and run:
 
 ```plpgsql
 SELECT pid, application_name, client_addr
