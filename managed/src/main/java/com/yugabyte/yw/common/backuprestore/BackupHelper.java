@@ -80,6 +80,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -1425,10 +1426,10 @@ public class BackupHelper {
       }
       for (NodeDetails node : universe.getRunningTserversinCluster(cluster.uuid)) {
         CloudType nodeCloud = nodeCloud(universe, cluster, node, probeNodes);
-        // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
-        // natively, and one whose cloud is unknown is left to the YBC check.
-        if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp)
-            && nodeCloud != bucketCloud) {
+        // Only a VM on a cloud that federates to the bucket's needs it; a node on the bucket's
+        // cloud reaches it natively, and one whose cloud is unknown is left to the YBC check.
+        if (nodeCloud != null
+            && CrossCloudFederationDirections.isSupported(nodeCloud, bucketCloud)) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               String.format(

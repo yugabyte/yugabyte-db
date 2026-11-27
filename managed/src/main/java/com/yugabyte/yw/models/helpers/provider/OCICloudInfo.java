@@ -122,7 +122,10 @@ public class OCICloudInfo implements CloudInfoInterface {
       value =
           "WARNING: This is a preview API that could change. Enable cross-cloud federated IAM on"
               + " this provider's DB nodes. Each node is given access to the storage clouds in"
-              + " crossCloudFederationTargets, using its own OCI identity instead of stored keys.")
+              + " crossCloudFederationTargets, using its own OCI identity instead of stored keys."
+              + " Limit the GCP workload identity provider to these DB nodes with an attribute"
+              + " condition. YBA cannot use the nodes' identity, so it reaches the bucket with GCP"
+              + " credentials of its own, for example to delete backups.")
   @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
   public boolean enableFederatedIam;
 

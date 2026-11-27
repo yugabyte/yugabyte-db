@@ -99,15 +99,6 @@ public class ManageCloudFederation extends NodeTaskBase {
         providerCloud == CloudType.onprem
             ? detectAndPersistPhysicalCloud(universe, node)
             : providerCloud;
-    if (sourceCloud == CloudType.oci
-        && !Util.areYbVersionsEqual(Util.getYbaVersion(), nodeAgent.getVersion(), true)) {
-      // An older node-agent ignores the OCI source and reports success on credentials that fail.
-      throw new IllegalStateException(
-          String.format(
-              "Node-agent on %s is version %s but YBA is %s. Upgrade node-agent before federating a"
-                  + " node on OCI.",
-              taskParams().nodeName, nodeAgent.getVersion(), Util.getYbaVersion()));
-    }
     CrossCloudFederationTarget target =
         selectTarget(
             taskParams().nodeName,
@@ -127,6 +118,10 @@ public class ManageCloudFederation extends NodeTaskBase {
           configuredTargetClouds(taskParams().targets));
       return;
     }
+    if (sourceCloud == CloudType.oci) {
+      requireNodeAgentMatchesYba(
+          taskParams().nodeName, Util.getYbaVersion(), nodeAgent.getVersion());
+    }
 
     log.info(
         "Configuring cloud federation on {} ({} node reaching {}) using node-agent",
@@ -138,6 +133,30 @@ public class ManageCloudFederation extends NodeTaskBase {
         nodeAgentRpcPayload.setupConfigureCloudFederationBits(
             universe, node, taskParams(), sourceCloud, target, nodeAgent),
         NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+  }
+
+  /**
+   * Fails unless the node's node-agent is the same version as YBA. An older node-agent ignores the
+   * OCI source and renders credentials that cannot work while reporting success, so a node on OCI
+   * is configured only by a node-agent known to understand it. A version that cannot be read counts
+   * as different.
+   */
+  static void requireNodeAgentMatchesYba(
+      String nodeName, String ybaVersion, @Nullable String nodeAgentVersion) {
+    boolean same;
+    try {
+      same =
+          nodeAgentVersion != null && Util.areYbVersionsEqual(ybaVersion, nodeAgentVersion, false);
+    } catch (RuntimeException e) {
+      same = false;
+    }
+    if (!same) {
+      throw new IllegalStateException(
+          String.format(
+              "Node-agent on %s is version %s but YBA is %s. Upgrade node-agent before federating a"
+                  + " node on OCI.",
+              nodeName, nodeAgentVersion, ybaVersion));
+    }
   }
 
   /**
