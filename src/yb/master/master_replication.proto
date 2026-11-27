@@ -99,6 +99,9 @@ message CDCStreamInfoPB {
 
   // See SysCDCStreamEntryPB.cdcsdk_unusable_with_transactional_ddl.
   optional bool cdcsdk_unusable_with_transactional_ddl = 25 [default = false];
+
+  // See SysCDCStreamEntryPB.dropped_table_id.
+  repeated bytes dropped_table_id = 26;
 }
 
 message ValidateReplicationInfoRequestPB {
