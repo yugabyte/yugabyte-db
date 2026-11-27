@@ -513,3 +513,29 @@ func TestConvertBoolString(t *testing.T) {
 		t.Logf("Output: %s", output)
 	}
 }
+
+// InstallFile replaces a link at the destination rather than writing through it, sets the mode,
+// and fails on a variable the template is not given.
+func TestInstallFile(t *testing.T) {
+	dir := t.TempDir()
+	tpl, dest, target := filepath.Join(dir, "t.j2"), filepath.Join(dir, "unit"), dir+"/target"
+	err := os.WriteFile(tpl, []byte("ExecStart={{ cmd }}\n"), 0644)
+	if err != nil || os.Symlink(target, dest) != nil {
+		t.Fatal("Could not set up the test")
+	}
+	ctx := context.Background()
+	if err := InstallFile(ctx, map[string]any{"cmd": "run"}, tpl, dest, 0600, "", false); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(dest)
+	if data, _ := os.ReadFile(dest); err != nil || !info.Mode().IsRegular() ||
+		info.Mode().Perm() != 0600 || string(data) != "ExecStart=run" {
+		t.Fatalf("Expected a regular 0600 file holding ExecStart=run at %s, got %v", dest, info)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("Expected nothing written through the link, got %v", err)
+	}
+	if InstallFile(ctx, map[string]any{}, tpl, dest, 0600, "", false) == nil {
+		t.Fatal("Expected a missing variable to fail")
+	}
+}

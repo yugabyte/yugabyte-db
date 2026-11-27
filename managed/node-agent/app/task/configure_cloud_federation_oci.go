@@ -180,13 +180,14 @@ func (h *ConfigureCloudFederation) setupOciSource(
 	}
 
 	credsFile := filepath.Join(fedDir, gcpFedCredsFileName)
-	if _, err := module.CopyFileStrict(
+	if err := module.InstallFile(
 		ctx,
 		map[string]any{"audience": audience, "token_file": tokenFile},
 		filepath.Join(module.ServerTemplateSubpath, gcpFedCredsOciTemplate),
 		credsFile,
 		fs.FileMode(0600),
 		h.username,
+		false,
 	); err != nil {
 		return "", err
 	}

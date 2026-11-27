@@ -349,13 +349,14 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 			}
 		} else {
 			credsFile = filepath.Join(fedDir, gcpFedCredsFileName)
-			if _, err := module.CopyFile(
+			if err := module.InstallFile(
 				ctx,
 				map[string]any{"audience": cfg.GetAudience()},
 				filepath.Join(module.ServerTemplateSubpath, gcpFedCredsTemplate),
 				credsFile,
 				fs.FileMode(0600),
 				h.username,
+				false,
 			); err != nil {
 				return err
 			}
@@ -380,13 +381,14 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 		return fmt.Errorf("unsupported federation target cloud: %s", h.param.GetTargetCloud())
 	}
 
-	if _, err := module.CopyFile(
+	if err := module.InstallFile(
 		ctx,
 		envCtx,
 		filepath.Join(module.ServerTemplateSubpath, federationEnvTemplate),
 		envFile,
 		fs.FileMode(0600),
 		h.username,
+		false,
 	); err != nil {
 		return err
 	}
@@ -414,11 +416,9 @@ func (h *ConfigureCloudFederation) writeDropIn(ctx context.Context, envFile stri
 }
 
 // installSystemdFile renders a server template to dir/name, which is a systemd unit or drop-in in
-// the active systemd mode, requiring every variable the template uses. A user-level directory is
-// writable by the node user. A system-level one is not, so the file is rendered into a private
-// directory under the YBA-provided writable temp dir (some nodes have a non-writable /tmp) and
-// sudo-installed from there, so root never copies a file another user could have placed at a
-// predictable path; the directory is removed on failure too. what names the file in the step log.
+// the active systemd mode, requiring every variable the template uses. The node user writes a
+// user-level file itself; a system-level one is written with sudo. Either way the content goes
+// straight to install, so no file is staged anywhere. what names the file in the step log.
 func (h *ConfigureCloudFederation) installSystemdFile(
 	ctx context.Context,
 	values map[string]any,
@@ -426,48 +426,27 @@ func (h *ConfigureCloudFederation) installSystemdFile(
 	isUser bool,
 	what string,
 ) error {
-	templatePath := filepath.Join(module.ServerTemplateSubpath, template)
-	dest := filepath.Join(dir, name)
-
+	sudo := "sudo "
 	if isUser {
-		if err := module.RunShellSteps(ctx, h.username, []struct {
-			Desc string
-			Cmd  string
-		}{
-			{"create-" + what + "-dir", fmt.Sprintf("mkdir -p %s", shellSingleQuote(dir))},
-		}, h.logOut); err != nil {
-			return err
-		}
-		_, err := module.CopyFileStrict(
-			ctx, values, templatePath, dest, fs.FileMode(0644), h.username)
-		return err
+		sudo = ""
 	}
-
-	remoteTmp := h.param.GetRemoteTmp()
-	if remoteTmp == "" {
-		remoteTmp = "/tmp"
-	}
-	tmpDir, err := os.MkdirTemp(remoteTmp, "yb-federation-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmpDir)
-	tmp := filepath.Join(tmpDir, name)
-	if _, err := module.CopyFileStrict(
-		ctx, values, templatePath, tmp, fs.FileMode(0644), h.username); err != nil {
-		return err
-	}
-	return module.RunShellSteps(ctx, h.username, []struct {
+	if err := module.RunShellSteps(ctx, h.username, []struct {
 		Desc string
 		Cmd  string
 	}{
-		{"create-" + what + "-dir", fmt.Sprintf("sudo mkdir -p %s", shellSingleQuote(dir))},
-		{
-			"install-" + what,
-			fmt.Sprintf(
-				"sudo install -m 0644 %s %s", shellSingleQuote(tmp), shellSingleQuote(dest)),
-		},
-	}, h.logOut)
+		{"create-" + what + "-dir", fmt.Sprintf("%smkdir -p %s", sudo, shellSingleQuote(dir))},
+	}, h.logOut); err != nil {
+		return err
+	}
+	return module.InstallFile(
+		ctx,
+		values,
+		filepath.Join(module.ServerTemplateSubpath, template),
+		filepath.Join(dir, name),
+		fs.FileMode(0644),
+		h.username,
+		!isUser,
+	)
 }
 
 // teardown removes the federation directory (all artifacts) and the systemd drop-in. The S3-on-GCP
@@ -619,7 +598,7 @@ func (h *ConfigureCloudFederation) writeS3Artifacts(
 		return err
 	}
 
-	if _, err := module.CopyFile(
+	if err := module.InstallFile(
 		ctx,
 		map[string]any{
 			"audience": cfg.GetAudience(),
@@ -629,6 +608,7 @@ func (h *ConfigureCloudFederation) writeS3Artifacts(
 		scriptPath,
 		fs.FileMode(0750),
 		h.username,
+		false,
 	); err != nil {
 		return err
 	}

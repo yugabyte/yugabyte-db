@@ -76,17 +76,15 @@ public class NodeAgentRpcPayloadTest {
     NodeAgentClient.requireVersionMatchesYba(nodeAgent("2026.2.0.0-PRE_RELEASE"), "why");
   }
 
-  /** A version that cannot be read is not taken for a match. */
+  /** Agrees with NodeAgentPoller, which never upgrades an agent whose version it cannot parse. */
   @Test
-  public void unreadableNodeAgentVersionIsNotAMatch() {
-    for (String version : new String[] {null, "", "not-a-version"}) {
-      IllegalStateException e =
-          assertThrows(
-              String.valueOf(version),
-              IllegalStateException.class,
-              () -> NodeAgentClient.requireVersionMatchesYba(nodeAgent(version), "Do this."));
-      assertTrue(e.getMessage(), e.getMessage().endsWith("Do this."));
-    }
+  public void unparseableVersionMatchesAsInThePoller() {
+    NodeAgentClient.requireVersionMatchesYba(nodeAgent("not-a-version"), "why");
+    IllegalStateException e =
+        assertThrows(
+            IllegalStateException.class,
+            () -> NodeAgentClient.requireVersionMatchesYba(nodeAgent(null), "Do this."));
+    assertTrue(e.getMessage(), e.getMessage().endsWith("Do this."));
   }
 
   @Test

@@ -788,20 +788,16 @@ public class NodeAgentClient {
 
   /**
    * Fails unless the node agent runs YBA's own version. Guards an input an older node agent would
-   * drop while still reporting success; a version that cannot be read counts as different.
+   * drop while still reporting success. Versions are compared as NodeAgentPoller does when it
+   * decides whether to upgrade an agent, so a version it cannot parse counts as a match: the poller
+   * would never upgrade such an agent, and this check would then fail on it forever.
    *
    * @param why what to do about it, appended to the message
    */
   public static void requireVersionMatchesYba(NodeAgent nodeAgent, String why) {
     String ybaVersion = Util.getYbaVersion();
     String version = nodeAgent.getVersion();
-    boolean same;
-    try {
-      same = version != null && Util.areYbVersionsEqual(ybaVersion, version, false);
-    } catch (RuntimeException e) {
-      same = false;
-    }
-    if (!same) {
+    if (version == null || !Util.areYbVersionsEqual(ybaVersion, version, true)) {
       throw new IllegalStateException(
           String.format(
               "Node agent %s is at version %s, not %s. %s",

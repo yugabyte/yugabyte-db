@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"node-agent/backoff"
 	"node-agent/util"
 	"os"
@@ -43,6 +44,7 @@ type CommandInfo struct {
 	Args []string
 	// Used by RunCmd only. It cannot override HOME, PWD or the user name vars.
 	Env    []string
+	Stdin  io.Reader
 	StdOut util.Buffer
 	StdErr util.Buffer
 }
@@ -160,6 +162,7 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	// Handle cancellation in runCommand. Otherwise, when the context is cancelled,
 	// the command is killed without cleaning up the process group.
 	cmd := createCmd(context.WithoutCancel(ctx), userDetail, env, cmdInfo.Cmd, cmdInfo.Args...)
+	cmd.Stdin = cmdInfo.Stdin
 	if cmdInfo.StdOut != nil {
 		cmd.Stdout = cmdInfo.StdOut
 	}
