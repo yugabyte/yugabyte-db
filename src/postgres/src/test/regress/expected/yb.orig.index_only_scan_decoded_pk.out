@@ -1156,11 +1156,12 @@ $$ AS query \gset
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
-                      QUERY PLAN                       
--------------------------------------------------------
- Index Scan using t_jsonb_expr_key on t_jsonb_expr
-   Index Cond: (((data ->> 'key'::text))::integer = 5)
-(2 rows)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ YB Bitmap Table Scan on t_jsonb_expr
+   ->  Bitmap Index Scan on t_jsonb_expr_key
+         Index Cond: (((data ->> 'key'::text))::integer = 5)
+(3 rows)
 
 SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
  id 
