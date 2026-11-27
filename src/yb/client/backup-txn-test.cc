@@ -654,8 +654,10 @@ void BackupTxnTest::TestCommittedTransactionNotLoadedAfterRestart(UsePitr use_pi
   // So that participants get the transaction from the loader, not from WAL replay.
   ASSERT_OK(cluster_->FlushTablets());
 
+  // Hold the loaders until the leaders are checked, since elections can outlast kLoadDelay.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) =
-      narrow_cast<int32_t>(ToMilliseconds(kLoadDelay));
+      std::numeric_limits<int32_t>::max();
+  const auto restart_start = CoarseMonoClock::Now();
   ShutdownAllTServers(cluster_.get());
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -670,6 +672,9 @@ void BackupTxnTest::TestCommittedTransactionNotLoadedAfterRestart(UsePitr use_pi
     }
   }
   ASSERT_GT(loading_leaders, 0) << "Transactions loaded before the snapshot";
+  // The loaders finish kLoadDelay from now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = narrow_cast<int32_t>(
+      ToMilliseconds(CoarseMonoClock::Now() - restart_start + kLoadDelay));
 
   // The coordinator resends APPLY within a second after the leader gets the snapshot request, so
   // without the fix the leader submits the snapshot operation first.

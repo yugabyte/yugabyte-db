@@ -165,8 +165,12 @@ class TransactionLoader::Executor {
       current_key_.Clear();
       docdb::AppendTransactionKeyPrefix(id, &current_key_);
       if (key.empty()) { // The key only contains a transaction id - it is metadata record.
-        if (FLAGS_TEST_inject_load_transaction_delay_ms > 0) {
-          std::this_thread::sleep_for(FLAGS_TEST_inject_load_transaction_delay_ms * 1ms);
+        // Re-reads the flag, so a test can change the delay while the loader waits.
+        for (auto start = std::chrono::steady_clock::now();
+             std::chrono::steady_clock::now() <
+                 start + FLAGS_TEST_inject_load_transaction_delay_ms * 1ms;) {
+          RETURN_NOT_OK(CheckForShutdown());
+          std::this_thread::sleep_for(10ms);
         }
         RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;

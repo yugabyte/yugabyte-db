@@ -31,6 +31,16 @@ using namespace std::literals;
 namespace yb {
 namespace client {
 
+namespace {
+
+// The master leader can briefly lose its lease or be re-elected on a slow host.
+bool IsMasterLeaderNotReady(const Status& status) {
+  return status.IsServiceUnavailable() || status.IsLeaderHasNoLease() ||
+         status.IsLeaderNotReadyToServe();
+}
+
+} // namespace
+
 Result<master::SysSnapshotEntryPB::State> SnapshotTestUtil::SnapshotState(
     const TxnSnapshotId& snapshot_id) {
   auto snapshots = VERIFY_RESULT(ListSnapshots(snapshot_id));
@@ -124,7 +134,11 @@ Status SnapshotTestUtil::WaitSnapshotInState(
   master::SysSnapshotEntryPB::State last_state = master::SysSnapshotEntryPB::UNKNOWN;
   auto status = WaitFor(
       [this, &snapshot_id, state, &last_state]() -> Result<bool> {
-        last_state = VERIFY_RESULT(SnapshotState(snapshot_id));
+        auto result = SnapshotState(snapshot_id);
+        if (!result.ok() && IsMasterLeaderNotReady(result.status())) {
+          return false;
+        }
+        last_state = VERIFY_RESULT(std::move(result));
         return last_state == state;
       },
       duration* kTimeMultiplier, "Snapshot never reached state " + state_name);
@@ -175,9 +189,10 @@ Result<master::SysSnapshotEntryPB_State> SnapshotTestUtil::GetRestorationState(
       break;
     }
     auto status = StatusFromPB(resp.status());
-    if (!status.IsServiceUnavailable()) {
+    if (!IsMasterLeaderNotReady(status)) {
       return status;
     }
+    SleepFor(100ms);
   }
   if (resp.restorations().size() != 1) {
     return STATUS_FORMAT(RuntimeError, "Wrong number of restorations, one expected but $0 found",
