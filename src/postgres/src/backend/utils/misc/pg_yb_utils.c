@@ -5208,8 +5208,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		{
 			CheckAlterDatabaseDdl(pstmt);
 
-			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
-				YbIsYsqlConnMgrEnabled())
+			if (YbShouldIncrementLogicalClientVersion(pstmt))
 				ddl_transaction_state.increment_logical_client_version = true;
 
 			if (use_separate_ddl_transaction)
