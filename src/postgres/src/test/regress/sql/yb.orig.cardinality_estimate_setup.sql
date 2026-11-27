@@ -100,15 +100,17 @@ alter table r alter column a set statistics 10000;
 alter table r alter column b set statistics 10000;
 alter table r alter column e set statistics 10000;
 
--- dependent columns: s = k % 5, so a value of k implies its s.  With the
--- dependency statistics, "k = .. and s = .." is estimated as the condition on
--- k alone.
+-- dependent columns: s = k % 5 and t = k % 5, so a value of k implies its s
+-- and its t.  With the dependency statistics, "k = .. and s = .." is estimated
+-- as the condition on k alone.  i_rd_k includes s and not t.
 drop table if exists rd;
-create table rd (pk int, k int, s int, primary key (pk asc));
+create table rd (pk int, k int, s int, t int, primary key (pk asc));
 create index i_rd_k on rd (k asc) include (s);
+create index i_rd_k_part on rd (k asc) where pk <= 6000;
 
 insert into rd
-  select i, i % 10, i % 5
+  select i, i % 10, i % 5, i % 5
   from generate_series(1, 12345) i;
 
 create statistics rd_k_s (dependencies) on k, s from rd;
+create statistics rd_k_t (dependencies) on k, t from rd;
