@@ -238,8 +238,8 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
     }
   }
 
-  // ALTER ROLE ... NOSUPERUSER with other options must bump the version too, so that a new
-  // session of the role does not reuse a pooled backend started while the role was superuser.
+  // ALTER ROLE ... NOSUPERUSER with other options bumps the version, so pooled backends
+  // started before it are not reused by new sessions of the role.
   @Test
   public void testVersionBumpOnAlterRoleSuperuserWithOtherOptions() throws Exception {
     try (Connection adminConn = getConnectionBuilder()
@@ -271,5 +271,69 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
       }
       adminStmt.execute("DROP ROLE su_role");
     }
+  }
+
+  private Connection connectToConnMgrAs(String user) throws Exception {
+    return getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withUser(user)
+        .connect();
+  }
+
+  private void executeOnPgEndpoint(String query) throws Exception {
+    try (Connection connection = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+            .connect();
+        Statement statement = connection.createStatement()) {
+      statement.execute(query);
+    }
+  }
+
+  // ALTER ROLE ... NOSUPERUSER issued without going through Connection Manager bumps the
+  // version, so pooled backends started before it are not reused by new sessions of the role.
+  @Test
+  public void testVersionBumpOnAlterRoleSuperuserOnPgEndpoint() throws Exception {
+    executeOnPgEndpoint("CREATE ROLE su_pg_role SUPERUSER LOGIN");
+
+    try (Connection conn = connectToConnMgrAs("su_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
+    }
+
+    long oldVersion = getLogicalClientVersionFromPgEndpoint();
+    executeOnPgEndpoint("ALTER ROLE su_pg_role NOSUPERUSER");
+    assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
+
+    try (Connection conn = connectToConnMgrAs("su_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+      assertThrows(SQLException.class,
+          () -> stmt.execute("SET SESSION AUTHORIZATION yugabyte"));
+    }
+
+    executeOnPgEndpoint("DROP ROLE su_pg_role");
+  }
+
+  // ALTER ROLE ... SET issued without going through Connection Manager bumps the version, so
+  // new sessions of the role get a backend that has the new default.
+  @Test
+  public void testVersionBumpOnAlterRoleSetOnPgEndpoint() throws Exception {
+    executeOnPgEndpoint("CREATE ROLE guc_pg_role LOGIN");
+
+    try (Connection conn = connectToConnMgrAs("guc_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "statement_timeout", "0"));
+    }
+
+    long oldVersion = getLogicalClientVersionFromPgEndpoint();
+    executeOnPgEndpoint("ALTER ROLE guc_pg_role SET statement_timeout = '123s'");
+    assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
+
+    try (Connection conn = connectToConnMgrAs("guc_pg_role");
+        Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "statement_timeout", "123s"));
+    }
+
+    executeOnPgEndpoint("DROP ROLE guc_pg_role");
   }
 }
