@@ -102,4 +102,4 @@ Before starting the upgrade, review the following major changes in previous Yuga
 
 ### pgvector
 
-If your database uses the [pgvector](../../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrading from v2024.2](../../../additional-features/pg-extensions/extension-pgvector/#upgrading-from-v2024-2).
+If your database uses the [pgvector](../../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrading](../../../additional-features/pg-extensions/extension-pgvector/#upgrading) before you upgrade.

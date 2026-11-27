@@ -17,7 +17,7 @@ aliases:
 
 {{< note title="GA in v2026.1.1.0 or later" >}}
 
-Vector indexes are GA starting in v2026.1.1.0 and v2025.2.6.0. These releases store vector tables in a new layout. Tables created on earlier releases retain the old layout. A table can't be converted in place, so each vector table created before these releases must be rebuilt once, from its DDL and DML, as part of the upgrade. See [Upgrade vector indexes](#upgrade-vector-indexes).
+Vector indexes are GA starting in v2026.1.1.0 and v2025.2.6.0. These releases store vector tables in a new layout. Tables created on earlier releases retain the old layout. A table can't be converted in place, so each vector table created before these releases must be rebuilt once, by recreating it from its DDL and reloading its data, as part of the upgrade. See [Upgrade vector indexes](#upgrade-vector-indexes).
 
 {{< /note >}}
 
@@ -295,20 +295,28 @@ SET hnsw.ef_search = 100;
 
 ## Upgrade vector indexes
 
-Vector indexes are generally available starting in v2026.1.1.0, and v2025.2.6.0 in the v2025.2 LTS series. These releases store vector tables in a new layout. Tables created on earlier releases retain the old layout, and a table can't be converted in place, so each vector table created before these releases must be rebuilt once, from its DDL and DML, as part of the upgrade. Subsequent upgrades don't require extra steps for vector tables.
+Vector indexes are generally available starting in v2026.1.1.0, and v2025.2.6.0 in the v2025.2 LTS series. These releases store vector tables in a new layout. Tables created on earlier releases retain the old layout, and a table can't be converted in place, so each vector table created before these releases must be rebuilt once, by recreating it from its DDL and reloading its data, as part of the upgrade. Subsequent upgrades don't require extra steps for vector tables.
 
-### Step 1: Choose the release to upgrade to
+### Choose the release to upgrade to
 
 Vector indexes reached general availability recently and are improving quickly; each new release can include further vector index fixes. Upgrade to the latest release in your series:
 
 - v2026.1 series: the latest v2026.1 release, and no earlier than v2026.1.2.0. v2026.1.1.x supports vector indexes, but v2026.1.2.0 includes important fixes for vector search errors during concurrent deletes, a vector index stall during compaction, and possible row loss after a crash. Tables created on v2026.1.1.x don't need to be rebuilt when you upgrade to a later v2026.1 release.
 - v2025.2 LTS series: the latest v2025.2 release, and no earlier than v2025.2.6.0.
 
-When upgrading from v2025.2.6.0 or later to v2026.1, upgrade to the latest v2026.1 release, and no earlier than v2026.1.2.0. v2026.1.0.x and v2026.1.1.x don't contain all the fixes in v2025.2.6.0, so they aren't supported upgrade targets.
+When upgrading from v2025.2.6.0 or later to v2026.1, upgrade to a v2026.1 release that was released after your v2025.2 release, and no earlier than v2026.1.2.0. v2026.1.0.x and v2026.1.1.x don't contain all the fixes in v2025.2.6.0, so they aren't supported upgrade targets.
 
-### Step 2: Find the tables that need a rebuild
+### Check the vector index backend flag
 
-The upgrade procedure depends on the release each vector table was created on, not the release your universe runs today. YugabyteDB doesn't show which layout a table uses, so keep track of when your vector tables were created.
+Before you upgrade to v2025.2.8.0 or later, or to v2026.1.3.0 or later, check the flags passed to yb-master. The command-line flags are listed at `http://<yb-master>:7000/varz`.
+
+On these releases, `vector_index_backend` accepts `yb_hnsw_hnswlib` and `yb_hnsw_usearch`. The values `usearch`, `hnswlib`, and `yb_hnsw` fail validation, and yb-master does not start. `yb_hnsw` was the default on v2025.2.3 through v2025.2.5, so an explicit setting of that value fails in the same way. Remove the flag, or set it to `yb_hnsw_hnswlib`. A flag that is not set uses `yb_hnsw_hnswlib`.
+
+Indexes created with a native backend can't be opened on these releases, the same as indexes created on v2025.1 or v2025.2.0.x. Drop those tables before the upgrade, using [Option 1](#option-1-rebuild-across-the-upgrade). The native backend was selected when `vector_index_use_yb_hnsw` was `false` on v2025.2.1 or v2025.2.2, or when `vector_index_backend` was `usearch` or `hnswlib`.
+
+### Find the tables that need a rebuild
+
+The upgrade procedure depends on the release each vector table was created on, not the release your universe runs today. SQL doesn't show which layout a table uses, so keep track of when your vector tables were created.
 
 Run the following query in each database. It lists every table that has a vector column, with the DDL of its vector indexes, if any. Save the output; you'll need the index DDL to recreate the indexes.
 
@@ -332,7 +340,7 @@ WHERE c.relkind IN ('r', 'p', 'm')
     FROM pg_attribute a
     JOIN pg_type t ON t.oid = a.atttypid
     WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-      AND t.typname IN ('vector', 'halfvec', 'sparsevec'))
+      AND t.typname = 'vector')
 ORDER BY 1, 2, 3;
 ```
 
@@ -344,15 +352,15 @@ Use the following table to decide what to do for each table.
 | :--- | :--- |
 | v2025.2.6.0+<br>v2026.1.1.0+<br>after the upgrade to that release was finalized | Nothing. Upgrade as usual. |
 | v2024.2 | Save the DDL, export the data, and drop the tables, then drop the vector extension, before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
-| v2025.1, or v2025.2.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade): drop the vector tables before upgrading. Current releases can't open vector indexes created on these releases, so the upgrade can't proceed while they exist. |
-| v2025.2.1 to v2025.2.5, or v2026.1.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade) or [Option 2](#option-2-rebuild-after-the-upgrade). Option 2 keeps the tables online during the upgrade. |
-| Not sure | Treat it as old and rebuild it. Rebuilding a table that already has the new layout does no harm. |
+| v2025.1, or v2025.2.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade): drop the vector tables before upgrading. v2025.2.8.0+ and v2026.1.3.0+ can't open vector indexes created on these releases, so the upgrade can't proceed while they exist. |
+| v2025.2.1 to v2025.2.5, or v2026.1.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade) or [Option 2](#option-2-rebuild-after-the-upgrade). Option 2 keeps the tables online during the upgrade. Indexes created with a native backend are an exception: use Option 1. See [Check the vector index backend flag](#check-the-vector-index-backend-flag). |
+| Not sure | Treat it as created on v2025.1 and use [Option 1](#option-1-rebuild-across-the-upgrade). Rebuilding a table that already has the new layout does no harm. |
 
 If you plan to add a vector column to an existing table that was created before v2025.2.6.0 or v2026.1.1.0, recreate the table with the vector column instead of using `ALTER TABLE ... ADD COLUMN`.
 
 {{< warning title="If an upgrade stops after the first node" >}}
 
-If you upgrade while vector indexes created on v2025.1 or v2025.2.0.x still exist, the first upgraded node can't open them and the rolling upgrade stops. Roll back using a non-rolling rollback (this restarts all nodes at once and causes brief downtime), drop those tables as described in [Option 1](#option-1-rebuild-across-the-upgrade), and upgrade again.
+If you upgrade while vector indexes created on v2025.1 or v2025.2.0.x still exist, or indexes created with a native backend still exist, the first upgraded node can't open them and the rolling upgrade stops. See [Check the vector index backend flag](#check-the-vector-index-backend-flag). Roll back using a non-rolling rollback (this restarts all nodes at once and causes brief downtime), drop those tables as described in [Option 1](#option-1-rebuild-across-the-upgrade), and upgrade again.
 
 {{< /warning >}}
 
@@ -362,7 +370,7 @@ For every vector, YugabyteDB keeps a lookup entry that points from the vector ba
 
 Which layout a table uses is decided once, when the table is created with CREATE TABLE, and can't be changed afterwards. This has the following consequences:
 
-- Old-layout tables aren't supported on the new releases. Tables created on v2025.2.1 to v2025.2.5 or v2026.1.0.x still return correct results, but every CREATE INDEX or DROP INDEX on them leaves lookup entries behind that are never cleaned up, so they waste storage indefinitely.
+- Old-layout tables aren't supported on the new releases. Tables created on v2025.2.1 to v2025.2.5 or v2026.1.0.x keep working on the new releases and return correct results, but every CREATE INDEX or DROP INDEX on them leaves lookup entries behind that are never cleaned up, so they waste storage indefinitely.
 - Only a new CREATE TABLE gives a table the new layout. REINDEX, dropping and recreating only the index, ALTER TABLE, restoring from a backup, point-in-time recovery, and database cloning all keep the table's existing layout. That's why the procedures recreate each table from its DDL and reload its data.
 - The new layout takes effect only after the upgrade is finalized. A table created while the upgrade is still in progress gets the old layout. Don't recreate vector tables until you have finalized the upgrade.
 - In a colocated database, all colocated tables share storage, so space already lost isn't reclaimed by recreating individual tables. See [Colocated databases](#colocated-databases).
