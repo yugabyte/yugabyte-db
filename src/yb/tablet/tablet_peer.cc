@@ -85,7 +85,6 @@
 
 #include "yb/tserver/tserver_error.h"
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -743,17 +742,6 @@ Status TabletPeer::CheckRunning() const {
 bool TabletPeer::IsShutdownStarted() const {
   auto state = state_.load(std::memory_order_acquire);
   return state == RaftGroupStatePB::QUIESCING || state == RaftGroupStatePB::SHUTDOWN;
-}
-
-Status TabletPeer::WaitCompactionsEnabled(CoarseTimePoint deadline) const {
-  return Wait(
-      [this]() -> Result<bool> {
-        SCHECK(!IsShutdownStarted(), ShutdownInProgress, "Tablet peer is shutting down");
-        RETURN_NOT_OK(error());
-        auto tablet = shared_tablet_maybe_null();
-        return tablet && tablet->compactions_enabled();
-      },
-      deadline, Format("$0Compactions enabled", LogPrefix()));
 }
 
 Status TabletPeer::CheckShutdownOrNotStarted() const {
@@ -2113,6 +2101,9 @@ TableType TabletPeer::TEST_table_type() {
 void TabletPeer::SetFailed(const Status& error) {
   DCHECK(error_.get(std::memory_order_acquire) == nullptr);
   error_ = MakeAtomicUniquePtr<Status>(error);
+  if (auto tablet = shared_tablet_maybe_null()) {
+    tablet->SetPeerFailed();
+  }
   auto state = state_.load(std::memory_order_acquire);
   while (state != RaftGroupStatePB::FAILED && state != RaftGroupStatePB::QUIESCING &&
          state != RaftGroupStatePB::SHUTDOWN) {

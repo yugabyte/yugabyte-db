@@ -142,6 +142,9 @@ struct AdminCompactionOptions {
   rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe;
   TableIdsPtr vector_index_ids;
   tablet::VectorIndexOnly vector_index_only;
+  // Until when to wait for a tablet that is completing startup to enable compactions. The default
+  // does not wait.
+  CoarseTimePoint deadline = CoarseTimePoint();
 
   AdminCompactionOptions() = delete;
 
@@ -529,6 +532,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.
   Status TriggerAdminCompaction(const TabletPtrs& tablets, const AdminCompactionOptions& options);
+
 
   // Create Metadata cache atomically and return the metadata cache object.
   client::YBMetaDataCache* CreateYBMetaDataCache();

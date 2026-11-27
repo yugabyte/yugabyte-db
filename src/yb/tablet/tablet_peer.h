@@ -242,10 +242,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // Returns whether shutdown started. If shutdown already completed returns true as well.
   bool IsShutdownStarted() const;
 
-  // Waits until the tablet enables compactions, which a RUNNING peer does right after, in
-  // CompleteStartup. Returns ShutdownInProgress if the peer shuts down, or its error if it fails.
-  Status WaitCompactionsEnabled(CoarseTimePoint deadline) const;
-
   // Check that the tablet is in a SHUTDOWN/NOT_STARTED state.
   Status CheckShutdownOrNotStarted() const;
 

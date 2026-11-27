@@ -2174,13 +2174,13 @@ TEST_F(CompactionTest, YB_DEBUG_ONLY_TEST(NoCompactionsBeforeStartupCompletes)) 
   // Put the held tablet between the others, so it fails after one submission and before another.
   std::swap(*std::find(tablets.begin(), tablets.end(), held_tablet), tablets[1]);
 
-  // The paths of the full compaction manager, of FlushTablets for all tablets, and of the master's
-  // CompactSysCatalog.
+  // The paths of the full compaction manager and of the master's CompactSysCatalog.
   ASSERT_FALSE(held_tablet->IsEligibleForFullCompaction());
+  ASSERT_NOK(held_tablet->ForceManualRocksDBCompact());
+  // Without a deadline the held tablet fails, and the others are compacted anyway.
   ASSERT_NOK(tablet_manager->TriggerAdminCompaction(
       tablets,
       AdminCompactionOptions{ShouldWait::kTrue, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse}));
-  ASSERT_NOK(held_tablet->ForceManualRocksDBCompact());
   for (const auto& tablet : tablets) {
     if (tablet == held_tablet) {
       ASSERT_GE(tablet->GetCurrentVersionNumSSTFiles(), 2);
@@ -2189,18 +2189,18 @@ TEST_F(CompactionTest, YB_DEBUG_ONLY_TEST(NoCompactionsBeforeStartupCompletes)) 
     }
   }
 
-  // The master's compaction of explicit tablets waits for startup to complete instead of failing.
+  // FlushTablets waits for startup to complete instead of failing.
   std::atomic<bool> waiting{false};
   sync_point->SetCallBack(
-      "TabletServiceAdminImpl::FlushTablets:WaitCompactionsEnabled",
+      "Tablet::WaitCompactionsEnabled",
       [&waiting](void*) { waiting = true; });
   std::atomic<bool> compacted{false};
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this, ts, &held_tablet_id, &compacted] {
+  thread_holder.AddThreadFunctor([this, ts, &compacted] {
     auto proxy = cluster_->GetTServerProxy<TabletServerAdminServiceProxy>(0);
     FlushTabletsRequestPB req;
     req.set_dest_uuid(ts->server()->permanent_uuid());
-    req.add_tablet_ids(held_tablet_id);
+    req.set_all_tablets(true);
     req.set_operation(FlushTabletsRequestPB::COMPACT);
     FlushTabletsResponsePB resp;
     rpc::RpcController controller;

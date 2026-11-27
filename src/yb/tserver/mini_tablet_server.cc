@@ -314,7 +314,7 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     if (!tablet) {
       return Status::OK();
     }
-    auto status = tablet_peer->WaitCompactionsEnabled(CompactionsEnabledDeadline());
+    auto status = tablet->WaitCompactionsEnabled(CompactionsEnabledDeadline());
     if (status.ok()) {
       status = tablet->ForceManualRocksDBCompact(skip_flush);
     }
@@ -333,7 +333,7 @@ Status MiniTabletServer::CompactTablet(const TabletId& tablet_id, docdb::SkipFlu
     return Status::OK();
   }
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
-  RETURN_NOT_OK(tablet_peer->WaitCompactionsEnabled(CompactionsEnabledDeadline()));
+  RETURN_NOT_OK(tablet->WaitCompactionsEnabled(CompactionsEnabledDeadline()));
   return tablet->ForceManualRocksDBCompact(skip_flush);
 }
 

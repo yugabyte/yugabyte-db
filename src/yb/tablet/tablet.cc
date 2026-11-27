@@ -7133,6 +7133,23 @@ bool Tablet::HasActiveTTLFileExpiration() {
             dockv::ValueControlFields::kMaxTtl;
 }
 
+Status Tablet::WaitCompactionsEnabled(CoarseTimePoint deadline) const {
+  if (compactions_enabled_) {
+    return Status::OK();
+  }
+  TEST_SYNC_POINT("Tablet::WaitCompactionsEnabled");
+  return Wait(
+      [this]() -> Result<bool> {
+        if (compactions_enabled_) {
+          return true;
+        }
+        SCHECK(!IsShutdownRequested(), ShutdownInProgress, "Tablet is shutting down");
+        SCHECK(!peer_failed_, IllegalState, "Tablet peer failed");
+        return false;
+      },
+      deadline, Format("$0Compactions enabled", LogPrefix()));
+}
+
 Status Tablet::CheckCompactionsEnabled() const {
   SCHECK(compactions_enabled_, ServiceUnavailable, "Compactions are not enabled yet");
   return Status::OK();

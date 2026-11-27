@@ -3014,7 +3014,12 @@ Status TSTabletManager::TriggerAdminCompaction(
 
   for (auto tablet : tablets) {
     // Do not return here: callbacks of already submitted compactions reference this frame.
-    auto status = tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options);
+    // A tablet object exists once bootstrap is done, so only the rest of TabletPeer::Start can be
+    // left before the tablet enables compactions.
+    auto status = tablet->WaitCompactionsEnabled(options.deadline);
+    if (status.ok()) {
+      status = tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options);
+    }
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Failed to trigger admin compaction of tablet "
                                << tablet->tablet_id() << ": " << status;

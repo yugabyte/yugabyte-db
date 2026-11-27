@@ -1191,6 +1191,14 @@ class Tablet : public AbstractTablet,
     return compactions_enabled_;
   }
 
+  // Waits until DoEnableCompactions enables compactions, which a tablet completing startup does
+  // soon. Fails if the tablet shuts down, or if its peer fails and so never completes startup.
+  Status WaitCompactionsEnabled(CoarseTimePoint deadline) const;
+
+  void SetPeerFailed() {
+    peer_failed_ = true;
+  }
+
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
 
@@ -1681,6 +1689,7 @@ class Tablet : public AbstractTablet,
   // Set by DoEnableCompactions. RocksDB instances are opened with compactions disabled, e.g. at
   // startup and when a restore reopens them.
   std::atomic<bool> compactions_enabled_{false};
+  std::atomic<bool> peer_failed_{false};
 
   // Fault hooks. In production code, these will always be nullptr.
   std::shared_ptr<CompactionFaultHooks> compaction_hooks_;
