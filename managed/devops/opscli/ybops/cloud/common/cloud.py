@@ -11,6 +11,7 @@
 import logging
 import os
 import re
+import shlex
 import stat
 import socket
 import tempfile
@@ -114,6 +115,7 @@ class AbstractCloud(AbstractCommandParser):
     instances to cloud-specific structures or APIs.
     """
     BASE_IMAGE_VERSION_KEY = "base_image_version"
+    DISK_RESIZE_TIMEOUT_SEC = 600
     KEY_SIZE = 2048
     PUBLIC_EXPONENT = 65537
     CERT_VALID_DURATION = 365
@@ -763,6 +765,55 @@ class AbstractCloud(AbstractCommandParser):
         for mount_point in mount_points:
             logging.info("Expanding file system with mount point: {}".format(mount_point))
             remote_shell.check_exec_command('sudo xfs_growfs {}'.format(mount_point))
+
+    @staticmethod
+    def _wait_for_disk_size_command(device_name, size_gb, rescan_script):
+        """Shell command that runs rescan_script until the guest kernel sees size_gb GiB on the
+        device, and fails if it does not within DISK_RESIZE_TIMEOUT_SEC.
+
+        The rescan is repeated because the new size may not have reached the guest yet. Without
+        this, xfs_growfs can run against the old size and succeed without growing anything.
+        """
+        # /sys/class/block/<dev>/size is always in 512-byte sectors.
+        wait_script = (
+            "want={sectors}; "
+            "for i in $(seq {timeout}); do "
+            "{rescan}; "
+            "[ \"$(cat /sys/class/block/{dev}/size)\" -ge \"$want\" ] && exit 0; "
+            "sleep 1; done; "
+            "echo \"/dev/{dev} has $(cat /sys/class/block/{dev}/size) sectors, expected at least "
+            "$want ({gb} GiB) after {timeout}s\" >&2; exit 1"
+        ).format(sectors=size_gb * 1024 * 1024 * 2,
+                 timeout=AbstractCloud.DISK_RESIZE_TIMEOUT_SEC,
+                 rescan=rescan_script, dev=device_name, gb=size_gb)
+        return "sudo bash -c '{}'".format(wait_script)
+
+    def _rescan_and_expand_file_system(self, args, connect_options, device_pattern,
+                                       rescan_command):
+        """Grows the file systems of resized disks whose new size the guest sees only after a
+        rescan. rescan_command(device_name, size_gb) is the command that waits for that size;
+        device_pattern is the regex of the device names it supports.
+        """
+        remote_shell = RemoteShell(connect_options)
+        mount_points = self.get_mount_points_csv(args).split(',')
+        for mount_point in mount_points:
+            quoted_mount_point = shlex.quote(mount_point)
+            source = remote_shell.check_exec_command(
+                "findmnt -rn -M {} -o SOURCE".format(quoted_mount_point)).strip()
+            if not source:
+                raise YBOpsRuntimeError(
+                    "Could not find a mounted device for {}".format(mount_point))
+            device_path = remote_shell.check_exec_command(
+                "readlink -f -- {}".format(shlex.quote(source))).strip()
+            device_name = os.path.basename(device_path)
+            if not re.fullmatch(device_pattern, device_name):
+                raise YBOpsRuntimeError(
+                    "Unsupported data disk {} for mount point {}".format(
+                        device_path, mount_point))
+
+            remote_shell.check_exec_command(rescan_command(device_name, args.volume_size))
+            logging.info("Expanding file system with mount point: {}".format(mount_point))
+            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(quoted_mount_point))
 
     def wait_for_server_ports(self, private_ip, instance_name, server_ports):
         sock = None
