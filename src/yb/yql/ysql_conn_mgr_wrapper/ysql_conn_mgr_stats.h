@@ -48,7 +48,9 @@ struct ConnectionStats {
   bool logical_rep;
 };
 
-// Stored in the stats shared memory right after the max_pools ConnectionStats slots.
+// Stored in the stats shared memory right after the max_pools ConnectionStats slots. The code that
+// allocates the segment, the writer (Odyssey cron) and every reader must use the same max_pools,
+// which today is ysql_conn_mgr_max_pools; otherwise they disagree on where this block is.
 struct YsqlConnMgrInstanceStats {
   uint64_t logger_dropped_lines;
   uint64_t logger_queue_size;
