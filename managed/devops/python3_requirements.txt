@@ -51,7 +51,6 @@ pip==25.3;python_version>='3.9'
 protobuf==5.29.6
 psycopg2-binary==2.9.10
 python-dateutil==2.8.2
-python-ldap
 PyYAML
 PyNaCl==1.6.2
 requests-oauthlib==1.3.0
