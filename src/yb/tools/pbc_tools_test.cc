@@ -29,6 +29,8 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
@@ -122,7 +124,7 @@ TEST_F(PBToolsTestWithMiniCluster, EncryptedBinaryToTextToEncryptedBinary) {
       tools::ClusterAdminClient(cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(5));
   ASSERT_OK(admin_client.Init());
   auto key_id = RandomHumanReadableString(16);
-  auto key = RandomBytes(32);
+  auto key = RandomBytes(encryption::DefaultUniverseKeySize());
   ASSERT_OK(EnableEncryption(admin_client, key_id, key));
 
   // Wait for the tserver to get the encryption key.

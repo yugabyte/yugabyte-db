@@ -45,12 +45,9 @@ namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
-YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
-YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
 YB_STRONGLY_TYPED_BOOL(Split);
 YB_STRONGLY_TYPED_BOOL(StorePayload);
-YB_STRONGLY_TYPED_BOOL(UseSharedMemory);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
 
 using FloatVector = std::vector<float>;
@@ -402,7 +399,7 @@ std::string ParamsToString(
     std::optional<bool> is_colocated, VectorIndexEngine engine, PackingMode packing_mode);
 
 ////////////////////////////////////////////////////////
-// PgVectorIndexTest
+// PgVectorIndexTestParam
 ////////////////////////////////////////////////////////
 
 using PgVectorIndexTestParam = std::tuple<bool, VectorIndexEngine, PackingMode>;
@@ -443,25 +440,8 @@ template <typename TestClass>
 using PgVectorIndexTestParamsDecorator =
     PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexTestParam>;
 
-// The Test* scenarios, each shared by several tests, are defined next to those tests.
-class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
- protected:
-  void TestSimple(bool table_exists = false);
-  void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
-  void TestRestart(
-      tablet::FlushFlags flush_flags,
-      NonTransactionalWrites non_transactional_writes = NonTransactionalWrites::kFalse);
-  void TestMetric(const std::string& expected);
-  void TestRandom();
-  void TestNullVectorsInIntents(bool commit);
-  void TestBootstrapAfterSchemaChange(
-      NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
-  void TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory);
-  void TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen crash_after_reopen);
-};
-
 ////////////////////////////////////////////////////////
-// PgVectorIndexColocationOnlyTest
+// PgVectorIndexColocationOnlyParam
 ////////////////////////////////////////////////////////
 
 // Colocation only; engine and packing stay kYbHnswHnswlib / kNone.
@@ -492,35 +472,6 @@ struct TestParamTraits<PgVectorIndexColocationOnlyParam> {
       return param_info.param ? "Colocated" : "Distributed";
     };
   }
-};
-
-class PgVectorIndexColocationOnlyTest
-    : public PgVectorIndexTestParamsDecoratorBase<
-          PgVectorIndexTestBase, PgVectorIndexColocationOnlyParam> {
- protected:
-  static constexpr auto kSourceDb = "source_db";
-  static constexpr auto kCloneDb = "clone_db";
-
-  void TestSkippedIndexStorageDestroyedOnRemove(bool with_kept_index);
-
-  // Creates kSourceDb holding table test with rows 1..num_rows, one statement per row. The vector
-  // index is left to the caller.
-  Result<PGConn> CreateSourceTable(size_t num_rows);
-
-  Status CreateSourceSnapshotSchedule();
-
-  // Clones kSourceDb into kCloneDb through a schedule that CreateSourceSnapshotSchedule created.
-  Status CloneSourceDbWithExistingSchedule() {
-    auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
-    return admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb);
-  }
-
-  Status CloneSourceDb() {
-    RETURN_NOT_OK(CreateSourceSnapshotSchedule());
-    return CloneSourceDbWithExistingSchedule();
-  }
-
-  void TestDroppedIndexKeepsUnflushedRows(bool skip_deactivation_flush);
 };
 
 ////////////////////////////////////////////////////////

@@ -4838,6 +4838,19 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_notifications_poller_no_progress_timeout_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds without progress after which a"
+						 " notifications poller error terminates the node's"
+						 " listening sessions instead of restarting the poller."),
+			gettext_noop("0 terminates them on the first error."),
+			GUC_UNIT_MS
+		},
+		&yb_notifications_poller_no_progress_timeout_ms,
+		300000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_reorderbuffer_max_memory_kb", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Maximum reorder buffer memory in kilobytes before logical "
 						 "replication changes are streamed or spilled to disk."),
@@ -6400,8 +6413,8 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_update_num_cols_to_compare", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Maximum number of columns whose data is to be"
 						 " compared while seeking to optimize updates."
-						 " If set to 0, all applicable columns in the table"
-						 " will be compared."),
+						 " If set to 0, the update optimization is"
+						 " disabled."),
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,

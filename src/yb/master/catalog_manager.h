@@ -913,6 +913,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
 
+  Status SetEncryptionAlgorithm(
+      const SetEncryptionAlgorithmRequestPB* req, SetEncryptionAlgorithmResponsePB* resp);
+
+  // Applies update to the cluster config's encryption info, persists it, and resends the universe
+  // key registry to tservers on their next heartbeat.
+  Status UpdateEncryptionInfo(const std::function<Status(EncryptionInfoPB*)>& update);
+
   Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
                                     GetFullUniverseKeyRegistryResponsePB* resp);
 
@@ -2564,6 +2571,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::shared_ptr<AsyncAddServerTask>> ScheduleAddServerTask(
       const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
+      const LeaderEpoch& epoch, const std::string& reason);
+
+  // Tiered storage: start a task that tells the replica of 'tablet' on 'ts_uuid' to move its
+  // SSTs to 'target_tier' (AlterTabletTier).
+  Result<std::shared_ptr<RetryingRpcTask>> ScheduleAlterTabletTierTask(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
       const LeaderEpoch& epoch, const std::string& reason);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and

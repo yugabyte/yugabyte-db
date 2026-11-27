@@ -1202,6 +1202,8 @@ void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);
+extern void YBAddDdlTxnStateExtended(YbDdlMode mode, bool block_ddl_concurrency_in_db);
+extern void YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode);
 extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();
 

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following sections provide quick examples for using [ybm CLI comands](https://github.com/yugabyte/ybm-cli/blob/main/docs/).
+The following sections provide quick examples for using [ybm CLI commands](https://github.com/yugabyte/ybm-cli/blob/main/docs/).
 
 ## API key
 

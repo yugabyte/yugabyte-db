@@ -61,6 +61,7 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_neghit_full_inheritscache;
   const bool*     enable_object_locking_for_table_locks;
+  const bool*     ysql_enable_concurrent_ddl;
   const bool*     ysql_yb_enable_ddl_savepoint_support;
   const bool*     ysql_bypass_anonymous_savepoint_ddl_check;
   const uint32_t* ysql_max_invalidation_message_queue_size;

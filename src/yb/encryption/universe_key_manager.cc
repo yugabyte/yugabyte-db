@@ -13,6 +13,7 @@
 
 #include "yb/encryption/universe_key_manager.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
 #include "yb/util/debug-util.h"
@@ -68,6 +69,16 @@ Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
   universe_key_params.params = VERIFY_RESULT(EncryptionParams::FromEncryptionParamsPB(it->second));
   return universe_key_params;
 }
+
+Result<EncryptionAlgorithmPB> UniverseKeyManager::GetEncryptionAlgorithm() {
+  if (auto algorithm = EncryptionAlgorithmOverride()) {
+    return *algorithm;
+  }
+  std::lock_guard l(mutex_);
+  SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
+  return universe_key_registry_.encryption_algorithm();
+}
+
 
 Result<bool> UniverseKeyManager::IsEncryptionEnabled() {
   std::lock_guard l(mutex_);

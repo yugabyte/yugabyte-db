@@ -532,6 +532,9 @@ YbcStatus YBCPgWaitVectorIndexReady(
 YbcStatus YBCPgDmlAppendTarget(
     YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index);
 
+// Append an aggregate target. index is the PgTuple slot the caller reads.
+YbcStatus YBCPgDmlAppendAggregateTarget(YbcPgStatement handle, YbcPgExpr target, int index);
+
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
 // Only serialized Postgres expressions are allowed.
@@ -837,8 +840,8 @@ bool YBCUsingObjectLocksGloballyForCurrentTxn();
 
 // Whether DDLs run inside the enclosing transaction block.
 // ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
-// enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
-// object locking feature. It therefore follows global object locks for the current transaction.
+// enable_object_locking_for_table_locks, so this is part of the object locking feature. It
+// therefore follows global object locks for the current transaction.
 bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor

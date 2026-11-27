@@ -16,9 +16,12 @@
 #include <stdint.h>
 
 #include <cstdarg>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/encryption.pb.h"
 #include "yb/encryption/header_manager.h"
 
 #include "yb/util/status_fwd.h"
@@ -44,6 +47,10 @@ struct FileEncryptionStatus {
 struct EncryptionParams {
   static constexpr uint32_t kBlockSize = 16;
   static constexpr uint32_t kMaxKeySize = 32;
+  static constexpr uint32_t kAes128KeySize = 16;
+  static constexpr uint32_t kAes256KeySize = 32;
+  // A universe key blob is the nonce and initial counter followed by the AES key; see FromSlice.
+  static constexpr uint32_t kUniverseKeyPrefixSize = kBlockSize;
 
   uint8_t key[kMaxKeySize];
   // Nonce of 12 bytes for encryption.
@@ -64,7 +71,9 @@ struct EncryptionParams {
   // Given a slice, convert contents to encryption params. Used to read latest universe key.
   static Result<std::unique_ptr<EncryptionParams>> FromSlice(const Slice& s);
 
-  static std::unique_ptr<EncryptionParams> NewEncryptionParams();
+  // Random key, nonce and counter, with the key size of algorithm.
+  static Result<std::unique_ptr<EncryptionParams>> NewEncryptionParams(
+      EncryptionAlgorithmPB algorithm);
 
   static Status IsValidKeySize(size_t size);
 
@@ -72,6 +81,31 @@ struct EncryptionParams {
 };
 
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
+
+// Algorithms are named by their EncryptionAlgorithmPB value without the ENCRYPTION_ALGORITHM_
+// prefix, such as AES_256_CTR.
+std::vector<std::string> EncryptionAlgorithmNames();
+Result<EncryptionAlgorithmPB> ParseEncryptionAlgorithm(const std::string& name);
+std::string EncryptionAlgorithmName(EncryptionAlgorithmPB algorithm);
+
+// Size of the data keys of new files encrypted with algorithm.
+Result<uint32_t> DataKeySize(EncryptionAlgorithmPB algorithm);
+
+// encryption_new_universe_algorithm.
+Result<EncryptionAlgorithmPB> NewUniverseEncryptionAlgorithm();
+
+// encryption_algorithm_override, or std::nullopt when it is empty.
+std::optional<EncryptionAlgorithmPB> EncryptionAlgorithmOverride();
+
+// Flag callback of both algorithm flags.
+void ReloadEncryptionAlgorithmFlags();
+
+// Size of a universe key blob (nonce, counter and AES key) whose key is as long as the data keys
+// of algorithm.
+Result<uint32_t> UniverseKeySize(EncryptionAlgorithmPB algorithm);
+
+// UniverseKeySize for encryption_new_universe_algorithm.
+uint32_t DefaultUniverseKeySize();
 
 // Since this will typically be passed in by an external user (YW or yb-admin), UniverseKeyId
 // will be a generic string for ease of use.
@@ -138,7 +172,8 @@ Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
                                     Writable* underlying_w,
                                     std::unique_ptr<BlockAccessCipherStream>* stream,
                                     uint32_t* header_size) {
-  auto encryption_params = EncryptionParams::NewEncryptionParams();
+  auto algorithm = VERIFY_RESULT(header_manager->GetEncryptionAlgorithm());
+  auto encryption_params = VERIFY_RESULT(EncryptionParams::NewEncryptionParams(algorithm));
   std::string header = VERIFY_RESULT(
       header_manager->SerializeEncryptionParams(*encryption_params.get()));
   RETURN_NOT_OK(underlying_w->Append(header));

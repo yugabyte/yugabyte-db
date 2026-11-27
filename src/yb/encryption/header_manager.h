@@ -15,6 +15,8 @@
 
 #include <memory>
 
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -50,6 +52,9 @@ class HeaderManager {
   virtual Result<bool> IsEncryptionEnabled() = 0;
 
   virtual Result<std::string> GetLatestUniverseKeyId() = 0;
+
+  // Algorithm for new files.
+  virtual Result<EncryptionAlgorithmPB> GetEncryptionAlgorithm() = 0;
 };
 
 } // namespace encryption

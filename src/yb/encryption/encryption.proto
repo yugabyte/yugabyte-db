@@ -30,8 +30,20 @@ message UniverseKeysPB {
   map<string, bytes> map = 1;
 }
 
+// How newly written files are encrypted. Each file's header records its own key size, so this only
+// chooses the algorithm for new files.
+enum EncryptionAlgorithmPB {
+  // Also the value for a registry from a universe that enabled encryption at rest before this field
+  // existed, which stays on AES-128 until it is migrated.
+  ENCRYPTION_ALGORITHM_AES_128_CTR = 0;
+  ENCRYPTION_ALGORITHM_AES_256_CTR = 1;
+}
+
 message UniverseKeyRegistryPB {
   bool encryption_enabled = 1;
   map<string, EncryptionParamsPB> universe_keys = 2;
   string latest_version_id = 3;
+  // Set when encryption at rest is first enabled, and changed only by an operator. Unset in a
+  // registry that enabled encryption at rest before this field existed, which reads as AES-128.
+  optional EncryptionAlgorithmPB encryption_algorithm = 4;
 }

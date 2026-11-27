@@ -46,10 +46,14 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
     return 900;
   }
 
+  protected String getSchedule() {
+    return "yb_isolation_object_locking_schedule";
+  }
+
   private void runSchedule(boolean useAllHosts) throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
-      "yb_isolation_object_locking_schedule",
+      getSchedule(),
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE,
       useAllHosts);
   }

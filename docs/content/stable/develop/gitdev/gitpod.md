@@ -52,7 +52,7 @@ To get started quickly, you can use the universal image [pre-built containers](h
 
 You initialize the Gitpod workspace environment for a specific repository by invoking `https://gitpod.io/#[REPO_URL]`.
 
-![Initalize the workspace environment](/images/develop/gitdev/gitpod/init-workspace.png)
+![Initialize the workspace environment](/images/develop/gitdev/gitpod/init-workspace.png)
 
 You can either use a universal image with pre-configured libraries and commonly used utilities or a language-specific image. Create the integrated YugabyteDB workspace environment by customizing the base universal image. Use the editor in your Gitpod environment to add these files directly and commit them back to your GitHub repository.
 
