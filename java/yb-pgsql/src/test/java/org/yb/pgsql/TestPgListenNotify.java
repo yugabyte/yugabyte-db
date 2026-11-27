@@ -184,20 +184,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     // connection, a later backend switch replays yb_read_time together with the other session
     // GUCs in one multi-statement query, which runs in an implicit transaction block, and the
     // check against setting yb_read_time inside a transaction block rejects it (GH #35719).
-    if (isTestRunningWithConnectionManager()) {
-      setConnMgrReversibleStickinessExclusions("listen");
-      try (Connection conn = getConnectionBuilder().connect()) {
-        waitForCondition(conn,
-            "SELECT CASE WHEN current_setting('yb_conn_mgr_listen_permanent_sticky') = 'on'"
-            + " THEN 1 ELSE 0 END");
-      }
-    }
+    setConnMgrReversibleStickinessExclusions("listen");
     try {
       runDisallowListenWithYbReadTime();
     } finally {
-      if (isTestRunningWithConnectionManager()) {
-        setConnMgrReversibleStickinessExclusions("");
-      }
+      setConnMgrReversibleStickinessExclusions("");
     }
   }
 
@@ -1888,6 +1879,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     final String channel = "relisten_replay";
 
     try {
+      // Keep A on one backend under Connection Manager; UNLISTEN would otherwise unstick it.
+      setConnMgrReversibleStickinessExclusions("listen");
       // The poller now crashes after every queue write, before the CDC ack, so it keeps
       // replaying the same transaction.
       setFatalAfterNotifsQueueWriteFlag(true);
@@ -1913,6 +1906,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
     } finally {
       setFatalAfterNotifsQueueWriteFlag(false);
+      setConnMgrReversibleStickinessExclusions("");
     }
 
     verifyListenNotifyWorks();
@@ -2509,8 +2503,28 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   private void setConnMgrReversibleStickinessExclusions(String value) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       setServerFlag(tserver, "ysql_yb_conn_mgr_reversible_stickiness_exclusions", value);
+    }
+    Set<String> expected = new HashSet<>();
+    for (String token : value.split(",")) {
+      if (!token.trim().isEmpty()) {
+        expected.add("yb_conn_mgr_" + token.trim().toLowerCase() + "_permanent_sticky");
+      }
+    }
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
+      TestUtils.waitFor(() -> {
+        Set<String> on = new HashSet<>();
+        for (Row row : getRowList(stmt, "SELECT name FROM pg_settings"
+            + " WHERE name LIKE 'yb_conn_mgr_%_permanent_sticky' AND setting = 'on'")) {
+          on.add(row.getString(0));
+        }
+        return on.equals(expected);
+      }, 30000);
     }
   }
 
