@@ -525,7 +525,7 @@ export const getDrConfigUuids = (universe: Universe | undefined) => ({
 });
 
 /**
- * Returns an object of counts for table groups for which we have warning/error banners.
+ * Returns counts of tables in each problem status group, plus the number of distinct problem tables.
  */
 export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
   tableDetails.reduce(
@@ -537,6 +537,8 @@ export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
         restartRequired: number;
         autoFlagMismatched: number;
         dbSchemaMismatched: number;
+        // Errors outside the groups above, e.g. system error or source unreachable.
+        otherError: number;
         // Count of tables which have at least one issue that we are concerned about.
         uniqueTableCount: number;
       },
@@ -604,6 +606,24 @@ export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
             isTableOfConcern = true;
           }
 
+          // Uninitialized is excluded because in automatic DDL mode every new source table is
+          // briefly uninitialized until the target applies the DDL.
+          if (
+            xClusterTableDetails.replicationStatusErrors.some(
+              (replicationStatusError) =>
+                !([
+                  XClusterReplicationStatusError.MISSING_OP,
+                  XClusterReplicationStatusError.AUTO_FLAG_CONFIG_MISMATCH,
+                  XClusterReplicationStatusError.MISSING_TABLE,
+                  XClusterReplicationStatusError.SCHEMA_MISMATCH,
+                  XClusterReplicationStatusError.ERROR_UNINITIALIZED
+                ] as XClusterReplicationStatusError[]).includes(replicationStatusError)
+            )
+          ) {
+            tableCountsOfConcern.otherError += 1;
+            isTableOfConcern = true;
+          }
+
           if (isTableOfConcern) {
             tableCountsOfConcern.uniqueTableCount += 1;
           }
@@ -620,9 +640,11 @@ export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
       failedReplicationSetup: 0,
       autoFlagMismatched: 0,
       dbSchemaMismatched: 0,
+      otherError: 0,
       uniqueTableCount: 0
     }
   );
+export type TableCountsOfConcern = ReturnType<typeof getTableCountsOfConcern>;
 
 export const hasLinkedXClusterConfig = (universes: Universe[]) =>
   universes.some((universe) => {

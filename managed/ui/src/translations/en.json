@@ -1920,13 +1920,17 @@
         "shared": {
           "tablesOfConcernExist": "Some tables need attention",
           "banner": {
-            "mismatchedTables": "<bold>Warning!</bold> Database schema does not match across {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables. DDL operations must be performed in a <ddlChangeStepsDocsLink>specified order</ddlChangeStepsDocsLink>.",
-            "unableToFetchTableStatus": "<bold>Warning!</bold> YugabyteDB Anywhere could not gather statuses for some tables on the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables.",
-            "autoFlagMismatch": "<bold>Warning!</bold> There is a mismatch in database version between the {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. As a result, replication is paused for the affected tables. See the Tables tab for the list of problematic tables.",
-            "tableFailedReplicationSetup": "<bold>Warning!</bold> YugabyteDB Anywhere could not set up replication for some tables. See the Tables tab for the list of problematic tables.",
-            "tableUnknownError": "<bold>Warning!</bold> There are some tables in error status. See the Tables tab for the list of problematic tables.",
-            "tableReplicationLagAlertThresholdExceeded": "<bold>Warning!</bold> There are some tables which have replication lag above the lowest replication lag alert threshold. See the Tables tab for the list of problematic tables.",
-            "tableMissingOperation": "<bold>Warning!</bold> There are some tables which are severely out of sync and require a replication restart."
+            "warningTitle": "Warning!",
+            "tablesNeedAttention": "Some relevant tables may require your attention. Check the <statusLink>status of tables</statusLink> in replication.",
+            "replicationLagAboveThreshold": {
+              "xClusterReplication": "xCluster replication lag is above the alert threshold.",
+              "dr": "DR replication lag is above the alert threshold."
+            },
+            "restartRequiredStep": "For tables with a status of <bold>Missing Op ID</bold>, restart replication to fix the issue.",
+            "otherStatusesStep": "For information on how to fix other problem statuses, refer to <docsLink>documentation</docsLink>.",
+            "tableStatusDocs": "For information on the table statuses and how to resolve them, refer to <docsLink>documentation</docsLink>.",
+            "restartReplication": "Restart Replication",
+            "viewTables": "View Tables"
           },
           "confirmAlert": {
             "instruction": "Confirm alert threshold for acceptable replication lag",

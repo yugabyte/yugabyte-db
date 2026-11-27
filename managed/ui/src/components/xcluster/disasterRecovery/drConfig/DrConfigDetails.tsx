@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { TabContext, TabList, TabPanel } from '@material-ui/lab';
 import { Box, makeStyles, Tab, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +16,8 @@ interface DrConfigDetailsProps {
   // The second tells YBA backend to also make rpc calls to source/target
   // in order to fetch the table details.
   isTableInfoIncludedInConfig: boolean;
+  currentTab: DrConfigTab;
+  onTabChange: (tab: DrConfigTab) => void;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -32,27 +33,28 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const DrConfigTab = {
+export const DrConfigTab = {
   METRICS: 'metrics',
   TABLES: 'tables'
 } as const;
-type DrConfigTab = typeof DrConfigTab[keyof typeof DrConfigTab];
+export type DrConfigTab = typeof DrConfigTab[keyof typeof DrConfigTab];
 
-const DEFAULT_TAB = DrConfigTab.METRICS;
+export const DEFAULT_DR_CONFIG_TAB = DrConfigTab.METRICS;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config';
 
 export const DrConfigDetails = ({
   drConfig,
-  isTableInfoIncludedInConfig
+  isTableInfoIncludedInConfig,
+  currentTab,
+  onTabChange
 }: DrConfigDetailsProps) => {
-  const [currentTab, setCurrentTab] = useState<DrConfigTab>(DEFAULT_TAB);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
   const theme = useTheme();
 
   const xClusterConfig = getXClusterConfig(drConfig);
   const handleTabChange = (_event: React.ChangeEvent<{}>, newTab: DrConfigTab) => {
-    setCurrentTab(newTab);
+    onTabChange(newTab);
   };
   return (
     <div className={classes.drConfigContainer}>
