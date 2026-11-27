@@ -44,6 +44,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -123,6 +124,8 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
  public:
   void SetUp() override {
     LibPqTestBase::SetUp();
+    // pg_stat_progress_create_index is node-wide and the tests expect exactly their own rows.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   }
 
@@ -1342,13 +1345,17 @@ class PgIndexBackfillAuth : public PgIndexBackfillTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    // SetUp waits for LISTEN/NOTIFY bootstrap by connecting to yb_system as postgres, so allow
+    // that connection. This test does not exercise the yb_system rule.
     options->extra_tserver_flags.push_back(Format(
         "--ysql_hba_conf="
         "host $0 all all md5,"
         "host $1 postgres all trust,"
-        "host $1 yugabyte all trust",
+        "host $1 yugabyte all trust,"
+        "host $2 postgres all trust",
         kAuthDbName,
-        kDatabaseName));
+        kDatabaseName,
+        master::kYbSystemDbName));
   }
 
   const std::string kAuthDbName = "authdb";
@@ -1382,11 +1389,14 @@ class PgIndexBackfillLocalTrust : public PgIndexBackfillTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    // The yb_system rule is not under test; see PgIndexBackfillAuth.
     options->extra_tserver_flags.push_back(Format(
         "--ysql_hba_conf="
         "host $0 all all trust,"
-        "local $0 all trust",
-        kDatabaseName));
+        "local $0 all trust,"
+        "host $1 postgres all trust",
+        kDatabaseName,
+        master::kYbSystemDbName));
   }
 };
 

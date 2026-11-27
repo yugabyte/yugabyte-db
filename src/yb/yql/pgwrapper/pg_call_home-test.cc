@@ -108,9 +108,9 @@ TEST_F(PgCallHomeTest, DbNamesAnonymized) {
   auto cluster_root = ASSERT_RESULT(CollectAndParseClusterStats());
   auto cluster_dbs = ASSERT_RESULT(cluster_root["databases"].GetArray());
 
-  // 3 new databases + existing ones (yugabyte, postgres, system_platform).
+  // 3 new databases + existing ones (yugabyte, postgres, system_platform, yb_system).
   // Only template0 and template1 are excluded by GetDbs().
-  ASSERT_GE(cluster_dbs.size(), 6);
+  ASSERT_GE(cluster_dbs.size(), 7);
 
   int expected_index = 1;
   for (const auto& cluster_db : cluster_dbs) {

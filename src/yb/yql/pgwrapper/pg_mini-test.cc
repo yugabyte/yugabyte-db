@@ -123,6 +123,7 @@ DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_listen_notify);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
@@ -268,6 +269,8 @@ class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = 5000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = 2000;
     PgMiniTestBase::SetUp();
+    // VerifyPgClientServiceCleanupQueue asserts absolute session counts.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
   }
 };
 
@@ -776,6 +779,11 @@ TEST_F(PgMiniTest, WriteRetry) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+
+  // TEST_respond_write_failed_probability is process-wide, so it also fails the master's
+  // sys-catalog writes from the bootstrap DDL. That failure path skips
+  // AdjustYsqlQueryTransactionality and trips the !transactional_table DFATAL.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
@@ -4235,6 +4243,8 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode,
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = GetParam();
+    // MockAbortFailure hard-codes PG session ids, and the bootstrap's backend takes one.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_listen_notify) = false;
     PgMiniTest::SetUp();
   }
 

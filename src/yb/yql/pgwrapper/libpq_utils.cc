@@ -27,6 +27,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
+#include "yb/master/master_defaults.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/endian_util.h"
@@ -1081,6 +1083,22 @@ Result<bool> TryTerminateBackendWithRunningQuery(
           "SELECT COUNT(pg_terminate_backend(pid)) > 0 FROM pg_stat_activity WHERE " \
           "pid=$0 AND state='active' AND query_start < NOW() - interval '$1 msec'",
           backend_pid, min_query_running_time_msecs));
+}
+
+Status WaitForListenNotifyBootstrap(
+    const std::function<Result<PGConn>()>& connect_to_yb_system, MonoDelta timeout) {
+  const auto query = Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_publication WHERE pubname = '$0')",
+      master::kPgYbNotificationsPublicationName);
+  // A failed connect or query means yb_system is not up yet.
+  return LoggedWaitFor([&connect_to_yb_system, &query]() -> Result<bool> {
+    auto conn = connect_to_yb_system();
+    if (!conn.ok()) {
+      return false;
+    }
+    auto exists = conn->FetchRow<bool>(query);
+    return exists.ok() && *exists;
+  }, timeout, "LISTEN/NOTIFY bootstrap to finish");
 }
 
 } // namespace yb::pgwrapper

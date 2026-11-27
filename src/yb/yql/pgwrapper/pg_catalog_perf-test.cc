@@ -23,6 +23,7 @@
 #include "yb/common/pgsql_error.h"
 
 #include "yb/master/master.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
@@ -228,6 +229,17 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = false;
     PgMiniTestBase::SetUp();
+    // The tests assert exact master read RPC deltas, so keep the bootstrap's reads and the ASH
+    // collector's startup reads out of every window. The collector sets its application_name only
+    // after its connection setup has finished.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
+    // Query from yb_system so that the first connection to the test database stays cold.
+    auto conn = ASSERT_RESULT(ConnectToDB(master::kYbSystemDbName));
+    ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+      return conn.FetchRow<bool>(
+          "SELECT NOT current_setting('yb_enable_ash')::bool OR EXISTS("
+          "SELECT 1 FROM pg_stat_activity WHERE application_name = 'yb_ash collector')");
+    }, 30s * kTimeMultiplier, "ASH collector startup"));
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
@@ -280,22 +292,6 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     return res;
   }
 
-  Result<PGConn> Connect() const override {
-    ++num_connections_created_;
-    return PgMiniTestBase::Connect();
-  }
-
-  Result<PGConn> ConnectToDB(const std::string& dbname, size_t timeout = 0) const override {
-    ++num_connections_created_;
-    return PgMiniTestBase::ConnectToDB(dbname, timeout);
-  }
-
-  // ASH collector fires a master RPC, which is only counted by the metrics_ object
-  // when a DB connection is made.
-  uint32_t ASHCollectorRPCCount() const {
-    return static_cast<uint32_t>(num_connections_created_ == 1);
-  }
-
   std::string GetQpmInsertQuery(const std::string& tableName, int val) {
     return yb::Format("INSERT INTO $0 VALUES($1)", tableName, val);
   }
@@ -308,7 +304,6 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
  private:
   virtual Configuration GetConfig() const = 0;
-  mutable size_t num_connections_created_ = 0;
 };
 
 class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
@@ -682,7 +677,7 @@ Status SetSharedPrefetchLoad(MiniCluster& cluster, master::YsqlCatalogPrefetchLo
 //       Number of RPCs in all the tests are not the constants and they can be changed in future.
 TEST_F(PgCatalogPerfTest, StartupRPCCount) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountDefault + ASHCollectorRPCCount());
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountDefault);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
@@ -1103,28 +1098,28 @@ TEST_F_EX(PgCatalogPerfTest,
           PgPreloadAdditionalCatListTest) {
   // No failures even there are invalid PG catalog on the flag list.
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatTablesPreload,
           PgPreloadAdditionalCatTablesTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatBothPreload,
           PgPreloadAdditionalCatBothTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupSmallPreload,
           PgSmallPreloadTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithSmallPreload + ASHCollectorRPCCount());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithSmallPreload);
 }
 
 // Test checks that response cache is DB specific.
@@ -1141,7 +1136,7 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCa
     for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
                                     kSubsequentConnectionRPCCount}) {
       const auto rpc_count = VERIFY_RESULT(RPCCountOnStartUp(db_name));
-      SCHECK_EQ(rpc_count, expected_rpc_count + ASHCollectorRPCCount(), IllegalState,
+      SCHECK_EQ(rpc_count, expected_rpc_count, IllegalState,
           "Unexpected rpc count");
     }
     return Status::OK();
@@ -1156,8 +1151,7 @@ TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupPredictableMemoryUsage,
           PgPredictableMemoryUsageTest) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountNoRelcacheFile +
-      ASHCollectorRPCCount());
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountNoRelcacheFile);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
@@ -1365,6 +1359,8 @@ class PgCatalogPrefetchAdmissionTest : public PgMiniTestBase {
     // Auto-analyze bumps the catalog version, which produces prefetches this test does not drive.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
+    // The tests count master prefetch admissions, and the bootstrap's backend prefetches too.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
   }
 
   size_t NumTabletServers() override {

@@ -529,4 +529,14 @@ Result<std::string> ResultAsString(
 Result<bool> TryTerminateBackendWithRunningQuery(
     PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs);
 
+// Waits until the master's LISTEN/NOTIFY bootstrap (a PG backend on yb_system running CREATE TABLE
+// pg_yb_notifications, then CREATE PUBLICATION) has finished, so its RPCs, locks, sessions and
+// catalog writes no longer overlap the test. NOTE: this covers only the first run. A restarted
+// master re-runs the bootstrap as a no-op, and this returns at once because the publication exists.
+// LibPqTestBase and PgMiniTestBase wrap this as a no-arg member; other fixtures pass a lambda that
+// connects to yb_system.
+Status WaitForListenNotifyBootstrap(
+    const std::function<Result<PGConn>()>& connect_to_yb_system,
+    MonoDelta timeout = MonoDelta::FromSeconds(60));
+
 } // namespace yb::pgwrapper

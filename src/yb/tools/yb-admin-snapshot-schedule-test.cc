@@ -47,6 +47,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -3824,6 +3825,10 @@ using YbAdminSnapshotScheduleUpgradeTestWithYsqlPg11 =
 
 TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
        PgsqlTestOldSysCatalogSnapshot) {
+  ASSERT_OK(PrepareCommon());
+  // The old snapshot has no yb_system; let the bootstrap's CREATE DATABASE finish first.
+  ASSERT_OK(pgwrapper::WaitForListenNotifyBootstrap(
+      [this] { return PgConnect(master::kYbSystemDbName); }));
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 

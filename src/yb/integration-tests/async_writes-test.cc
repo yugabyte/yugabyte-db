@@ -43,6 +43,7 @@
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -60,6 +61,7 @@ DECLARE_bool(use_create_table_leader_hint);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(ht_lease_duration_ms);
@@ -84,8 +86,14 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
  public:
   void SetUp() override {
     SetTestFlags();
+    // All tservers share the one PG, so the LISTEN/NOTIFY bootstrap completes whichever master
+    // leads. Each tserver overwrites the "postgres" auth key as it starts, so force one key.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_auth_key) =
+        RandomUniformInt<uint64_t>(1, std::numeric_limits<uint64_t>::max());
 
     TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
+    // Tests count async-write log lines process-wide, and the bootstrap's DDL adds its own.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
 
     // Tablets created while tservers are still registering start under-replicated; let the LB
     // repair them before disabling it.
