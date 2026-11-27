@@ -56,7 +56,7 @@ class TestAzureCloudAdmin(TestCase):
         admin.compute_client.virtual_machines.begin_update.assert_called_once_with(
             "rg", "vm1", {"hardware_profile": {"vm_size": "Standard_D4as_v5"}})
 
-    @patch("ybops.cloud.azure.cloud.RemoteShell")
+    @patch("ybops.cloud.common.cloud.RemoteShell")
     def test_expand_file_system_supports_nvme(self, remote_shell_class):
         remote_shell = remote_shell_class.return_value
         remote_shell.check_exec_command.side_effect = [
@@ -81,7 +81,7 @@ class TestAzureCloudAdmin(TestCase):
         self.assertTrue(commands[2].endswith("&& sudo fdisk -l /dev/nvme0n2"))
         self.assertEqual(commands[3], "sudo xfs_growfs /mnt/d0")
 
-    @patch("ybops.cloud.azure.cloud.RemoteShell")
+    @patch("ybops.cloud.common.cloud.RemoteShell")
     def test_expand_file_system_rescans_scsi_device(self, remote_shell_class):
         remote_shell = remote_shell_class.return_value
         remote_shell.check_exec_command.side_effect = [
@@ -102,7 +102,7 @@ class TestAzureCloudAdmin(TestCase):
         self.assertTrue(commands[2].endswith("&& sudo fdisk -l /dev/sdc"))
         self.assertEqual(commands[3], "sudo xfs_growfs /mnt/d0")
 
-    @patch("ybops.cloud.azure.cloud.RemoteShell")
+    @patch("ybops.cloud.common.cloud.RemoteShell")
     def test_expand_file_system_rejects_unexpected_device(self, remote_shell_class):
         remote_shell = remote_shell_class.return_value
         remote_shell.check_exec_command.side_effect = ["/dev/mapper/vg-lv\n", "/dev/dm-0\n"]
