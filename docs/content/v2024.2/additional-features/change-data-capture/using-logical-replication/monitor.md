@@ -68,6 +68,7 @@ Provides a list of all replication slots that currently exist on the database cl
 | confirmed_flush_lsn | pg_lsn | The LSN up to which the logical slot's consumer has confirmed receiving data. Data older than this is not available anymore. Transactions with commit LSN lower than the `confirmed_flush_lsn` are not available anymore. |
 | yb_stream_id | text | UUID of the CDC stream |
 | yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the `restart_lsn`. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the `consistent_point`) in the case when a replication slot already exists. |
+| yb_lsn_type | text | The [LSN type](../key-concepts/#lsn-type) the slot was created with, `SEQUENCE` or `HYBRID_TIME`. Available in v2024.2.2.0 and later. |
 
 ## CDC service metrics
 
