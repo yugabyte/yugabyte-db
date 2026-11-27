@@ -949,6 +949,7 @@ public class UniverseCRUDHandler {
       }
 
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
+      checkYbdbInbuiltYbcIsK8sOnly(c);
       c.validate(
           !cloudEnabled,
           isAuthEnforced,
@@ -1535,6 +1536,7 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
       GFlagsUtil.validateGFlagValues(cluster.userIntent);
+      checkYbdbInbuiltYbcIsK8sOnly(cluster);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1593,6 +1595,19 @@ public class UniverseCRUDHandler {
         continue;
       }
       GFlagsUtil.validateFipsCompliancy(cluster.userIntent, true);
+    }
+  }
+
+  /**
+   * Inbuilt YBC ships in the Kubernetes DB image, and only the Kubernetes-only toggle API can turn
+   * it off again, so a VM universe that got it would be stuck with it (see V482).
+   */
+  private static void checkYbdbInbuiltYbcIsK8sOnly(Cluster cluster) {
+    if (cluster.clusterType == ClusterType.PRIMARY
+        && cluster.userIntent.isUseYbdbInbuiltYbc()
+        && !Util.isKubernetesBased(cluster)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "useYbdbInbuiltYbc is supported only for Kubernetes universes.");
     }
   }
 

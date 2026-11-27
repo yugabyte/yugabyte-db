@@ -333,6 +333,42 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     verify(mockCommissioner, times(0)).submit(any(TaskType.class), any());
   }
 
+  // The version supports inbuilt YBC, so only the provider type can reject it.
+  @Test
+  public void testVmUniverseCreateWithYbdbInbuiltYbcFails() {
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "VmInbuiltYbcUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "2025.2.0.0-b1")
+            .put("useYbdbInbuiltYbc", true);
+    userIntentJson.set("regionList", Json.newArray().add(r.getUuid().toString()));
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    setClustersAndNodeDetailsSet(bodyJson, userIntentJson, placement(p), i.getInstanceTypeCode());
+
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
+
+    assertBadRequest(result, "useYbdbInbuiltYbc is supported only for Kubernetes universes.");
+    assertAuditEntry(0, customer.getUuid());
+    verify(mockCommissioner, times(0)).submit(any(TaskType.class), any());
+  }
+
   @Test
   public void testUniverseCreateWithYsqlEnabled() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);

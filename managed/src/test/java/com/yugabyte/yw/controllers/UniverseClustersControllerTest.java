@@ -19,6 +19,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -186,6 +187,37 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     assertBadRequest(
         result,
         "Ysql auth setting should be the same for primary and readonly replica true vs false");
+  }
+
+  @Test
+  public void updatePrimaryEnablingYbdbInbuiltYbcOnVmFailTest() {
+    Universe universe =
+        ModelFactory.createFromConfig(ModelFactory.awsProvider(customer), "ahaha", "r1-az1-1-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              TestUtils.existingProviderInitializer(
+                      u.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
+            });
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    primaryCluster.userIntent.setUseYbdbInbuiltYbc(true);
+    // The device change makes configure replace every node, and the per-node check that keeps an
+    // existing node's YBC setting skips nodes being replaced.
+    TestUtils.existingProviderInitializer(primaryCluster.userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize += 50);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", Json.newArray().add(Json.toJson(primaryCluster)));
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson.set("nodeDetailsSet", Json.toJson(universe.getUniverseDetails().nodeDetailsSet));
+
+    Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(bodyJson));
+
+    assertBadRequest(result, "useYbdbInbuiltYbc is supported only for Kubernetes universes.");
+    verify(mockCommissioner, never())
+        .submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class));
   }
 
   @Test
