@@ -7832,16 +7832,119 @@ yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid,
 	return index_tuple_width;
 }
 
+/*
+ * yb_index_path_has_conditions_on_all_hash_keys
+ *		Whether every hash key column of the index has an index condition in
+ *		the path, or a yb_hash_code condition binds them all.  DocDB applies
+ *		the index conditions of a scan only then (TODO (#22005),
+ *		ybcSetupScanKeys); otherwise the scan reads the whole index and the
+ *		executor rechecks the conditions.  Both index scan and bitmap scan
+ *		costing take this rule from here.
+ */
 static bool
-yb_exist_conditions_on_all_hash_keys(IndexOptInfo *index,
-									 List **index_conditions_on_each_column)
+yb_index_path_has_conditions_on_all_hash_keys(IndexPath *path)
 {
-	for (int index_col = 0; index_col < index->nhashcolumns; ++index_col)
+	IndexOptInfo *index = path->indexinfo;
+	Bitmapset  *cols = NULL;
+	ListCell   *lc;
+	bool		all_bound = true;
+
+	foreach(lc, path->indexclauses)
 	{
-		if (index_conditions_on_each_column[index_col] == NIL)
-			return false;
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		Expr	   *clause = iclause->rinfo->clause;
+
+		/*
+		 * A yb_hash_code condition, or a ROW comparison led by one, matches
+		 * the whole hash key (yb_match_clause_to_index attaches it to the
+		 * first column).
+		 */
+		if (iclause->indexcol == 0 &&
+			((IsA(clause, OpExpr) &&
+			  (yb_hash_code_match_index(get_leftop(clause), index) ||
+			   yb_hash_code_match_index(get_rightop(clause), index))) ||
+			 (IsA(clause, RowCompareExpr) &&
+			  yb_hash_code_match_index(linitial(((RowCompareExpr *) clause)->largs),
+									   index))))
+		{
+			bms_free(cols);
+			return true;
+		}
+		cols = bms_add_member(cols, iclause->indexcol);
 	}
-	return true;
+
+	for (int col = 0; col < index->nhashcolumns; ++col)
+	{
+		if (!bms_is_member(col, cols))
+		{
+			all_bound = false;
+			break;
+		}
+	}
+	bms_free(cols);
+	return all_bound;
+}
+
+/*
+ * yb_cost_recheck_clauses
+ *		Per-row evaluation cost of the index conditions the executor rechecks
+ *		because DocDB did not enforce them.  The list holds RestrictInfos or
+ *		bare clauses.
+ *
+ * A batched nested loop clause is planned as `inner = YbBatchedExpr(outer)`,
+ * which cost_qual_eval prices as one comparison, but createplan.c expands it
+ * into `inner = ANY (array)` with one element per tuple of the batch and
+ * NULL in the remaining yb_bnl_batch_size slots.  The recheck compares a
+ * failing row against every element, and with the hash key unbound nearly
+ * every row fails, so the comparison is charged once per batch tuple, not
+ * the half-array average cost_qual_eval assumes for an IN list.  A NULL slot
+ * skips the operator and is not charged.  Clauses that share a batch
+ * (yb_batched_clauses) are zipped into one row comparison against the same
+ * batch tuples, so each is charged per tuple of the whole batch, not per its
+ * share of it.
+ */
+static void
+yb_cost_recheck_clauses(PlannerInfo *root, Index relid, List *clauses,
+						QualCost *cost)
+{
+	List	   *plain_clauses = NIL;
+	ListCell   *lc;
+
+	cost->startup = cost->per_tuple = 0;
+
+	foreach(lc, clauses)
+	{
+		Node	   *node = lfirst(lc);
+		Expr	   *clause = (IsA(node, RestrictInfo) ?
+							  ((RestrictInfo *) node)->clause : (Expr *) node);
+		Node	   *other_operand = (IsA(clause, OpExpr) ?
+									 get_rightop(clause) : NULL);
+
+		if (other_operand != NULL && IsA(other_operand, YbBatchedExpr))
+		{
+			OpExpr	   *op = (OpExpr *) clause;
+			QualCost	op_cost;
+
+			op_cost.startup = op_cost.per_tuple = 0;
+			set_opfuncid(op);
+			add_function_cost(root, op->opfuncid, NULL, &op_cost);
+			cost->startup += op_cost.startup;
+			cost->per_tuple += op_cost.per_tuple *
+				yb_batch_tuples(root, relid, other_operand);
+		}
+		else
+			plain_clauses = lappend(plain_clauses, node);
+	}
+
+	if (plain_clauses != NIL)
+	{
+		QualCost	plain_cost;
+
+		cost_qual_eval(&plain_cost, plain_clauses, root);
+		cost->startup += plain_cost.startup;
+		cost->per_tuple += plain_cost.per_tuple;
+		list_free(plain_clauses);
+	}
 }
 
 
@@ -9670,6 +9773,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	List	   *index_pushed_down_filters = NIL;
 	List	   *index_colrefs = NIL;
 	List	   *local_clauses = NIL;
+	List	   *recheck_clauses = NIL;
 	Cardinality	index_total_pages;
 	Cardinality	index_pages_fetched;
 	Cardinality	index_random_pages_fetched;
@@ -9843,16 +9947,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	bool		yb_exist_conditions_on_all_hash_keys_;
 
 	yb_exist_conditions_on_all_hash_keys_ =
-		yb_exist_conditions_on_all_hash_keys(index,
-											 index_conditions_on_each_column);
+		yb_index_path_has_conditions_on_all_hash_keys(path);
 
 	if (list_length(index_conditions) > 0 && !yb_exist_conditions_on_all_hash_keys_)
 	{
 		/*
 		 * TODO (#22005) In Index scan of hash index, if filter on any hash key
 		 * is missing, then the index conditions do not get enforced on DocDB.
+		 * The executor rechecks them on every row DocDB returns instead, so
+		 * they are kept as recheck_clauses and charged like local filters.
 		 */
-		list_free(index_conditions);
+		recheck_clauses = index_conditions;
 		index_conditions = NIL;
 		for (int index_col = 0; index_col < index->nkeycolumns; ++index_col)
 		{
@@ -10671,6 +10776,21 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * num_baserel_result_rows;
 
+	/*
+	 * Recheck costs of the index conditions DocDB does not enforce (see
+	 * recheck_clauses above), charged like local filters.
+	 *
+	 * TODO(#11881): drop this charge once DocDB enforces the conditions on
+	 * the range key columns without a hash key condition.
+	 */
+	if (recheck_clauses != NIL)
+	{
+		yb_cost_recheck_clauses(root, baserel->relid, recheck_clauses,
+								&qual_cost);
+		startup_cost += qual_cost.startup;
+		run_cost += qual_cost.per_tuple * num_baserel_result_rows;
+	}
+
 	/* tlist eval costs are paid per output row, not per tuple scanned */
 	startup_cost += path->path.pathtarget->cost.startup;
 	run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
@@ -10747,42 +10867,86 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
  *
  * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
  * 'scan_clauses' is a list of all conditions given to the bitmap path
+ * 'enforced_quals', if not NULL, receives the quals without the index
+ *		conditions DocDB does not apply, those of an index path with index
+ *		conditions but none on a hash key column
+ *		(yb_index_path_has_conditions_on_all_hash_keys); that list describes
+ *		the ybctids the bitmap holds, and costing sizes the table fetch with
+ *		it.  Plan creation keeps every qual for the recheck.
+ * 'needs_recheck', if not NULL, is set when such an index path is in the
+ *		tree.  Its bitmap carries the recheck flag through every union and
+ *		intersection it goes through (ybtidbitmap.c), so one is enough.
  */
 List *
 yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
-						  List *scan_clauses)
+						  List *scan_clauses, List **enforced_quals,
+						  bool *needs_recheck)
 {
 	if (IsA(bitmapqual, BitmapAndPath))
 	{
 		BitmapAndPath *apath = (BitmapAndPath *) bitmapqual;
 		List	   *subindexquals = NIL;
+		List	   *subenforcedquals = NIL;
 		ListCell   *l;
 
 		foreach(l, apath->bitmapquals)
 		{
+			List	   *subenforcedqual = NIL;
 			List	   *subindexqual = yb_get_bitmap_index_quals(root,
 																 (Path *) lfirst(l),
-																 scan_clauses);
+																 scan_clauses,
+																 enforced_quals ?
+																 &subenforcedqual : NULL,
+																 needs_recheck);
 
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
+			if (enforced_quals)
+				subenforcedquals = list_concat_unique(subenforcedquals,
+													  subenforcedqual);
 		}
 
+		if (enforced_quals)
+			*enforced_quals = subenforcedquals;
 		return subindexquals;
 	}
 	else if (IsA(bitmapqual, BitmapOrPath))
 	{
 		BitmapOrPath *opath = (BitmapOrPath *) bitmapqual;
 		List	   *subindexquals = NIL;
+		List	   *subenforcedquals = NIL;
+		bool		enforced_all = false;
 		ListCell   *l;
 
 		foreach(l, opath->bitmapquals)
 		{
+			List	   *subenforcedqual = NIL;
 			List	   *subindexqual = yb_get_bitmap_index_quals(root,
 																 (Path *) lfirst(l),
-																 scan_clauses);
+																 scan_clauses,
+																 enforced_quals ?
+																 &subenforcedqual : NULL,
+																 needs_recheck);
 
 			subindexquals = lappend(subindexquals,
 									make_ands_explicit(subindexqual));
+			if (!enforced_quals)
+				continue;
+			/* An arm that holds every ybctid makes the union hold them all. */
+			if (subenforcedqual == NIL)
+				enforced_all = true;
+			else
+				subenforcedquals = lappend(subenforcedquals,
+										   make_ands_explicit(subenforcedqual));
+		}
+
+		if (enforced_quals)
+		{
+			if (enforced_all || subenforcedquals == NIL)
+				*enforced_quals = NIL;
+			else if (list_length(subenforcedquals) == 1)
+				*enforced_quals = subenforcedquals;
+			else
+				*enforced_quals = list_make1(make_orclause(subenforcedquals));
 		}
 
 		if (list_length(subindexquals) <= 1)
@@ -10835,6 +10999,28 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		if (iscan->yb_idx_pushdown.quals)
 			subindexquals = lappend(subindexquals,
 									make_ands_explicit(iscan->yb_idx_pushdown.quals));
+
+		if (ipath->indexclauses != NIL &&
+			!yb_index_path_has_conditions_on_all_hash_keys(ipath))
+		{
+			/*
+			 * The index conditions are rechecked, not applied: the bitmap
+			 * holds every ybctid of the index that passes its predicate and
+			 * its pushed-down filters.
+			 */
+			if (needs_recheck)
+				*needs_recheck = true;
+			if (enforced_quals)
+			{
+				*enforced_quals = list_copy(ipath->indexinfo->indpred);
+				if (iscan->yb_idx_pushdown.quals)
+					*enforced_quals =
+						lappend(*enforced_quals,
+								make_ands_explicit(iscan->yb_idx_pushdown.quals));
+			}
+		}
+		else if (enforced_quals)
+			*enforced_quals = list_copy(subindexquals);
 
 		pfree(iscan);
 
@@ -10889,6 +11075,12 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cardinality	result_tuples;
 	QualCost	qual_cost;
 	List	   *indexquals;
+	bool		recheck_needed = false;
+	List	   *enforced_indexquals = NIL;
+	List	   *remote_recheck_quals = NIL;
+	List	   *remote_recheck_colrefs = NIL;
+	List	   *local_recheck_quals = NIL;
+	List	   *docdb_quals;
 	ListCell   *l;
 	Cardinality	adjusted_baserel_tuples = baserel->tuples;
 	Relation	base_rel = RelationIdGetRelation(baserel_oid);
@@ -10947,8 +11139,22 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		return;
 	}
 
+	/*
+	 * An index path with index conditions but none on a hash key column
+	 * enforces none of them (TODO (#22005), as in yb_cost_index): its bitmap
+	 * holds every ybctid of the index, and the bitmap table scan rechecks all
+	 * index quals of the tree on the rows it fetches
+	 * (create_yb_bitmap_tablescan_plan), the pushable ones as DocDB filters
+	 * on the table fetch and the rest on the PG side.  The fetch is sized by
+	 * the enforced quals, and the recheck is charged below.
+	 *
+	 * TODO(#11881): drop the recheck charge once DocDB enforces the
+	 * conditions on the range key columns without a hash key condition.
+	 */
 	indexquals = yb_get_bitmap_index_quals(root, bitmapqual,
-										   baserel->baserestrictinfo);
+										   baserel->baserestrictinfo,
+										   &enforced_indexquals,
+										   &recheck_needed);
 
 	/* Determine what clauses remain to be checked by this node */
 	foreach(l, baserel->baserestrictinfo)
@@ -10981,16 +11187,28 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								baserel_oid,
 								NULL);
 
+	if (recheck_needed)
+		yb_split_recheck_quals(indexquals, baserel_oid,
+							   &remote_recheck_quals, &remote_recheck_colrefs,
+							   &local_recheck_quals);
+
 	tuples_fetched = clamp_row_est(adjusted_baserel_tuples *
-								   clauselist_selectivity(root, indexquals,
+								   clauselist_selectivity(root,
+														  enforced_indexquals,
 														  baserel->relid,
 														  JOIN_INNER, NULL));
 
+	/*
+	 * The rows DocDB returns pass the quals it applies: the enforced index
+	 * quals, the pushable recheck quals and the remote table filters.  The
+	 * local recheck quals and the local clauses apply on the PG side.
+	 */
+	docdb_quals = list_union(list_union(enforced_indexquals,
+										remote_recheck_quals),
+							 remote_table_quals);
 	result_tuples =
 		clamp_row_est(adjusted_baserel_tuples *
-					  clauselist_selectivity(root,
-											 list_union(indexquals,
-														remote_table_quals),
+					  clauselist_selectivity(root, docdb_quals,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	pages_fetched = ceil(tuples_fetched * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -11067,6 +11285,19 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	yb_add_remote_filter_cost(root, remote_table_quals,
 							  tuples_fetched, first_batch_frac,
 							  &startup_cost, &run_cost);
+
+	/* Recheck costs, see the comment on indexquals above. */
+	if (remote_recheck_quals != NIL)
+		yb_add_remote_filter_cost(root, remote_recheck_quals,
+								  tuples_fetched, first_batch_frac,
+								  &startup_cost, &run_cost);
+	if (local_recheck_quals != NIL)
+	{
+		yb_cost_recheck_clauses(root, baserel->relid, local_recheck_quals,
+								&qual_cost);
+		startup_cost += qual_cost.startup;
+		run_cost += qual_cost.per_tuple * result_tuples;
+	}
 
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;

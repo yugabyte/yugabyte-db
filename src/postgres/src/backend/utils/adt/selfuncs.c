@@ -6780,20 +6780,14 @@ get_quals_from_indexclauses(List *indexclauses)
 }
 
 /*
- * yb_batch_expr_size
- *	  The number of outer values a batched clause probes its scan with per
- *	  rescan: the batch size capped by the outer rows, or the share of it the
- *	  expression carries when the clause shares its batch with others
- *	  (yb_batched_clauses).
+ * yb_batch_tuples
+ *	  The number of outer tuples a batched clause's scan is probed with per
+ *	  rescan: the batch size capped by the outer rows.
  */
 double
-yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
+yb_batch_tuples(PlannerInfo *root, Index path_relid, Node *batched_expr)
 {
 	YbBatchedExpr *bexpr = castNode(YbBatchedExpr, batched_expr);
-
-	if (bexpr->share > 0)
-		return bexpr->share;
-
 	Node	   *batched_operand = (Node *) bexpr->orig_expr;
 	Relids		other_varnos = pull_varnos(root, batched_operand);
 	Relids		batched_relids = root->yb_cur_batched_relids;
@@ -6810,6 +6804,24 @@ yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
 		batch_size = num_outer_tuples;
 
 	return batch_size;
+}
+
+/*
+ * yb_batch_expr_size
+ *	  The number of outer values a batched clause probes its scan with per
+ *	  rescan: the batch size capped by the outer rows, or the share of it the
+ *	  expression carries when the clause shares its batch with others
+ *	  (yb_batched_clauses).
+ */
+double
+yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
+{
+	YbBatchedExpr *bexpr = castNode(YbBatchedExpr, batched_expr);
+
+	if (bexpr->share > 0)
+		return bexpr->share;
+
+	return yb_batch_tuples(root, path_relid, batched_expr);
 }
 
 /*

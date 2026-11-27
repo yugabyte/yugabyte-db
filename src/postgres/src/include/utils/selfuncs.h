@@ -244,6 +244,8 @@ extern Selectivity scalararraysel_containment(PlannerInfo *root,
 extern double yb_estimate_num_groups(PlannerInfo *root, List *groupExprs,
 									 double input_rows, List **pgset,
 									 EstimationInfo *estinfo);
+extern double yb_batch_tuples(PlannerInfo *root, Index path_relid,
+							  Node *batched_expr);
 extern double yb_batch_expr_size(PlannerInfo *root,
 								 Index path_relid,
 								 Node *batched_expr);

@@ -5073,7 +5073,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	 * pushed-down filters and is the same function used during costing.
 	 */
 	allindexquals = yb_get_bitmap_index_quals(root, best_path->bitmapqual,
-											  scan_clauses);
+											  scan_clauses, NULL, NULL);
 	indexquals = allindexquals;
 
 	/*
@@ -5170,22 +5170,9 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	List	   *recheck_colrefs = NIL;
 	List	   *recheck_local_quals = NIL;
 
-	ListCell   *lc;
-
-	foreach(lc, indexquals)
-	{
-		List	   *colrefs = NIL;
-		Expr	   *clause = (Expr *) lfirst(lc);
-
-		if (YbCanPushdownExpr(clause, &colrefs,
-							  planner_rt_fetch(baserelid, root)->relid))
-		{
-			recheck_colrefs = list_concat(recheck_colrefs, colrefs);
-			recheck_remote_quals = lappend(recheck_remote_quals, clause);
-		}
-		else
-			recheck_local_quals = lappend(recheck_local_quals, clause);
-	}
+	yb_split_recheck_quals(indexquals, planner_rt_fetch(baserelid, root)->relid,
+						   &recheck_remote_quals, &recheck_colrefs,
+						   &recheck_local_quals);
 
 	YbPushdownExprs recheck_pushdown = {recheck_remote_quals, recheck_colrefs};
 
