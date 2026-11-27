@@ -1023,15 +1023,87 @@ public class BackupScheduleApiTest extends FakeDBApplication {
 
   /** Submits of the delete task record a task with its params, as the commissioner does. */
   private void mockDeleteSubmit() {
-    when(mockCommissioner.submit(eq(TaskType.DeleteBackupSchedule), any(ITaskParams.class)))
-        .thenAnswer(
-            invocation -> {
-              TaskInfo taskInfo = new TaskInfo(TaskType.DeleteBackupSchedule, null);
-              taskInfo.setTaskParams(Json.toJson(invocation.getArgument(1)));
-              taskInfo.setOwner("test-owner");
-              taskInfo.save();
-              return taskInfo.getUuid();
-            });
+    for (TaskType type :
+        List.of(TaskType.DeleteBackupSchedule, TaskType.DeleteBackupScheduleKubernetes)) {
+      when(mockCommissioner.submit(eq(type), any(ITaskParams.class)))
+          .thenAnswer(
+              invocation -> {
+                TaskInfo taskInfo = new TaskInfo(type, null);
+                taskInfo.setTaskParams(Json.toJson(invocation.getArgument(1)));
+                taskInfo.setOwner("test-owner");
+                taskInfo.save();
+                return taskInfo.getUuid();
+              });
+    }
+  }
+
+  /** An incomplete edit task of the schedule, recorded as v1's edit records it. */
+  private void queueEdit(Schedule schedule) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditBackupSchedule, null);
+    taskInfo.setTaskParams(
+        Json.newObject().put("scheduleUUID", schedule.getScheduleUUID().toString()));
+    taskInfo.setOwner("test-owner");
+    taskInfo.save();
+    CustomerTask.create(
+        customer,
+        schedule.getOwnerUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Schedule,
+        CustomerTask.TaskType.Update,
+        schedule.getScheduleName());
+  }
+
+  @Test
+  public void queuedEditsAndDeletesExcludeEachOther() throws ApiException {
+    mockDeleteSubmit();
+    // An edit is queued: no delete.
+    Schedule edited = editableSchedule("edited", false);
+    queueEdit(edited);
+    ApiException e = assertDeleteError(edited, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    // Nor another edit.
+    e = assertEditError(edited, specOf(edited), 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+
+    // A delete is queued: no edit, pause or resume.
+    Schedule deleted = editableSchedule("deleted", false);
+    BackupScheduleSpec deletedSpec = specOf(deleted);
+    backupScheduleApi.deleteBackupSchedule(customer.getUuid(), deleted.getScheduleUUID(), null);
+    e = assertEditError(deleted, deletedSpec, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    e = assertToggleError(deleted, true, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    Schedule pausedDeleted = editableSchedule("paused-deleted", false);
+    pausedDeleted.setStatus(Schedule.State.Stopped);
+    pausedDeleted.save();
+    backupScheduleApi.deleteBackupSchedule(
+        customer.getUuid(), pausedDeleted.getScheduleUUID(), null);
+    e = assertToggleError(pausedDeleted, false, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+  }
+
+  @Test
+  public void aRepeatGetsTheQueuedKubernetesDeleteTask() throws ApiException {
+    mockDeleteSubmit();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                Common.CloudType.kubernetes);
+    Schedule schedule = editableSchedule("on-kubernetes", false);
+
+    YBATask task =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+    YBATask repeat =
+        backupScheduleApi.deleteBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), null);
+
+    assertEquals(task.getTaskUuid(), repeat.getTaskUuid());
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.DeleteBackupScheduleKubernetes), any(ITaskParams.class));
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.DeleteBackupSchedule), any(ITaskParams.class));
   }
 
   private BackupScheduleTaskParams submittedDelete(int submits) {

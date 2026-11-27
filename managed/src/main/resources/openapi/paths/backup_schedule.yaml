@@ -192,7 +192,7 @@
       '404':
         description: The customer has no backup schedule with this UUID
       '409':
-        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; edit its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, an edit or delete task of it is queued or running, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; edit its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
       '500':
         description: Server error
     security:
@@ -227,11 +227,14 @@
       UUID). The backups the schedule took are kept; they expire by their own retention. An
       ACTIVE, PAUSED or ERROR schedule can be deleted. The schedule is DELETING while the task
       runs and gone (404) once it succeeds; for point_in_time_restore the task first lowers the
-      universe's history retention to what its other schedules need. If the task fails, the
-      schedule is left in ERROR, and can be deleted again. Deleting a schedule that a delete task
-      is already deleting returns that task. A schedule the YBA Kubernetes operator manages is
-      deleted through its custom resource, not here. Retry with the same Idempotency-Key to get
-      the task of a request whose response was lost.
+      universe's history retention to what its other schedules need. If the task fails before it
+      changes the schedule (for example, another task holds the universe), the schedule is left as
+      it was; if it fails later, the schedule is left in ERROR. Either can be deleted again.
+      Deleting a schedule that a delete task is already deleting, or is queued to delete, returns
+      that task. A schedule the YBA Kubernetes operator manages is deleted through its custom
+      resource, not here. A schedule whose universe no longer exists, which only an older YBA can
+      leave, can't be deleted here (404). Retry with the same Idempotency-Key to get the task of a
+      request whose response was lost.
     tags:
       - Backup Schedule
     responses:
@@ -240,9 +243,9 @@
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no update permission on the schedule''s universe or no delete permission on the customer'
       '404':
-        description: The customer has no backup schedule with this UUID
+        description: 'The customer has no backup schedule with this UUID, or the schedule''s universe no longer exists'
       '409':
-        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING or EDITING, DELETING with no delete task to return, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_BACKUP_RUNNING while a backup the schedule started runs (error.task_uuid), BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; delete its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING or EDITING, DELETING with no delete task to return, an edit task of it is queued or running, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_BACKUP_RUNNING while a backup the schedule started runs (error.task_uuid), BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; delete its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
       '500':
         description: Server error
     security:
@@ -310,7 +313,7 @@
       '404':
         description: The customer has no backup schedule with this UUID
       '409':
-        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; change its custom resource).'
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, a delete task of it is queued or running, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; change its custom resource).'
       '500':
         description: Server error
     security:
@@ -371,7 +374,7 @@
       '404':
         description: The customer has no backup schedule with this UUID
       '409':
-        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; change its custom resource).'
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a delete task of it is queued or running (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; change its custom resource).'
       '500':
         description: Server error
     security:

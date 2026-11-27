@@ -593,10 +593,11 @@ paths:
           description: The customer has no backup schedule with this UUID
         '409':
           description: error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING,
-            EDITING or DELETING, or a task holds it (error.backup_schedule_state),
-            BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, BACKUP_SCHEDULE_OPERATOR_CONTROLLED
-            when the YBA Kubernetes operator manages it (error.backup_schedule_uuid;
-            edit its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore
+            EDITING or DELETING, an edit or delete task of it is queued or running,
+            or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE
+            when it is in ERROR, BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA
+            Kubernetes operator manages it (error.backup_schedule_uuid; edit its custom
+            resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore
             and a task holds its universe (error.universe_uuid). Also returned while
             a request with the same Idempotency-Key is still in progress.
         '500':
@@ -646,18 +647,27 @@ paths:
         lowers the
 
         universe''s history retention to what its other schedules need. If the task
-        fails, the
+        fails before it
 
-        schedule is left in ERROR, and can be deleted again. Deleting a schedule that
-        a delete task
+        changes the schedule (for example, another task holds the universe), the schedule
+        is left as
 
-        is already deleting returns that task. A schedule the YBA Kubernetes operator
-        manages is
+        it was; if it fails later, the schedule is left in ERROR. Either can be deleted
+        again.
 
-        deleted through its custom resource, not here. Retry with the same Idempotency-Key
-        to get
+        Deleting a schedule that a delete task is already deleting, or is queued to
+        delete, returns
 
-        the task of a request whose response was lost.
+        that task. A schedule the YBA Kubernetes operator manages is deleted through
+        its custom
+
+        resource, not here. A schedule whose universe no longer exists, which only
+        an older YBA can
+
+        leave, can''t be deleted here (404). Retry with the same Idempotency-Key to
+        get the task of a
+
+        request whose response was lost.
 
         '
       tags:
@@ -670,17 +680,18 @@ paths:
             the caller's customer, or the caller's role has no update permission on
             the schedule's universe or no delete permission on the customer
         '404':
-          description: The customer has no backup schedule with this UUID
+          description: The customer has no backup schedule with this UUID, or the
+            schedule's universe no longer exists
         '409':
           description: error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING
-            or EDITING, DELETING with no delete task to return, or a task holds it
-            (error.backup_schedule_state), BACKUP_SCHEDULE_BACKUP_RUNNING while a
-            backup the schedule started runs (error.task_uuid), BACKUP_SCHEDULE_OPERATOR_CONTROLLED
-            when the YBA Kubernetes operator manages it (error.backup_schedule_uuid;
-            delete its custom resource), and UNIVERSE_LOCKED when the schedule has
-            point_in_time_restore and a task holds its universe (error.universe_uuid).
-            Also returned while a request with the same Idempotency-Key is still in
-            progress.
+            or EDITING, DELETING with no delete task to return, an edit task of it
+            is queued or running, or a task holds it (error.backup_schedule_state),
+            BACKUP_SCHEDULE_BACKUP_RUNNING while a backup the schedule started runs
+            (error.task_uuid), BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes
+            operator manages it (error.backup_schedule_uuid; delete its custom resource),
+            and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a
+            task holds its universe (error.universe_uuid). Also returned while a request
+            with the same Idempotency-Key is still in progress.
         '500':
           description: Server error
         '422':
@@ -763,10 +774,10 @@ paths:
           description: The customer has no backup schedule with this UUID
         '409':
           description: error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING,
-            EDITING or DELETING, or a task holds it (error.backup_schedule_state),
-            BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED
-            when the YBA Kubernetes operator manages it (error.backup_schedule_uuid;
-            change its custom resource).
+            EDITING or DELETING, a delete task of it is queued or running, or a task
+            holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when
+            it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes
+            operator manages it (error.backup_schedule_uuid; change its custom resource).
         '500':
           description: Server error
       security:
@@ -840,10 +851,10 @@ paths:
           description: The customer has no backup schedule with this UUID
         '409':
           description: error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING,
-            EDITING or DELETING (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE
-            when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the
-            YBA Kubernetes operator manages it (error.backup_schedule_uuid; change
-            its custom resource).
+            EDITING or DELETING, or a delete task of it is queued or running (error.backup_schedule_state),
+            BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and BACKUP_SCHEDULE_OPERATOR_CONTROLLED
+            when the YBA Kubernetes operator manages it (error.backup_schedule_uuid;
+            change its custom resource).
         '500':
           description: Server error
       security:

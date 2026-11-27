@@ -7945,8 +7945,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // Lock universe if PIT based schedule
     if (scheduleParams.enablePointInTimeRestore) {
-      lockAndFreezeUniverseForUpdate(
-          universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+      try {
+        lockAndFreezeUniverseForUpdate(
+            universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+      } catch (Throwable t) {
+        // Nothing changed; just release the schedule, so that a later delete can run.
+        Schedule.modifyScheduleRunningAndSave(
+            customerUUID, schedule.getScheduleUUID(), false /* isRunning */);
+        throw t;
+      }
     }
     try {
       log.info(
