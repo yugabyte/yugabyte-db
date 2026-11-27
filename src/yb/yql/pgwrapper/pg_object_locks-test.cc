@@ -5634,49 +5634,6 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
       20s * kTimeMultiplier));
 }
 
-// A libpq connection that can read LISTEN notifications, which PGConn doesn't expose.
-class ListenerConn {
- public:
-  static Result<ListenerConn> Connect(const ExternalTabletServer& ts) {
-    const auto conn_str = Format(
-        "host=$0 port=$1 user=$2", ts.bind_host(), ts.ysql_port(), PGConnSettings::kDefaultUser);
-    ListenerConn result(PQconnectdb(conn_str.c_str()));
-    SCHECK_EQ(
-        PQstatus(result.conn_.get()), CONNECTION_OK, NetworkError,
-        PQerrorMessage(result.conn_.get()));
-    return result;
-  }
-
-  Status Execute(const std::string& query) {
-    std::unique_ptr<PGresult, decltype(&PQclear)> res(PQexec(conn_.get(), query.c_str()), &PQclear);
-    const auto status = PQresultStatus(res.get());
-    SCHECK(
-        status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK, NetworkError,
-        Format("Query '$0' failed: $1", query, PQresultErrorMessage(res.get())));
-    return Status::OK();
-  }
-
-  Result<int64_t> FetchCount(const std::string& query) {
-    std::unique_ptr<PGresult, decltype(&PQclear)> res(PQexec(conn_.get(), query.c_str()), &PQclear);
-    SCHECK_EQ(
-        PQresultStatus(res.get()), PGRES_TUPLES_OK, NetworkError,
-        Format("Query '$0' failed: $1", query, PQresultErrorMessage(res.get())));
-    return std::stoll(PQgetvalue(res.get(), 0, 0));
-  }
-
-  // Whether a notification has arrived. Reads the socket only; sends nothing to the backend.
-  Result<bool> HasNotification() {
-    SCHECK(PQconsumeInput(conn_.get()), NetworkError, PQerrorMessage(conn_.get()));
-    std::unique_ptr<PGnotify, decltype(&PQfreemem)> notify(PQnotifies(conn_.get()), &PQfreemem);
-    return notify != nullptr;
-  }
-
- private:
-  explicit ListenerConn(PGconn* conn) : conn_(conn, &PQfinish) {}
-
-  std::unique_ptr<PGconn, decltype(&PQfinish)> conn_;
-};
-
 class PgObjectLocksNotifyTest : public PgObjectLocksTest {
  protected:
   struct NotifyAfterCatalogChangeOptions {
@@ -5714,7 +5671,7 @@ class PgObjectLocksNotifyTest : public PgObjectLocksTest {
         60s * kTimeMultiplier, "LISTEN/NOTIFY ready");
   }
 
-  static Status WaitForNotification(ListenerConn& listener) {
+  static Status WaitForNotification(PGConn& listener) {
     return WaitFor(
         [&listener]() -> Result<bool> { return listener.HasNotification(); },
         90s * kTimeMultiplier, "notification");
@@ -5732,12 +5689,12 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
   // Connections are opened before ts2 goes stale: a new connection waits at startup for its
   // tserver to reach the latest catalog version.
   auto notifier = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  auto listener = ASSERT_RESULT(ListenerConn::Connect(*ts2));
+  auto listener = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  const auto listener_pid = ASSERT_RESULT(listener.FetchCount("SELECT pg_backend_pid()"));
+  const auto listener_pid = listener.BackendPID();
   ASSERT_OK(listener.Execute("LISTEN ch"));
   if (options.lookup_before_create) {
-    ASSERT_NOK(listener.Execute("SELECT * FROM t2"));
+    ASSERT_NOK(listener.Fetch("SELECT * FROM t2"));
   }
   // Logged by YbWaitForSharedCatalogVersionToCatchup when the listener finds ts2's catalog version
   // behind the one it waits for.
@@ -5792,8 +5749,8 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
   const auto held = release_unblocked.load();
   arrived = true;
   const auto t2_status =
-      options.read_t2 ? listener.Execute("SELECT * FROM t2") : Status::OK();
-  auto marker_count = listener.FetchCount(marker_count_query);
+      options.read_t2 ? ResultToStatus(listener.Fetch("SELECT * FROM t2")) : Status::OK();
+  auto marker_count = listener.FetchRow<PGUint64>(marker_count_query);
   thread_holder.JoinAll();
   const auto waited = listener_waiting.IsEventOccurred();
   LOG(INFO) << "notification held until release unblocked: " << held
@@ -5802,7 +5759,7 @@ void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
             << ", marker rows: " << AsString(marker_count);
 
   ASSERT_OK(t2_status);
-  ASSERT_EQ(ASSERT_RESULT(std::move(marker_count)), 1);
+  ASSERT_EQ(ASSERT_RESULT(std::move(marker_count)), 1U);
   ASSERT_EQ(held, options.expect_held);
   ASSERT_EQ(waited, options.expect_held);
   if (options.read_t2) {
@@ -5861,7 +5818,7 @@ TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFa
   ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
   ASSERT_OK(WaitForNotifyReady(writer));
 
-  auto listener = ASSERT_RESULT(ListenerConn::Connect(*ts2));
+  auto listener = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(listener.Execute("SET yb_test_fail_notify_catalog_version_read = true"));
   ASSERT_OK(listener.Execute("LISTEN ch"));
 
@@ -5872,9 +5829,65 @@ TEST_F(PgObjectLocksNotifyTest, ListenerGetsNotificationWhenCatalogVersionReadFa
         table));
     ASSERT_OK(WaitForNotification(listener));
     ASSERT_OK(read_failed.WaitFor(30s * kTimeMultiplier));
-    ASSERT_EQ(ASSERT_RESULT(listener.FetchCount(
-        Format("SELECT COUNT(*) FROM deployments WHERE name = '$0'", table))), 1);
+    ASSERT_EQ(ASSERT_RESULT(listener.FetchRow<PGUint64>(
+        Format("SELECT COUNT(*) FROM deployments WHERE name = '$0'", table))), 1U);
   }
+}
+
+// A listener waiting for a notifying transaction's catalog version exits promptly on SIGTERM,
+// without crashing. When the notification queue is full, the poller sends SIGTERM to the slowest
+// listener and escalates to SIGKILL after 10 s; pg_terminate_backend sends the same SIGTERM.
+TEST_F(PgObjectLocksNotifyTest, ListenerWaitingForCatalogVersionExitsOnTerminate) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
+  ASSERT_OK(WaitForNotifyReady(writer));
+
+  auto listener = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  // libpq passes a FATAL that arrives while the connection is idle to the notice processor.
+  std::string listener_notices;
+  listener.SetNoticeProcessor(
+      [](void* arg, const char* message) { *static_cast<std::string*>(arg) += message; },
+      &listener_notices);
+  const auto listener_pid = listener.BackendPID();
+  ASSERT_OK(listener.Execute("LISTEN ch"));
+  LogWaiter listener_waiting(
+      ts2, Format("[$0] LOG:  waiting for shared catalog version to reach", listener_pid));
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks_on_tserver_uuid", ts2->uuid()));
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "true"));
+  auto reset_flags = ScopeExit([this, ts2] {
+    WARN_NOT_OK(
+        cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"), "Failed to reset flag");
+    WARN_NOT_OK(
+        cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"),
+        "Failed to reset flag");
+  });
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&writer] {
+    ASSERT_OK(writer.Execute("BEGIN; CREATE TABLE t2 (k INT); NOTIFY ch; COMMIT"));
+  });
+  ASSERT_OK(listener_waiting.WaitFor(60s * kTimeMultiplier));
+  ASSERT_OK(observer.FetchFormat("SELECT pg_terminate_backend($0)", listener_pid));
+  // ts2's release stays blocked, so the listener can't get the catalog version it waits for. It
+  // must exit before the poller's SIGKILL would.
+  const auto closed = WaitFor(
+      [&listener]() -> Result<bool> { return !listener.HasNotification().ok(); },
+      10s, "listener connection closed");
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"));
+  thread_holder.JoinAll();
+  LOG(INFO) << "listener closed: " << closed << ", notices: " << listener_notices;
+
+  ASSERT_OK(closed);
+  // SIGTERM also interrupts the backend's RPCs, so its notify transaction can't commit and the
+  // FATAL it sends isn't always the terminate's own.
+  ASSERT_STR_CONTAINS(listener_notices, "FATAL:");
+  // A backend that crashes while exiting makes the postmaster end every other backend on ts2.
+  ASSERT_OK(observer.Fetch("SELECT 1"));
 }
 
 }  // namespace yb::pgwrapper

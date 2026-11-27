@@ -600,11 +600,12 @@ static FormData_pg_attribute *YbNotificationsAtts[] = {
 
 /*
  * Key in extra_options set when the sending transaction holds DDL state, so it
- * changes the catalog at commit. A listener delivers such a transaction's
- * notifications only once its tserver has the catalog version (see
- * asyncQueueProcessPageEntries). Only DDL run in the transaction's own block
- * (transactional DDL) sets the state; DDL committed in a separate transaction
- * doesn't, so its transaction isn't marked.
+ * changes the catalog at commit. Before delivering such a transaction's
+ * notifications, a listener waits for its tserver to have the catalog version
+ * (see ybWaitForNotifyingTxnCatalogVersion for when it delivers without it).
+ * Only DDL run in the transaction's own block (transactional DDL) sets the
+ * state; DDL committed in a separate transaction doesn't, so its transaction
+ * isn't marked.
  */
 #define YB_NOTIF_CATALOG_CHANGED_KEY "catalog_changed"
 
@@ -3949,6 +3950,11 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
  * is logged and the notification delivered, as when the wait times out.
  * errfinish zeroes the holdoff counts, and this can run inside the client read
  * that holds off cancel interrupts (SocketBackend), so restore them.
+ *
+ * Interrupts are held so that a terminate isn't taken inside this
+ * transaction, where Async_UnlistenOnExit fails and the backend crashes. The
+ * wait ends early on a pending terminate, so the backend exits once the
+ * transaction has ended.
  */
 static void
 ybWaitForNotifyingTxnCatalogVersion(void)
@@ -3964,6 +3970,7 @@ ybWaitForNotifyingTxnCatalogVersion(void)
 		return;
 	state->catalog_wait_done = true;
 
+	HOLD_INTERRUPTS();
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldcontext);
 	PG_TRY();
@@ -3975,12 +3982,13 @@ ybWaitForNotifyingTxnCatalogVersion(void)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
+		RESUME_INTERRUPTS();
 	}
 	PG_CATCH();
 	{
 		ErrorData  *edata;
 
-		InterruptHoldoffCount = save_interrupt_holdoff;
+		InterruptHoldoffCount = save_interrupt_holdoff + 1;
 		QueryCancelHoldoffCount = save_cancel_holdoff;
 		MemoryContextSwitchTo(oldcontext);
 		edata = CopyErrorData();
@@ -3992,6 +4000,7 @@ ybWaitForNotifyingTxnCatalogVersion(void)
 				(errmsg("delivering notification without waiting for the "
 						"catalog version: %s", edata->message)));
 		FreeErrorData(edata);
+		RESUME_INTERRUPTS();
 	}
 	PG_END_TRY();
 }
