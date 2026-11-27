@@ -655,6 +655,8 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_ResultRelInfo:
 		case T_EState:
 		case T_TupleTableSlot:
+		case T_ForPortionOfState:
+		case T_OnConflictActionState:
 
 		/* plan nodes (plannodes.h) */
 		case T_Result:
@@ -708,6 +710,8 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_PartitionPruneStepOp:
 		case T_PartitionPruneStepCombine:
 		case T_PlanInvalItem:
+		case T_ElidedNode:
+		case T_SubPlanRTInfo:
 
 		/* base plan state types */
 		case T_ScanState:
@@ -766,6 +770,22 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_FromExpr:
 		case T_OnConflictExpr:
 		case T_IntoClause:
+		case T_ForPortionOfExpr:
+		case T_GraphLabelRef:
+		case T_GraphPropertyRef:
+		case T_JsonBehavior:
+		case T_JsonConstructorExpr:
+		case T_JsonExpr:
+		case T_JsonFormat:
+		case T_JsonIsPredicate:
+		case T_JsonReturning:
+		case T_JsonTablePath:
+		case T_JsonTablePathScan:
+		case T_JsonTableSiblingJoin:
+		case T_JsonValueExpr:
+		case T_MergeSupportFunc:
+		case T_ReturningExpr:
+		case T_WindowFuncRunCondition:
 
 		/* expression state nodes (execnodes.h) */
 		case T_ExprState:
@@ -834,11 +854,21 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_GroupingSetData:
 		case T_StatisticExtInfo:
 		case T_MergeAction:
+		case T_AggClauseInfo:
+		case T_AggInfo:
+		case T_AggTransInfo:
+		case T_GroupByOrdering:
+		case T_GroupingExprInfo:
+		case T_JoinDomain:
+		case T_OuterJoinClauseInfo:
+		case T_RelAggInfo:
+		case T_UniqueRelInfo:
 
 		/* memory nodes (memnodes.h) */
 		case T_AllocSetContext:
 		case T_SlabContext:
 		case T_GenerationContext:
+		case T_BumpContext:
 
 		/* value nodes (value.h) */
 		case T_Integer:
@@ -851,6 +881,7 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_List:
 		case T_IntList:
 		case T_OidList:
+		case T_XidList:
 
 		/* extensible nodes (extensible.h) */
 		case T_ExtensibleNode:
@@ -977,6 +1008,10 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_AlterCollationStmt:
 		case T_CallStmt:
 		case T_AlterStatsStmt:
+		case T_AlterPropGraphStmt:
+		case T_CreatePropGraphStmt:
+		case T_RepackStmt:
+		case T_WaitStmt:
 
 		/* parse tree nodes (parsenodes.h) */
 		case T_A_Expr:
@@ -1037,6 +1072,36 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_VacuumRelation:
 		case T_PublicationObjSpec:
 		case T_PublicationTable:
+		case T_ATAlterConstraint:
+		case T_ForPortionOfClause:
+		case T_GraphElementPattern:
+		case T_GraphPattern:
+		case T_JsonAggConstructor:
+		case T_JsonArgument:
+		case T_JsonArrayAgg:
+		case T_JsonArrayConstructor:
+		case T_JsonArrayQueryConstructor:
+		case T_JsonFuncExpr:
+		case T_JsonKeyValue:
+		case T_JsonObjectAgg:
+		case T_JsonObjectConstructor:
+		case T_JsonOutput:
+		case T_JsonParseExpr:
+		case T_JsonScalarExpr:
+		case T_JsonSerializeExpr:
+		case T_JsonTable:
+		case T_JsonTableColumn:
+		case T_JsonTablePathSpec:
+		case T_PropGraphEdge:
+		case T_PropGraphLabelAndProperties:
+		case T_PropGraphProperties:
+		case T_PropGraphVertex:
+		case T_PublicationAllObjSpec:
+		case T_RangeGraphTable:
+		case T_ReturningClause:
+		case T_ReturningOption:
+		case T_RTEPermissionInfo:
+		case T_SinglePartitionSpec:
 		case T_YbOptSplit:
 		case T_YbRowBounds:
 
@@ -1048,6 +1113,8 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_ReadReplicationSlotCmd:
 		case T_StartReplicationCmd:
 		case T_TimeLineHistoryCmd:
+		case T_AlterReplicationSlotCmd:
+		case T_UploadManifestCmd:
 
 		/* random other stuff */
 		case T_TriggerData:
@@ -1062,12 +1129,18 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_TsmRoutine:
 		case T_ForeignKeyCacheInfo:
 		case T_CallContext:
+		case T_Bitmapset:
+		case T_ErrorSaveContext:
 		case T_SupportRequestSimplify:
 		case T_SupportRequestSelectivity:
 		case T_SupportRequestCost:
 		case T_SupportRequestRows:
 		case T_SupportRequestIndexCondition:
 		case T_SupportRequestWFuncMonotonic:
+		case T_SupportRequestInlineInFrom:
+		case T_SupportRequestModifyInPlace:
+		case T_SupportRequestOptimizeWindowClause:
+		case T_SupportRequestSimplifyAggref:
 
 		/* yugabyte nodes */
 		case T_YbPgExecOutParam:
@@ -1084,11 +1157,6 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_YbMergeScanInfo:
 		case T_YbMergeScanStreamColInfo:
 		case T_YbSortInfo:
-		/*
-		 * YB_TODO_PG19MERGE: PG19 adds/renames many node tags.
-		 * Add a default to silence -Wswitch for now.
-		 */
-		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unrecognized node type: %d", (int) nodeTag(node))));
