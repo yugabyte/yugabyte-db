@@ -195,7 +195,8 @@ func serverTemplate(t *testing.T, name string, values map[string]any) string {
 		"server",
 		name,
 	)
-	out, err := module.ResolveTemplate(context.Background(), values, path)
+	// Strict, as setup renders them: a variable no caller sets fails here.
+	out, err := module.ResolveTemplateStrict(context.Background(), values, path, true)
 	if err != nil {
 		t.Fatalf("rendering %s: %v", name, err)
 	}
@@ -247,6 +248,7 @@ func TestOciRefresherUnitTemplates(t *testing.T) {
 			"node_agent_bin":           "/home/yugabyte/node-agent/pkg/bin/node-agent",
 			"identity_domain_url":      testDomain,
 			"token_file":               "/home/yugabyte/.yugabyte/federation/oci-identity-token.jwt",
+			"fips_enabled":             "true",
 		}
 	}
 	contains := func(what, got, want string) {
@@ -267,7 +269,8 @@ func TestOciRefresherUnitTemplates(t *testing.T) {
 	wantExec := fmt.Sprintf(
 		`ExecStart="/home/yugabyte/node-agent/pkg/bin/node-agent" federation oci-token `+
 			`--identity-domain-url "%s" --output `+
-			`"/home/yugabyte/.yugabyte/federation/oci-identity-token.jwt"`, testDomain)
+			`"/home/yugabyte/.yugabyte/federation/oci-identity-token.jwt" --fips_enabled=true`,
+		testDomain)
 	for what, unit := range map[string]string{"user unit": user, "system unit": system} {
 		contains(what, unit, "Type=oneshot")
 		contains(what, unit, wantExec)

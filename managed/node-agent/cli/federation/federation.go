@@ -46,8 +46,14 @@ func SetupFederationCommand(parentCmd *cobra.Command) {
 	ociTokenCmd.Flags().String("output", "", "Absolute path of the token file to write")
 	ociTokenCmd.Flags().Duration(
 		"min-lifetime", 0, "Fail if the issued token is valid for less than this (0 disables)")
+	// Read by the root command's FIPS hook in place of node-agent's config, which the DB user this
+	// runs as may not have: reading it would create one under $HOME and, finding no FIPS setting,
+	// run this command outside FIPS mode on a FIPS install.
+	ociTokenCmd.Flags().Bool(
+		"fips_enabled", false, "Whether the YBA this node belongs to is FIPS enabled")
 	_ = ociTokenCmd.MarkFlagRequired("identity-domain-url")
 	_ = ociTokenCmd.MarkFlagRequired("output")
+	_ = ociTokenCmd.MarkFlagRequired("fips_enabled")
 	federationCmd.AddCommand(ociTokenCmd)
 	parentCmd.AddCommand(federationCmd)
 }

@@ -691,12 +691,8 @@ public class NodeAgentRpcPayload {
   /** An old node-agent would drop otelColSecretEnv but install the config that uses it. */
   @VisibleForTesting
   static void checkNodeAgentReadsSecretEnv(NodeAgent nodeAgent, Map<String, String> secretEnv) {
-    if (!secretEnv.isEmpty()
-        && !Util.areYbVersionsEqual(Util.getYbaVersion(), nodeAgent.getVersion(), true)) {
-      throw new IllegalStateException(
-          String.format(
-              "Node agent %s is at version %s, not %s. Retry after its upgrade completes.",
-              nodeAgent.getIp(), nodeAgent.getVersion(), Util.getYbaVersion()));
+    if (!secretEnv.isEmpty()) {
+      NodeAgentClient.requireVersionMatchesYba(nodeAgent, "Retry after its upgrade completes.");
     }
   }
 

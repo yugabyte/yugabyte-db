@@ -787,6 +787,29 @@ public class NodeAgentClient {
   }
 
   /**
+   * Fails unless the node agent runs YBA's own version. Guards an input an older node agent would
+   * drop while still reporting success; a version that cannot be read counts as different.
+   *
+   * @param why what to do about it, appended to the message
+   */
+  public static void requireVersionMatchesYba(NodeAgent nodeAgent, String why) {
+    String ybaVersion = Util.getYbaVersion();
+    String version = nodeAgent.getVersion();
+    boolean same;
+    try {
+      same = version != null && Util.areYbVersionsEqual(ybaVersion, version, false);
+    } catch (RuntimeException e) {
+      same = false;
+    }
+    if (!same) {
+      throw new IllegalStateException(
+          String.format(
+              "Node agent %s is at version %s, not %s. %s",
+              nodeAgent.getIp(), version, ybaVersion, why));
+    }
+  }
+
+  /**
    * Returns true if the cloudType supports node agent.
    *
    * @param cloudType the given cloud type.

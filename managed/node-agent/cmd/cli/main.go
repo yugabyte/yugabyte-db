@@ -88,7 +88,8 @@ func setDefaultConfigs() {
 
 // isFederationCommand reports whether args run a federation subcommand. They run as the DB user,
 // which on a node where root installed node-agent has no registry or node-agent home, so the server
-// init in main would exit on a missing version file. They read none of that state.
+// init in main would exit on a missing version file. They read none of that state: even the FIPS
+// mode, which the root command would otherwise read from the config, comes from --fips_enabled.
 func isFederationCommand(args []string) bool {
 	return len(args) > 1 && args[1] == "federation"
 }

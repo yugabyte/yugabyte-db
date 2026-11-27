@@ -7,4 +7,4 @@ User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
 Type=oneshot
-ExecStart="{{ node_agent_bin }}" federation oci-token --identity-domain-url "{{ identity_domain_url }}" --output "{{ token_file }}"
+ExecStart="{{ node_agent_bin }}" federation oci-token --identity-domain-url "{{ identity_domain_url }}" --output "{{ token_file }}" --fips_enabled={{ fips_enabled }}

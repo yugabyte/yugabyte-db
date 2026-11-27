@@ -13,6 +13,7 @@ import (
 	"node-agent/util"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -98,6 +99,14 @@ func validateUnitPath(what, path string) error {
 	return nil
 }
 
+// ociFipsEnabled is this node-agent's own FIPS setting. The oci-token command is always given it on
+// its command line: it runs as the DB user, who may have no node-agent config, and reading one would
+// create it under that user's home and, finding no FIPS setting, run the command outside FIPS mode
+// on a FIPS install.
+func ociFipsEnabled() bool {
+	return util.CurrentConfig().Bool(util.PlatformFipsEnabledKey)
+}
+
 func (h *ConfigureCloudFederation) isOciSource() bool {
 	return h.param.GetSourceCloud() == pb.ConfigureCloudFederationInput_OCI
 }
@@ -139,6 +148,7 @@ func (h *ConfigureCloudFederation) setupOciSource(
 	}
 	tokenFile := filepath.Join(fedDir, ociTokenFileName)
 	identityDomainURL := cfg.GetIdentityDomainUrl()
+	fipsEnabled := ociFipsEnabled()
 	// Checked before the first fetch: both paths are written into the refresher's unit.
 	if err := validateUnitPath("node-agent binary path", util.NodeAgentBinaryPath()); err != nil {
 		return "", err
@@ -156,11 +166,13 @@ func (h *ConfigureCloudFederation) setupOciSource(
 			// set only in the user's shell applies here but not to the later refreshes.
 			"fetch-initial-oci-identity-token",
 			fmt.Sprintf(
-				"%s federation oci-token --identity-domain-url %s --output %s --min-lifetime %s",
+				"%s federation oci-token --identity-domain-url %s --output %s --min-lifetime %s"+
+					" --fips_enabled=%t",
 				shellSingleQuote(util.NodeAgentBinaryPath()),
 				shellSingleQuote(identityDomainURL),
 				shellSingleQuote(tokenFile),
 				ociTokenMinLifetime,
+				fipsEnabled,
 			),
 		},
 	}, h.logOut); err != nil {
@@ -168,7 +180,7 @@ func (h *ConfigureCloudFederation) setupOciSource(
 	}
 
 	credsFile := filepath.Join(fedDir, gcpFedCredsFileName)
-	if _, err := module.CopyFile(
+	if _, err := module.CopyFileStrict(
 		ctx,
 		map[string]any{"audience": audience, "token_file": tokenFile},
 		filepath.Join(module.ServerTemplateSubpath, gcpFedCredsOciTemplate),
@@ -178,7 +190,7 @@ func (h *ConfigureCloudFederation) setupOciSource(
 	); err != nil {
 		return "", err
 	}
-	if err := h.installOciRefresher(ctx, identityDomainURL, tokenFile); err != nil {
+	if err := h.installOciRefresher(ctx, identityDomainURL, tokenFile, fipsEnabled); err != nil {
 		return "", err
 	}
 	return credsFile, nil
@@ -189,6 +201,7 @@ func (h *ConfigureCloudFederation) setupOciSource(
 func (h *ConfigureCloudFederation) installOciRefresher(
 	ctx context.Context,
 	identityDomainURL, tokenFile string,
+	fipsEnabled bool,
 ) error {
 	unitDir, isUser, err := h.systemdUnitDir()
 	if err != nil {
@@ -200,6 +213,7 @@ func (h *ConfigureCloudFederation) installOciRefresher(
 		"node_agent_bin":           util.NodeAgentBinaryPath(),
 		"identity_domain_url":      identityDomainURL,
 		"token_file":               tokenFile,
+		"fips_enabled":             strconv.FormatBool(fipsEnabled),
 	}
 	for _, u := range []struct{ template, name string }{
 		{ociTokenServiceTemplate, ociTokenServiceName},
@@ -233,8 +247,8 @@ func (h *ConfigureCloudFederation) removeOciRefresher(ctx context.Context) error
 		if !federationPathExists(path) {
 			continue
 		}
-		// DisableSystemdService deletes the unit file as the node user, which only a user-level unit
-		// permits; a system-level one is deleted with sudo below.
+		// DisableSystemdService deletes the unit file from the node-agent process, which may not run
+		// as root; a system-level unit is deleted with sudo below instead.
 		toRemove := ""
 		if isUser {
 			toRemove = path

@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeCloudDetector;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
@@ -119,8 +118,9 @@ public class ManageCloudFederation extends NodeTaskBase {
       return;
     }
     if (sourceCloud == CloudType.oci) {
-      requireNodeAgentMatchesYba(
-          taskParams().nodeName, Util.getYbaVersion(), nodeAgent.getVersion());
+      // An older node-agent ignores the OCI source and reports success on credentials that fail.
+      NodeAgentClient.requireVersionMatchesYba(
+          nodeAgent, "Upgrade node-agent before federating a node on OCI.");
     }
 
     log.info(
@@ -133,30 +133,6 @@ public class ManageCloudFederation extends NodeTaskBase {
         nodeAgentRpcPayload.setupConfigureCloudFederationBits(
             universe, node, taskParams(), sourceCloud, target, nodeAgent),
         NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-  }
-
-  /**
-   * Fails unless the node's node-agent is the same version as YBA. An older node-agent ignores the
-   * OCI source and renders credentials that cannot work while reporting success, so a node on OCI
-   * is configured only by a node-agent known to understand it. A version that cannot be read counts
-   * as different.
-   */
-  static void requireNodeAgentMatchesYba(
-      String nodeName, String ybaVersion, @Nullable String nodeAgentVersion) {
-    boolean same;
-    try {
-      same =
-          nodeAgentVersion != null && Util.areYbVersionsEqual(ybaVersion, nodeAgentVersion, false);
-    } catch (RuntimeException e) {
-      same = false;
-    }
-    if (!same) {
-      throw new IllegalStateException(
-          String.format(
-              "Node-agent on %s is version %s but YBA is %s. Upgrade node-agent before federating a"
-                  + " node on OCI.",
-              nodeName, nodeAgentVersion, ybaVersion));
-    }
   }
 
   /**

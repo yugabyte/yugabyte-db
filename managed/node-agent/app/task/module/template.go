@@ -150,6 +150,29 @@ func CopyFile(
 	mod fs.FileMode,
 	username string,
 ) (string, error) {
+	return copyFile(ctx, values, templateSubpath, destination, mod, username, false)
+}
+
+// CopyFileStrict is CopyFile with every variable the template uses required in values, so a
+// missing or renamed one fails here instead of rendering as an empty string.
+func CopyFileStrict(
+	ctx context.Context,
+	values map[string]any,
+	templateSubpath, destination string,
+	mod fs.FileMode,
+	username string,
+) (string, error) {
+	return copyFile(ctx, values, templateSubpath, destination, mod, username, true)
+}
+
+func copyFile(
+	ctx context.Context,
+	values map[string]any,
+	templateSubpath, destination string,
+	mod fs.FileMode,
+	username string,
+	strict bool,
+) (string, error) {
 	userDetail, err := util.UserInfo(username)
 	if err != nil {
 		return "", err
@@ -159,7 +182,7 @@ func CopyFile(
 		templatePath = filepath.Join(util.TemplateDir(), templateSubpath)
 	}
 	util.FileLogger().Infof(ctx, "Resolving template file %s", templatePath)
-	output, err := ResolveTemplate(ctx, values, templatePath)
+	output, err := ResolveTemplateStrict(ctx, values, templatePath, strict)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Resolution failed for template file %s", templatePath)
 		return "", err

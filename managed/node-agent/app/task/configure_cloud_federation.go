@@ -203,8 +203,9 @@ func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, erro
 			if err := validateOciSourceInputs(oci); err != nil {
 				return "", err
 			}
-			canonical = fmt.Sprintf(
-				"v2|gcs-oci|%s|%s|%s", ybHome, cfg.GetAudience(), oci.GetIdentityDomainUrl())
+			// The FIPS mode is rendered into the refresher unit, so a change must re-apply it.
+			canonical = fmt.Sprintf("v2|gcs-oci|%s|%s|%s|fips=%t",
+				ybHome, cfg.GetAudience(), oci.GetIdentityDomainUrl(), ociFipsEnabled())
 		} else {
 			// Unchanged from before OCI support, so existing nodes are not re-applied.
 			canonical = fmt.Sprintf("v1|gcs|%s|%s", ybHome, cfg.GetAudience())
@@ -413,10 +414,11 @@ func (h *ConfigureCloudFederation) writeDropIn(ctx context.Context, envFile stri
 }
 
 // installSystemdFile renders a server template to dir/name, which is a systemd unit or drop-in in
-// the active systemd mode. A user-level directory is writable by the node user. A system-level one
-// is not, so the file is rendered into the YBA-provided writable temp dir (some nodes have a
-// non-writable /tmp) and sudo-installed; the temp copy is removed at the end. what names the file in
-// the step log.
+// the active systemd mode, requiring every variable the template uses. A user-level directory is
+// writable by the node user. A system-level one is not, so the file is rendered into a private
+// directory under the YBA-provided writable temp dir (some nodes have a non-writable /tmp) and
+// sudo-installed from there, so root never copies a file another user could have placed at a
+// predictable path; the directory is removed on failure too. what names the file in the step log.
 func (h *ConfigureCloudFederation) installSystemdFile(
 	ctx context.Context,
 	values map[string]any,
@@ -436,7 +438,8 @@ func (h *ConfigureCloudFederation) installSystemdFile(
 		}, h.logOut); err != nil {
 			return err
 		}
-		_, err := module.CopyFile(ctx, values, templatePath, dest, fs.FileMode(0644), h.username)
+		_, err := module.CopyFileStrict(
+			ctx, values, templatePath, dest, fs.FileMode(0644), h.username)
 		return err
 	}
 
@@ -444,8 +447,13 @@ func (h *ConfigureCloudFederation) installSystemdFile(
 	if remoteTmp == "" {
 		remoteTmp = "/tmp"
 	}
-	tmp := filepath.Join(remoteTmp, name)
-	if _, err := module.CopyFile(
+	tmpDir, err := os.MkdirTemp(remoteTmp, "yb-federation-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	tmp := filepath.Join(tmpDir, name)
+	if _, err := module.CopyFileStrict(
 		ctx, values, templatePath, tmp, fs.FileMode(0644), h.username); err != nil {
 		return err
 	}
@@ -457,13 +465,8 @@ func (h *ConfigureCloudFederation) installSystemdFile(
 		{
 			"install-" + what,
 			fmt.Sprintf(
-				"sudo cp %s %s && sudo chmod 0644 %s",
-				shellSingleQuote(tmp),
-				shellSingleQuote(dest),
-				shellSingleQuote(dest),
-			),
+				"sudo install -m 0644 %s %s", shellSingleQuote(tmp), shellSingleQuote(dest)),
 		},
-		{"cleanup-tmp-" + what, fmt.Sprintf("rm -f %s", shellSingleQuote(tmp))},
 	}, h.logOut)
 }
 

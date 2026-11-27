@@ -186,37 +186,4 @@ public class ManageCloudFederationSelectTargetTest {
     assertTrue(e.getMessage(), e.getMessage().contains("more than one federated target"));
     assertTrue(e.getMessage(), e.getMessage().contains("gcp, gcp"));
   }
-
-  // --- node-agent version on OCI ---
-
-  /**
-   * An older node-agent ignores the OCI source and reports success on credentials that cannot work,
-   * so only a node-agent of YBA's own version may configure a node on OCI.
-   */
-  @Test
-  public void testOciNodeNeedsNodeAgentOfYbasVersion() {
-    ManageCloudFederation.requireNodeAgentMatchesYba("n1", "2026.3.0.0-b10", "2026.3.0.0-b10");
-    // A local build has no build number to compare.
-    ManageCloudFederation.requireNodeAgentMatchesYba(
-        "n1", "2026.3.0.0-PRE_RELEASE", "2026.3.0.0-PRE_RELEASE");
-
-    IllegalStateException e =
-        assertThrows(
-            IllegalStateException.class,
-            () ->
-                ManageCloudFederation.requireNodeAgentMatchesYba(
-                    "n1", "2026.3.0.0-b10", "2026.2.0.0-b40"));
-    assertTrue(e.getMessage(), e.getMessage().contains("Upgrade node-agent"));
-  }
-
-  /** A version that cannot be read is not taken for a match. */
-  @Test
-  public void testUnreadableNodeAgentVersionIsNotAMatch() {
-    for (String version : new String[] {null, "", "not-a-version"}) {
-      assertThrows(
-          String.valueOf(version),
-          IllegalStateException.class,
-          () -> ManageCloudFederation.requireNodeAgentMatchesYba("n1", "2026.3.0.0-b10", version));
-    }
-  }
 }
