@@ -517,7 +517,9 @@ Status TabletVectorIndexes::DoCreateIndex(
 
   has_vector_indexes_ = true;
   if (vector_indexes_map_.count(index_table.table_id)) {
-    LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
+    // The master re-sends AddTableToTablet for a PREPARING table on every sys catalog reload
+    // (master failover, PITR restore), so the index can already be here.
+    VLOG_WITH_PREFIX(1) << "Vector index for " << index_table.table_id << " already exists";
     return Status::OK();
   }
   RSTATUS_DCHECK_EQ(index_table.table_id, index_table.index_info->table_id(), InvalidArgument,
