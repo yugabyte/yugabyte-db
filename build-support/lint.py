@@ -320,11 +320,20 @@ def run_golint(linter: Linter, files: list[str]) -> list[Message]:
     return msgs
 
 
+# A Perl/PCRE named group ``(?<name>`` that is not escaped (an even number of backslashes before
+# the paren). Lookbehinds ``(?<=`` and ``(?<!`` do not match, since a name starts with a letter
+# or _. Character classes are not tracked, so a ``(?<name>`` written inside ``[...]`` is rewritten
+# too; no configured regex has one.
+_PERL_NAMED_GROUP = re.compile(r"(?<!\\)((?:\\\\)*)\(\?<([A-Za-z_]\w*)>")
+
+
 def _parse_perl_regex(raw_regex: str) -> re.Pattern:
     """Convert a Perl-style ``/pattern/flags`` string (as used in .lint) into a Python pattern."""
     delim = raw_regex[0]
     end = raw_regex.rfind(delim)
-    body = raw_regex[1:end]
+    # arcanist (PHP/PCRE) accepts both (?P<name>...) and (?<name>...); Python's re only accepts
+    # the first, so rewrite the second.
+    body = _PERL_NAMED_GROUP.sub(r"\1(?P<\2>", raw_regex[1:end])
     flags_str = raw_regex[end + 1:]
     re_flags = 0
     if "i" in flags_str:
@@ -433,6 +442,12 @@ def main() -> int:
         except Exception as exc:  # pylint: disable=broad-exception-caught
             print(f"[lint] {linter.name} failed: {exc}", file=sys.stderr)
             traceback.print_exc()
+            # The linter didn't finish, so its files must not pass: some may not have been
+            # checked, and the findings for the ones that were are lost.
+            where = matched[0] if len(matched) == 1 else f"{matched[0]} (+{len(matched) - 1} more)"
+            all_msgs.append(Message(where, None, "error", "runner-failed",
+                                    f"linter failed to run: {type(exc).__name__}: {exc}",
+                                    linter.name))
 
     for m in all_msgs:
         print(m.format())
