@@ -8075,8 +8075,9 @@ Status Tablet::GetTabletKeyRanges(
 docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
   // MVCC operations this replica has not applied yet are above its safe time, and some read the
   // history at their hybrid time, e.g. a vector index backfill (ChangeMetadataRequestPB::use_mvcc).
-  // Read before the caps below: an operation applied after this read already registered what they
-  // check, e.g. its vector index. SafeTimeForFollower returns at once for min_allowed kMin.
+  // Read before the caps below: an operation applied before this read already registered what they
+  // check, e.g. its vector index, and one applied after it is above this safe time.
+  // SafeTimeForFollower returns at once for min_allowed kMin.
   auto safe_time = mvcc_.SafeTimeForFollower(HybridTime::kMin, CoarseTimePoint::max());
   docdb::HistoryCutoff result = {
     .cotables_cutoff_ht = HybridTime::kInvalid,
