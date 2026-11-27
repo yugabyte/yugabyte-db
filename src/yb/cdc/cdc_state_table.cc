@@ -719,7 +719,7 @@ Status CDCStateTable::UpsertEntries(
 
 Status CDCStateTable::UpdateEntriesIfVWALInstanceId(
     const std::vector<CDCStateTableEntry>& entries, const std::string& vwal_instance_id) {
-  VLOG_WITH_FUNC(1) << yb::ToString(entries) << ", vwal_instance_id: " << vwal_instance_id;
+  VLOG_WITH_FUNC(1) << AsString(entries) << ", vwal_instance_id: " << vwal_instance_id;
   return WriteEntries(
       entries, QLWriteRequestPB::QL_STMT_UPDATE, QL_OP_NOOP, /*replace_full_map=*/false,
       /*keys_to_delete=*/{}, DataEntryCondition{kCDCSDKVWALInstanceId, vwal_instance_id});
