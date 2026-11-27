@@ -2206,8 +2206,12 @@ Status ClusterLoadBalancer::SendAlterTabletTier(
 }
 
 void ClusterLoadBalancer::TEST_ExpireTierMigrationsAwaitingReport() {
+  // Not MonoTime::kMin: that is the steady clock's epoch, which on Linux is boot, so on a host up
+  // for less than the deadline it is not old enough.
+  const auto past_deadline =
+      MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms) + MonoDelta::FromSeconds(1);
   for (auto& [_, awaiting] : tier_migrations_awaiting_report_) {
-    awaiting.sent_at = MonoTime::kMin;
+    awaiting.sent_at -= past_deadline;
   }
 }
 
