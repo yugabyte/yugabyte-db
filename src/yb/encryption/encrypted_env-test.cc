@@ -12,10 +12,13 @@
 //
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
+#include "yb/encryption/encrypted_file.h"
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/encryption_test_util.h"
 #include "yb/encryption/encryption_util.h"
@@ -36,6 +39,21 @@ namespace encryption {
 constexpr uint32_t kDataSize = 1000;
 
 class TestEncryptedEnv : public YBTest {};
+
+class ReadaheadRecordingFile : public RandomAccessFileWrapper {
+ public:
+  using Calls = std::vector<std::pair<size_t, size_t>>;
+
+  ReadaheadRecordingFile(std::unique_ptr<RandomAccessFile> target, Calls* calls)
+      : RandomAccessFileWrapper(std::move(target)), calls_(calls) {}
+
+  void Readahead(size_t offset, size_t length) override {
+    calls_->emplace_back(offset, length);
+  }
+
+ private:
+  Calls* calls_;
+};
 
 TEST_F(TestEncryptedEnv, FileOps) {
   auto header_manager = GetMockHeaderManager();
@@ -72,6 +90,42 @@ TEST_F(TestEncryptedEnv, FileOps) {
 
     ASSERT_OK(env->DeleteFile(fname));
   }
+}
+
+TEST_F(TestEncryptedEnv, Readahead) {
+  constexpr size_t kOffset = 100;
+  constexpr size_t kLength = 200;
+
+  auto header_manager = GetMockHeaderManager();
+  HeaderManager* hm_ptr = header_manager.get();
+  down_cast<HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(true);
+
+  auto env = NewEncryptedEnv(std::move(header_manager));
+  auto bytes = RandomBytes(kDataSize);
+
+  string fname;
+  std::unique_ptr<WritableFile> writable_file;
+  ASSERT_OK(env->NewTempWritableFile(
+      WritableFileOptions(), "test-fileXXXXXX", &fname, &writable_file));
+  ASSERT_OK(writable_file->Append(Slice(bytes.data(), kDataSize)));
+  ASSERT_OK(writable_file->Close());
+
+  std::unique_ptr<yb::RandomAccessFile> underlying;
+  ASSERT_OK(Env::Default()->NewRandomAccessFile(fname, &underlying));
+
+  ReadaheadRecordingFile::Calls calls;
+  std::unique_ptr<yb::RandomAccessFile> ra_file;
+  ASSERT_OK(EncryptedRandomAccessFile::Create(
+      &ra_file, hm_ptr, std::make_unique<ReadaheadRecordingFile>(std::move(underlying), &calls)));
+  const auto header_size = ra_file->GetEncryptionHeaderSize();
+  ASSERT_GT(header_size, 0);
+
+  ra_file->Readahead(kOffset, kLength);
+  ASSERT_EQ(calls.size(), 1);
+  ASSERT_EQ(calls[0].first, kOffset + header_size);
+  ASSERT_EQ(calls[0].second, kLength);
+
+  ASSERT_OK(env->DeleteFile(fname));
 }
 
 } // namespace encryption
