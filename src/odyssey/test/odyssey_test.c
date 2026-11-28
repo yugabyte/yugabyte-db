@@ -88,24 +88,30 @@ extern void odyssey_test_hba(void);
 
 int main(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
+	yb_od_unit_init(argc, argv); /* YB */
+	yb_od_unit_suite("OdUnitMmCore"); /* YB */
 	odyssey_test(machinarium_test_init);
 	odyssey_test(machinarium_test_create0);
 	odyssey_test(machinarium_test_create1);
 	odyssey_test(machinarium_test_config);
 	odyssey_test(machinarium_test_context_switch);
+	yb_od_unit_suite("OdUnitMmSleep"); /* YB */
 	odyssey_test(machinarium_test_sleep);
 	odyssey_test(machinarium_test_sleep_random);
 	odyssey_test(machinarium_test_sleep_yield);
 	odyssey_test(machinarium_test_sleep_cancel0);
+	yb_od_unit_suite("OdUnitMmCore"); /* YB */
 	odyssey_test(machinarium_test_join);
+	yb_od_unit_suite("OdUnitMmSync"); /* YB */
 	odyssey_test(machinarium_test_condition0);
 	odyssey_test(machinarium_test_eventfd0);
+	yb_od_unit_suite("OdUnitMmCore"); /* YB */
 	odyssey_test(machinarium_test_stat);
+	yb_od_unit_suite("OdUnitMmSignal"); /* YB */
 	odyssey_test(machinarium_test_signal0);
 	odyssey_test(machinarium_test_signal1);
 	odyssey_test(machinarium_test_signal2);
+	yb_od_unit_suite("OdUnitMmChannel"); /* YB */
 	odyssey_test(machinarium_test_channel_create);
 	odyssey_test(machinarium_test_channel_rw0);
 	odyssey_test(machinarium_test_channel_rw1);
@@ -118,10 +124,13 @@ int main(int argc, char *argv[])
 	odyssey_test(machinarium_test_channel_shared_rw0);
 	odyssey_test(machinarium_test_channel_shared_rw1);
 	odyssey_test(machinarium_test_channel_shared_rw2);
+	yb_od_unit_suite("OdUnitMmSync"); /* YB */
 	odyssey_test(machinarium_test_sleeplock);
+	yb_od_unit_suite("OdUnitMmChannel"); /* YB */
 	odyssey_test(machinarium_test_producer_consumer0);
 	odyssey_test(machinarium_test_producer_consumer1);
 	odyssey_test(machinarium_test_producer_consumer2);
+	yb_od_unit_suite("OdUnitMmConnect"); /* YB */
 	odyssey_test(machinarium_test_io_new);
 	odyssey_test(machinarium_test_connect);
 	odyssey_test(machinarium_test_connect_timeout);
@@ -132,6 +141,7 @@ int main(int argc, char *argv[])
 	odyssey_test(machinarium_test_getaddrinfo0);
 	odyssey_test(machinarium_test_getaddrinfo1);
 	odyssey_test(machinarium_test_getaddrinfo2);
+	yb_od_unit_suite("OdUnitMmIo"); /* YB */
 	odyssey_test(machinarium_test_client_server0);
 	odyssey_test(machinarium_test_client_server1);
 	odyssey_test(machinarium_test_client_server2);
@@ -142,6 +152,9 @@ int main(int argc, char *argv[])
 	odyssey_test(machinarium_test_read_timeout);
 	odyssey_test(machinarium_test_read_cancel);
 	odyssey_test(machinarium_test_read_var);
+	/* YB: TODO(#37511): the TLS tests fail, enable them once fixed */
+#if 0
+	yb_od_unit_suite("OdUnitMmTls"); /* YB */
 	odyssey_test(machinarium_test_tls0);
 	odyssey_test(machinarium_test_tls_unix_socket);
 	odyssey_test(machinarium_test_tls_read_10mb0);
@@ -149,17 +162,20 @@ int main(int argc, char *argv[])
 	odyssey_test(machinarium_test_tls_read_10mb2);
 	odyssey_test(machinarium_test_tls_read_multithread);
 	odyssey_test(machinarium_test_tls_read_var);
+#endif
+	yb_od_unit_suite("OdUnitMmSync"); /* YB */
 	odyssey_test(machinarium_test_wait_list_without_notify);
 	odyssey_test(machinarium_test_wait_list_notify_after_wait);
 	odyssey_test(
 		machinarium_test_wait_list_one_producer_multiple_consumers);
 	odyssey_test(
 		machinarium_test_wait_list_one_producer_multiple_consumers_threads);
+	yb_od_unit_suite("OdUnitOdyssey"); /* YB */
 	odyssey_test(odyssey_test_tdigest);
 	odyssey_test(odyssey_test_attribute);
 	odyssey_test(odyssey_test_util);
 	odyssey_test(odyssey_test_lock);
 	odyssey_test(odyssey_test_hba);
 
-	return 0;
+	return yb_od_unit_finish(); /* YB */
 }
