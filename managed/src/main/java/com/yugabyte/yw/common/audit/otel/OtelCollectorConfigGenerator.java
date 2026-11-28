@@ -66,6 +66,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
@@ -888,6 +889,14 @@ public class OtelCollectorConfigGenerator {
     private boolean hasMasters;
   }
 
+  /** The node_exporter sidecar that a helm release's pods run. */
+  @Data
+  @AllArgsConstructor
+  public static class K8sNodeExporterSidecar {
+    private int port;
+    private boolean https;
+  }
+
   /**
    * Port the collector sidecar serves its own metrics on inside a K8s pod. Read from the universe's
    * communication ports (seeded from the provider conf key otelCollectorMetricsPort at create time)
@@ -916,17 +925,22 @@ public class OtelCollectorConfigGenerator {
         telemetryConfig,
         podPlacement,
         logLinePrefix,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent,
+        null /* nodeExporterSidecar */);
   }
 
-  /** Same as above, with API flags from {@code apiIntent}, the target intent of a helm upgrade. */
+  /**
+   * Same as above, with API flags from {@code apiIntent}, the target intent of a helm upgrade, and
+   * the node_exporter sidecar the release's pods run, null when they run none.
+   */
   public K8sOtelConfig getOtelColConfigK8s(
       Provider provider,
       Universe universe,
       TelemetryConfig telemetryConfig,
       K8sPodPlacement podPlacement,
       String logLinePrefix,
-      UniverseDefinitionTaskParams.UserIntent apiIntent) {
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
+      @Nullable K8sNodeExporterSidecar nodeExporterSidecar) {
     AuditLogConfig auditLogConfig =
         telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
     QueryLogConfig queryLogConfig =
@@ -1126,6 +1140,7 @@ public class OtelCollectorConfigGenerator {
           metricsExportConfig,
           podPlacement,
           apiIntent,
+          nodeExporterSidecar,
           secretEnv,
           secretEnvProviderUuids);
     }
@@ -1301,6 +1316,7 @@ public class OtelCollectorConfigGenerator {
       MetricsExportConfig metricsExportConfig,
       K8sPodPlacement podPlacement,
       UniverseDefinitionTaskParams.UserIntent apiIntent,
+      @Nullable K8sNodeExporterSidecar nodeExporterSidecar,
       List<Object> secretEnv,
       Set<UUID> secretEnvProviderUuids) {
     Set<ScrapeConfigTargetType> scrapeTargets =
@@ -1308,10 +1324,18 @@ public class OtelCollectorConfigGenerator {
             apiIntent,
             podPlacement == null || podPlacement.isHasMasters(),
             metricsExportConfig.getScrapeConfigTargets());
-    // A receiver needs at least one job, and K8s builds only the yugabyte and otel jobs.
+    boolean scrapeNodeExporter =
+        nodeExporterSidecar != null && scrapeTargets.contains(ScrapeConfigTargetType.NODE_EXPORT);
+    // A receiver needs at least one job, so fall back to the unfiltered targets. Without the
+    // sidecar, the node job is kept only when no yugabyte job is left, so that NODE_EXPORT alone
+    // still gives the receiver a job, whose target is down.
     if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
-        && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
+        && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)
+        && !scrapeNodeExporter) {
       scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+      scrapeNodeExporter =
+          !OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
+              && scrapeTargets.contains(ScrapeConfigTargetType.NODE_EXPORT);
     }
 
     // Shared prometheus receiver scraping pod-local endpoints.
@@ -1338,6 +1362,23 @@ public class OtelCollectorConfigGenerator {
               ports.tserverHttpPort,
               ports.ysqlServerHttpPort,
               ports.yqlServerHttpPort));
+    }
+    if (scrapeNodeExporter) {
+      OtelCollectorConfigFormat.ScrapeConfig nodeExporterScrapeConfig =
+          createNodeExporterScrapeConfig(
+              K8S_POD_LOCAL_ADDRESS,
+              nodeExporterSidecar != null
+                  ? nodeExporterSidecar.getPort()
+                  : universe.getUniverseDetails().communicationPorts.nodeExporterPort,
+              nodeExporterSidecar != null && nodeExporterSidecar.isHttps());
+      // The sidecar mounts the data volumes read-only, so this series would read 1 for volumes
+      // the database writes to.
+      OtelCollectorConfigFormat.MetricRelabelConfig dropReadonly =
+          createMetricRelabelConfig(
+              ImmutableList.of("__name__"), "node_filesystem_readonly", null, null);
+      dropReadonly.setAction("drop");
+      nodeExporterScrapeConfig.getMetric_relabel_configs().add(dropReadonly);
+      scrapeConfigs.add(nodeExporterScrapeConfig);
     }
     if (scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
       scrapeConfigs.add(
@@ -2100,7 +2141,9 @@ public class OtelCollectorConfigGenerator {
 
     // Add node exporter scrape config if the scrape config target is enabled.
     if (metricsExportConfig.getScrapeConfigTargets().contains(ScrapeConfigTargetType.NODE_EXPORT)) {
-      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, universe, nodeDetails));
+      scrapeConfigs.add(
+          createNodeExporterScrapeConfig(
+              nodeAddress, nodeDetails.nodeExporterPort, universe.isNodeExporterHttps()));
     }
 
     // Add node-agent scrape config if the scrape config target is enabled.
@@ -2494,11 +2537,11 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createNodeExporterScrapeConfig(
-      String nodeAddress, Universe universe, NodeDetails nodeDetails) {
+      String nodeAddress, int nodeExporterPort, boolean https) {
     OtelCollectorConfigFormat.ScrapeConfig scrapeConfig =
         new OtelCollectorConfigFormat.ScrapeConfig();
     scrapeConfig.setJob_name(JOB_NAME_NODE);
-    scrapeConfig.setScheme(universe.isNodeExporterHttps() ? "https" : "http");
+    scrapeConfig.setScheme(https ? "https" : "http");
     scrapeConfig.setMetrics_path("/metrics");
 
     // Add TLS config
@@ -2509,8 +2552,6 @@ public class OtelCollectorConfigGenerator {
     OtelCollectorConfigFormat.StaticConfig staticConfig =
         new OtelCollectorConfigFormat.StaticConfig();
 
-    // Get the node exporter port from node details
-    int nodeExporterPort = nodeDetails.nodeExporterPort;
     staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + nodeExporterPort));
 
     // Build up all labels

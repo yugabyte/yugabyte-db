@@ -41,19 +41,20 @@ public class OtelCollectorUtilTest {
                     ScrapeConfigTargetType.TSERVER_EXPORT,
                     ScrapeConfigTargetType.YSQL_EXPORT,
                     ScrapeConfigTargetType.CQL_EXPORT,
+                    ScrapeConfigTargetType.NODE_EXPORT,
                     ScrapeConfigTargetType.OTEL_EXPORT))
             .isEmpty());
   }
 
   @Test
-  public void unsupportedK8sTargetsReportsNodeTargets() {
+  public void unsupportedK8sTargetsReportsNodeAgentTarget() {
     assertEquals(
-        EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT),
+        EnumSet.of(ScrapeConfigTargetType.NODE_AGENT_EXPORT),
         OtelCollectorUtil.getUnsupportedK8sScrapeTargets(
             configWithTargets(
-                ScrapeConfigTargetType.TSERVER_EXPORT, ScrapeConfigTargetType.NODE_EXPORT)));
+                ScrapeConfigTargetType.TSERVER_EXPORT, ScrapeConfigTargetType.NODE_AGENT_EXPORT)));
     assertEquals(
-        EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT, ScrapeConfigTargetType.NODE_AGENT_EXPORT),
+        EnumSet.of(ScrapeConfigTargetType.NODE_AGENT_EXPORT),
         OtelCollectorUtil.getUnsupportedK8sScrapeTargets(
             configWithTargets(
                 ScrapeConfigTargetType.NODE_EXPORT, ScrapeConfigTargetType.NODE_AGENT_EXPORT)));
@@ -62,9 +63,9 @@ public class OtelCollectorUtilTest {
   @Test
   public void unsupportedK8sTargetsEmptyMeansAllTargets() {
     // Empty/omitted target set resolves to all targets (config generator semantics), which
-    // includes the node-based targets that K8s pods cannot serve.
+    // includes the node-agent target that K8s pods cannot serve.
     assertEquals(
-        EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT, ScrapeConfigTargetType.NODE_AGENT_EXPORT),
+        EnumSet.of(ScrapeConfigTargetType.NODE_AGENT_EXPORT),
         OtelCollectorUtil.getUnsupportedK8sScrapeTargets(configWithTargets()));
   }
 }

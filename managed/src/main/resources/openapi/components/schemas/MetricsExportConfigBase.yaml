@@ -32,6 +32,7 @@ properties:
   scrape_config_targets:
     description: |
       Set of target types to include in scrape configuration. If not specified, all supported target types will be included.
+      On Kubernetes universes, NODE_EXPORT scrapes the node_exporter sidecar of the pods that run it, and NODE_AGENT_EXPORT is not supported.
       Allowed values are:
         - MASTER_EXPORT: Master server metrics
         - TSERVER_EXPORT: Tserver metrics

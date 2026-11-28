@@ -27,12 +27,14 @@ const allowOTLPRuntimeConfigKey = "yb.telemetry.allow_otlp"
 const globalRuntimeConfigScope = "00000000-0000-0000-0000-000000000000"
 
 // Mirrors OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS: on Kubernetes the collector is a
-// sidecar in the DB pods, so node level targets have nothing to scrape.
+// sidecar in the DB pods, so it scrapes only pod-local endpoints. NODE_EXPORT is the pods'
+// node_exporter sidecar; there is no node agent in the pods.
 var k8sSupportedScrapeTargets = map[string]bool{
 	"MASTER_EXPORT":  true,
 	"TSERVER_EXPORT": true,
 	"YSQL_EXPORT":    true,
 	"CQL_EXPORT":     true,
+	"NODE_EXPORT":    true,
 	"OTEL_EXPORT":    true,
 }
 
@@ -296,8 +298,8 @@ func ValidateKubernetesSupport(
 	if config.Metrics == nil {
 		return
 	}
-	// An empty list means every target server side, which on Kubernetes includes the node
-	// level ones, so it has to be spelled out rather than merely filtered.
+	// An empty list means every target server side, which includes NODE_AGENT_EXPORT that
+	// Kubernetes rejects, so it has to be spelled out rather than merely filtered.
 	if len(config.Metrics.ScrapeConfigTargets) == 0 {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf(
