@@ -3679,8 +3679,14 @@ YBCommitTransactionContainingDDL()
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
+	/*
+	 * Until the YSQL migration that creates the global logical client version
+	 * row has run (upgrade not yet finalized), there is no row to increment.
+	 */
 	bool increment_logical_client_version =
-		ddl_transaction_state.increment_logical_client_version;
+		ddl_transaction_state.increment_logical_client_version &&
+		YbLogicalClientVersionTableExists() &&
+		YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_CATALOG_TABLE;
 	bool		function_cache_generation_bumped =
 		ddl_transaction_state.function_cache_generation_bumped;
 	const uint64_t prev_local_catalog_version = YbGetCatalogCacheVersion();
@@ -3812,7 +3818,8 @@ YBCommitTransactionContainingDDL()
 	if (increment_logical_client_version)
 	{
 		elog(LOG, "Logical client version incremented");
-		YbSendMasterLogicalClientVersionToFrontend();
+		if (YbIsClientYsqlConnMgr())
+			YbSendMasterLogicalClientVersionToFrontend();
 	}
 
 	List	   *handles = YBGetDdlHandles();
@@ -3919,15 +3926,16 @@ YbShouldIncrementLogicalClientVersion(PlannedStmt *pstmt)
 		case T_AlterRoleStmt:
 			{
 				AlterRoleStmt *stmt = castNode(AlterRoleStmt, parsetree);
+				ListCell   *lc;
 
-				if (list_length(stmt->options) == 1)
+				foreach(lc, stmt->options)
 				{
-					DefElem    *def = (DefElem *) linitial(stmt->options);
+					DefElem    *def = lfirst_node(DefElem, lc);
 
 					/*
-					 * In case of ALTER ROLE <role> superuser, increment the
-					 * logical client as for the new backends, the role will have
-					 * superuser priviledges.
+					 * In case of ALTER ROLE <role> [NO]SUPERUSER, along with any
+					 * other options, increment the logical client version as for
+					 * the new backends, the role's superuser status changes.
 					 */
 					if (strcmp(def->defname, "superuser") == 0)
 						return true;
@@ -5028,8 +5036,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		{
 			CheckAlterDatabaseDdl(pstmt);
 
-			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
-				YbIsClientYsqlConnMgr())
+			if (YbShouldIncrementLogicalClientVersion(pstmt))
 				ddl_transaction_state.increment_logical_client_version = true;
 
 			if (use_separate_ddl_transaction)
