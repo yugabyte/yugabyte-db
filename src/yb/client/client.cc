@@ -39,6 +39,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
@@ -1888,7 +1889,16 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
 
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
+    // A dropped table stays in replica_identity_map until the background CDCSDK cleanup
+    // removes it.
+    const std::unordered_set<std::string> dropped_table_ids(
+        resp.stream().dropped_table_id().begin(), resp.stream().dropped_table_id().end());
     for (const auto& entry : resp.stream().replica_identity_map()) {
+      if (dropped_table_ids.contains(entry.first)) {
+        LOG_WITH_FUNC(WARNING) << "Skipping replica identity of dropped table " << entry.first
+                               << " of replication slot " << replication_slot_name;
+        continue;
+      }
       auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first, true /* include_hidden */));
 
       const auto pg_table_id = table_info.pg_table_id;

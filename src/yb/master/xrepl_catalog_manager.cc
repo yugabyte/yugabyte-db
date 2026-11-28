@@ -4187,6 +4187,10 @@ Status CatalogManager::GetCDCStream(
     }
   }
 
+  for (const auto& table_id : stream_lock->dropped_table_id()) {
+    stream_info->add_dropped_table_id(table_id);
+  }
+
   stream_info->mutable_options()->CopyFrom(stream_lock->options());
   stream_info->set_transactional(stream_lock->transactional());
 
