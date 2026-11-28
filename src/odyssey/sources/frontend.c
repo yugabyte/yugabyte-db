@@ -2318,6 +2318,34 @@ od_frontend_remote_process_server(od_server_t *server, od_client_t *client)
 	return OD_OK;
 }
 
+/*
+ * YB: A client paused after a Sync is not read until ReadyForQuery, so its
+ * EOF can wait behind unread bytes. Instead, poll its socket for a hangup on
+ * each wakeup and at least this often, as Postgres does with
+ * client_connection_check_interval.
+ */
+#define YB_PAUSED_CLIENT_POLL_MS 1000
+
+/*
+ * YB: Polls the client socket and reports whether the client hung up. A
+ * half-closed client is treated as gone.
+ */
+static bool yb_client_hung_up(od_client_t *client)
+{
+	od_io_t *io = client->relay.src;
+	if (od_io_poll(io) != 0) {
+		od_instance_t *instance = client->global->instance;
+		od_error(&instance->logger, "wait sync", client, client->server,
+			 "client fd poll failed, errno=%d (%s)",
+			 machine_errno(), strerror(machine_errno()));
+	}
+	if (machine_connected(io->io))
+		return false;
+	/* Level-triggered epoll would keep reporting it during the cleanup. */
+	od_io_read_stop(io);
+	return true;
+}
+
 static od_frontend_status_t od_frontend_remote(od_client_t *client)
 {
 	od_route_t *route = client->route;
@@ -2375,8 +2403,19 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			}
 #endif
 #endif
-			/* one minute */
-			if (machine_cond_wait(client->cond, 60000) == 0) {
+			/* one minute, or the hangup poll interval while paused */
+			bool yb_paused = yb_is_relay_paused(&client->relay);
+			int rc = machine_cond_wait(
+				client->cond,
+				yb_paused ? YB_PAUSED_CLIENT_POLL_MS : 60000);
+			if (yb_paused && yb_client_hung_up(client)) {
+				od_debug(&instance->logger, "wait sync", client,
+					 server,
+					 "client disconnected while paused after Sync");
+				status = OD_ECLIENT_READ;
+				break;
+			}
+			if (rc == 0) {
 				client->time_last_active = machine_time_us();
 #ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(

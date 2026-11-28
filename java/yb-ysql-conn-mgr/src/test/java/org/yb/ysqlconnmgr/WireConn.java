@@ -87,6 +87,16 @@ public class WireConn implements AutoCloseable {
     }
   }
 
+  /** Closes the socket with a TCP RST instead of a FIN, as a killed client often does. */
+  public void resetAbruptly() {
+    try {
+      socket.setSoLinger(true, 0);
+    } catch (IOException e) {
+      LOG.info("Ignoring error while setting SO_LINGER", e);
+    }
+    closeAbruptly();
+  }
+
   @Override
   public void close() {
     try {
