@@ -1777,6 +1777,7 @@ extern bool YbIsAuthPassthroughControlBackend();
 extern bool YbIsYsqlConnMgrEnabled();
 
 bool		YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
+extern bool YbIsAttrInPrimaryKey(Relation rel, AttrNumber attnum);
 
 SortByDir	YbGetIndexKeySortOrdering(Relation indexRel);
 

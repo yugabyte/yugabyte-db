@@ -9916,6 +9916,48 @@ YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
 						 YBGetFirstLowInvalidAttributeNumber(rel), pkey);
 }
 
+/*
+ * Used in YB to check if an attribute is a key column or an INCLUDE column of
+ * the primary key.  Dropping either kind of column drops the primary key
+ * constraint, so in both cases the table must be rewritten without the
+ * primary key.
+ *
+ * The INCLUDE columns are read from the catalog, so call this before the
+ * primary key index is dropped.
+ */
+bool
+YbIsAttrInPrimaryKey(Relation rel, AttrNumber attnum)
+{
+	Oid			pkindexoid;
+	HeapTuple	indexTuple;
+	Form_pg_index index;
+	bool		result = false;
+
+	if (YbIsAttrPrimaryKeyColumn(rel, attnum))
+		return true;
+
+	pkindexoid = RelationGetPrimaryKeyIndex(rel);
+	if (!OidIsValid(pkindexoid))
+		return false;
+
+	indexTuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(pkindexoid));
+	if (!HeapTupleIsValid(indexTuple))
+		elog(ERROR, "cache lookup failed for index %u", pkindexoid);
+	index = (Form_pg_index) GETSTRUCT(indexTuple);
+
+	for (int i = index->indnkeyatts; i < index->indnatts; i++)
+	{
+		if (index->indkey.values[i] == attnum)
+		{
+			result = true;
+			break;
+		}
+	}
+
+	ReleaseSysCache(indexTuple);
+	return result;
+}
+
 /* Retrieve the sort ordering of the first key element of an index. */
 SortByDir
 YbGetIndexKeySortOrdering(Relation indexRel)
@@ -10206,7 +10248,7 @@ YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
 	{
 		AttrNumber	dependent_attnum = bms_index + offset;
 
-		if (YbIsAttrPrimaryKeyColumn(rel, dependent_attnum))
+		if (YbIsAttrInPrimaryKey(rel, dependent_attnum))
 			return true;
 	}
 	bms_free(dependent_generated_cols);

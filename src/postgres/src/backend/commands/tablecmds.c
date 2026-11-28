@@ -9505,9 +9505,10 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 	attnum = targetatt->attnum;
 
 	/*
-	 * In YB, dropping a key column requires a table rewrite.
+	 * In YB, dropping a key or INCLUDE column of the primary key drops the
+	 * primary key, which requires a table rewrite.
 	 */
-	if (IsYBRelation(rel) && (YbIsAttrPrimaryKeyColumn(rel, attnum) ||
+	if (IsYBRelation(rel) && (YbIsAttrInPrimaryKey(rel, attnum) ||
 							  YbIsAnyDependentGeneratedColPK(rel, attnum)))
 	{
 		/*

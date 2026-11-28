@@ -533,6 +533,41 @@ ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (100);
 ALTER TABLE parent DROP COLUMN c;
 INSERT INTO parent VALUES (1);
 SELECT * FROM parent;
+-- test dropping an INCLUDE column of the primary key: this drops the primary
+-- key, so the table must be rewritten without it and accept duplicate keys.
+CREATE TABLE test_drop_pk_include (id int, payload text, v int,
+    PRIMARY KEY (id) INCLUDE (payload));
+INSERT INTO test_drop_pk_include VALUES (1, 'a', 1), (2, 'b', 2);
+ALTER TABLE test_drop_pk_include DROP COLUMN payload;
+\d test_drop_pk_include;
+INSERT INTO test_drop_pk_include VALUES (1, 10);
+INSERT INTO test_drop_pk_include VALUES (2, 20) ON CONFLICT DO NOTHING;
+SELECT * FROM test_drop_pk_include ORDER BY id, v;
+-- dropping a column that is not in the primary key keeps the primary key.
+CREATE TABLE test_drop_non_pk_include (id int, payload text, v int,
+    PRIMARY KEY (id) INCLUDE (payload));
+INSERT INTO test_drop_non_pk_include VALUES (1, 'a', 1);
+ALTER TABLE test_drop_non_pk_include DROP COLUMN v;
+\d test_drop_non_pk_include;
+INSERT INTO test_drop_non_pk_include VALUES (1, 'b'); -- should fail.
+-- test an INCLUDE column dropped through a dependent generated column.
+CREATE TABLE test_drop_pk_include_gen (id int, v int,
+    g int GENERATED ALWAYS AS (v * 2) STORED, PRIMARY KEY (id) INCLUDE (g));
+INSERT INTO test_drop_pk_include_gen VALUES (1, 1), (2, 2);
+ALTER TABLE test_drop_pk_include_gen DROP COLUMN v CASCADE;
+\d test_drop_pk_include_gen;
+INSERT INTO test_drop_pk_include_gen VALUES (1);
+SELECT * FROM test_drop_pk_include_gen ORDER BY id;
+-- test partitioned table.
+CREATE TABLE test_drop_pk_include_part (id int, payload text,
+    PRIMARY KEY (id) INCLUDE (payload)) PARTITION BY RANGE (id);
+CREATE TABLE test_drop_pk_include_part1 PARTITION OF test_drop_pk_include_part
+    FOR VALUES FROM (1) TO (10);
+INSERT INTO test_drop_pk_include_part VALUES (1, 'a'), (2, 'b');
+ALTER TABLE test_drop_pk_include_part DROP COLUMN payload;
+\d test_drop_pk_include_part1;
+INSERT INTO test_drop_pk_include_part VALUES (1);
+SELECT * FROM test_drop_pk_include_part ORDER BY id;
 
 --
 -- Test index rewrites during ALTER TYPE when the base table is not rewritten.
