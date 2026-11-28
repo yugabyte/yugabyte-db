@@ -13,8 +13,9 @@
 
 #pragma once
 
-#include <vector>
+#include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "yb/util/slice.h"
 #include "yb/util/varint.h"
@@ -76,6 +77,20 @@ namespace util {
 //    - The default ToString() function uses PointString format if the output has 10 bytes or less
 //    and Scientific notation otherwise (this is a constant defined as kDefaultMaxLength).
 
+// QLValue / hash-key sentinels for DECIMAL specials. These bytes lie in the unused
+// EncodeToComparable first-byte range (0x40..0x7F) so they never collide with finite
+// comparable encodings. They also match ASC KeyEntryType tags for the same specials.
+constexpr char kDecimalNegInfinitySentinel = 'A';  // 0x41
+constexpr char kDecimalPosInfinitySentinel = 'N';  // 0x4e
+constexpr char kDecimalNaNSentinel = 'P';         // 0x50
+
+enum class DecimalSpecial : uint8_t {
+  kFinite = 0,
+  kNegInfinity = 1,
+  kPosInfinity = 2,
+  kNaN = 3,
+};
+
 class Decimal {
  public:
   static constexpr int kDefaultMaxLength = 20; // Enough for MIN_BIGINT=-9223372036854775808.
@@ -86,13 +101,58 @@ class Decimal {
           const VarInt& exponent = VarInt(0),
           bool is_positive = true)
       : digits_(digits), exponent_(exponent), is_positive_(is_positive) { make_canonical(); }
-  Decimal(const Decimal& other) : Decimal(other.digits_, other.exponent_, other.is_positive_) {}
+  Decimal(const Decimal& other)
+      : digits_(other.digits_),
+        exponent_(other.exponent_),
+        is_positive_(other.is_positive_),
+        special_(other.special_) {}
   Decimal& operator=(const Decimal& other) {
     digits_ = other.digits_;
     exponent_ = other.exponent_;
     is_positive_ = other.is_positive_;
-    make_canonical();
+    special_ = other.special_;
+    if (special_ == DecimalSpecial::kFinite) {
+      make_canonical();
+    }
     return *this;
+  }
+
+  static Decimal NaN() {
+    Decimal d;
+    d.special_ = DecimalSpecial::kNaN;
+    d.is_positive_ = true;
+    return d;
+  }
+  static Decimal PosInfinity() {
+    Decimal d;
+    d.special_ = DecimalSpecial::kPosInfinity;
+    d.is_positive_ = true;
+    return d;
+  }
+  static Decimal NegInfinity() {
+    Decimal d;
+    d.special_ = DecimalSpecial::kNegInfinity;
+    d.is_positive_ = false;
+    return d;
+  }
+
+  bool IsFinite() const { return special_ == DecimalSpecial::kFinite; }
+  bool IsNaN() const { return special_ == DecimalSpecial::kNaN; }
+  bool IsPosInfinity() const { return special_ == DecimalSpecial::kPosInfinity; }
+  bool IsNegInfinity() const { return special_ == DecimalSpecial::kNegInfinity; }
+  bool IsSpecial() const { return !IsFinite(); }
+  DecimalSpecial special() const { return special_; }
+
+  // True if the comparable / QLValue encoding is a single-byte special sentinel.
+  static bool IsComparableSpecialSentinel(char first_byte) {
+    return first_byte == kDecimalNegInfinitySentinel ||
+           first_byte == kDecimalPosInfinitySentinel ||
+           first_byte == kDecimalNaNSentinel;
+  }
+
+  // True if slice is exactly one special sentinel byte.
+  static bool IsComparableSpecialEncoding(const Slice& slice) {
+    return slice.size() == 1 && IsComparableSpecialSentinel(slice[0]);
   }
 
   // Ensure the type conversion is possible if you use these constructors. Use FromX() otherwise.
@@ -116,7 +176,8 @@ class Decimal {
   // but the (digits, varint, sign) constructor doesn't.
 
   // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9]+)?,
-  // whitespace is not allowed. Use this after removing whitespace.
+  // or a special value token: NaN, Infinity, +Infinity, -Infinity (case-insensitive).
+  // Whitespace is not allowed. Use this after removing whitespace.
   Status FromString(const Slice &slice);
 
   // Note: We are using double -> string -> decimal using std::to_string() function.
@@ -136,11 +197,13 @@ class Decimal {
   bool operator<=(const Decimal& other) const { return CompareTo(other) <= 0; }
   bool operator>(const Decimal& other) const { return CompareTo(other) > 0; }
   bool operator>=(const Decimal& other) const { return CompareTo(other) >= 0; }
-  Decimal operator-() const { return Decimal(digits_, exponent_, !is_positive_); }
-  Decimal operator+() const { return Decimal(digits_, exponent_, is_positive_); }
+  Decimal operator-() const;
+  Decimal operator+() const { return *this; }
   Decimal operator+(const Decimal& other) const;
 
   // Encodes the decimal by using comparable encoding, as described above.
+  // Specials encode as a single-byte QLValue / hash sentinel (not a DocDB KeyEntryType
+  // prefix — callers that write DocDB keys must emit the matching KeyEntryType instead).
   std::string EncodeToComparable() const;
 
   // Decodes a Decimal from a given Slice. Sets num_decoded_bytes = number of bytes decoded.
@@ -155,7 +218,7 @@ class Decimal {
 
   Status DecodeFromSerializedBigDecimal(Slice slice);
 
-  const Decimal& Negate() { is_positive_ = !is_positive_; return *this; }
+  const Decimal& Negate();
 
  private:
   friend class DecimalTest;
@@ -171,10 +234,15 @@ class Decimal {
   std::vector<uint8_t> digits_;
   VarInt exponent_;
   bool is_positive_ = false;
+  DecimalSpecial special_ = DecimalSpecial::kFinite;
 };
 
 Decimal DecimalFromComparable(const Slice& slice);
 Decimal DecimalFromComparable(const std::string& string);
+
+inline bool IsComparableSpecialEncoding(const Slice& slice) {
+  return Decimal::IsComparableSpecialEncoding(slice);
+}
 
 std::ostream& operator<<(std::ostream& os, const Decimal& d);
 
