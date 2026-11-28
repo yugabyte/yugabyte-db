@@ -26,6 +26,8 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include "yb/master/master_client.pb.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
@@ -115,6 +117,25 @@ class EncryptionUpgradeTest : public UpgradeTestBase {
     return ValidateRows();
   }
 
+  // The old release's FlushTables registers an empty, never-found flush request when the master
+  // leader has no tablet replica locations yet, and flushes only replicas it knows of. So wait for
+  // every tserver to report its replicas.
+  Status WaitForTabletLocations() {
+    return WaitFor(
+        [this]() -> Result<bool> {
+          google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+          RETURN_NOT_OK(client_->GetTabletsFromTableId(table_->id(), 0, &tablets));
+          for (const auto& tablet : tablets) {
+            if (tablet.stale() || static_cast<size_t>(tablet.replicas_size()) !=
+                                      cluster_->num_tablet_servers()) {
+              return false;
+            }
+          }
+          return !tablets.empty();
+        },
+        30s * kTimeMultiplier, "Master leader has tablet replica locations");
+  }
+
   Status ValidateRows() {
     SCHECK_EQ(client::CountTableRows(table_), row_count_, IllegalState, "Row count mismatch");
     return Status::OK();
@@ -174,6 +195,7 @@ TEST_F(EncryptionUpgradeTest, UpgradeToAes256AndRollback) {
   // the row count reads every SST file, and compaction rewrites them all.
   ASSERT_OK(RollbackClusterToOldVersion());
   ASSERT_OK(ValidateRows());
+  ASSERT_OK(WaitForTabletLocations());
   ASSERT_OK(client_->CompactTables({table_->id()}));
   ASSERT_OK(ValidateRows());
   ASSERT_OK(InsertRowsAndFlush());
