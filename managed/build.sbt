@@ -191,7 +191,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
-  "net.minidev" % "json-smart" % "2.5.2",
+  "net.minidev" % "json-smart" % "2.6.1",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -1020,7 +1020,7 @@ libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.1-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
-  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.86.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.139.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
@@ -1038,6 +1038,12 @@ dependencyOverrides += "io.netty" % "netty-common" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
+
+// ASM comes in transitively at mixed versions (5.0.3 and 9.7.1); 9.11 fixes CVE-2026-110257 and
+// the related class-file parsing CVEs.
+val asmVersion = "9.11.1"
+dependencyOverrides ++= Seq("asm", "asm-analysis", "asm-commons", "asm-tree", "asm-util").map(
+  "org.ow2.asm" % _ % asmVersion)
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client, which is not
