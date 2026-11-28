@@ -136,6 +136,12 @@ public class MiniYBCluster implements AutoCloseable {
   private static final ConcurrentSkipListSet<String> usedBindIPs =
       new ConcurrentSkipListSet<>();
 
+  /**
+   * File locks on bind IPs, held until shutdown() so that test JVMs running in parallel on this
+   * host do not start daemons on the same IP between the free port check and the bind.
+   */
+  private static final Map<String, RandomAccessFile> bindIpLocks = new ConcurrentHashMap<>();
+
   // These are used to assign master/tserver indexes used in the logs (the "m1", "ts2", etc.
   // prefixes).
   private AtomicInteger nextMasterIndex = new AtomicInteger(0);
@@ -307,10 +313,18 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   private boolean canUseBindIP(String bindIP, boolean logException) throws IOException {
-    if (usedBindIPs.contains(bindIP)) {
+    if (usedBindIPs.contains(bindIP) || bindIpLocks.containsKey(bindIP)) {
       // We are using this bind IP for a daemon already.
       return false;
     }
+
+    RandomAccessFile ipLock = new RandomAccessFile("/tmp/yb_java_test_bind_ip_" + bindIP, "rw");
+    if (ipLock.getChannel().tryLock() == null) {
+      // Another test process holds this IP.
+      ipLock.close();
+      return false;
+    }
+    bindIpLocks.put(bindIP, ipLock);
 
     final InetAddress bindIp = InetAddress.getByName(bindIP);
     for (int clientApiPort : TSERVER_CLIENT_FIXED_API_PORTS) {
@@ -1204,6 +1218,9 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     shutdownAllDaemons();
+    for (String ip : bindIpLocks.keySet()) {
+      bindIpLocks.remove(ip).close();
+    }
 
     String processInfoDir = getProcessInfoDir();
     processCoreFiles(processInfoDir, coreFileDirs);
