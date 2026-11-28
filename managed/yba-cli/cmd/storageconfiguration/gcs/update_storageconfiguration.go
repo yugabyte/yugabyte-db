@@ -112,28 +112,28 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 
 		data := storageConfig.GetData()
 
+		wasIAM := util.IsTrueValue(data[util.UseGCPIAM])
+		isIAM := wasIAM
 		if cmd.Flags().Changed("use-gcp-iam") {
-			isIAM, err := cmd.Flags().GetBool("use-gcp-iam")
+			isIAM, err = cmd.Flags().GetBool("use-gcp-iam")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			data[util.UseGCPIAM] = strconv.FormatBool(isIAM)
 		}
 
-		if strings.Compare(data[util.UseGCPIAM].(string), "true") != 0 {
-			gcsFilePath, err := cmd.Flags().GetString("credentials-file-path")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-
-			if !util.IsEmptyString(gcsFilePath) {
-				gcsCreds, err := util.GcpGetCredentialsAsStringFromFilePath(gcsFilePath)
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				data[util.GCSCredentialsJSON] = gcsCreds
-			}
-
+		gcsFilePath, err := cmd.Flags().GetString("credentials-file-path")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		updateCreds, err := cmd.Flags().GetBool("update-credentials")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		err = applyGCSCreds(data, gcsFilePath,
+			cmd.Flags().Changed("credentials-file-path"), updateCreds, wasIAM, isIAM)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		requestBody := ybaclient.CustomerConfig{
@@ -158,6 +158,49 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 	},
 }
 
+// applyGCSCreds writes the GCS credentials JSON into data. Without a file the stored credentials
+// are kept, or read from the environment with --update-credentials or when switching off IAM
+// with no stored credentials.
+// Switching to IAM drops the credentials; --update-credentials is ignored with IAM.
+func applyGCSCreds(
+	data map[string]interface{},
+	filePath string,
+	fileFlagSet, updateCreds, wasIAM, isIAM bool,
+) error {
+	if isIAM {
+		if fileFlagSet {
+			return fmt.Errorf(
+				"--credentials-file-path cannot be used with GCP IAM based storage configurations")
+		}
+		if updateCreds {
+			logrus.Warnln(
+				"--update-credentials is ignored for GCP IAM based storage configurations")
+		}
+		if !wasIAM {
+			delete(data, util.GCSCredentialsJSON)
+		}
+		return nil
+	}
+	if fileFlagSet && util.IsEmptyString(filePath) {
+		return fmt.Errorf("--credentials-file-path must be non-empty")
+	}
+	var gcsCreds string
+	var err error
+	if !util.IsEmptyString(filePath) {
+		gcsCreds, err = util.GcpGetCredentialsAsStringFromFilePath(filePath)
+	} else if _, hasStored := data[util.GCSCredentialsJSON]; updateCreds || (wasIAM && !hasStored) {
+		logrus.Infof("Reading GCS credentials from %s\n", util.GCPCredentialsEnv)
+		gcsCreds, err = util.GcpGetCredentialsAsString()
+	} else {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	data[util.GCSCredentialsJSON] = gcsCreds
+	return nil
+}
+
 func init() {
 	updateGCSStorageConfigurationCmd.Flags().SortFlags = false
 
@@ -165,13 +208,13 @@ func init() {
 	updateGCSStorageConfigurationCmd.PersistentFlags().String("new-name", "",
 		"[Optional] Update name of the storage configuration.")
 	updateGCSStorageConfigurationCmd.Flags().Bool("update-credentials", false,
-		"[Optional] Update credentials of the storage configuration. (default false)"+
-			" If set to true, provide either credentials-file-path"+
-			" or set use-gcp-iam.")
+		"[Optional] Read new credentials from the file in GOOGLE_APPLICATION_CREDENTIALS"+
+			" when --credentials-file-path is not given. (default false)")
 	updateGCSStorageConfigurationCmd.Flags().String("credentials-file-path", "",
 		fmt.Sprintf("GCS Credentials File Path. %s",
 			formatter.Colorize(
-				"Required for non IAM role based storage configurations.",
+				"Omit to keep the stored credentials. Switching off IAM with no stored "+
+					"credentials reads the file in GOOGLE_APPLICATION_CREDENTIALS.",
 				formatter.GreenColor)))
 	updateGCSStorageConfigurationCmd.Flags().Bool("use-gcp-iam", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. "+

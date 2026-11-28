@@ -6,7 +6,6 @@ package oci
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -130,7 +129,7 @@ yba storage-config oci update --name <storage-configuration-name> \
 			}
 		}
 
-		wasIAM := isOCIIAMEnabled(data[util.UseOCIIAM])
+		wasIAM := util.IsTrueValue(data[util.UseOCIIAM])
 		isIAM := wasIAM
 		if cmd.Flags().Changed("use-oci-iam") {
 			isIAM, err = cmd.Flags().GetBool("use-oci-iam")
@@ -230,18 +229,6 @@ func applyOCIS3Keys(
 	data[util.OCIS3AccessKeyIDField] = accessKeyID
 	data[util.OCIS3SecretAccessKeyField] = secretAccessKey
 	return nil
-}
-
-// isOCIIAMEnabled handles USE_OCI_IAM stored either as a JSON boolean or a string.
-func isOCIIAMEnabled(value interface{}) bool {
-	switch v := value.(type) {
-	case bool:
-		return v
-	case string:
-		enabled, err := strconv.ParseBool(v)
-		return err == nil && enabled
-	}
-	return false
 }
 
 func init() {

@@ -115,14 +115,13 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(sasToken) == 0 {
-			sasToken, err = util.AzureStorageCredentialsFromEnv()
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			data[util.AzureStorageSasTokenEnv] = sasToken
-		} else {
-			data[util.AzureStorageSasTokenEnv] = sasToken
+		updateCreds, err := cmd.Flags().GetBool("update-credentials")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		err = applyAzureSASToken(data, sasToken, cmd.Flags().Changed("sas-token"), updateCreds)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		requestBody := ybaclient.CustomerConfig{
@@ -147,15 +146,48 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 	},
 }
 
+// applyAzureSASToken writes the SAS token into data. Without --sas-token the stored token is
+// kept, or read from the environment with --update-credentials; IAM configs ignore that flag.
+func applyAzureSASToken(
+	data map[string]interface{}, sasToken string, tokenFlagSet, updateCreds bool,
+) error {
+	if tokenFlagSet {
+		if util.IsEmptyString(sasToken) {
+			return fmt.Errorf("--sas-token must be non-empty")
+		}
+		data[util.AzureStorageSasTokenEnv] = sasToken
+		return nil
+	}
+	if !updateCreds {
+		return nil
+	}
+	if util.IsTrueValue(data[util.UseAzureIAM]) {
+		logrus.Warnln("--update-credentials is ignored for Azure IAM based storage configurations")
+		return nil
+	}
+	envToken, err := util.AzureStorageCredentialsFromEnv()
+	if err != nil {
+		return err
+	}
+	if util.IsEmptyString(envToken) {
+		return fmt.Errorf("%s env variable is empty", util.AzureStorageSasTokenEnv)
+	}
+	logrus.Infof("Reading the SAS token from %s\n", util.AzureStorageSasTokenEnv)
+	data[util.AzureStorageSasTokenEnv] = envToken
+	return nil
+}
+
 func init() {
 	updateAZStorageConfigurationCmd.Flags().SortFlags = false
 
 	// Flags needed for Azure
 	updateAZStorageConfigurationCmd.PersistentFlags().String("new-name", "",
 		"[Optional] Update name of the storage configuration.")
+	updateAZStorageConfigurationCmd.Flags().Bool("update-credentials", false,
+		fmt.Sprintf("[Optional] Read a new SAS token from %s when --sas-token is not given."+
+			" (default false)", util.AzureStorageSasTokenEnv))
 	updateAZStorageConfigurationCmd.Flags().String("sas-token", "",
-		fmt.Sprintf("AZ SAS Token to be updated. Provide the token within double quotes. "+
-			"Can also be set using environment variable %s.",
-			util.AzureStorageSasTokenEnv))
+		"AZ SAS Token to be updated. Provide the token within double quotes. "+
+			"Omit to keep the stored token.")
 
 }
