@@ -29,6 +29,19 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.12.1 - November 27, 2026
+
+### Enhancements
+
+- Added a `yb-voyager` agent skill that guides an AI coding agent through a PostgreSQL to YugabyteDB migration. For installation instructions, see [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills).
+- [export data](../reference/data-migration/export-data/#export-data) and [export data from target](../reference/data-migration/export-data/#export-data-from-target) now fail for PostgreSQL live migration when tables have columns with unsupported datatypes, instead of asking for confirmation and skipping them. Exclude those columns using the new `--exclude-column-list` flag; the error message gives the value to use.
+- [import data](../reference/data-migration/import-data/) now rejects `pk` or a custom CDC partition key on a table whose key or unique index uses a column excluded with `--exclude-column-list`. With `auto`, such tables are streamed using `table` partitioning.
+- Removed the `--on-primary-key-conflict` flag and the `on-primary-key-conflict` config key from [import data](../reference/data-migration/import-data/) and [import data file](../reference/bulk-data-load/import-data-file/). Imports always use the default `ERROR` behavior. A config file that still sets the key now fails validation for every command, and a migration started with `IGNORE` must be restarted with `--start-clean`.
+
+### Bug fix
+
+- Fixed an issue where import data could hang indefinitely, with no error, after the target database was briefly unreachable.
+
 ## v2026.11.1 - November 17, 2026
 
 ### Enhancements
