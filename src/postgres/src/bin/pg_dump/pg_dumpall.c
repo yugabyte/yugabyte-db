@@ -977,6 +977,7 @@ dumpRoles(PGconn *conn)
 		const char *yb_indent = "";
 		bool		yb_skip_create_role = false;
 		bool		yb_need_endif = false;
+		bool		yb_builtin_role = false;
 
 		auth_oid = atooid(PQgetvalue(res, i, i_oid));
 		rolename = PQgetvalue(res, i, i_rolname);
@@ -989,25 +990,33 @@ dumpRoles(PGconn *conn)
 		}
 
 		/*
-		 * In Yugabyte major upgrade, there are additional roles already created
-		 * by initdb.
-		 * yb_superuser is created outside of initdb, so it needs to be included.
-		 * Note: If additional special roles with "yb_" prefix are added in the
-		 * future, they must also be excluded in the preflight check function
-		 * yb_check_yb_role_prefix() in check.c
+		 * postgres, yugabyte, and built-in yb_* roles already exist on the new
+		 * cluster. initdb creates postgres and yugabyte, and loads the yb_*
+		 * roles from pg_authid.dat. Migrations only add those roles to clusters
+		 * created before they existed. Emit ALTER ROLE, COMMENT, and security
+		 * labels so changes made on the old cluster are kept. Do not emit
+		 * CREATE ROLE (the role exists, and binary upgrade stops on the first
+		 * error) or binary_upgrade_set_next_pg_authid_oid
+		 * (the next CREATE ROLE would consume that OID).
+		 *
+		 * yb_superuser is created outside initdb and is excluded from
+		 * yb_check_yb_role_prefix(), so it is dumped in full. Any other role
+		 * excluded from that precheck must be dumped in full the same way.
+		 * Every other yb_* name is treated as already existing, so the dump
+		 * emits ALTER ROLE without CREATE ROLE and the ON_ERROR_STOP restore
+		 * fails if the role is absent. Built-in yb_* roles have fixed OIDs
+		 * less than 16384 and need no precheck exclusion.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
-			strncmp(rolename, "yb_", 3) == 0 &&
-			strncmp(rolename, YB_SUPERUSER, strlen(YB_SUPERUSER)) != 0)
-		{
-			pg_log_warning("role name starting with \"yb_\" skipped (%s)",
-						   rolename);
-			continue;
-		}
+			(strcmp(rolename, "postgres") == 0 ||
+			 strcmp(rolename, "yugabyte") == 0 ||
+			 (strncmp(rolename, "yb_", 3) == 0 && strcmp(rolename, YB_SUPERUSER) != 0)))
+			yb_builtin_role = true;
 
 		resetPQExpBuffer(buf);
 
-		if (binary_upgrade)
+		/* YB: role already exists; do not leave its OID for the next CREATE. */
+		if (binary_upgrade && !yb_builtin_role)
 		{
 			appendPQExpBufferStr(buf, "\n-- For binary upgrade, must preserve pg_authid.oid\n");
 			appendPQExpBuffer(buf,
@@ -1026,7 +1035,8 @@ dumpRoles(PGconn *conn)
 		 *
 		 * General algorithm for YB:
 		 * [1] Dump for Binary Upgrade (binary_upgrade == true)
-		 *     yugabyte / postgres roles (created by default): ALTER ROLE...
+		 *     postgres, yugabyte, built-in yb_* except yb_superuser:
+		 *                                                   ALTER ROLE...
 		 *     Any other roles                               : CREATE ROLE... ALTER ROLE...
 		 * [2] Dump for Backup (include_yb_metadata == true, binary_upgrade == false)
 		 *     Current user (i_is_current_user == "t")       : ALTER ROLE...
@@ -1039,8 +1049,7 @@ dumpRoles(PGconn *conn)
 		 * and postgres users.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade)
-			yb_skip_create_role =
-				(strcmp(rolename, "yugabyte") == 0 || strcmp(rolename, "postgres") == 0);
+			yb_skip_create_role = yb_builtin_role;
 		else
 			yb_skip_create_role = ((binary_upgrade || include_yb_metadata) &&
 								   (strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
