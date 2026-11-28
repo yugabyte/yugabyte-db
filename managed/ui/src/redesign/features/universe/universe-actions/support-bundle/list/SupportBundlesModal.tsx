@@ -72,7 +72,9 @@ export const SupportBundlesModal = ({
       );
     }
     if (totalCount === 0) {
-      return <SupportBundlesEmptyState onCreateBundle={onCreateBundle} />;
+      return (
+        <SupportBundlesEmptyState universeUuid={universeUuid} onCreateBundle={onCreateBundle} />
+      );
     }
     return (
       <>

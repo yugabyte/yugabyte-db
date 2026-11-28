@@ -1,10 +1,14 @@
 import { delay, http, HttpResponse } from 'msw';
 
+import type { Universe } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   SupportBundle,
   SupportBundleComponentType,
+  SupportBundleCreateSpec,
   SupportBundlePagedResp,
-  SupportBundleStatus
+  SupportBundleSizeEstimateResponse,
+  SupportBundleStatus,
+  YBATask
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 /** Matches the v2 API whether stories call it through localhost:9000 or the same origin. */
@@ -115,4 +119,122 @@ export const supportBundleListMswHandlers = ({
     return HttpResponse.json(resp);
   }),
   http.delete(`${SUPPORT_BUNDLES_URL}/:bundleUuid`, () => new HttpResponse(null, { status: 204 }))
+];
+
+/**
+ * A universe as the legacy universe API returns it, trimmed to what the support bundle UI reads:
+ * nodes with their regions, and the provider type of the primary cluster.
+ */
+export const createSupportBundleUniverseMock = ({
+  name = 'puppy-food',
+  regions = ['us-east-1', 'us-west-2', 'eu-west-1'],
+  nodesPerRegion = 3,
+  isKubernetes = false
+}: {
+  name?: string;
+  regions?: string[];
+  nodesPerRegion?: number;
+  isKubernetes?: boolean;
+} = {}): Universe => {
+  let nodeIndex = 0;
+  const nodeDetailsSet = regions.flatMap((region) =>
+    Array.from({ length: nodesPerRegion }, () => {
+      nodeIndex += 1;
+      return { nodeName: `yb-dev-${name}-n${nodeIndex}`, cloudInfo: { region } };
+    })
+  );
+  return {
+    universeUUID: 'universe-uuid',
+    name,
+    universeDetails: {
+      universeUUID: 'universe-uuid',
+      updateInProgress: false,
+      nodeDetailsSet,
+      clusters: [
+        {
+          clusterType: 'PRIMARY',
+          userIntent: { providerType: isKubernetes ? 'kubernetes' : 'aws' }
+        }
+      ]
+    }
+  } as unknown as Universe;
+};
+
+/** Collected once from the YBA host rather than from each node. */
+const YBA_COMPONENTS: string[] = [
+  SupportBundleComponentType.ApplicationLogs,
+  SupportBundleComponentType.YbaMetadata
+];
+const COMPONENT_BYTES: Partial<Record<SupportBundleComponentType, number>> = {
+  [SupportBundleComponentType.ApplicationLogs]: 1_300_000_000,
+  [SupportBundleComponentType.SystemLogs]: 80_000_000,
+  [SupportBundleComponentType.YbaMetadata]: 12_000_000,
+  [SupportBundleComponentType.UniverseLogs]: 420_000_000,
+  [SupportBundleComponentType.CoreFiles]: 150_000_000,
+  [SupportBundleComponentType.PrometheusMetrics]: 210_000_000,
+  [SupportBundleComponentType.PerfAdvisor]: 35_000_000
+};
+const DEFAULT_COMPONENT_BYTES = 4_000_000;
+
+/** Sizes each requested component on each requested node, like the estimate-size API. */
+export const estimateSupportBundleMock = (
+  spec: SupportBundleCreateSpec,
+  universe: Universe,
+  scale = 1
+): SupportBundleSizeEstimateResponse => {
+  const nodeNames =
+    spec.node_names ??
+    universe.universeDetails.nodeDetailsSet.map((node) => node.nodeName as string);
+  const bytes = (component: string) =>
+    Math.round(
+      (COMPONENT_BYTES[component as SupportBundleComponentType] ?? DEFAULT_COMPONENT_BYTES) * scale
+    );
+  const ybaComponents = spec.components.filter((component) => YBA_COMPONENTS.includes(component));
+  const nodeComponents = spec.components.filter((component) => !YBA_COMPONENTS.includes(component));
+  const data: Record<string, Record<string, number>> = {};
+  if (ybaComponents.length > 0) {
+    data.YBA = Object.fromEntries(ybaComponents.map((component) => [component, bytes(component)]));
+  }
+  nodeNames.forEach((nodeName) => {
+    data[nodeName] = Object.fromEntries(
+      nodeComponents.map((component) => [component, bytes(component)])
+    );
+  });
+  return { data };
+};
+
+export type SupportBundleCreateMswOptions = {
+  universe: Universe;
+  /** Multiplies every component size, e.g. to push the estimate over the 20 GB warning. */
+  estimateScale?: number;
+  /** `loading` never answers the estimate. */
+  estimateState?: 'ok' | 'loading';
+  isPerfAdvisorRegistered?: boolean;
+};
+
+/** Handlers for the create page: size estimate, create, and the Perf Advisor registration. */
+export const supportBundleCreateMswHandlers = ({
+  universe,
+  estimateScale = 1,
+  estimateState = 'ok',
+  isPerfAdvisorRegistered = false
+}: SupportBundleCreateMswOptions) => [
+  http.post(`${SUPPORT_BUNDLES_URL}/estimate-size`, async ({ request }) => {
+    if (estimateState === 'loading') {
+      await delay('infinite');
+    }
+    const spec = (await request.json()) as SupportBundleCreateSpec;
+    await delay(400);
+    return HttpResponse.json(estimateSupportBundleMock(spec, universe, estimateScale));
+  }),
+  http.post(SUPPORT_BUNDLES_URL, async () => {
+    await delay(600);
+    const task: YBATask = { task_uuid: 'create-task-uuid', resource_uuid: 'sb-new' };
+    return HttpResponse.json(task);
+  }),
+  http.get('*/api/v1/customers/:customerUuid/universes/:universeUuid/pa_collector', () =>
+    isPerfAdvisorRegistered
+      ? HttpResponse.json({ success: true })
+      : HttpResponse.json({ error: 'Not registered' }, { status: 404 })
+  )
 ];

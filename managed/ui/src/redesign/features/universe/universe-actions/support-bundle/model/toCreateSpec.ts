@@ -53,7 +53,8 @@ export const toCreateSpec = (
   now: Date
 ): SupportBundleCreateSpec | null => {
   const range = resolveTimeRange(values.timeRange, now);
-  if (!range) {
+  // An empty node_names means every node to the server, not none.
+  if (!range || (!values.nodeScope.allNodes && values.nodeScope.nodeNames.length === 0)) {
     return null;
   }
 
