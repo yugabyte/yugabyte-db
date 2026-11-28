@@ -674,14 +674,14 @@ public class XClusterConfigController extends AuthenticatedController {
       // Make sure only supported relations types are passed in by the user.
       Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
           XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
-              requestedTableInfoList, matviewSupported);
+              requestedTableInfoList, sourceTableInfoList, matviewSupported);
       if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
                 "Only the following relation types are supported for xCluster replication: %s; The"
-                    + " following tables have different relation types or is a colocated child"
-                    + " table: %s",
+                    + " following tables have different relation types, are indexes on a"
+                    + " materialized view, or are colocated child tables: %s",
                 XClusterConfigTaskBase.getSupportedTableRelationTypes(matviewSupported),
                 tableIdsPartitionedByIsXClusterSupported.get(false)));
       }
@@ -1942,6 +1942,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 sourceTableIdsWithNoTableOnTargetUniverse, bootstrapParams.tables));
       }
 
+      Set<String> matviewTableIds = XClusterConfigTaskBase.getMatviewTableIds(sourceTableInfoList);
       // If table type is YSQL and bootstrap is requested, all tables in that keyspace are selected.
       if (requestedTableInfoList.get(0).getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
         XClusterConfigTaskBase.groupByNamespaceId(requestedTableInfoList)
@@ -1957,7 +1958,7 @@ public class XClusterConfigController extends AuthenticatedController {
                             .filter(
                                 tableInfo ->
                                     XClusterConfigTaskBase.isXClusterSupported(
-                                            tableInfo, matviewSupported)
+                                            tableInfo, matviewSupported, matviewTableIds)
                                         && tableInfo
                                             .getNamespace()
                                             .getId()
