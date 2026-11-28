@@ -80,7 +80,9 @@ class CountingVectorIndex : public DocVectorIndex {
     LOG(FATAL) << "Unexpected call";
   }
   Result<EncodedDistance> Distance(Slice, Slice) override { LOG(FATAL) << "Unexpected call"; }
-  Result<bool> VectorMatches(Slice, Slice) const override { LOG(FATAL) << "Unexpected call"; }
+  Result<bool> VectorMatches(Slice, const DocVectorIndexEntry&) const override {
+    LOG(FATAL) << "Unexpected call";
+  }
   void EnableAutoCompactions() override { LOG(FATAL) << "Unexpected call"; }
   Status Compact() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }

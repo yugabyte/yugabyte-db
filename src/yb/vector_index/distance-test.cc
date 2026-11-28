@@ -24,8 +24,9 @@ namespace yb::vector_index {
 class DistanceTest : public YBTest {
 };
 
-// Vectors normalized by an older binary are normalized again by compaction after an upgrade, and
-// the vector index check compares the stored vector with the row vector normalized once.
+// Vectors normalized by this binary and then compacted by an older one into a chunk without
+// vectors_normalized are normalized again after the next upgrade, while the vector index check
+// compares the stored vector with the row vector normalized once.
 TEST_F(DistanceTest, NormalizeVectorTwice) {
   constexpr size_t kNumVectors = 2000;
   size_t num_changed = 0;

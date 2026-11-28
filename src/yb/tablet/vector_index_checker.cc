@@ -239,7 +239,7 @@ class VectorIndexChecker {
       return Status::OK();
     }
     buckets_[BucketIndex(entry.vector_id)].live_vectors_sum += ToInt(entry.vector_id);
-    if (!VERIFY_RESULT(vector_index_.VectorMatches(row_value.data, entry.vector))) {
+    if (!VERIFY_RESULT(vector_index_.VectorMatches(row_value.data, entry))) {
       Add(VectorIndexInconsistencyKind::VECTOR_MISMATCH, entry.vector_id, ybctid, ybctid, "");
     }
     return Status::OK();

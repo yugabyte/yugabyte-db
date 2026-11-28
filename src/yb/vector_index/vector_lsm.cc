@@ -931,7 +931,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
 
   // Must be triggered under VectorLSM::mutex_.
   ImmutableChunkPtr Immutate(
-      size_t order_no, bool vectors_normalized, std::promise<Status>* flush_promise) {
+      size_t order_no, VectorsNormalized vectors_normalized, std::promise<Status>* flush_promise) {
     // Move should not be used for index as the mutable chunk could still be used by other
     // entities, for example by VectorLSMInsertTask.
     // Clone so later successful Insert()s can still ApplyFrontiers on this MutableChunk;
@@ -959,8 +959,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   // Flush assigns latest order_no + 1; compaction assigns per-output latest input order_no.
   const size_t order_no = 0;
 
-  // See VectorLSMChunkPB::vectors_normalized.
-  const bool vectors_normalized = false;
+  const VectorsNormalized vectors_normalized = VectorsNormalized::kFalse;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   ImmutableChunkState state = ImmutableChunkState::kInMemory;
@@ -982,7 +981,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
  public:
   ImmutableChunk(
       size_t order_no_,
-      bool vectors_normalized_,
+      VectorsNormalized vectors_normalized_,
       VectorLSMFileMetaDataPtr&& file_,
       VectorIndexPtr&& index_,
       storage::UserFrontiersPtr&& applied_frontiers_,
@@ -997,7 +996,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
 
   ImmutableChunk(
       size_t order_no_,
-      bool vectors_normalized_,
+      VectorsNormalized vectors_normalized_,
       VectorIndexPtr&& index_,
       storage::UserFrontiersPtr&& applied_frontiers_,
       storage::UserFrontiersPtr&& registered_frontiers_,
@@ -1536,7 +1535,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   // A VectorLSM object is opened only once, see CreateDocVectorIndex().
   RSTATUS_DCHECK(!insert_registry_, IllegalState, "Vector LSM is already opened");
   SCHECK(
-      (!options.unnormalized_vector_index_traits ||
+      (!options.normalized_vector_index_traits ||
        std::is_same_v<typename Vector::value_type, float>),
       InvalidArgument, "Only float vectors could be normalized");
 
@@ -1560,13 +1559,22 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   }
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   next_manifest_file_no_ = load_result.next_free_file_no;
+  // Every chunk of an LSM that normalizes vectors is marked, frontier only chunks included, so a
+  // marked chunk stays in the manifest once the LSM has stored normalized vectors.
+  if (options_.normalized_vector_index_traits) {
+    normalizes_vectors_ = VectorsNormalized(
+        options_.normalize_vectors ||
+        std::ranges::any_of(load_result.chunks, [](const auto& chunk_pb) {
+          return chunk_pb.vectors_normalized();
+        }));
+  }
   for (const auto& chunk_pb : load_result.chunks) {
     VectorLSMFileMetaDataPtr file;
     VectorIndexPtr index;
     if (chunk_pb.serial_no()) {
       const auto& traits =
-          chunk_pb.vectors_normalized() || !NormalizesVectors()
-              ? options_.vector_index_traits : options_.unnormalized_vector_index_traits;
+          chunk_pb.vectors_normalized() && options_.normalized_vector_index_traits
+              ? options_.normalized_vector_index_traits : options_.vector_index_traits;
       index = traits->Create(FactoryMode::kLoad, options_.store_vector_payload);
 
       const auto file_sizes = VERIFY_RESULT(GetChunkFileSize(chunk_pb.serial_no()));
@@ -1582,7 +1590,8 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       immutable_chunks_.pop_back();
     }
     immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(
-        chunk_pb.order_no(), chunk_pb.vectors_normalized(), std::move(file), std::move(index),
+        chunk_pb.order_no(), VectorsNormalized(chunk_pb.vectors_normalized()), std::move(file),
+        std::move(index),
         std::move(user_frontiers), ImmutableChunkState::kInManifest
     ));
 
@@ -1907,15 +1916,15 @@ auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::ManifestIndexes() const
-    -> Result<std::vector<VectorIndexPtr>> {
-  std::vector<VectorIndexPtr> result;
+    -> Result<std::vector<ManifestIndex>> {
+  std::vector<ManifestIndex> result;
   SharedLock lock(mutex_);
   RETURN_NOT_OK(failed_status_);
   result.reserve(immutable_chunks_.size());
   for (const auto& chunk : immutable_chunks_) {
     // A chunk rolled but not yet in the manifest could still have inserts running.
     if (chunk->index && chunk->IsInManifest()) {
-      result.push_back(chunk->index);
+      result.push_back({chunk->index, chunk->vectors_normalized});
     }
   }
   return result;
@@ -2409,7 +2418,7 @@ size_t VectorLSM<Vector, DistanceResult>::EstimateNumVectorsForBytes(size_t byte
   if (bytes_limit == 0) {
     return 0;
   }
-  return options_.vector_index_traits->EstimateNumVectorsForBytes(bytes_limit);
+  return NewChunkTraits()->EstimateNumVectorsForBytes(bytes_limit);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2428,8 +2437,7 @@ VectorLSM<Vector, DistanceResult>::CreateVectorIndex(
     size_t capacity, rocksdb::Cache::ReservationMode reservation_mode) const {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
-  auto index = options_.vector_index_traits->Create(
-      FactoryMode::kCreate, options_.store_vector_payload);
+  auto index = NewChunkTraits()->Create(FactoryMode::kCreate, options_.store_vector_payload);
   RETURN_NOT_OK(index->Reserve(
       capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads(),
       reservation_mode));
@@ -2794,12 +2802,18 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     return options_.vector_index_traits->Distance(lhs, rhs);
   }
   // The vectors are not normalized, e.g. the query and an uncommitted row. Cosine kernels would
-  // return NaN for extreme ones, so normalize them for the inner product of vector_index_traits.
+  // return NaN for extreme ones, so normalize them for the inner product traits.
   auto normalized_lhs = lhs;
   Normalize(normalized_lhs);
   auto normalized_rhs = rhs;
   Normalize(normalized_rhs);
-  return options_.vector_index_traits->Distance(normalized_lhs, normalized_rhs);
+  return options_.normalized_vector_index_traits->Distance(normalized_lhs, normalized_rhs);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::NewChunkTraits() const -> const VectorIndexTraits& {
+  return NormalizesVectors() ? options_.normalized_vector_index_traits
+                             : options_.vector_index_traits;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

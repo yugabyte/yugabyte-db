@@ -132,11 +132,13 @@ struct VectorLSMOptions {
   vector_index::StoreVectorPayload store_vector_payload = vector_index::StoreVectorPayload::kFalse;
 
   // Set for cosine distance, whose float kernels return NaN when the squared length leaves the
-  // float range. Float vectors are then scaled to unit length before inserting or searching them,
-  // so vector_index_traits could use inner product, equal to cosine distance for unit vectors.
-  // Opens chunks built from vectors that were not normalized, see
-  // VectorLSMChunkPB::vectors_normalized.
-  VectorIndexTraits unnormalized_vector_index_traits;
+  // float range: inner product traits, equal to cosine distance for unit vectors. Chunks built
+  // from float vectors scaled to unit length use them, see VectorLSMChunkPB::vectors_normalized.
+  VectorIndexTraits normalized_vector_index_traits;
+
+  // Start normalizing vectors when normalized_vector_index_traits is set. There is no way back: an
+  // LSM that has a chunk of normalized vectors keeps normalizing without it.
+  bool normalize_vectors = false;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -149,6 +151,7 @@ class VectorLSM {
   using Vector = VectorType;
   using VectorWithDistance = vector_index::VectorWithDistance<DistanceResult>;
   using Options = VectorLSMOptions<Vector, DistanceResult>;
+  using VectorIndexTraits = typename Options::VectorIndexTraits;
   using VectorIndex = VectorIndexIf<Vector, DistanceResult>;
   using VectorIndexPtr = VectorIndexIfPtr<Vector, DistanceResult>;
   // Pair of the saved chunk file metadata and the (possibly reopened) index, as
@@ -210,7 +213,11 @@ class VectorLSM {
   // Returns the indexes of the chunks in the manifest, keeping them alive even if compacted away
   // meanwhile. Such chunks accept no inserts, so they can be iterated. Flush and WaitForFlush
   // first to cover every vector inserted before the call.
-  Result<std::vector<VectorIndexPtr>> ManifestIndexes() const EXCLUDES(mutex_);
+  struct ManifestIndex {
+    VectorIndexPtr index;
+    VectorsNormalized vectors_normalized;
+  };
+  Result<std::vector<ManifestIndex>> ManifestIndexes() const EXCLUDES(mutex_);
 
   Status Flush(bool wait);
   // Waits for insert tasks already allocated when the wait started (including those that raced
@@ -260,14 +267,6 @@ class VectorLSM {
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
-  // Whether vectors are normalized, see Options::unnormalized_vector_index_traits.
-  bool NormalizesVectors() const {
-    return options_.unnormalized_vector_index_traits != nullptr;
-  }
-
-  // Normalizes the vector when NormalizesVectors(), as Insert does before storing it.
-  void PrepareVector(Vector& vector) const;
-
   // Utility method to correctly prepare Status instance in case of shutting down.
   Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
@@ -312,6 +311,17 @@ class VectorLSM {
 
   // StartDestroy cancels the registries. A destroyed LSM saves no chunks.
   bool IsDestroyed() const;
+
+  // Whether vectors are normalized before they are inserted, see Options::normalize_vectors.
+  VectorsNormalized NormalizesVectors() const {
+    return normalizes_vectors_;
+  }
+
+  // The traits of the chunks this LSM creates.
+  const VectorIndexTraits& NewChunkTraits() const;
+
+  // Normalizes the vector when NormalizesVectors().
+  void PrepareVector(Vector& vector) const;
 
   // NormalizeVector for float vectors. VectorLSM is also instantiated for uint8 vectors, which Open
   // does not let normalize.
@@ -431,6 +441,8 @@ class VectorLSM {
   Status TEST_SkipManifestUpdateDuringShutdown() REQUIRES(mutex_);
 
   Options options_;
+  // Set by Open, see NormalizesVectors.
+  VectorsNormalized normalizes_vectors_ = VectorsNormalized::kFalse;
   Env* const env_;
 
   mutable rw_spinlock mutex_;

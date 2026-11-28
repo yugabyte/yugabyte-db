@@ -87,6 +87,9 @@ struct DocVectorIndexEntry {
   // The vector in the YSQL encoding, as stored by the index, see DocVectorIndex::VectorMatches.
   Slice vector;
 
+  // Whether the index normalized the vector before storing it.
+  vector_index::VectorsNormalized vectors_normalized;
+
   // Empty when the index stores no payloads, see DocVectorIndex::StoresPayload.
   Slice payload;
 };
@@ -223,10 +226,9 @@ class DocVectorIndex {
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
 
-  // Whether index_vector, from DocVectorIndexEntry::vector, is what the index stores for
-  // row_vector, EncodedDocVectorValue::data of the row. A cosine index stores normalized vectors,
-  // except in chunks written before it normalized them.
-  virtual Result<bool> VectorMatches(Slice row_vector, Slice index_vector) const = 0;
+  // Whether entry is what the index stores for row_vector, EncodedDocVectorValue::data of the row.
+  virtual Result<bool> VectorMatches(
+      Slice row_vector, const DocVectorIndexEntry& entry) const = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
   virtual Status WaitForCompaction() = 0;

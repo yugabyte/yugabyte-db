@@ -45,6 +45,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 
+#include "yb/vector_index/distance.h"
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
 #include "yb/vector_index/vector_lsm_metadata.h"
@@ -106,7 +107,8 @@ DEFINE_test_flag(bool, vector_index_duplicate_inserted_vectors, false,
 
 // An AutoFlag because chunks store normalized vectors in place of the row vectors, which the vector
 // index check of an older binary reports as mismatches. Hidden because turning it off brings back
-// the NaN distances of #37160.
+// the NaN distances of #37160 for the indexes that have not normalized vectors yet, see
+// VectorLSMOptions::normalize_vectors.
 DEFINE_RUNTIME_AUTO_bool(vector_index_normalize_cosine_vectors, kLocalPersisted, false, true,
     "Normalize the vectors of cosine vector indexes and build their new chunks with inner "
     "product. Applies to the indexes opened after it is set.");
@@ -284,14 +286,14 @@ template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 class DocVectorIndexViewImpl : public DocVectorIndexView {
  public:
-  using VectorIndexPtr = vector_index::VectorIndexIfPtr<Vector, DistanceResult>;
+  using ManifestIndex = typename vector_index::VectorLSM<Vector, DistanceResult>::ManifestIndex;
 
-  explicit DocVectorIndexViewImpl(std::vector<VectorIndexPtr> indexes)
+  explicit DocVectorIndexViewImpl(std::vector<ManifestIndex> indexes)
       : indexes_(std::move(indexes)) {}
 
   Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
     ValueBuffer buffer;
-    for (const auto& index : indexes_) {
+    for (const auto& [index, vectors_normalized] : indexes_) {
       auto it = index->CreateIterator();
       for (; it->Valid(); it->Next()) {
         const auto& entry = it->Entry();
@@ -299,6 +301,7 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
         RETURN_NOT_OK(callback(DocVectorIndexEntry {
           .vector_id = entry.vector_id,
           .vector = buffer.AsSlice(),
+          .vectors_normalized = vectors_normalized,
           .payload = entry.payload,
         }));
       }
@@ -309,14 +312,14 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
 
   size_t NumVectors() const override {
     size_t result = 0;
-    for (const auto& index : indexes_) {
-      result += index->Size();
+    for (const auto& manifest_index : indexes_) {
+      result += manifest_index.index->Size();
     }
     return result;
   }
 
  private:
-  const std::vector<VectorIndexPtr> indexes_;
+  const std::vector<ManifestIndex> indexes_;
 };
 
 EncodedDistance EncodeDistance(float distance) {
@@ -491,15 +494,13 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
     name_ = RemoveLogPrefixColon(log_prefix);
     auto thread_pools = thread_pool_provider();
-    auto distance_kind = ConvertDistanceKind(options_.dist_type());
+    const auto distance_kind = ConvertDistanceKind(options_.dist_type());
     // Normalize cosine vectors, since cosine float kernels return NaN when the squared length
     // leaves the float range, see #37160.
-    typename LSM::Options::VectorIndexTraits unnormalized_traits;
-    if (distance_kind == vector_index::DistanceKind::kCosine &&
-        FLAGS_vector_index_normalize_cosine_vectors) {
-      unnormalized_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
-          block_cache_, options_, distance_kind, mem_tracker_)));
-      distance_kind = vector_index::DistanceKind::kInnerProduct;
+    typename LSM::VectorIndexTraits normalized_traits;
+    if (distance_kind == vector_index::DistanceKind::kCosine) {
+      normalized_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
+          block_cache_, options_, vector_index::DistanceKind::kInnerProduct, mem_tracker_)));
     }
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
@@ -520,7 +521,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
       // Fixed by master at index creation: the chunk payload mode and the reverse mapping
       // writes must stay consistent for the whole lifetime of the index.
       .store_vector_payload = vector_index::StoreVectorPayload(StoresPayload()),
-      .unnormalized_vector_index_traits = std::move(unnormalized_traits),
+      .normalized_vector_index_traits = std::move(normalized_traits),
+      .normalize_vectors = FLAGS_vector_index_normalize_cosine_vectors,
     };
     RETURN_NOT_OK(lsm_.Open(std::move(lsm_options)));
 
@@ -676,18 +678,15 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
   }
 
-  Result<bool> VectorMatches(Slice row_vector, Slice index_vector) const override {
-    if (row_vector == index_vector) {
-      return true;
-    }
-    if (!lsm_.NormalizesVectors()) {
-      return false;
+  Result<bool> VectorMatches(Slice row_vector, const DocVectorIndexEntry& entry) const override {
+    if (!entry.vectors_normalized) {
+      return row_vector == entry.vector;
     }
     auto vector = VERIFY_RESULT(VectorFromYSQL<Vector>(row_vector));
-    lsm_.PrepareVector(vector);
+    vector_index::NormalizeVector(vector);
     ValueBuffer buffer;
     VectorToYSQL(vector, &buffer);
-    return buffer.AsSlice() == index_vector;
+    return buffer.AsSlice() == entry.vector;
   }
 
   void EnableAutoCompactions() override {

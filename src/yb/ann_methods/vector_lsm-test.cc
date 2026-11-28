@@ -12,6 +12,7 @@
 //
 
 #include <map>
+#include <optional>
 #include <set>
 
 #include <google/protobuf/any.pb.h>
@@ -99,6 +100,19 @@ Result<std::vector<vector_index::VectorLSMChunkPB>> LoadAliveManifestChunks(
     return lhs.order_no() < rhs.order_no();
   });
   return std::move(chunks);
+}
+
+Result<size_t> NumChunks(const std::string& storage_dir) {
+  return VERIFY_RESULT(LoadAliveManifestChunks(Env::Default(), storage_dir)).size();
+}
+
+// The number of chunks with VectorLSMChunkPB::vectors_normalized.
+Result<size_t> NumNormalizedChunks(const std::string& storage_dir) {
+  size_t result = 0;
+  for (const auto& chunk : VERIFY_RESULT(LoadAliveManifestChunks(Env::Default(), storage_dir))) {
+    result += chunk.vectors_normalized();
+  }
+  return result;
 }
 
 } // namespace
@@ -362,8 +376,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   MergeFilterPtr merge_filter_;
   // Passed to the indexes opened by OpenVectorLSM.
   vector_index::VectorTenantExtractor tenant_extractor_;
-  // Makes OpenVectorLSM normalize cosine vectors the way DocDB does.
-  bool normalize_vectors_ = false;
+  // Passed by OpenVectorLSM as VectorLSMOptions::normalize_vectors, with the inner product traits
+  // as DocDB does for cosine. Without a value, the LSM gets no such traits, like an older binary.
+  std::optional<bool> normalize_vectors_;
 
   MetricEntityPtr vector_index_metric_entity_ =
       METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
@@ -556,12 +571,13 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .dimensions = dimensions,
     .distance_kind = distance_kind,
   };
-  FloatVectorLSM::Options::VectorIndexTraits unnormalized_traits;
+  FloatVectorLSM::VectorIndexTraits normalized_traits;
   if (normalize_vectors_) {
     SCHECK_EQ(distance_kind, vector_index::DistanceKind::kCosine, InvalidArgument, "Not cosine");
-    unnormalized_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
-        block_cache_, hnsw_options, mem_tracker, tenant_extractor_)));
-    hnsw_options.distance_kind = vector_index::DistanceKind::kInnerProduct;
+    auto normalized_options = hnsw_options;
+    normalized_options.distance_kind = vector_index::DistanceKind::kInnerProduct;
+    normalized_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
+        block_cache_, normalized_options, mem_tracker, tenant_extractor_)));
   }
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
@@ -578,7 +594,8 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .metric_entity = vector_index_metric_entity_,
     .block_cache_capacity = block_cache_->capacity(),
     .store_vector_payload = store_vector_payload(),
-    .unnormalized_vector_index_traits = std::move(unnormalized_traits),
+    .normalized_vector_index_traits = std::move(normalized_traits),
+    .normalize_vectors = normalize_vectors_.value_or(false),
   };
   auto status = lsm.Open(std::move(options));
   if (status.ok()) {
@@ -1512,11 +1529,12 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionCosine) {
 }
 
 // Chunks written before cosine vectors were normalized keep cosine distance, while the new ones
-// use inner product. Search and compaction should handle both, see #37160. Older versions, which
+// use inner product. Search and compaction should handle both, see #37160. Older binaries, which
 // open every chunk with cosine, should handle the new chunks too.
 TEST_P(VectorLSMTest, NormalizeCosineVectors) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kBlockSize = kDefaultChunkSize / 4;
+  constexpr size_t kNumParts = 5;
   // Cosine and inner product kernels, and the inner product kernels of hnswlib and yb_hnsw, differ
   // in rounding.
   constexpr float kDistanceTolerance = 1e-6;
@@ -1524,68 +1542,76 @@ TEST_P(VectorLSMTest, NormalizeCosineVectors) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   inserted_entries_ = CubeInsertEntries(kDimensions, store_vector_payload());
-  const auto third = inserted_entries_.size() / 3;
   std::string storage_dir;
-  auto check_normalized_chunks = [&storage_dir](size_t expected) {
-    auto chunks = ASSERT_RESULT(LoadAliveManifestChunks(Env::Default(), storage_dir));
-    size_t normalized = 0;
-    for (const auto& chunk : chunks) {
-      normalized += chunk.vectors_normalized();
-    }
-    ASSERT_EQ(normalized, expected);
-    ASSERT_GT(chunks.size(), 0);
-  };
-  auto open = [this, &storage_dir](FloatVectorLSM& lsm, bool normalize) {
+  size_t num_inserted_parts = 0;
+  // Opens the LSM, inserts the next part of the vectors, flushes them and returns the number of
+  // marked chunks, see VectorLSMChunkPB::vectors_normalized.
+  auto insert_part = [&](FloatVectorLSM& lsm, std::optional<bool> normalize) -> Result<size_t> {
     normalize_vectors_ = normalize;
-    return OpenVectorLSM(
+    RETURN_NOT_OK(OpenVectorLSM(
         lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {},
-        storage_dir);
+        storage_dir));
+    storage_dir = lsm.StorageDir();
+    const auto part_size = inserted_entries_.size() / kNumParts;
+    const auto begin = num_inserted_parts * part_size;
+    const auto end = ++num_inserted_parts == kNumParts ? inserted_entries_.size()
+                                                       : begin + part_size;
+    RETURN_NOT_OK(InsertEntryRange(lsm, begin, end, kBlockSize));
+    RETURN_NOT_OK(lsm.Flush(/* wait = */ true));
+    return NumNormalizedChunks(storage_dir);
   };
 
-  // Chunks of a version that did not normalize vectors.
+  // Older binary.
   {
     FloatVectorLSM lsm;
-    ASSERT_OK(open(lsm, /* normalize= */ false));
-    storage_dir = lsm.StorageDir();
-    ASSERT_OK(InsertEntryRange(lsm, 0, third, kBlockSize));
-    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_EQ(ASSERT_RESULT(insert_part(lsm, std::nullopt)), 0);
   }
-  ASSERT_NO_FATALS(check_normalized_chunks(0));
-
-  // Chunks of this version.
-  size_t normalized_chunks;
+  // No marked chunks, so the LSM does not normalize while the flag is off.
   {
     FloatVectorLSM lsm;
-    ASSERT_OK(open(lsm, /* normalize= */ true));
-    const auto old_chunks = lsm.NumImmutableChunks();
-    ASSERT_OK(InsertEntryRange(lsm, third, 2 * third, kBlockSize));
-    ASSERT_OK(lsm.Flush(/* wait = */ true));
-    normalized_chunks = lsm.NumImmutableChunks() - old_chunks;
-    ASSERT_NO_FATALS(check_normalized_chunks(normalized_chunks));
+    ASSERT_EQ(ASSERT_RESULT(insert_part(lsm, false)), 0);
   }
-
+  // Normalizing marks every new chunk.
+  size_t marked_chunks;
+  {
+    FloatVectorLSM lsm;
+    const auto old_chunks = ASSERT_RESULT(NumChunks(storage_dir));
+    marked_chunks = ASSERT_RESULT(insert_part(lsm, true));
+    ASSERT_EQ(marked_chunks, ASSERT_RESULT(NumChunks(storage_dir)) - old_chunks);
+    ASSERT_GT(marked_chunks, 0);
+  }
+  // No way back: marked chunks keep the LSM normalizing while the flag is off.
+  {
+    FloatVectorLSM lsm;
+    const auto old_chunks = ASSERT_RESULT(NumChunks(storage_dir));
+    ASSERT_EQ(
+        ASSERT_RESULT(insert_part(lsm, false)),
+        marked_chunks + ASSERT_RESULT(NumChunks(storage_dir)) - old_chunks);
+    ASSERT_OK(lsm.Compact(/* wait = */ true));
+    ASSERT_EQ(1, lsm.NumImmutableChunks());
+    ASSERT_EQ(ASSERT_RESULT(NumNormalizedChunks(storage_dir)), 1);
+  }
   // Rollback: chunks of all versions are opened with cosine.
   {
     FloatVectorLSM lsm;
-    ASSERT_OK(open(lsm, /* normalize= */ false));
-    ASSERT_OK(InsertEntryRange(lsm, 2 * third, inserted_entries_.size(), kBlockSize));
-    ASSERT_OK(lsm.Flush(/* wait = */ true));
-    ASSERT_NO_FATALS(check_normalized_chunks(normalized_chunks));
+    ASSERT_EQ(ASSERT_RESULT(insert_part(lsm, std::nullopt)), 1);
+    ASSERT_EQ(num_inserted_parts, kNumParts);
     VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
 
     ASSERT_OK(lsm.Compact(/* wait = */ true));
     ASSERT_EQ(1, lsm.NumImmutableChunks());
-    ASSERT_NO_FATALS(check_normalized_chunks(0));
+    ASSERT_EQ(ASSERT_RESULT(NumNormalizedChunks(storage_dir)), 0);
     VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
   }
-
   // Upgrade again: the chunk written on rollback mixes normalized and other vectors.
+  normalize_vectors_ = true;
   FloatVectorLSM lsm;
-  ASSERT_OK(open(lsm, /* normalize= */ true));
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {}, storage_dir));
   VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(1, lsm.NumImmutableChunks());
-  ASSERT_NO_FATALS(check_normalized_chunks(1));
+  ASSERT_EQ(ASSERT_RESULT(NumNormalizedChunks(storage_dir)), 1);
   VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
 }
 
