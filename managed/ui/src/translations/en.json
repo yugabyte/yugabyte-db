@@ -851,6 +851,33 @@
           "customize": {
             "title": "Customize",
             "description": "Choose categories, add extra collections, set advanced overrides."
+          },
+          "maySensitive": "May contain sensitive data",
+          "coreFiles": {
+            "maxCount": "Max recent core dumps",
+            "maxSizeGb": "Max core dump size (GB)"
+          },
+          "metrics": {
+            "collectionMethod": "Collection method",
+            "remoteRead": "Remote Read",
+            "promql": "PromQL",
+            "format": "Format",
+            "formatOption": {
+              "PROM_CHUNK": "Binary + compressed",
+              "PROMQL_JSON": "JSON"
+            },
+            "advanced": "Advanced collection settings",
+            "metricSources": "Metric Sources",
+            "metricSourcesHelper": "Select the universe components to collect and export metrics from.",
+            "downSample": "Downsample Metrics",
+            "downSampleHelper": "Collect metric data at the step interval instead of including every stored data point.",
+            "stepSecs": "Step Interval (sec)",
+            "batchMins": "Batch Duration (min)",
+            "batchMinsTooltip": "How much of the time range each export request covers.",
+            "serverDefault": "Default",
+            "customQueryCount_one": "{{count}} custom query",
+            "customQueryCount_other": "{{count}} custom queries",
+            "editQueries": "Edit custom queries"
           }
         },
         "summary": {
