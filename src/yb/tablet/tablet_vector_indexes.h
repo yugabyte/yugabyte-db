@@ -217,7 +217,8 @@ class TabletVectorIndexes :
       EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const override;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics,
+      const Slice* iterate_upper_bound) const override;
 
   HybridTime MinRunningHybridTime() const override;
 

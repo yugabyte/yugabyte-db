@@ -27,6 +27,7 @@
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/merger.h"
 
@@ -180,6 +181,43 @@ class DBIteratorTest : public RocksDBTest {
 
   DBIteratorTest() : env_(Env::Default()) {}
 };
+
+namespace {
+
+class TestFilteringIterator : public FilteringIterator {
+ public:
+  TestFilteringIterator(InternalIterator* iterator, const Slice* iterate_upper_bound)
+      : FilteringIterator(iterator, /* arena_mode= */ false, iterate_upper_bound) {}
+
+ private:
+  bool Satisfied(Slice user_key) override {
+    return user_key != "b" && user_key != "c";
+  }
+};
+
+} // namespace
+
+// Updating the filter key with a seek key does not expose the filtered out entry a filtering
+// iterator stopped at its upper bound is on.
+TEST_F(DBIteratorTest, FilteringIteratorUpdateFilterKeyAtBound) {
+  std::vector<std::string> keys;
+  for (const auto* user_key : {"a", "b", "c", "d"}) {
+    keys.push_back(InternalKey(user_key, 1, kTypeValue).Encode().ToBuffer());
+  }
+  const Slice upper_bound("b");
+  TestFilteringIterator iter(new test::VectorIterator(keys), &upper_bound);
+  InternalIterator& internal_iter = iter;
+
+  ASSERT_EQ(ExtractUserKey(internal_iter.Seek(keys[0]).key), Slice("a"));
+  const auto* entry = &internal_iter.Next();
+  ASSERT_EQ(ExtractUserKey(entry->key), Slice("b"));
+  ASSERT_EQ(ExtractValueType(entry->key), kTypeDeletion);
+  for (auto seek_key : {Slice(), Slice(keys[2])}) {
+    SCOPED_TRACE(seek_key.ToDebugString());
+    entry = &internal_iter.UpdateFilterKey("c", seek_key);
+    ASSERT_EQ(ExtractValueType(entry->key), kTypeDeletion);
+  }
+}
 
 TEST_F(DBIteratorTest, DBIteratorPrevNext) {
   Options options;

@@ -229,6 +229,12 @@ class IntentAwareIterator final {
   // Seek forward on regular sub-iterator.
   void SeekForwardRegular(Slice slice);
 
+  // Whether ReadOptions::iterate_upper_bound of the regular sub-iterator changed since it was last
+  // positioned. Moving forward with Next instead of a seek after a change would let a
+  // rocksdb::FilteringIterator stopped at the old bound skip the filtered out entries up to the new
+  // bound, so the regular sub-iterator is sought then.
+  bool RegularUpperBoundChanged();
+
   // Seek to latest doc key among regular and intent iterator.
   void SeekToLatestDocKeyInternal();
 
@@ -391,6 +397,9 @@ class IntentAwareIterator final {
   const TransactionOperationContext txn_op_context_;
   OptimizedRocksDbIterator<BoundedRocksDbIterator> intent_iter_;
   OptimizedRocksDbIterator<BoundedRocksDbIterator> iter_;
+  // ReadOptions::iterate_upper_bound of iter_, and its value when iter_ was last positioned.
+  const Slice* const regular_upper_bound_;
+  KeyBuffer last_regular_upper_bound_;
 
   // regular_value_ contains value for the current entry from regular db.
   // Empty if there is no current value in regular db.

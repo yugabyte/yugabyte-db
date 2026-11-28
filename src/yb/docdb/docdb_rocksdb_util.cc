@@ -497,8 +497,9 @@ void AutoInitBlockBasedTableOptionsFromFlags(rocksdb::BlockBasedTableOptions* ta
 class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
  public:
   HybridTimeFilteringIterator(
-      rocksdb::InternalIterator* iterator, bool arena_mode, Slice hybrid_time_filter)
-      : rocksdb::FilteringIterator(iterator, arena_mode) {
+      rocksdb::InternalIterator* iterator, bool arena_mode, Slice hybrid_time_filter,
+      const Slice* iterate_upper_bound)
+      : rocksdb::FilteringIterator(iterator, arena_mode, iterate_upper_bound) {
     uint64_t ht = ExtractGlobalFilter(hybrid_time_filter);
     if (HybridTime::FromPB(ht).is_valid()) {
       global_ht_filter_ = HybridTime::FromPB(ht);
@@ -579,12 +580,13 @@ T* CreateOnArena(rocksdb::Arena* arena, Args&&... args) {
 }
 
 rocksdb::InternalIterator* WrapIterator(
-    rocksdb::InternalIterator* iterator, rocksdb::Arena* arena, Slice filter) {
+    rocksdb::InternalIterator* iterator, rocksdb::Arena* arena, Slice filter,
+    const Slice* iterate_upper_bound) {
   if (filter.empty()) {
     return iterator;
   }
   return CreateOnArena<HybridTimeFilteringIterator>(
-      arena, iterator, arena != nullptr, filter);
+      arena, iterator, arena != nullptr, filter, iterate_upper_bound);
 }
 
 void AddSupportedFilterPolicy(

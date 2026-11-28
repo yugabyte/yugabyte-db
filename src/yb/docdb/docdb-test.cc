@@ -1275,14 +1275,16 @@ class DocDBVectorMetadataCompactionTest
 
   // Reads the regular DB only, as TabletVectorIndexes::CreateVectorMetadataIterator does.
   Result<IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht, DocDBStatistics* statistics) const override {
+      const ReadHybridTime& read_ht, DocDBStatistics* statistics,
+      const Slice* iterate_upper_bound) const override {
     static const std::array<char, 2> kUpperBound {
         dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, dockv::KeyEntryTypeAsChar::kMaxByte };
     auto read_operation_data = ReadOperationData::FromReadTime(read_ht);
     read_operation_data.statistics = statistics;
     auto iter = CreateIntentAwareIterator(
         DocDB::FromRegularUnbounded(regular_db_.get()), BloomFilterOptions::Inactive(),
-        rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data);
+        rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data,
+        /* file_filter= */ nullptr, iterate_upper_bound);
     auto bounds = std::make_unique<IntentAwareIteratorBoundsScope>(
         Slice(&dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, 1), Slice(kUpperBound),
         iter.get());

@@ -199,6 +199,7 @@ IntentAwareIterator::IntentAwareIterator(
     : read_time_(read_operation_data.read_time),
       encoded_read_time_(read_operation_data.read_time, read_operation_data.write_id),
       txn_op_context_(txn_op_context),
+      regular_upper_bound_(read_opts.iterate_upper_bound),
       upperbound_(&kKeyEntryTypeMaxByte, 1),
       lowerbound_(&kKeyEntryTypeMinByte, 1),
       use_fast_backward_scan_(flags.Test(IntentAwareIteratorFlag::kFastBackwardScan)),
@@ -268,7 +269,8 @@ void IntentAwareIterator::Seek(Slice key, SeekFilter filter, Full full) {
   [&] {
     switch (filter) {
       case SeekFilter::kAll:
-        SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(iter_, key));
+        SkipFutureRecords<Direction::kForward>(
+            RegularUpperBoundChanged() ? iter_->Seek(key) : ROCKSDB_SEEK(iter_, key));
         return;
       case SeekFilter::kIntentsOnly:
         regular_entry_.Reset();
@@ -877,7 +879,16 @@ void IntentAwareIterator::FillIntentEntry() {
 
 void IntentAwareIterator::SeekForwardRegular(Slice slice) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(slice);
-  SkipFutureRecords<Direction::kForward>(iter_.SeekForward(slice));
+  SkipFutureRecords<Direction::kForward>(
+      RegularUpperBoundChanged() ? iter_->Seek(slice) : iter_.SeekForward(slice));
+}
+
+bool IntentAwareIterator::RegularUpperBoundChanged() {
+  if (!regular_upper_bound_ || *regular_upper_bound_ == last_regular_upper_bound_.AsSlice()) {
+    return false;
+  }
+  last_regular_upper_bound_.Assign(*regular_upper_bound_);
+  return true;
 }
 
 bool IntentAwareIterator::SatisfyBounds(Slice slice) {

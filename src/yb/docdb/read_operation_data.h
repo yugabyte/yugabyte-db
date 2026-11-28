@@ -29,6 +29,11 @@ struct ReadOperationData {
   DocDBStatistics* statistics = nullptr;
   bool use_ht_file_filter = true;
 
+  // Lets DocRowwiseIterator::SeekSingleTuple bound the regular DB read to the tuple. Every entry
+  // read through the iterator is then compared with the bound, so only set it for iterators that
+  // fetch single tuples.
+  bool bound_single_tuple_fetches = false;
+
   // Write id to use when encoding the read time for MVCC filtering.
   // Defaults to kMaxWriteId, which means "see all writes at this HybridTime".
   // Set to a specific value to limit visibility to writes with write_id <= this value.

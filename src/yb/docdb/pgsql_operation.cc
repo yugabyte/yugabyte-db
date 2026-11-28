@@ -213,6 +213,9 @@ class DocKeyColumnPathBuilderHolder {
 };
 
 YB_STRONGLY_TYPED_BOOL(KeyOnlyRequested);
+// See ReadOperationData::bound_single_tuple_fetches. A bound costs a seek where moving forward with
+// Next would do, e.g. for rows fetched in key order, so only fetches in random key order use it.
+YB_STRONGLY_TYPED_BOOL(BoundTupleFetches);
 
 YB_DEFINE_ENUM(IntentFeature, (kRegularRead)(kKeyOnlyRead)(kRowLock));
 
@@ -558,10 +561,12 @@ YB_DEFINE_ENUM(FetchResult, (NotFound)(FilteredOut)(Found));
 Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
     const PgsqlReadOperationData& data, const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> read_context, const YbctidBounds& bounds,
-      SkipSeek skip_seek) {
+      SkipSeek skip_seek, BoundTupleFetches bound_tuple_fetches) {
+  auto read_operation_data = data.read_operation_data;
+  read_operation_data.bound_single_tuple_fetches = bound_tuple_fetches.get();
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek);
+      read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
 class FilteringIterator {
@@ -585,11 +590,12 @@ class FilteringIterator {
       const PgsqlReadOperationData& data,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> read_context,
-      const YbctidBounds& bounds) {
+      const YbctidBounds& bounds,
+      BoundTupleFetches bound_tuple_fetches) {
     RETURN_NOT_OK(InitCommon(data.request, read_context.get().schema(), projection));
     if (!iterator_holder_) {
       iterator_holder_ = VERIFY_RESULT(CreateYbctidIterator(
-          data, projection, read_context, bounds, SkipSeek::kTrue));
+          data, projection, read_context, bounds, SkipSeek::kTrue, bound_tuple_fetches));
     } else {
       Refresh();
     }
@@ -619,7 +625,7 @@ class FilteringIterator {
   }
 
   Result<FetchResult> FetchTuple(Slice tuple_id, dockv::PgTableRow* row) {
-    iterator_holder_->SeekTuple(tuple_id);
+    iterator_holder_->SeekSingleTuple(tuple_id);
     if (!VERIFY_RESULT(iterator_holder_->PgFetchNext(row)) ||
         iterator_holder_->GetTupleId() != tuple_id) {
       return FetchResult::NotFound;
@@ -893,7 +899,8 @@ Result<std::vector<std::string>> ReadIntentRowKeys(
   std::unique_ptr<YQLRowwiseIteratorIf> iterator_holder;
   FilteringIterator iterator(&iterator_holder);
   auto projection = CreateProjection(data.doc_read_context.schema(), data.request);
-  RETURN_NOT_OK(iterator.InitForYbctid(data, projection, data.doc_read_context, {}));
+  RETURN_NOT_OK(iterator.InitForYbctid(
+      data, projection, data.doc_read_context, /* bounds= */ {}, BoundTupleFetches::kFalse));
   auto& iterator_impl = down_cast<DocRowwiseIterator&>(iterator.impl());
   iterator_impl.Refresh(SeekFilter::kIntentsOnly);
   iterator_impl.Seek(Slice());
@@ -1110,7 +1117,10 @@ class PgsqlVectorFilter {
     dockv::ReaderProjection projection;
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
-    RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
+    // Candidates come in random key order. Without a bound, each fetch could step over the
+    // entries the read does not see, e.g. rolled back by a restore, past its row.
+    RETURN_NOT_OK(iter_.InitForYbctid(
+        data, projection_, data.doc_read_context, /* bounds= */ {}, BoundTupleFetches::kTrue));
     return true;
   }
 
@@ -2948,7 +2958,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
   std::optional<IndexState> index_state;
   if (data_.index_doc_read_context) {
-    RETURN_NOT_OK(table_iter.InitForYbctid(data_, doc_projection, data_.doc_read_context, {}));
+    RETURN_NOT_OK(table_iter.InitForYbctid(
+        data_, doc_projection, data_.doc_read_context, /* bounds= */ {},
+        BoundTupleFetches::kFalse));
 
     const auto& index_schema = data_.index_doc_read_context->schema();
     const auto idx = index_schema.find_column("ybidxbasectid");
@@ -3070,7 +3082,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteBatchKeys(KeyProvide
   table_iter_.reset();
   if constexpr (Prefetcher<KeyProvider>) {
     iter.emplace(&table_iter_);
-    RETURN_NOT_OK(iter->InitForYbctid(data_, projection, doc_read_context, Bounds(key_provider)));
+    RETURN_NOT_OK(iter->InitForYbctid(
+        data_, projection, doc_read_context, Bounds(key_provider), BoundTupleFetches::kFalse));
     RETURN_NOT_OK(key_provider.Prefetch(*iter, projection));
     iter->Refresh();
   }
@@ -3089,7 +3102,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteBatchKeys(KeyProvide
       // TODO (dmitry): In case of iterator recreation info from ReadRestartData field will be lost.
       //                The #17159 issue is created for this problem.
       iter.emplace(&table_iter_);
-      RETURN_NOT_OK(iter->InitForYbctid(data_, projection, doc_read_context, Bounds(key_provider)));
+      RETURN_NOT_OK(iter->InitForYbctid(
+        data_, projection, doc_read_context, Bounds(key_provider), BoundTupleFetches::kFalse));
     }
 
     // If changing this code, see also PgsqlReadOperation::ExecuteScalar.

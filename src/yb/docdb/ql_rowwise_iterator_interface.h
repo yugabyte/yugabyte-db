@@ -80,6 +80,11 @@ class YQLRowwiseIteratorIf {
   virtual void SeekTuple(
       Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue);
 
+  // Seeks to the given tuple to fetch only that tuple: the following fetches may stop at its end.
+  virtual void SeekSingleTuple(Slice tuple_id) {
+    SeekTuple(tuple_id);
+  }
+
   // Seeks to first record after specified doc_key_prefix. Also accepts RocksDB-shortened doc key
   // (which could have last byte incremented, see rocksdb::ShortenedIndexBuilder).
   // Requirement is that doc_key_prefix could not be in the middle of rocksdb records belonging

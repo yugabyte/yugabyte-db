@@ -318,6 +318,25 @@ Slice DocRowwiseIterator::GetRowKey() const {
 }
 
 void DocRowwiseIterator::SeekTuple(Slice tuple_id, docdb::UpdateFilterKey update_filter_key) {
+  DoSeekTuple(tuple_id, update_filter_key, SingleTuple::kFalse);
+}
+
+void DocRowwiseIterator::SeekSingleTuple(Slice tuple_id) {
+  DoSeekTuple(tuple_id, docdb::UpdateFilterKey::kTrue, SingleTuple::kTrue);
+}
+
+void DocRowwiseIterator::SetRegularDbUpperBoundForPrefix(Slice key_prefix) {
+  if (!read_operation_data_.bound_single_tuple_fetches) {
+    return;
+  }
+  regular_db_upper_bound_buffer_.Clear();
+  regular_db_upper_bound_buffer_.AppendRawBytes(key_prefix);
+  regular_db_upper_bound_buffer_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+  regular_db_upper_bound_ = regular_db_upper_bound_buffer_.AsSlice();
+}
+
+void DocRowwiseIterator::DoSeekTuple(
+    Slice tuple_id, docdb::UpdateFilterKey update_filter_key, SingleTuple single_tuple) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
   if (schema_->has_cotable_id() || schema_->has_colocation_id()) {
@@ -344,7 +363,11 @@ void DocRowwiseIterator::SeekTuple(Slice tuple_id, docdb::UpdateFilterKey update
   if (update_filter_key) {
     UpdateFilterKey(tuple_id);
   }
-  Seek(tuple_id);
+  // Only the seek may run with the new bound: updating the filter key revalidates the regular DB
+  // iterator at its current position, which under a raised bound skips the filtered out entries
+  // between that position and the bound.
+  SetRegularDbUpperBoundForPrefix(single_tuple ? tuple_id : Slice());
+  DoSeek(tuple_id);
 
   row_key_.Clear();
 }
@@ -545,6 +568,7 @@ Status DocRowwiseIterator::InitIterator(
   flags.Set(
       IntentAwareIteratorFlag::kAvoidUselessNextInsteadOfSeek,
       avoid_useless_next_instead_of_seek.get());
+  SetRegularDbUpperBoundForPrefix(Slice());
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       bloom_filter,
@@ -552,7 +576,7 @@ Status DocRowwiseIterator::InitIterator(
       txn_op_context_,
       read_operation_data_,
       file_filter,
-      nullptr /* iterate_upper_bound */,
+      read_operation_data_.bound_single_tuple_fetches ? &regular_db_upper_bound_ : nullptr,
       flags);
   InitResult();
 
@@ -606,6 +630,11 @@ void DocRowwiseIterator::UpdateFilterKey(Slice user_key_for_filter) {
 }
 
 void DocRowwiseIterator::Seek(Slice key) {
+  SetRegularDbUpperBoundForPrefix(Slice());
+  DoSeek(key);
+}
+
+void DocRowwiseIterator::DoSeek(Slice key) {
   VLOG_WITH_FUNC(3) << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
   DCHECK(!done_);
@@ -643,6 +672,7 @@ void DocRowwiseIterator::SeekToDocKeyPrefix(Slice doc_key_prefix) {
     return;
   }
   prev_doc_found_ = DocReaderResult::kNotFound;
+  SetRegularDbUpperBoundForPrefix(Slice());
   db_iter_->Seek(doc_key_prefix, SeekFilter::kAll, Full::kFalse);
   row_key_.Clear();
 }

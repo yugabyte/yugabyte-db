@@ -49,6 +49,8 @@ YB_STRONGLY_TYPED_BOOL(AddTablePrefixToKey);
 YB_DEFINE_ENUM(DocMode, (kGeneric)(kFlat)(kAny));
 
 // An SQL-mapped-to-document-DB iterator.
+YB_STRONGLY_TYPED_BOOL(SingleTuple);
+
 class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const dockv::ReaderProjection &projection,
@@ -92,6 +94,11 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   // the cotable id.
   void SeekTuple(
       Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue) override;
+
+  // With ReadOperationData::bound_single_tuple_fetches, bounds the regular DB read to the tuple
+  // until the next seek. Past a tuple, a read could otherwise step over many entries filtered out
+  // by a restore, see rocksdb::FilteringIterator.
+  void SeekSingleTuple(Slice tuple_id) override;
 
   // Returns true if tuple was fetched, false otherwise.
   Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) override;
@@ -196,6 +203,16 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   void SeekPrevDocKey(Slice key);
 
+  void DoSeekTuple(
+      Slice tuple_id, docdb::UpdateFilterKey update_filter_key, SingleTuple single_tuple);
+
+  // Seeks without resetting the regular DB upper bound.
+  void DoSeek(Slice key);
+
+  // Sets the regular DB upper bound past the keys starting with key_prefix, which is past every
+  // key when key_prefix is empty.
+  void SetRegularDbUpperBoundForPrefix(Slice key_prefix);
+
   void ConfigureForYsql();
   void InitResult();
 
@@ -255,6 +272,10 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   // reverse scans.
   bool has_bound_key_ = false;
   dockv::KeyBytes bound_key_;
+
+  // ReadOptions::iterate_upper_bound of the regular DB iterator of db_iter_, see SeekSingleTuple.
+  dockv::KeyBytes regular_db_upper_bound_buffer_;
+  Slice regular_db_upper_bound_;
 
   IntentAwareIteratorPtr db_iter_;
   std::unique_ptr<ScanChoices> scan_choices_;
