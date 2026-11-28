@@ -19,7 +19,9 @@ base vectors, queries and ground truth. Options of this script go before the dat
 arguments after it go to hnsw_tool, and override the dataset's files or distance kind. With any
 of them overridden, or --num_vectors_to_insert given, hnsw_tool computes the ground truth unless
 --ground_truth_path is given. For a dataset without ground truth, hnsw_tool computes it, and the
-script keeps it in the dataset's cache directory for later runs.
+script keeps it in the dataset's cache directory for later runs. The output of hnsw_tool is also
+written to a log file in --run_log_dir, whose header gives the commands, the checkout revision and
+the modification time of hnsw_tool.
 
 Examples:
   bin/vi_benchmark.py --list_datasets
@@ -29,6 +31,7 @@ Examples:
 """
 
 import argparse
+import datetime
 import glob
 import gzip
 import os
@@ -41,7 +44,7 @@ import sys
 import tarfile
 import zlib
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Set
+from typing import BinaryIO, Dict, Iterable, List, NoReturn, Optional, Set
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -275,6 +278,74 @@ def prepare(dataset: Dataset, dataset_dir: str, needed: List[str]) -> None:
     os.remove(archive)
 
 
+def git_revision() -> str:
+    try:
+        return subprocess.run(
+            ['git', '-C', REPO_ROOT, 'describe', '--always', '--dirty', '--exclude=*'],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return 'unknown'
+
+
+def cannot_write_log(error: str) -> NoReturn:
+    sys.exit(f'Cannot write the run log: {error}; pass --run_log_dir or --no_run_log')
+
+
+def make_log_dir(log_dir: str) -> None:
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+    except OSError as e:
+        cannot_write_log(str(e))
+    if not os.access(log_dir, os.W_OK):
+        cannot_write_log(f'{log_dir} is not writable')
+
+
+def open_log(log_dir: str, dataset_name: str) -> BinaryIO:
+    name = f'{datetime.datetime.now():%Y%m%d-%H%M%S}.{dataset_name}'
+    suffix = ''
+    while True:
+        try:
+            return open(os.path.join(log_dir, f'{name}{suffix}.log'), 'xb')
+        except FileExistsError:
+            # Another run started in the same second.
+            suffix = f'.{int(suffix[1:] or 1) + 1}'
+        except OSError as e:
+            cannot_write_log(str(e))
+
+
+def modification_time(path: str) -> str:
+    return datetime.datetime.fromtimestamp(os.path.getmtime(path)).isoformat(timespec='seconds')
+
+
+def run_logged(cmd: List[str], log: BinaryIO) -> int:
+    tool_path = shutil.which(cmd[0]) or cmd[0]
+    header = [
+        f'time: {datetime.datetime.now().isoformat(timespec="seconds")}',
+        # hnsw_tool may be older than the checkout, or come from another one.
+        f'checkout revision: {git_revision()}',
+        f'hnsw_tool modified: {modification_time(tool_path)}',
+        f'script command: {shlex.join(sys.argv)}',
+        f'hnsw_tool command: {shlex.join(cmd)}',
+    ]
+    log.write(''.join(f'# {line}\n' for line in header).encode())
+    log.flush()
+    # stderr goes to the pipe too, so the log keeps the order of the lines.
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert proc.stdout is not None
+    with proc:
+        try:
+            for line in proc.stdout:
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
+                log.write(line)
+                log.flush()
+        except BaseException:
+            # Otherwise the benchmark keeps running unattended until it ends.
+            proc.kill()
+            raise
+    return proc.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -287,6 +358,9 @@ def main() -> int:
                         help='Print the hnsw_tool command without downloading or running anything.')
     parser.add_argument('--list_datasets', action='store_true',
                         help='Print the datasets with their sizes and distance kinds.')
+    parser.add_argument('--run_log_dir',
+                        help='Directory for the run logs (default: <cache_dir>/logs).')
+    parser.add_argument('--no_run_log', action='store_true', help='Do not write a run log.')
     parser.add_argument('dataset', nargs='?', help=f'One of {", ".join(sorted(DATASETS))}.')
     parser.add_argument('tool_args', nargs=argparse.REMAINDER,
                         help='Arguments for hnsw_tool benchmark.')
@@ -296,7 +370,8 @@ def main() -> int:
         parser.error(f'{misplaced[0]}: hnsw_tool arguments go after the dataset name')
     # hnsw_tool has no options with these names.
     for name in [arg.split('=', 1)[0] for arg in args.tool_args]:
-        if name in ('--cache_dir', '--tool', '--dry_run', '--list_datasets'):
+        if name in ('--cache_dir', '--tool', '--dry_run', '--list_datasets',
+                    '--run_log_dir', '--no_run_log'):
             parser.error(f'{name}: options of this script go before the dataset name')
     if args.list_datasets:
         list_datasets()
@@ -343,10 +418,21 @@ def main() -> int:
     print('+ ' + shlex.join(cmd), flush=True)
     if args.dry_run:
         return 0
+    log_dir = None
+    if not args.no_run_log:
+        log_dir = args.run_log_dir or os.path.join(args.cache_dir, 'logs')
+        # Checked before the download, which can take long.
+        make_log_dir(log_dir)
     needed = [name for option, name in dataset_files.items() if option not in overridden]
     if needed:
         prepare(dataset, dataset_dir, needed)
-    return subprocess.call(cmd)
+    if log_dir is None:
+        return subprocess.call(cmd)
+    with open_log(log_dir, args.dataset) as log:
+        try:
+            return run_logged(cmd, log)
+        finally:
+            print(f'Log: {log.name}', flush=True)
 
 
 if __name__ == '__main__':
