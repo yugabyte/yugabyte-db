@@ -77,6 +77,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -522,25 +523,46 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         instanceTypeChanged = true;
       }
     } else {
+      UUID providerUUID = Util.getSingleProviderUUID(curIntent);
+
+      // KubernetesCommandExecutor treats null as new K8SNodeResourceSpec()
+      // so comparing effective values
+      UserIntent.K8SNodeResourceSpec curTserverK8SNodeResourceSpec =
+          Optional.ofNullable(curIntent.getTserverK8SNodeResourceSpec(providerUUID))
+              .orElse(new UserIntent.K8SNodeResourceSpec());
+      UserIntent.K8SNodeResourceSpec newTserverK8SNodeResourceSpec =
+          Optional.ofNullable(newIntent.getTserverK8SNodeResourceSpec(providerUUID))
+              .orElse(new UserIntent.K8SNodeResourceSpec());
       boolean tserverCpuChanged =
-          !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
-              newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+          !Objects.equals(
+              curTserverK8SNodeResourceSpec.cpuCoreCount,
+              newTserverK8SNodeResourceSpec.cpuCoreCount);
+
       boolean tserverMemChanged =
-          !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
-              newIntent.tserverK8SNodeResourceSpec.memoryGib);
+          !Objects.equals(
+              curTserverK8SNodeResourceSpec.memoryGib, newTserverK8SNodeResourceSpec.memoryGib);
+
       boolean masterMemChanged = false;
       boolean masterCpuChanged = false;
 
-      // For clusters that have read replicas, this condition is true since we
-      // do not pass in masterK8sNodeResourceSpec.
-      if (curIntent.masterK8SNodeResourceSpec != null
-          && newIntent.masterK8SNodeResourceSpec != null) {
-        masterMemChanged =
-            !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
-                newIntent.masterK8SNodeResourceSpec.memoryGib);
+      // KubernetesCommandExecutor treats null as new K8SNodeResourceSpec()
+      // so comparing effective values
+      UserIntent.K8SNodeResourceSpec curMasterK8SNodeResourceSpec =
+          Optional.ofNullable(curIntent.getMasterK8SNodeResourceSpec(providerUUID))
+              .orElse(new UserIntent.K8SNodeResourceSpec());
+      UserIntent.K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
+          Optional.ofNullable(newIntent.getMasterK8SNodeResourceSpec(providerUUID))
+              .orElse(new UserIntent.K8SNodeResourceSpec());
+      // Skip readonly cluster since it cannot have masters anyway.
+      if (!isReadOnlyCluster) {
         masterCpuChanged =
-            !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
-                newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+            !Objects.equals(
+                curMasterK8SNodeResourceSpec.cpuCoreCount,
+                newMasterK8SNodeResourceSpec.cpuCoreCount);
+
+        masterMemChanged =
+            !Objects.equals(
+                curMasterK8SNodeResourceSpec.memoryGib, newMasterK8SNodeResourceSpec.memoryGib);
       }
       instanceTypeChanged =
           tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;

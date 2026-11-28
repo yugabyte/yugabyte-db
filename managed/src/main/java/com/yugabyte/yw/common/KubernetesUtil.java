@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -1962,5 +1963,108 @@ public class KubernetesUtil {
     Map<String, Object> podSecurityContext = new HashMap<>();
     podSecurityContext.put("enabled", true);
     return podSecurityContext;
+  }
+
+  /**
+   * Sets k8s resource specs of every cluster from its instance type, replacing existing specs.
+   * Clusters without instance type are left untouched.
+   */
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
+      UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        taskParams, true /* overwrite */, runtimeConfGetter);
+  }
+
+  /**
+   * Sets k8s resource specs of every cluster with unset properties, so explicitly requested specs
+   * are not replaced.
+   */
+  public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
+      UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        taskParams, false /* overwrite */, runtimeConfGetter);
+  }
+
+  private static void initializeK8sNodeResourceSpecsFromInstanceType(
+      UniverseDefinitionTaskParams taskParams,
+      boolean overwrite,
+      RuntimeConfGetter runtimeConfGetter) {
+    if (taskParams == null
+        || taskParams.clusters == null
+        || !Util.isKubernetesBasedUniverse(taskParams)) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      initializeK8sNodeResourceSpecsFromInstanceType(
+          cluster.clusterType, cluster.userIntent, overwrite, runtimeConfGetter);
+    }
+  }
+
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
+      ClusterType clusterType, UserIntent userIntent, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        clusterType, userIntent, true /* overwrite */, runtimeConfGetter);
+  }
+
+  public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
+      ClusterType clusterType, UserIntent userIntent, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        clusterType, userIntent, false /* overwrite */, runtimeConfGetter);
+  }
+
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
+      ClusterType clusterType,
+      UserIntent userIntent,
+      boolean overwrite,
+      RuntimeConfGetter runtimeConfGetter) {
+    if (userIntent == null || !Util.isKubernetesBased(userIntent)) {
+      return;
+    }
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      return;
+    }
+    UUID providerUUID = Util.getSingleProviderUUID(userIntent);
+    ProviderInitializer pi = Util.providerInitializerForExistingIntent(userIntent, providerUUID);
+    Set<ServerType> serverTypes = new HashSet<>();
+    serverTypes.add(ServerType.TSERVER);
+    if (clusterType == ClusterType.PRIMARY) {
+      serverTypes.add(ServerType.MASTER);
+    }
+    for (ServerType serverType : serverTypes) {
+      if (!overwrite) {
+        UserIntent.K8SNodeResourceSpec existing =
+            serverType == ServerType.MASTER
+                ? userIntent.getMasterK8SNodeResourceSpec(providerUUID)
+                : userIntent.getTserverK8SNodeResourceSpec(providerUUID);
+        if (existing != null) {
+          continue;
+        }
+      }
+      // The PLAT-9690 added initialization from the instanceType only,
+      // masterInstanceType is ignored.
+      UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec = initK8sResourceSpec(userIntent);
+      if (k8SNodeResourceSpec != null) {
+        pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
+      }
+    }
+  }
+
+  public static void clearK8sNodeResourceSpec(UserIntent userIntent, ServerType serverType) {
+    Util.providerInitializerForExistingIntent(userIntent, Util.getSingleProviderUUID(userIntent))
+        .setNodeResourceSpec(null, serverType);
+  }
+
+  public static UserIntent.K8SNodeResourceSpec initK8sResourceSpec(UserIntent userIntent) {
+    UUID providerUUID = Util.getSingleProviderUUID(userIntent);
+
+    String instanceTypeCode = userIntent.getBaseInstanceType(providerUUID);
+    if (instanceTypeCode == null) {
+      return null;
+    }
+    UserIntent.K8SNodeResourceSpec spec = new UserIntent.K8SNodeResourceSpec();
+    InstanceType instanceType = InstanceType.getOrBadRequest(providerUUID, instanceTypeCode);
+    spec.memoryGib = instanceType.getMemSizeGB();
+    spec.cpuCoreCount = instanceType.getNumCores();
+    return spec;
   }
 }

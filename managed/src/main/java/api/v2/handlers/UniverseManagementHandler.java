@@ -17,6 +17,7 @@ import api.v2.models.CheckResizeOptionsResp;
 import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
+import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.CollectFilesRequest;
@@ -54,10 +55,12 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FileCollectionDownloader;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
 import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
@@ -134,6 +137,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -309,6 +313,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
+    v1DefnParams.clusters.forEach(this::fillAndVerifyK8sResourceSpecs);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
@@ -341,6 +346,13 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // persisted placement with the requested one. Anything read from dbUniverse after that point
     // reflects the request, not what is deployed.
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
+    Map<UUID, String> savedInstanceTypes = new HashMap<>();
+    if (Util.isKubernetesBasedUniverse(dbUniverse)) {
+      for (Cluster cluster : dbUniverse.getUniverseDetails().clusters) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        savedInstanceTypes.put(cluster.uuid, cluster.userIntent.getBaseInstanceType(providerUUID));
+      }
+    }
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     UniverseSpec v2Universe =
@@ -374,11 +386,37 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+
+    Map<UUID, ClusterEditSpec> editedNodesClusters =
+        universeEditSpec.getClusters().stream()
+            .filter(c -> c.getNodeSpec() != null)
+            .collect(Collectors.toMap(c -> c.getUuid(), c -> c));
+
     for (Cluster cluster : v1Params.clusters) {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
       // Keeping these fields will lead to error in validation.
       clearNonDedicatedFields(cluster.userIntent);
+
+      // The mapper keeps k8s resource specs that node_spec omits. They stay valid only while the
+      // instance type is unchanged. On an instance type change, omitted specs are derived from the
+      // new instance type with custom resources, and dropped otherwise so stale specs don't hide
+      // the instance type change.
+      ClusterEditSpec clusterEditSpec = editedNodesClusters.get(cluster.uuid);
+      if (clusterEditSpec != null && Util.isKubernetesBased(cluster)) {
+        ClusterNodeSpec nodeSpec = clusterEditSpec.getNodeSpec();
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        String instanceType = cluster.userIntent.getBaseInstanceType(providerUUID);
+        if (!Objects.equals(instanceType, savedInstanceTypes.get(cluster.uuid))) {
+          if (nodeSpec.getK8sTserverResourceSpec() == null) {
+            KubernetesUtil.clearK8sNodeResourceSpec(cluster.userIntent, ServerType.TSERVER);
+          }
+          if (nodeSpec.getK8sMasterResourceSpec() == null) {
+            KubernetesUtil.clearK8sNodeResourceSpec(cluster.userIntent, ServerType.MASTER);
+          }
+          fillAndVerifyK8sResourceSpecs(cluster);
+        }
+      }
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
@@ -601,7 +639,31 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
+    boolean k8sCustomResources =
+        Util.isKubernetesBased(newReadReplica)
+            && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources);
+    if (Util.isKubernetesBased(newReadReplica)) {
+      // A read replica has no masters.
+      KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.MASTER);
+      if (!k8sCustomResources) {
+        // Pods are sized from the instance type; the primary's spec is not inherited.
+        KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.TSERVER);
+      }
+    }
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    if (k8sCustomResources
+        && (clusterAddSpec.getNodeSpec() == null
+            || clusterAddSpec.getNodeSpec().getK8sTserverResourceSpec() == null)) {
+      // The mapper keeps the tserver spec cloned from the primary when node_spec omits it. It is
+      // valid only for the primary's instance type; for another one it is derived below.
+      String primaryInstanceType =
+          primaryCluster.userIntent.getBaseInstanceType(Util.getSingleProviderUUID(primaryCluster));
+      String replicaInstanceType =
+          newReadReplica.userIntent.getBaseInstanceType(Util.getSingleProviderUUID(newReadReplica));
+      if (!Objects.equals(primaryInstanceType, replicaInstanceType)) {
+        KubernetesUtil.clearK8sNodeResourceSpec(newReadReplica.userIntent, ServerType.TSERVER);
+      }
+    }
     // The UI fills the read replica's gflags from the primary's GET response, which redacts the
     // sensitive ones, so restore them from the primary the way a gflags upgrade does.
     if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
@@ -627,6 +689,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+
+    fillAndVerifyK8sResourceSpecs(newReadReplica);
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {
@@ -1913,5 +1977,24 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       res.add(ResizeUpdateOption.FULL_MOVE);
     }
     return new CheckResizeOptionsResp().options(res);
+  }
+
+  // Before we completely replace instance type with resourceSpec for k8s,
+  // initializing missing tserver/master resource specs from instanceType.
+  // Explicitly requested resource specs are kept as is.
+  private void fillAndVerifyK8sResourceSpecs(Cluster cluster) {
+    if (Util.isKubernetesBased(cluster)
+        && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
+          cluster.clusterType, cluster.userIntent, confGetter);
+      UUID providerUUID = Util.getSingleProviderUUID(cluster);
+      if (cluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Tserver k8s resource spec is required");
+      }
+      if (cluster.clusterType == ClusterType.PRIMARY
+          && cluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Master k8s resource spec is required");
+      }
+    }
   }
 }
