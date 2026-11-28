@@ -1357,10 +1357,19 @@ TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTableExceptionBlock) {
   });
 
   // Step 4
+  // pg_locks asks every transaction status tablet, which fails while one has no ready leader, as
+  // on slow builds such as ASAN. Retry then, on a connection of its own: an error in gate_conn's
+  // transaction would abort the transaction that holds the lock.
+  auto poll_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(WaitFor(
-      [&gate_conn]() -> Result<bool> {
-        return VERIFY_RESULT(gate_conn.FetchRow<int64_t>(
-            "SELECT COUNT(*) FROM pg_locks WHERE NOT granted")) > 0;
+      [&poll_conn]() -> Result<bool> {
+        auto num_waiting =
+            poll_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE NOT granted");
+        if (!num_waiting.ok()) {
+          LOG(INFO) << "Querying pg_locks failed, will retry: " << num_waiting.status();
+          return false;
+        }
+        return *num_waiting > 0;
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Wait for the block to wait for the advisory lock after the DROP"));
