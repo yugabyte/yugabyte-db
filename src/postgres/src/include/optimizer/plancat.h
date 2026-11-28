@@ -79,4 +79,8 @@ extern Bitmapset *get_dependent_generated_columns(PlannerInfo *root, Index rti,
 												  Bitmapset **yb_generated_cols_source,
 												  Relation yb_relation);
 
+/* YB declarations */
+extern void yb_set_baserel_partition_constraint(Relation relation,
+												RelOptInfo *rel);
+
 #endif							/* PLANCAT_H */
