@@ -20,6 +20,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -46,8 +48,12 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
   };
 
   private Connection directConn() throws Exception {
+    return directConn(DROP_TSERVER_IDX);
+  }
+
+  private Connection directConn(int tserverIdx) throws Exception {
     return getConnectionBuilder()
-        .withTServer(DROP_TSERVER_IDX)
+        .withTServer(tserverIdx)
         .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
         .connect();
   }
@@ -78,14 +84,39 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
     }
   }
 
-  private static void assertConnectionLost(Connection conn) {
+  private static void assertHasRoleDroppedFatal(SQLException e, String role) {
+    String expected = "role \"" + role + "\" does not exist";
+    for (SQLException cur = e; cur != null; cur = cur.getNextException()) {
+      if ("28000".equals(cur.getSQLState()) && cur.getMessage().contains(expected))
+        return;
+    }
+    LOG.error("Unexpected error", e);
+    fail("Expected FATAL 28000 '" + expected + "', got: " + e.getSQLState() + " "
+        + e.getMessage());
+  }
+
+  private static void assertClosedWithRoleDroppedFatal(Connection conn, String role)
+      throws SQLException {
     try {
       execute(conn, "SELECT 1");
       fail("Expected the session to be disconnected");
     } catch (SQLException e) {
-      assertTrue("Unexpected error: " + e.getSQLState() + " " + e.getMessage(),
-          e.getSQLState() != null && e.getSQLState().startsWith("08"));
+      assertHasRoleDroppedFatal(e, role);
     }
+    assertTrue("Expected the session to be closed", conn.isClosed());
+  }
+
+  private static void assertClosedWithDbDroppedFatal(Connection conn, String db)
+      throws SQLException {
+    String expected = "database \"" + db + "\" does not exist";
+    try {
+      execute(conn, "SELECT 1");
+      fail("Expected the session to be disconnected");
+    } catch (SQLException e) {
+      assertEquals("Unexpected error: " + e.getMessage(), "3D000", e.getSQLState());
+      assertTrue("Unexpected error: " + e.getMessage(), e.getMessage().contains(expected));
+    }
+    assertTrue("Expected the session to be closed", conn.isClosed());
   }
 
   // A session raises errors whose text looks like a dropped database or role.
@@ -130,7 +161,8 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
   }
 
   // Two sessions of a role, then DROP ROLE on another node.
-  // current_user fails on the first session and both sessions get disconnected.
+  // current_user fails on the first session and both sessions get disconnected
+  // with FATAL 28000 role "..." does not exist.
   @Test
   public void testDroppedRoleClosesItsSessions() throws Exception {
     runDirect("CREATE ROLE ycm_dropped_role LOGIN");
@@ -149,9 +181,10 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
       } catch (SQLException e) {
         assertTrue("Unexpected error: " + e.getMessage(),
             e.getMessage().contains("invalid role OID"));
+        assertHasRoleDroppedFatal(e, "ycm_dropped_role");
       }
-      assertConnectionLost(conn1);
-      assertConnectionLost(conn2);
+      assertTrue("Expected the session to be closed", conn1.isClosed());
+      assertClosedWithRoleDroppedFatal(conn2, "ycm_dropped_role");
     }
   }
 
@@ -172,11 +205,115 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
       try {
         execute(conn1, "DO $$ BEGIN PERFORM current_user; "
             + "EXCEPTION WHEN undefined_object THEN NULL; END $$");
+        fail("Expected the session to be disconnected");
       } catch (SQLException e) {
-        LOG.info("Got error", e);
+        assertHasRoleDroppedFatal(e, "ycm_dropped_role_caught");
       }
-      assertConnectionLost(conn1);
-      assertConnectionLost(conn2);
+      assertTrue("Expected the session to be closed", conn1.isClosed());
+      assertClosedWithRoleDroppedFatal(conn2, "ycm_dropped_role_caught");
+    }
+  }
+
+  // Sessions of a database, then their pooled backends are terminated and the
+  // database is dropped on another node. Queries on the trigger sessions make
+  // ConnMgr spawn a backend, which fails with 3D000 and invalidates the
+  // database's routes; a trigger may first hit a terminated backend instead.
+  // The remaining session then gets ConnMgr's own FATAL 3D000.
+  @Test
+  public void testDroppedDbClosesItsSessions() throws Exception {
+    final int numTriggers = 4;
+    runDirect("CREATE DATABASE ycm_dropped_db");
+    waitForCatalogChange();
+
+    List<Connection> triggers = new ArrayList<>();
+    try (Connection target = connMgrConn("ycm_dropped_db", "yugabyte")) {
+      for (int i = 0; i < numTriggers; i++)
+        triggers.add(connMgrConn("ycm_dropped_db", "yugabyte"));
+      execute(target, "SELECT 1");
+      for (Connection conn : triggers)
+        execute(conn, "SELECT 1");
+
+      try (Connection conn = directConn(SESSION_TSERVER_IDX)) {
+        execute(conn, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            + "WHERE datname = 'ycm_dropped_db'");
+      }
+      runDirect("DROP DATABASE ycm_dropped_db");
+      waitForCatalogChange();
+
+      boolean invalidated = false;
+      for (Connection conn : triggers) {
+        try {
+          execute(conn, "SELECT 1");
+          fail("Expected the session to fail after DROP DATABASE");
+        } catch (SQLException e) {
+          LOG.info("Trigger session got error", e);
+          if ("3D000".equals(e.getSQLState())) {
+            invalidated = true;
+            break;
+          }
+        }
+      }
+      assertTrue("No trigger session got 3D000", invalidated);
+      assertClosedWithDbDroppedFatal(target, "ycm_dropped_db");
+    } finally {
+      for (Connection conn : triggers)
+        conn.close();
+    }
+  }
+
+  // A role is made NOLOGIN and its pooled backends are terminated. Spawning a
+  // new backend fails with 28000 "not permitted to log in", which invalidates
+  // the role's routes. 28000 also means a missing role, so the remaining
+  // session gets FATAL 28000 naming both causes.
+  @Test
+  public void testNologinRoleGetsLoginRejectedFatal() throws Exception {
+    final int numTriggers = 4;
+    runDirect("CREATE ROLE ycm_nologin_role LOGIN");
+    waitForCatalogChange();
+
+    List<Connection> triggers = new ArrayList<>();
+    try (Connection target = connMgrConn("yugabyte", "ycm_nologin_role")) {
+      for (int i = 0; i < numTriggers; i++)
+        triggers.add(connMgrConn("yugabyte", "ycm_nologin_role"));
+      execute(target, "SELECT 1");
+      for (Connection conn : triggers)
+        execute(conn, "SELECT 1");
+
+      runDirect("ALTER ROLE ycm_nologin_role NOLOGIN");
+      waitForCatalogChange();
+      try (Connection conn = directConn(SESSION_TSERVER_IDX)) {
+        execute(conn, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            + "WHERE usename = 'ycm_nologin_role'");
+      }
+
+      boolean invalidated = false;
+      for (Connection conn : triggers) {
+        try {
+          execute(conn, "SELECT 1");
+          fail("Expected the session to fail after ALTER ROLE NOLOGIN");
+        } catch (SQLException e) {
+          LOG.info("Trigger session got error", e);
+          if ("28000".equals(e.getSQLState())) {
+            invalidated = true;
+            break;
+          }
+        }
+      }
+      assertTrue("No trigger session got 28000", invalidated);
+
+      try {
+        execute(target, "SELECT 1");
+        fail("Expected the session to be disconnected");
+      } catch (SQLException e) {
+        LOG.info("Target session got error", e);
+        assertEquals("Unexpected error: " + e.getMessage(), "28000", e.getSQLState());
+        assertTrue("Unexpected error: " + e.getMessage(), e.getMessage().contains(
+            "role \"ycm_nologin_role\" does not exist or is not permitted to log in"));
+      }
+      assertTrue("Expected the session to be closed", target.isClosed());
+    } finally {
+      for (Connection conn : triggers)
+        conn.close();
     }
   }
 }

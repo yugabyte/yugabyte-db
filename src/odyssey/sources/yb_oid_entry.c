@@ -285,7 +285,8 @@ int yb_handle_oid_pkt_server(od_instance_t *instance, od_server_t *server,
 
 	/* database/user dropped just before sending oid packet */
 	if (oid_val == YB_INVALID_OID_IN_PKT) {
-		yb_mark_routes_inactive(server->global->router, db_oid, user_oid);
+		yb_mark_routes_inactive(server->global->router, db_oid, user_oid,
+					true);
 		return -1;
 	}
 
@@ -295,7 +296,8 @@ int yb_handle_oid_pkt_server(od_instance_t *instance, od_server_t *server,
 
 	if (route_oid != (int)oid_val) {
 		/* db/user has been recreated, mark original db/user as dropped */
-		yb_mark_routes_inactive(server->global->router, db_oid, user_oid);
+		yb_mark_routes_inactive(server->global->router, db_oid, user_oid,
+					true);
 		return -1;
 	}
 
@@ -363,5 +365,5 @@ void yb_apply_dropped_object(od_server_t *server)
 	server->yb_role_dropped = false;
 
 	yb_mark_routes_inactive(server->global->router, -1,
-				route->id.yb_user_oid);
+				route->id.yb_user_oid, true);
 }

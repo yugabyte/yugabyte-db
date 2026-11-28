@@ -47,7 +47,8 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
   private static final int NUM_IDLE_CLIENTS = 5;
   private static final int NUM_RETRIES = 10;
   private static final long WAIT_SECS = 30;
-  private static final String CONNECTION_FAILURE_SQLSTATE = "08006";
+  private static final String LOGIN_REJECTED_SQLSTATE = "28000";
+  private static final String UNDEFINED_DATABASE_SQLSTATE = "3D000";
   private static final int SERVER_IDLE_TIME_SECS = 2;
 
   @Override
@@ -101,14 +102,23 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
     fail("DDL on " + db + "." + user + " never became visible");
   }
 
-  private static void assertConnectionClosedByConnMgr(Connection conn) {
+  private static String loginRejectedErr(String role) {
+    return "role \"" + role + "\" does not exist or is not permitted to log in";
+  }
+
+  private static void assertClosedError(SQLException e, String sqlState, String err) {
+    assertEquals("Unexpected error: " + e.getMessage(), sqlState, e.getSQLState());
+    assertTrue("Unexpected error: " + e.getMessage(), e.getMessage().contains(err));
+  }
+
+  private static void assertConnectionClosedByConnMgr(Connection conn, String sqlState,
+                                                      String err) {
     try (Statement stmt = conn.createStatement()) {
       stmt.executeQuery("SELECT 1");
       fail("Expected the connection manager to have closed this client");
     } catch (SQLException e) {
       LOG.info("Got expected exception", e);
-      assertEquals("Expected a closed connection, got: " + e.getMessage(),
-          CONNECTION_FAILURE_SQLSTATE, e.getSQLState());
+      assertClosedError(e, sqlState, err);
     }
   }
 
@@ -157,9 +167,11 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
   // - Run the DDL, then send a query on the trigger client. It needs a new backend, which fails
   //   because of the DDL. This marks the route inactive.
   // - With holdTxn, the client in the transaction fails on its next statement.
-  // - Check that the route GC closes the idle clients and then drops the route.
+  // - Check that the route GC closes the idle clients with closedSqlState and closedErr, and
+  //   then drops the route.
   // - Check that the connection manager did not crash.
   private void testIdleClientsClosed(String db, String user, String ddl, String expectedErr,
+                                     String closedSqlState, String closedErr,
                                      boolean holdTxn) throws Exception {
     ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, CONN_MGR_TSERVER_IDX);
     String killLogRegex = "sent kill op to \\d+ pending clients and woke \\d+ queued clients"
@@ -210,9 +222,9 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
           tailer.waitForLogRegex(killLogRegex, WAIT_SECS, TimeUnit.SECONDS));
       waitForPoolToBeDropped(db, user);
       for (Connection conn : idleConns)
-        assertConnectionClosedByConnMgr(conn);
+        assertConnectionClosedByConnMgr(conn, closedSqlState, closedErr);
       if (!holdTxn)
-        assertConnectionClosedByConnMgr(txnConn);
+        assertConnectionClosedByConnMgr(txnConn, closedSqlState, closedErr);
 
       sentinelStmt.execute("SELECT 1");
       assertEquals("Connection manager restarted", odysseyPid,
@@ -230,7 +242,8 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
     final String role = "inactive_route_nologin";
     executeDdlDirect("CREATE ROLE " + role + " LOGIN");
     testIdleClientsClosed(DEFAULT_DB, role, "ALTER ROLE " + role + " NOLOGIN",
-        "not permitted to log in", true /* holdTxn */);
+        "not permitted to log in", LOGIN_REJECTED_SQLSTATE, loginRejectedErr(role),
+        true /* holdTxn */);
 
     executeDdlDirect("ALTER ROLE " + role + " LOGIN");
     try (Connection conn = connectWithRetries(connMgrBuilder(DEFAULT_DB, role), NUM_RETRIES);
@@ -246,7 +259,7 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
     final String role = "inactive_route_drop_role";
     executeDdlDirect("CREATE ROLE " + role + " LOGIN");
     testIdleClientsClosed(DEFAULT_DB, role, "DROP ROLE " + role, "does not exist",
-        false /* holdTxn */);
+        LOGIN_REJECTED_SQLSTATE, loginRejectedErr(role), false /* holdTxn */);
   }
 
   @Test
@@ -254,6 +267,7 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
     final String db = "inactive_route_drop_db";
     executeDdlDirect("CREATE DATABASE " + db);
     testIdleClientsClosed(db, DEFAULT_USER, "DROP DATABASE " + db, "does not exist",
+        UNDEFINED_DATABASE_SQLSTATE, "database \"" + db + "\" does not exist",
         false /* holdTxn */);
   }
 
@@ -318,8 +332,8 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
         LOG.info("Got expected exception", e.getCause());
         assertTrue("Unexpected exception: " + e.getCause(),
             e.getCause() instanceof SQLException);
-        assertEquals("Expected a closed connection, got: " + e.getCause().getMessage(),
-            CONNECTION_FAILURE_SQLSTATE, ((SQLException) e.getCause()).getSQLState());
+        assertClosedError((SQLException) e.getCause(), LOGIN_REJECTED_SQLSTATE,
+            loginRejectedErr(role));
       }
 
       try {

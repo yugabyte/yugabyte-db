@@ -444,16 +444,22 @@ static inline int yb_mark_route_inactive(od_route_t *route, void **argv)
 {
 	int *db_oid = argv[0];
 	int *user_oid = argv[1];
+	bool *dropped = argv[2];
 
 	od_route_lock(route);
 
 	if (*db_oid != -1 && *db_oid == route->id.yb_db_oid) {
+		route->yb_db_dropped |= *dropped;
 		route->status = YB_ROUTE_INACTIVE;
 		od_route_unlock(route);
 		return 0;
 	}
 
 	if (*user_oid != -1 && *user_oid == route->id.yb_user_oid) {
+		if (*dropped)
+			route->yb_role_dropped = true;
+		else
+			route->yb_role_login_rejected = true;
 		route->status = YB_ROUTE_INACTIVE;
 		od_route_unlock(route);
 		return 0;
@@ -464,9 +470,10 @@ static inline int yb_mark_route_inactive(od_route_t *route, void **argv)
 	return 0;
 }
 
-void yb_mark_routes_inactive(od_router_t *router, int db_oid, int user_oid)
+void yb_mark_routes_inactive(od_router_t *router, int db_oid, int user_oid,
+			     bool dropped)
 {
-	void *argv[] = { &db_oid, &user_oid };
+	void *argv[] = { &db_oid, &user_oid, &dropped };
 	od_router_foreach(router, yb_mark_route_inactive, argv);
 }
 

@@ -334,9 +334,11 @@ od_frontend_attach(od_client_t *client, char *context,
 
 			/* YB: check auth failure status codes to update OID status */
 			if (yb_frontend_error_is_db_does_not_exist(client))
-				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1);
+				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1, true);
 			else if (yb_frontend_error_is_role_does_not_exist(client))
-				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid);
+				/* YB: 28000 is also used for NOLOGIN, so the role may still exist */
+				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid,
+							false);
 
 			return OD_ESERVER_CONNECT;
 		}
@@ -645,11 +647,41 @@ static inline bool od_should_drop_connection(od_client_t *client,
 		return false;
 	}
 }
+
+static inline bool yb_frontend_fatal_dropped(od_client_t *client)
+{
+	od_route_t *route = client->route;
+
+	od_route_lock(route);
+	bool role_dropped = route->yb_role_dropped;
+	bool role_login_rejected = route->yb_role_login_rejected;
+	bool db_dropped = route->yb_db_dropped;
+	od_route_unlock(route);
+
+	if (role_dropped)
+		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
+				  "role \"%s\" does not exist",
+				  client->startup.user.value);
+	else if (role_login_rejected)
+		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
+				  "role \"%s\" does not exist or is not permitted to log in",
+				  client->startup.user.value);
+	else if (db_dropped)
+		od_frontend_fatal(client, KIWI_INVALID_CATALOG_NAME,
+				  "database \"%s\" does not exist",
+				  client->startup.database.value);
+	else
+		return false;
+	return true;
+}
+
 static od_frontend_status_t od_frontend_ctl(od_client_t *client)
 {
 	uint32_t op = od_client_ctl_of(client);
 	if (op & OD_CLIENT_OP_KILL) {
 		od_client_ctl_unset(client, OD_CLIENT_OP_KILL);
+		if (client->route)
+			yb_frontend_fatal_dropped(client);
 		od_client_notify_read(client);
 		return OD_STOP;
 	}
@@ -2624,8 +2656,9 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 	case OD_EATTACH:
 		assert(server == NULL);
 		assert(client->route != NULL);
-		od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
-				  "failed to get remote server connection");
+		if (!yb_frontend_fatal_dropped(client))
+			od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
+					  "failed to get remote server connection");
 		break;
 
 	case OD_EATTACH_TOO_MANY_CONNECTIONS:
@@ -2731,11 +2764,12 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		       "server disconnected (read/write error): %s, status %s",
 		       od_io_error(&server->io),
 		       od_frontend_status_to_str(status));
-		od_frontend_error(client, KIWI_CONNECTION_FAILURE,
-				  "remote server read/write error %s%.*s: %s",
-				  server->id.id_prefix,
-				  (int)sizeof(server->id.id), server->id.id,
-				  od_io_error(&server->io));
+		if (!yb_frontend_fatal_dropped(client))
+			od_frontend_error(client, KIWI_CONNECTION_FAILURE,
+					  "remote server read/write error %s%.*s: %s",
+					  server->id.id_prefix,
+					  (int)sizeof(server->id.id), server->id.id,
+					  od_io_error(&server->io));
 		/* close backend connection */
 		od_router_close(router, client);
 		break;
