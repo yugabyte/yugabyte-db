@@ -13434,8 +13434,8 @@ Status CatalogManager::SendCreateTabletRequests(
   return Status::OK();
 }
 
-// If responses have been received from sufficient replicas (including hinted leader),
-// pick proposed leader and start election.
+// If a majority of the voters have reported a running replica, pick proposed leader and start
+// election. For an initial election the proposed leader need not have reported yet.
 void CatalogManager::StartElectionIfReady(
     const consensus::ConsensusStatePB& cstate, const LeaderEpoch& epoch,
     const TabletInfoPtr& tablet) {
@@ -13465,32 +13465,65 @@ void CatalogManager::StartElectionIfReady(
     return;
   }
 
-  ReplicationInfoPB replication_info;
   BlacklistSet leader_blacklist;
   {
     auto l = ClusterConfig()->LockForRead();
-    replication_info = l->pb.replication_info();
     leader_blacklist = ToBlacklistSet(GetBlacklist(l->pb, /* blacklist_leader */ true));
   }
 
-  // Find tservers that can be leaders for a tablet.
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  // The preferred zones are the table's own, as for the load balancer: a tablespace's
+  // leader_preference replaces the cluster's preferred zones, and a transaction status table has
+  // no preferred zones unless transaction_tables_use_preferred_zones is set.
+  const auto& table = tablet->table();
+  std::vector<AffinitizedZonesSet> affinitized_zones;
+  if (table->GetTableType() != TRANSACTION_STATUS_TABLE_TYPE ||
+      FLAGS_transaction_tables_use_preferred_zones) {
+    CatalogManagerUtil::GetAllAffinitizedZones(
+        GetTableReplicationInfoWithDefault(table), &affinitized_zones);
+  }
 
-  std::vector<std::string> possible_leaders;
-  for (const auto& replica : *replicas) {
-    // Start hinted election only on running replicas if it's not initial election (create table).
-    if (!initial_election && (replica.second.member_type != PeerMemberType::VOTER ||
-        replica.second.state != RaftGroupStatePB::RUNNING)) {
+  // Get the leader priority of every voter of the Raft config that can get the hint. A lower value
+  // is a higher priority.
+  // - Initial election (a tablet of a new table): every voter that can be a leader, whether or not
+  //   its replica has reported yet.
+  // - Non-initial election (mostly a split child tablet): only the voters whose replica is RUNNING.
+  //   The tablet has no leader yet, so a running voter of a lower priority gets the hint now
+  //   instead of waiting for a higher priority one. The load balancer can move the leader
+  //   afterwards.
+  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  std::unordered_map<TabletServerId, size_t> voter_priorities;
+  size_t best_priority = std::numeric_limits<size_t>::max();
+  for (const auto& peer : cstate.config().peers()) {
+    if (peer.member_type() != PeerMemberType::VOTER) {
       continue;
     }
+    if (!initial_election) {
+      // Start hinted election only on running replicas if it's not initial election (create table).
+      auto it = replicas->find(peer.permanent_uuid());
+      if (it == replicas->end() || it->second.member_type != PeerMemberType::VOTER ||
+          it->second.state != RaftGroupStatePB::RUNNING) {
+        continue;
+      }
+    }
     for (const auto& ts_desc : ts_descs) {
-      if (ts_desc->permanent_uuid() == replica.first) {
-        if (ts_desc->IsAcceptingLeaderLoad(replication_info) &&
-            !ts_desc->IsBlacklisted(leader_blacklist)) {
-          possible_leaders.push_back(replica.first);
+      if (ts_desc->permanent_uuid() == peer.permanent_uuid()) {
+        if (!ts_desc->IsBlacklisted(leader_blacklist)) {
+          const size_t priority =
+              CatalogManagerUtil::GetLeaderAffinityPriority(*ts_desc, affinitized_zones);
+          voter_priorities.emplace(peer.permanent_uuid(), priority);
+          best_priority = std::min(best_priority, priority);
         }
         break;
       }
+    }
+  }
+
+  // Candidates are the voters of the best priority. When no voter is in a preferred zone, all
+  // voters tie and any of them is a candidate.
+  std::vector<std::string> possible_leaders;
+  for (const auto& [ts_uuid, priority] : voter_priorities) {
+    if (priority == best_priority) {
+      possible_leaders.push_back(ts_uuid);
     }
   }
 
@@ -13530,7 +13563,8 @@ void CatalogManager::StartElectionIfReady(
   // from the list of possible leaders. This can happen when:
   //   1) The 'protege' is unconfigured (e.g. unset/empty).
   //   2) The 'protege' corresponds to a tserver that is no longer serving a replica.
-  //   3) The 'protege' corresponds to a tserver that is not accepting leader load.
+  //   3) The 'protege' corresponds to a tserver that is leader blacklisted, or that is in a less
+  //      preferred zone than another voter of the tablet.
   if (std::count(possible_leaders.begin(), possible_leaders.end(), protege) == 0) {
     protege = RandomElement(possible_leaders);
   }

@@ -87,6 +87,8 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tools/yb-admin_client.h"
+
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -5386,6 +5388,65 @@ TEST_F_EX(
   const auto table_info = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName));
   ASSERT_OK(WaitForRbsCompletionAndCheckFollowerLag(
       *cluster_, ts_map, parent_tablet_id, table_info, added_tserver, kTimeout));
+}
+
+// The master hints which replica of a split child tablet should start its first election, and
+// only a running replica can get that hint. Here the tserver in the cluster's only preferred zone
+// has not applied the split yet, so the children have no running replica in a preferred zone.
+// They still get their leaders from the hint, on the tservers that have applied the split.
+TEST_F_EX(
+    TabletSplitITest, StartHintedElectionForChildTabletsWithLaggingPreferredReplica,
+    MultiZoneTabletSplitExternalMiniClusterITest) {
+  constexpr auto kTimeout = 15s * kTimeMultiplier;
+  // With the load balancer off, the leader of the parent tablet stays out of the preferred zone.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+
+  CreateSingleTablet();
+  const auto parent_tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
+  ASSERT_OK(WriteRowsAndFlush());
+
+  // The lagging tserver is a follower of the parent tablet, so the split does not depend on it.
+  const auto parent_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(parent_tablet_id));
+  const auto lagging_ts_idx = (parent_leader_idx + 1) % cluster_->num_tablet_servers();
+  auto* lagging_ts = cluster_->tablet_server(lagging_ts_idx);
+
+  tools::ClusterAdminClient yb_admin_client(
+      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  ASSERT_OK(yb_admin_client.Init());
+  // A preferred zone has to be in the cluster placement, which is empty by default.
+  ASSERT_OK(yb_admin_client.ModifyPlacementInfo(
+      "cloud1.datacenter1.z0,cloud1.datacenter1.z1,cloud1.datacenter1.z2", 3,
+      "" /* optional_uuid */));
+  ASSERT_OK(yb_admin_client.SetPreferredZones({Format("cloud1.datacenter1.z$0", lagging_ts_idx)}));
+
+  // From here on, a tablet without a leader can get one only from the master's hint.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "true"));
+
+  ASSERT_OK(cluster_->SetFlag(lagging_ts, "TEST_pause_apply_tablet_split", "true"));
+  {
+    LogWaiter log_waiter(lagging_ts, "Pausing due to flag TEST_pause_apply_tablet_split");
+    ASSERT_OK(SplitTablet(parent_tablet_id));
+    ASSERT_OK(log_waiter.WaitFor(kTimeout));
+  }
+
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    size_t num_child_leaders = 0;
+    for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+      if (ts_idx == lagging_ts_idx) {
+        continue;
+      }
+      const auto tablets = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(ts_idx)));
+      for (const auto& tablet : tablets) {
+        if (tablet.table_name() == table_->name().table_name() &&
+            tablet.tablet_id() != parent_tablet_id && tablet.is_leader()) {
+          ++num_child_leaders;
+        }
+      }
+    }
+    return num_child_leaders == 2;
+  }, kTimeout, "Wait for both child tablets to have a leader"));
+
+  ASSERT_OK(cluster_->SetFlag(lagging_ts, "TEST_pause_apply_tablet_split", "false"));
 }
 
 class TabletSplitITestMultiMaster : public TabletSplitITest {

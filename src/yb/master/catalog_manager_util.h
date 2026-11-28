@@ -135,6 +135,12 @@ class CatalogManagerUtil {
       const ReplicationInfoPB& replication_info,
       std::vector<AffinitizedZonesSet>* affinitized_zones);
 
+  // The leader priority of the tserver: the position of the first set of affinitized zones that
+  // the tserver is in, counting from the most preferred set (0), or the number of sets when it is
+  // in none of them. A lower value is a higher priority.
+  static size_t GetLeaderAffinityPriority(
+      const TSDescriptor& ts_desc, const std::vector<AffinitizedZonesSet>& affinitized_zones);
+
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
   // Adds the table's running replicas to the counts of the tservers already in the map.
