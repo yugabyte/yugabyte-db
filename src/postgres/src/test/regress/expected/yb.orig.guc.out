@@ -40,6 +40,28 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 set yb_transaction_priority_lower_bound = 0.6;
 NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
+-- Abort restores the lower bound before the upper bound, so the pair is
+-- briefly inverted.
+begin;
+set yb_transaction_priority_lower_bound = 0.1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
+set yb_transaction_priority_upper_bound = 0.2;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
+rollback;
+show yb_transaction_priority_lower_bound;
+ yb_transaction_priority_lower_bound 
+-------------------------------------
+ 0.6
+(1 row)
+
+show yb_transaction_priority_upper_bound;
+ yb_transaction_priority_upper_bound 
+-------------------------------------
+ 0.6
+(1 row)
+
 -- Test yb_fetch_row_limit
 set yb_fetch_row_limit = 100;
 show yb_fetch_row_limit;

@@ -127,18 +127,12 @@ extern "C" {
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
   txn_priority_regular_lower_bound = ConvertRegularPriorityTxnBound(newval);
   txn_priority_highpri_lower_bound = ConvertHighPriorityTxnBound(newval);
-  // YSQL layer checks (guc.c) should ensure this.
-  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
-  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_highpri_lower_bound);
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
   txn_priority_regular_upper_bound = ConvertRegularPriorityTxnBound(newval);
   txn_priority_highpri_upper_bound = ConvertHighPriorityTxnBound(newval);
-  // YSQL layer checks (guc.c) should ensure this.
-  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
-  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
   DCHECK_LE(txn_priority_regular_upper_bound, txn_priority_highpri_lower_bound);
 }
 
