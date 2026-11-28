@@ -259,6 +259,19 @@ class SkipListFactory : public MemTableRepFactory {
   const ConcurrentWrites concurrent_writes_;
 };
 
+// Single-writer B+-tree memtables with inline user key windows and lock-free readers.
+class BTreeFactory : public MemTableRepFactory {
+ public:
+  MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
+                                 MemTableAllocator*,
+                                 const SliceTransform*,
+                                 Logger* logger) override;
+
+  const char* Name() const override { return "BTreeFactory"; }
+
+  bool IsInMemoryEraseSupported() const override { return true; }
+};
+
 class CDSSkipListFactory : public MemTableRepFactory {
  public:
   MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
