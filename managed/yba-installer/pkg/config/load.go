@@ -186,6 +186,7 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 			Timeout:           legacy.GetString("prometheus.timeout"),
 			RetentionTime:     legacy.GetString("prometheus.retentionTime"),
 			EnableHttps:       legacy.GetBool("prometheus.enableHttps"),
+			EnableHsts:        legacy.GetBool("prometheus.enableHsts"),
 			EnableAuth:        legacy.GetBool("prometheus.enableAuth"),
 			AuthUsername:      legacy.GetString("prometheus.authUsername"),
 			AuthPassword:      legacy.GetString("prometheus.authPassword"),

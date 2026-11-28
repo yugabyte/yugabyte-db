@@ -227,6 +227,7 @@ prometheus:
    timeout: 30s              # time before a query times out
    retentionTime: 15d        # time to retain metrics
    enableHttps: false        # enable HTTPS for prometheus web UI
+   enableHsts: false         # send the Strict-Transport-Security header (if enableHttps)
    enableAuth: false         # enable authentication for prometheus
    authUsername: prometheus  # username to authenticate to prometheus (if enableAuth)
    authPassword: ""          # password to authenticate to prometheus (if enableAuth)

@@ -85,7 +85,12 @@ func GetYamlPathSliceData(text string) []string {
 // all template parameters for each individual config file directly, without
 // having to rely on variable names in app data.
 func readConfigAndTemplate(configYmlFileName string, service components.Service) ([]byte, error) {
+	return renderTemplate(filepath.Join(common.GetTemplatesDir(), configYmlFileName), service)
+}
 
+// renderTemplate takes the path and data separately so tests can render a template from the
+// source tree with a stand-in for the service struct.
+func renderTemplate(templatePath string, data any) ([]byte, error) {
 	// First we create a FuncMap with which to register the function.
 	funcMap := template.FuncMap{
 
@@ -105,8 +110,7 @@ func readConfigAndTemplate(configYmlFileName string, service components.Service)
 		"logrotateD":        func() string { return filepath.Join(common.GetSoftwareRoot(), "logrotate", "logrotate.d") },
 	}
 
-	tmpl, err := template.New(configYmlFileName).
-		Funcs(funcMap).ParseFiles(fmt.Sprintf("%s/%s", common.GetTemplatesDir(), configYmlFileName))
+	tmpl, err := template.New(filepath.Base(templatePath)).Funcs(funcMap).ParseFiles(templatePath)
 
 	if err != nil {
 		log.Fatal("Error: " + err.Error() + ".")
@@ -114,7 +118,7 @@ func readConfigAndTemplate(configYmlFileName string, service components.Service)
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, service); err != nil {
+	if err := tmpl.Execute(&buf, data); err != nil {
 		log.Fatal("Error: " + err.Error() + ".")
 		return nil, err
 	}
