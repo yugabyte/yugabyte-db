@@ -382,7 +382,7 @@ CREATE INDEX t_jsonb_expr_key ON t_jsonb_expr(((data->>'key')::int));
 ANALYZE t_jsonb_expr;
 
 SELECT $$
-:P SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
+:P /*+ IndexScan(t_jsonb_expr t_jsonb_expr_key) */ SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
 $$ AS query \gset
 \i :run_query
 

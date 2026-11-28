@@ -891,6 +891,13 @@ typedef struct RelOptInfo
 	 * with a Parallel Hash Join.  NULL when no such path was created.
 	 */
 	struct Path *yb_forced_gather_path;
+
+	/*
+	 * YB: average widths of the rel's bpchar columns without their padding
+	 * (yb_bpchar_unpadded_avg_width()).  Indexed by attribute number, 0
+	 * until computed; allocated on first use.
+	 */
+	int32	   *yb_bpchar_unpadded_widths;
 } RelOptInfo;
 
 /*

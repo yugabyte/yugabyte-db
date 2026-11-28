@@ -835,12 +835,11 @@ order by qid;
 -- scan, estimated as if every key of the batch had its 10 rows: 4907 rows
 -- against 1131 per batch on ce.rC.  rt_rank
 -- ranks by read_reqs (then rows_scanned), as in the 1xx section, so cost_rank
--- disagrees with it on ce.rC and on the ce.r semi and anti joins.  On the
--- ce.r inner and left joins BNL's extra request ranks it behind HJ and MJ by
--- work as well, though not by the 2.6 times its cost says, so those rows are
--- not printed; at batch size 512 the ce.r semi and anti joins agree too.  The
--- left join ranks like the inner join, as the 1xx left joins do on the unique
--- keys.
+-- disagrees with it on ce.rC and on the ce.r semi join.  On the ce.r inner,
+-- anti and left joins BNL's extra request ranks it behind HJ and MJ by work
+-- as well, though not by the 2.6 times its cost says, so those rows are not
+-- printed; at batch size 512 the ce.r semi join agrees too.  The left join
+-- ranks like the inner join, as the 1xx left joins do on the unique keys.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, total_cost, actual_rows,
@@ -871,12 +870,11 @@ order by qid;
  qid  |          descr           |  cost_rank   | chosen |   rt_rank    |      total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
 ------+--------------------------+--------------+--------+--------------+----------------------+------------+-----------------------+-------------+-------------+-------------
   502 | a  semi z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 7 7 7 1257 | 6668 14393 14393 9740 | 3 6 6 2     | 4 1 1 1024  |         231
-  503 | a  anti z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 7 7 7 1257 | 6668 14393 14393 9740 | 3 6 6 2     | 4 1 1 1024  |         793
  1501 | a  inner z<=1024 [ce.rC] | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 4 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 2 1 1 1024  |        1131
  1502 | a  semi z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 3 7 7 1026 | 6668 14393 14393 9740 | 0 6 6 2     | 3 1 1 1024  |         231
  1503 | a  anti z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 4 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 2 1 1 1024  |         793
  1504 | a  left z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 4 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 2 1 1 1024  |        1924
-(6 rows)
+(5 rows)
 
 ------------------------------------------------------------------------------
 -- 6xx (#19549): the 1024 shuffled outer rows of ce.s2 joined on the

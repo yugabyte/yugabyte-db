@@ -112,6 +112,7 @@
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"
 #include "utils/syscache.h"
 
 
@@ -7195,6 +7196,100 @@ yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
 }
 
 /*
+ * Width of a bpchar value without its padding, varlena header included: the
+ * one-byte header for a value that fits it, as in a stored tuple.
+ */
+static int
+yb_bpchar_unpadded_width(Datum value)
+{
+	BpChar	   *bpchar = DatumGetBpCharPP(value);
+	int			len = bpchartruelen(VARDATA_ANY(bpchar),
+									VARSIZE_ANY_EXHDR(bpchar));
+
+	return len + (len + VARHDRSZ_SHORT <= VARATT_SHORT_MAX ?
+				  VARHDRSZ_SHORT : VARHDRSZ);
+}
+
+/*
+ * yb_bpchar_unpadded_avg_width
+ *		Average width of a bpchar column's values without their padding.
+ *
+ * A bpchar value is stored and sent without its trailing spaces
+ * (YbDatumToBPChar()), but ANALYZE measures the value padded to the column's
+ * length again, so avg_width, the column's average width from the
+ * statistics, counts the padding.  The statistics hold no unpadded width.
+ * Estimate one from the values they do hold: the most common values weighted
+ * by their frequencies, and the histogram bounds standing in equal shares
+ * for the other non-null values.  Returns avg_width for a column that has
+ * neither.  Like avg_width, the result counts the varlena header.
+ */
+static int32
+yb_bpchar_unpadded_avg_width(PlannerInfo *root, RelOptInfo *baserel,
+							 Oid baserel_oid, AttrNumber attnum,
+							 int32 avg_width)
+{
+	HeapTuple	stats_tuple;
+	AttStatsSlot sslot;
+	double		mcv_frac = 0.0;
+	double		mcv_width = 0.0;	/* sum weighted by frequency */
+	double		hist_frac = 0.0;
+	double		hist_width = 0.0;	/* average */
+	int32		width = avg_width;
+
+	/* Reading the values is costly, so do it once for each column. */
+	if (baserel->yb_bpchar_unpadded_widths == NULL)
+		baserel->yb_bpchar_unpadded_widths =
+			MemoryContextAllocZero(root->planner_cxt,
+								   (baserel->max_attr + 1) * sizeof(int32));
+	else if (baserel->yb_bpchar_unpadded_widths[attnum] > 0)
+		return baserel->yb_bpchar_unpadded_widths[attnum];
+
+	stats_tuple = SearchSysCache3(STATRELATTINH,
+								  ObjectIdGetDatum(baserel_oid),
+								  Int16GetDatum(attnum),
+								  BoolGetDatum(false));
+	if (!HeapTupleIsValid(stats_tuple))
+		return width;
+
+	if (get_attstatsslot(&sslot, stats_tuple, STATISTIC_KIND_MCV, InvalidOid,
+						 ATTSTATSSLOT_VALUES | ATTSTATSSLOT_NUMBERS))
+	{
+		for (int i = 0; i < sslot.nvalues && i < sslot.nnumbers; i++)
+		{
+			mcv_frac += sslot.numbers[i];
+			mcv_width += sslot.numbers[i] *
+				yb_bpchar_unpadded_width(sslot.values[i]);
+		}
+		free_attstatsslot(&sslot);
+	}
+
+	if (get_attstatsslot(&sslot, stats_tuple, STATISTIC_KIND_HISTOGRAM,
+						 InvalidOid, ATTSTATSSLOT_VALUES))
+	{
+		if (sslot.nvalues > 0)
+		{
+			Form_pg_statistic stats =
+				(Form_pg_statistic) GETSTRUCT(stats_tuple);
+
+			for (int i = 0; i < sslot.nvalues; i++)
+				hist_width += yb_bpchar_unpadded_width(sslot.values[i]);
+			hist_width /= sslot.nvalues;
+			hist_frac = fmax(1.0 - stats->stanullfrac - mcv_frac, 0.0);
+		}
+		free_attstatsslot(&sslot);
+	}
+
+	ReleaseSysCache(stats_tuple);
+
+	if (mcv_frac + hist_frac > 0.0)
+		width = (int32) rint((mcv_width + hist_frac * hist_width) /
+							 (mcv_frac + hist_frac));
+
+	baserel->yb_bpchar_unpadded_widths[attnum] = width;
+	return width;
+}
+
+/*
  * yb_get_docdb_result_width
  *		Determines width of the result that is transferred from DocDB to pggate.
  *
@@ -7203,10 +7298,10 @@ yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
  * and no local filters. Additionally, this also happens when the select
  * list contains count(*). In these cases, pathtarget->width is 0.
  *
- * One exception to the above rule is when no columns are being projected
- * but filters are used in the query which are pushed down as index
- * conditions for Index Scan. In this case also, the pathtarget->width is
- * 0, but DocDB returns the index key columns that are used in the filters.
+ * An Index Scan or Index Only Scan also requests the columns its index
+ * conditions use, to recheck the conditions (ybcBuildRequiredAttrs()), so
+ * DocDB returns them whether or not the select list or a local filter uses
+ * them.
  *
  * When columns are being projected, either in select list or in local
  * filters then these columns are returned from DocDB.
@@ -7253,9 +7348,8 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 		index_path = (IndexPath *) path;
 	}
 
-	if (is_index_path &&
-		path->pathtarget->width == 0 &&
-		list_length(local_clauses) == 0)
+	/* The columns of the index conditions, which the scan rechecks. */
+	if (is_index_path)
 	{
 		foreach(lc, index_conditions)
 		{
@@ -7266,53 +7360,50 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 									YBFirstLowInvalidAttributeNumber + 1);
 		}
 	}
-	else
+
+	/*
+	 * Collect the attributes used in each expression in the target
+	 * list.
+	 */
+
+	/*
+	 * TODO(#20955) : pathtarget->exprs may have aggregate functions
+	 * which are pushed down to DocDB. We cannot detect aggregate
+	 * pushdown during query planning at this time. So we haven't
+	 * modeled this properly here for now.
+	 *
+	 * We assume that agg functions cannot be pushed down, and all
+	 * columns used as input to these functions will need to be
+	 * transferred. This produces inaccurate results in some cases,
+	 * documented in the test TestPgEstimatedDocdbResultWidth.java in
+	 * method testDocdbResultWidthEstimationAggregateFunctions().
+	 */
+	foreach(lc, path->pathtarget->exprs)
 	{
-		/*
-		 * Collect the attributes used in each expression in the target
-		 * list.
-		 */
+		Node	   *expr = (Node *) lfirst(lc);
 
-		/*
-		 * TODO(#20955) : pathtarget->exprs may have aggregate functions
-		 * which are pushed down to DocDB. We cannot detect aggregate
-		 * pushdown during query planning at this time. So we haven't
-		 * modeled this properly here for now.
-		 *
-		 * We assume that agg functions cannot be pushed down, and all
-		 * columns used as input to these functions will need to be
-		 * transferred. This produces inaccurate results in some cases,
-		 * documented in the test TestPgEstimatedDocdbResultWidth.java in
-		 * method testDocdbResultWidthEstimationAggregateFunctions().
-		 */
-		foreach(lc, path->pathtarget->exprs)
-		{
-			Node	   *expr = (Node *) lfirst(lc);
-
-			pull_varattnos_min_attr(expr, baserel->relid, &attrs,
-									YBFirstLowInvalidAttributeNumber + 1);
-		}
-
-		/*
-		 * Collect the attributes used in each expression in the local
-		 * filters.
-		 */
-		foreach(lc, local_clauses)
-		{
-			Node	   *node = lfirst(lc);
-			Expr	   *local_qual = (IsA(node, RestrictInfo) ?
-									  ((RestrictInfo *) node)->clause :
-									  (Expr *) node);
-
-			pull_varattnos_min_attr((Node *) local_qual, baserel->relid, &attrs,
-									YBFirstLowInvalidAttributeNumber + 1);
-		}
+		pull_varattnos_min_attr(expr, baserel->relid, &attrs,
+								YBFirstLowInvalidAttributeNumber + 1);
 	}
 
-	/* True if the per-attribute loop below sees ybctid in its source set. */
-	bool		ybctid_in_pathtarget_or_local_clauses = false;
+	/*
+	 * Collect the attributes used in each expression in the local
+	 * filters.
+	 */
+	foreach(lc, local_clauses)
+	{
+		Node	   *node = lfirst(lc);
+		Expr	   *local_qual = (IsA(node, RestrictInfo) ?
+								  ((RestrictInfo *) node)->clause :
+								  (Expr *) node);
 
-	/* TODO(#20956): Columns needed for rechecking need to be added */
+		pull_varattnos_min_attr((Node *) local_qual, baserel->relid, &attrs,
+								YBFirstLowInvalidAttributeNumber + 1);
+	}
+
+	/* True if the per-attribute loop below finds ybctid in attrs. */
+	bool		ybctid_in_attrs = false;
+
 	if (bms_num_members(attrs) > 0)
 	{
 		int			bms_index = -1;
@@ -7334,7 +7425,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			if (attnum < 0)
 			{
 				if (attnum == YBTupleIdAttributeNumber)
-					ybctid_in_pathtarget_or_local_clauses = true;
+					ybctid_in_attrs = true;
 				/* Ignore system attributes */
 				continue;
 			}
@@ -7342,8 +7433,9 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			/* The whole-row entry was replaced by its columns above. */
 			Assert(attnum > 0);
 
-			Relation	baserel = table_open(baserel_oid, NoLock);
-			Form_pg_attribute att = TupleDescAttr(baserel->rd_att, attnum - 1);
+			Relation	relation = table_open(baserel_oid, NoLock);
+			Form_pg_attribute att = TupleDescAttr(relation->rd_att, attnum - 1);
+			int32		avg_width = get_attavgwidth(baserel_oid, attnum);
 
 			if (att->attlen < 0)
 			{
@@ -7352,10 +7444,27 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 				 * prefixes the value with the 8 bytes length.
 				 */
 				result_width += 8;
-			}
-			table_close(baserel, NoLock);
 
-			result_width += get_attavgwidth(baserel_oid, attnum);
+				/* DocDB sends a bpchar value without its padding. */
+				if (att->atttypid == BPCHAROID)
+					avg_width = yb_bpchar_unpadded_avg_width(root, baserel,
+															 baserel_oid,
+															 attnum,
+															 avg_width);
+
+				/*
+				 * The average width counts the varlena header, which DocDB
+				 * does not send: one byte for a value of up to
+				 * VARATT_SHORT_MAX bytes, as much as the terminator DocDB
+				 * adds to a string, and VARHDRSZ bytes for a longer value.
+				 * Take off the longer header's extra bytes.
+				 */
+				if (att->attlen == -1 && avg_width > VARATT_SHORT_MAX)
+					avg_width -= VARHDRSZ - VARHDRSZ_SHORT;
+			}
+			table_close(relation, NoLock);
+
+			result_width += avg_width;
 		}
 	}
 
@@ -7370,8 +7479,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	 */
 	bool		include_ybctid_target =
 		(!is_index_only &&
-		 (ybctid_required_by_cmd_or_rowmark ||
-		  ybctid_in_pathtarget_or_local_clauses));
+		 (ybctid_required_by_cmd_or_rowmark || ybctid_in_attrs));
 
 	if (include_ybctid_target && result_width > 0)
 	{
@@ -7379,7 +7487,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			yb_get_base_table_ybctid_width(baserel_oid);
 
 		/* Avoid double-counting the null indicator the loop already charged. */
-		if (ybctid_in_pathtarget_or_local_clauses)
+		if (ybctid_in_attrs)
 			ybctid_target_width -= 1;
 
 		if (ybctid_target_width > 0)
@@ -9840,6 +9948,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 	}
 
+	/*
+	 * The scan requests the columns of every index condition, including the
+	 * conditions dropped below (yb_get_docdb_result_width()).
+	 */
+	List	   *all_index_conditions = list_copy(index_conditions);
+
 	bool		yb_exist_conditions_on_all_hash_keys_;
 
 	yb_exist_conditions_on_all_hash_keys_ =
@@ -10255,7 +10369,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 												   true,	/* is_index_path */
 												   is_primary_index,
 												   index_only,
-												   index_conditions,
+												   all_index_conditions,
 												   local_clauses,
 												   baserel, baserel_oid);
 

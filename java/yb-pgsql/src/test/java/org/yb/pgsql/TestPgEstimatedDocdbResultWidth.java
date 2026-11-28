@@ -604,27 +604,111 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
   @Test
   public void testDocdbResultWidthEstimationRecheckColumns() throws Exception {
-    /* TODO(#20956): In some cases columns with pushed down filters are returned
-     * to PG for result rechecking. This is not correctly modeled in the cost
-     * model.
+    /* An index scan requests the columns of its index conditions, to recheck the conditions, so
+     * DocDB returns them along with the columns of the select list (#20956).
      */
     try (Statement stmt = connection.createStatement()) {
 
       stmt.execute("CREATE TABLE t_20956 (i1 INT, i2 INT, PRIMARY KEY (i1 ASC))");
+      stmt.execute("CREATE INDEX t_20956_i2_idx ON t_20956 (i2 ASC) INCLUDE (i1)");
       stmt.execute("INSERT INTO t_20956 values (1, 1)");
       stmt.execute("ANALYZE t_20956");
 
-      /* Both filters on i1 are marked eligible to be pushed down as index
-       * filters so we should only receive the value of i2 for the matching rows
-       * from DocDB. Instead, only one filter on i1 is actually used as an
-       * index condition and the value of i1 is also returned to PG. The second
-       * filter is applied on PG side.
-       *
-       * Actual size of docdb result width is 10, but we estimate it to be 5.
+      /* Both conditions on i1 are index conditions. DocDB returns i1 for them and i2 for the
+       * select list.
        */
       testDocdbResultWidhEstimationHelper(stmt, "/*+IndexScan(t_20956)*/ SELECT i2 FROM t_20956 " +
           "WHERE i1 = 1 and i1 in (2, 3, 4)",
-          "t_20956", 5);
+          "t_20956", 10);
+
+      /* The same through a secondary index: i2 for the index condition, i1 for the select list. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexScan(t_20956 t_20956_i2_idx)*/ SELECT i1 FROM t_20956 WHERE i2 >= 1",
+          "t_20956", 10);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexOnlyScan(t_20956 t_20956_i2_idx)*/ SELECT i1 FROM t_20956 WHERE i2 >= 1",
+          "t_20956", 10);
+
+      /* A condition on one column of a two-column hash key is an index condition that DocDB does
+       * not enforce. DocDB returns the column of the condition all the same.
+       */
+      stmt.execute("CREATE TABLE t_20956_hash (h1 INT, h2 INT, v INT, " +
+          "PRIMARY KEY ((h1, h2) HASH))");
+      stmt.execute("CREATE INDEX t_20956_hash_v_idx ON t_20956_hash ((v, h2) HASH) INCLUDE (h1)");
+      stmt.execute("INSERT INTO t_20956_hash values (1, 1, 1)");
+      stmt.execute("ANALYZE t_20956_hash");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexScan(t_20956_hash t_20956_hash_pkey)*/ SELECT v FROM t_20956_hash WHERE h1 = 1",
+          "t_20956_hash", 10);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexScan(t_20956_hash t_20956_hash_pkey)*/ SELECT 0 FROM t_20956_hash WHERE h1 = 1",
+          "t_20956_hash", 5);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "/*+IndexOnlyScan(t_20956_hash t_20956_hash_v_idx)*/ SELECT h1 FROM t_20956_hash " +
+          "WHERE v = 1",
+          "t_20956_hash", 10);
+    }
+  }
+
+  @Test
+  public void testDocdbResultWidthEstimationLongStrings() throws Exception {
+    /* The statistics count a 4-byte length header for a value longer than 126 bytes, where a
+     * shorter value has a 1-byte header. DocDB sends neither: the result holds 1 byte for the
+     * null indicator, 8 bytes for the size and 1 byte for null termination, as for the shorter
+     * strings above.
+     */
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_long_strings (k INT, c CHAR(200), v VARCHAR(200), " +
+                   "PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_long_strings VALUES (1, repeat('a', 200), repeat('b', 200))");
+      stmt.execute("ANALYZE t_long_strings");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT c FROM t_long_strings", "t_long_strings", 210);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT v FROM t_long_strings", "t_long_strings", 210);
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT c, v FROM t_long_strings", "t_long_strings", 420);
+    }
+  }
+
+  @Test
+  public void testDocdbResultWidthEstimationPaddedChars() throws Exception {
+    /* A CHAR(n) value is stored and sent without its padding, while the statistics measure the
+     * padded value. The estimate takes the length without the padding from the column's most
+     * common values and histogram bounds. The result holds 1 byte for the null indicator, 8 bytes
+     * for the size, the value without its padding and 1 byte for null termination.
+     */
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_padded_chars (k INT, mcv CHAR(10), hist CHAR(10), " +
+                   "mixed CHAR(10), wide CHAR(200), PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_padded_chars SELECT i, 'abc', lpad(i::text, 5, '0'), " +
+                   "CASE WHEN i % 2 = 0 THEN 'ab' ELSE lpad(i::text, 6, '0') END, " +
+                   "lpad(i::text, 150, '0') FROM generate_series(1, 1000) i");
+      stmt.execute("ANALYZE t_padded_chars");
+      /* One most common value of 3 characters. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT mcv FROM t_padded_chars", "t_padded_chars", 13);
+      /* Histogram bounds of 5 characters each. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT hist FROM t_padded_chars", "t_padded_chars", 15);
+      /* A most common value of 2 characters in half of the rows, and histogram bounds of 6
+       * characters each for the other half.
+       */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT mixed FROM t_padded_chars", "t_padded_chars", 14);
+      /* Values of 150 characters in a CHAR(200). */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT wide FROM t_padded_chars", "t_padded_chars", 160);
+
+      /* A single row leaves the column without most common values and histogram bounds, and
+       * the estimate counts the padding.
+       */
+      stmt.execute("CREATE TABLE t_padded_chars_one_row (k INT, c CHAR(10), " +
+                   "PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_padded_chars_one_row VALUES (1, 'abc')");
+      stmt.execute("ANALYZE t_padded_chars_one_row");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT c FROM t_padded_chars_one_row", "t_padded_chars_one_row", 20);
     }
   }
 
