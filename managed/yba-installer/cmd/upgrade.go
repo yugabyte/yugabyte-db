@@ -277,46 +277,34 @@ func upgradeCmd() *cobra.Command {
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}
-			// If node-exporter is enabled now but was not installed in the prior
-			// install, run a full Install (which extracts the package, generates
-			// the systemd unit, etc.) instead of Upgrade, which assumes a previous
-			// install. After install we also flip state.Services so future upgrades
-			// see node-exporter as installed.
+			// A service that is enabled now but was not installed in the prior install gets a full
+			// Install and Initialize (extracting the package, generating the systemd unit, the Perf
+			// Advisor TLS keystore, etc.) instead of Upgrade, which assumes a previous install.
+			// state.Services is flipped so future upgrades see it as installed.
+			//
+			// All services go through one pass: postgres's Upgrade needs the old server running and
+			// stops it for a major version upgrade, so a second pass would fail there.
 			neFreshInstall := !state.Services.NodeExporter && viper.GetBool("nodeExporter.enabled")
-			serviceActionFnc("upgrade", func(service components.Service) error {
-				if neFreshInstall && service.Name() == "node-exporter" {
-					log.Info("node-exporter was not installed previously; running first-time install.")
-					if err := service.Install(); err != nil {
-						return err
-					}
-					if err := service.Initialize(); err != nil {
-						return err
-					}
-					state.Services.NodeExporter = true
-					return nil
-				}
-				return service.Upgrade()
-			})
-
-			// If Perf Advisor is enabled now but was not installed in the prior
-			// install, run a full Install (which provisions the TLS keystore,
-			// extracts the package, etc.) instead of Upgrade, which assumes a
-			// previous install. After install we also need to flip state.Services
-			// so future upgrades see PA as installed.
 			paFreshInstall := !state.Services.PerfAdvisor && viper.GetBool("perfAdvisor.enabled")
 			serviceActionFnc("upgrade", func(service components.Service) error {
-				if paFreshInstall && service.Name() == "yb-perf-advisor" {
-					log.Info("Perf Advisor was not installed previously; running first-time install.")
-					if err := service.Install(); err != nil {
-						return err
-					}
-					if err := service.Initialize(); err != nil {
-						return err
-					}
-					state.Services.PerfAdvisor = true
-					return nil
+				isNodeExporter := neFreshInstall && service.Name() == "node-exporter"
+				isPerfAdvisor := paFreshInstall && service.Name() == "yb-perf-advisor"
+				if !isNodeExporter && !isPerfAdvisor {
+					return service.Upgrade()
 				}
-				return service.Upgrade()
+				log.Info(service.Name() + " was not installed previously; running first-time install.")
+				if err := service.Install(); err != nil {
+					return err
+				}
+				if err := service.Initialize(); err != nil {
+					return err
+				}
+				if isNodeExporter {
+					state.Services.NodeExporter = true
+				} else {
+					state.Services.PerfAdvisor = true
+				}
+				return nil
 			})
 
 			// Permissions update to be safe
