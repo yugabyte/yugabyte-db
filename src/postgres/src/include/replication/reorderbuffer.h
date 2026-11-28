@@ -715,4 +715,7 @@ bool	   *YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs);
 
 void		YBReorderBufferSchemaChange(ReorderBuffer *, Oid relid);
 
+/* YB: Whether any change of the transaction was queued. */
+extern bool YBReorderBufferHasTXN(ReorderBuffer *rb, TransactionId xid);
+
 #endif

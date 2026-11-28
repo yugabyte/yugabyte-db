@@ -29,6 +29,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/yql/pgwrapper/logical_replication_test_utils.h"
 
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_int32(log_min_segments_to_retain);
@@ -7814,6 +7816,94 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
   ASSERT_TRUE(std::ranges::any_of(ddl_record_times, [&](uint64_t record_time) {
     return record_time > insert_record_times[2] && record_time < insert_record_times[3];
   }));
+}
+
+// On a colocated database the slot also ships the transactions of unpublished tables, which
+// pgoutput skips as empty. The walsender acknowledges them, so the pause completes once the client
+// acknowledges the last published transaction before the barrier.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPauseColocatedSlotWithUnpublishedWrites) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */, true));
+  ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  constexpr auto kUnpublishedTableName = "unpublished_table";
+  ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kUnpublishedTableName, 1 /* num_tablets */,
+      true /* add_pk */, true /* colocated */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  for (const auto& table_name : {kTableName, kUnpublishedTableName}) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY DEFAULT", table_name));
+  }
+  constexpr auto kPubName = "pub";
+  ASSERT_OK(conn.ExecuteFormat("CREATE PUBLICATION $0 FOR TABLE $1", kPubName, kTableName));
+  constexpr auto kSlotName = "paused_slot";
+  ASSERT_RESULT(CreatePubRefreshSlot(kSlotName));
+
+  constexpr auto kPublishedValue = 987654;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, $3)", kTableName, kKeyColumnName, kValueColumnName,
+      kPublishedValue));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, 1)", kUnpublishedTableName, kKeyColumnName,
+      kValueColumnName));
+  ASSERT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {kSlotName}));
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=$2 user=postgres", test_cluster_.pg_host_port_.host(),
+      test_cluster_.pg_host_port_.port(), test_namespace_name);
+  TestThreadHolder consumer;
+  consumer.AddThreadFunctor([&] {
+    ASSERT_OK(pgwrapper::StreamSlotAndAcknowledge(
+        conn_str, kSlotName, kPubName, std::to_string(kPublishedValue),
+        MonoDelta::FromSeconds(60) * kTimeMultiplier, nullptr /* inserted_rows */));
+  });
+  auto pause_status = WaitFor(
+      [&] { return ExecuteYBAdminCommand("pause_replication_slot", {kSlotName, "1"}).ok(); },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Waiting for the slot to pause");
+  consumer.JoinAll();
+  ASSERT_OK(pause_status);
+}
+
+// With transactional DDL, the slot ships a catalog transaction that touches no published table as
+// a BEGIN and COMMIT with no changes. The client never receives it, so the walsender acknowledges
+// it.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAckTransactionWithNoChangesToDecode) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */, true));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY DEFAULT", kTableName));
+  constexpr auto kPubName = "pub";
+  ASSERT_OK(conn.ExecuteFormat("CREATE PUBLICATION $0 FOR TABLE $1", kPubName, kTableName));
+  constexpr auto kSlotName = "test_slot";
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(kSlotName));
+
+  constexpr auto kPublishedValue = 987654;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, $3)", kTableName, kKeyColumnName, kValueColumnName,
+      kPublishedValue));
+  ASSERT_OK(conn.Execute("CREATE TABLE unpublished_table (key int PRIMARY KEY)"));
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=$2 user=postgres", test_cluster_.pg_host_port_.host(),
+      test_cluster_.pg_host_port_.port(), test_namespace_name);
+  uint64_t acknowledged_lsn = 0;
+  ASSERT_OK(pgwrapper::StreamSlotAndAcknowledge(
+      conn_str, kSlotName, kPubName, std::to_string(kPublishedValue),
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, nullptr /* inserted_rows */,
+      &acknowledged_lsn));
+  const auto confirmed_flush_lsn = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT (confirmed_flush_lsn - '0/0')::bigint FROM pg_replication_slots "
+      "WHERE slot_name = '$0'", kSlotName)));
+  ASSERT_GT(static_cast<uint64_t>(confirmed_flush_lsn), acknowledged_lsn);
 }
 
 // Releasing a paused slot lets it stream as a pub-refresh slot again. A paused slot whose catalog

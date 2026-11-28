@@ -27,11 +27,12 @@ namespace yb::pgwrapper {
 // Streams a logical replication slot with pgoutput over the walsender protocol, until a change
 // contains needle, then acknowledges the commit of that change's transaction. conn_str connects to
 // the slot's database; replication=database is added to it. If inserted_rows is set, the column
-// values of each streamed insert are appended to it, as returned by DecodePgOutputInsert.
+// values of each streamed insert are appended to it, as returned by DecodePgOutputInsert. If
+// acknowledged_lsn is set, it receives the LSN acknowledged.
 Status StreamSlotAndAcknowledge(
     const std::string& conn_str, const std::string& slot_name, const std::string& publication_name,
     const std::string& needle, MonoDelta timeout,
-    std::vector<std::string>* inserted_rows);
+    std::vector<std::string>* inserted_rows, uint64_t* acknowledged_lsn = nullptr);
 
 // Returns the column values of a pgoutput insert message, joined by commas. A null value is NULL
 // and an unchanged TOAST value is UNCHANGED.

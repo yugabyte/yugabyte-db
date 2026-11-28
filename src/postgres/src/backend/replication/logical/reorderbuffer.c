@@ -5494,3 +5494,10 @@ YBReorderBufferSchemaChange(ReorderBuffer *rb, Oid relid)
 {
 	rb->yb_schema_change(rb, relid);
 }
+
+bool
+YBReorderBufferHasTXN(ReorderBuffer *rb, TransactionId xid)
+{
+	return ReorderBufferTXNByXid(rb, xid, false, NULL, InvalidXLogRecPtr,
+								 false) != NULL;
+}

@@ -556,6 +556,14 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		ResetCatalogCaches();
 	}
 
+	/*
+	 * A transaction with no changes to decode, such as a catalog transaction
+	 * shipped with transactional DDL that touches no published table, never
+	 * reaches the output plugin.
+	 */
+	if (am_walsender && !YBReorderBufferHasTXN(ctx->reorder, yb_record->xid))
+		YBCTrackSkippedTransaction(yb_record->xid);
+
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, yb_record->xrepl_origin_id,
 						origin_lsn);
