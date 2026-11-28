@@ -116,6 +116,18 @@ public class NodeUniverseManagerTransportTest extends FakeDBApplication {
   }
 
   @Test
+  public void testTarToleratingFileChangedSurvivesAllTransports() {
+    // downloadRootFiles' shape, with a path the bash joins must quote.
+    List<String> command = new ArrayList<>(List.of("sudo"));
+    command.addAll(
+        NodeUniverseManager.tarToleratingFileChanged(
+            List.of("-czhf", "/tmp/root_files.tar.gz", "/var/log/messages", "/var/log/a b.log")));
+
+    assertSurvivesAllTransports(command, true);
+    assertSurvivesAllTransports(command, false);
+  }
+
+  @Test
   public void testYbAdminCommandSurvivesAllTransports() {
     List<String> command =
         Arrays.asList(

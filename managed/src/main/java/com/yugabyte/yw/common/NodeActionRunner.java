@@ -104,23 +104,23 @@ public class NodeActionRunner {
     String user = context.getSshUser();
     Duration timeout = context.getTimeout();
     String tarFilename = node.getNodeName() + "-support_package.tar.gz";
-    List<String> command = new ArrayList<>();
-    command.add("tar");
-    command.add("--warning=no-file-changed");
-    command.add("-czvf");
-    command.add(tarFilename);
-    command.add("-h");
-    command.add("-C");
-    command.add(ybHomeDir);
-    command.add("tserver/logs/yb-tserver.INFO");
+    List<String> tarArgs = new ArrayList<>();
+    tarArgs.add("-czvf");
+    tarArgs.add(tarFilename);
+    tarArgs.add("-h");
+    tarArgs.add("-C");
+    tarArgs.add(ybHomeDir);
+    tarArgs.add("tserver/logs/yb-tserver.INFO");
     if (node.isMaster) {
-      command.add("-h");
-      command.add("-C");
-      command.add(ybHomeDir);
-      command.add("master/logs/yb-master.INFO");
+      tarArgs.add("-h");
+      tarArgs.add("-C");
+      tarArgs.add(ybHomeDir);
+      tarArgs.add("master/logs/yb-master.INFO");
     }
-    // Create the tgz file.
-    nodeAgentClient.executeCommand(nodeAgent, command, context).processErrors();
+    // Create the tgz file. The INFO logs are live, so they may change while tar reads them.
+    nodeAgentClient
+        .executeCommand(nodeAgent, NodeUniverseManager.tarToleratingFileChanged(tarArgs), context)
+        .processErrors();
     try {
       nodeAgentClient.downloadFile(nodeAgent, tarFilename, targetLocalFile, user, timeout);
     } finally {

@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,13 +21,23 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -46,6 +57,8 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
   @Mock NodeAgentPoller nodeAgentPoller;
   @Mock NodeAgentClient nodeAgentClient;
   @Mock FileHelperService fileHelperService;
+
+  @Rule public TemporaryFolder tmp = new TemporaryFolder();
 
   private Provider defaultProvider;
   private ArgumentCaptor<List<String>> commandCaptor;
@@ -105,6 +118,68 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
     ShellProcessContext context = shellProcessContextCaptor.getValue();
     assertTrue(context.isLogCmdOutput());
     assertTrue(context.getRedactedVals().isEmpty());
+  }
+
+  @Test
+  public void testDownloadRootFilesToleratesFileChangedDuringRead() {
+    Universe universe =
+        ModelFactory.createFromConfig(defaultProvider, "root-files-test", "r1-az1-1-1");
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    nodeUniverseManager.downloadRootFiles(
+        UUID.randomUUID(), node, universe, Set.of("/var/log/messages"), "/tmp/syslogs.tar.gz");
+
+    List<String> expected = new ArrayList<>(List.of("sudo"));
+    expected.addAll(
+        NodeUniverseManager.tarToleratingFileChanged(
+            List.of("-czhf", "/tmp/root_files.tar.gz", "/var/log/messages")));
+    verify(shellProcessHandler, atLeastOnce())
+        .run(commandCaptor.capture(), any(ShellProcessContext.class));
+    assertTrue(
+        "sent: " + commandCaptor.getAllValues(),
+        commandCaptor.getAllValues().stream()
+            .anyMatch(command -> Collections.indexOfSubList(command, expected) >= 0));
+  }
+
+  @Test
+  public void testTarToleratingFileChangedMapsOnlyExitOne() throws Exception {
+    // GNU tar exits 1 when a file changed while read, 2 on a fatal error such as a missing file.
+    assertEquals(0, runWithStubTar(0));
+    assertEquals(0, runWithStubTar(1));
+    assertEquals(2, runWithStubTar(2));
+    assertEquals(
+        List.of("--warning=no-file-changed", "-czhf", "/tmp/a.tar.gz", "/var/log/a b.log"),
+        Files.readAllLines(tmp.getRoot().toPath().resolve("tar-args")));
+  }
+
+  @Test
+  public void testRunNodeActionTarScriptMatchesJava() throws Exception {
+    String python = Files.readString(Paths.get("devops/bin/run_node_action.py"));
+    assertTrue(python.contains("'" + NodeUniverseManager.TAR_TOLERATING_FILE_CHANGED_SCRIPT + "'"));
+  }
+
+  /** Runs the wrapped tar through real bash, with a stub tar that exits {@code tarExitCode}. */
+  private int runWithStubTar(int tarExitCode) throws Exception {
+    Path stubTar = tmp.getRoot().toPath().resolve("bin/tar");
+    Files.createDirectories(stubTar.getParent());
+    Files.writeString(
+        stubTar,
+        String.format(
+            "#!/bin/bash\nprintf '%%s\\n' \"$@\" > \"%s\"\nexit %d\n",
+            tmp.getRoot().toPath().resolve("tar-args"), tarExitCode));
+    assertTrue(stubTar.toFile().setExecutable(true));
+    ProcessBuilder pb =
+        new ProcessBuilder(
+            NodeUniverseManager.tarToleratingFileChanged(
+                List.of("-czhf", "/tmp/a.tar.gz", "/var/log/a b.log")));
+    pb.environment().put("PATH", stubTar.getParent() + File.pathSeparator + System.getenv("PATH"));
+    pb.redirectErrorStream(true);
+    Process process = pb.start();
+    process.getInputStream().readAllBytes();
+    assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+    return process.exitValue();
   }
 
   @Test
