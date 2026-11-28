@@ -205,8 +205,13 @@ TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
   auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
       table, YQL_DATABASE_CQL, kTableName.namespace_name(), client::WaitSnapshot::kTrue));
 
-  auto rows = ASSERT_RESULT(path_handlers_util::GetHtmlTableRows(
-      tserver_http_url_ + "/snapshots", "snapshots_" + kTableName.namespace_name()));
+  // The snapshot is complete once a majority of replicas have it; this tserver may still lag.
+  std::vector<std::vector<std::string>> rows;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    rows = VERIFY_RESULT(path_handlers_util::GetHtmlTableRows(
+        tserver_http_url_ + "/snapshots", "snapshots_" + kTableName.namespace_name()));
+    return rows.size() >= 2;
+  }, 30s, "Wait for snapshot on tserver"));
   ASSERT_GE(rows.size(), 2);
 
   ASSERT_EQ(rows[0][0], "Active RocksDB");
