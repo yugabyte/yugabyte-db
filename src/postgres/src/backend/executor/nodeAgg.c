@@ -2136,6 +2136,101 @@ lookup_hash_entries(AggState *aggstate)
 }
 
 /*
+ * Catalog name for a pushdown built-in, or NULL. DocDB is invoked with
+ * get_func_name(), so a user aggregate of the same name does not match.
+ */
+static const char *
+yb_agg_pushdown_op_name(Oid fnoid)
+{
+	switch (fnoid)
+	{
+		case F_SUM_INT8:
+		case F_SUM_INT4:
+		case F_SUM_INT2:
+		case F_SUM_FLOAT4:
+		case F_SUM_FLOAT8:
+		case F_SUM_MONEY:
+		case F_SUM_INTERVAL:
+		case F_SUM_NUMERIC:
+			return "sum";
+		case F_MIN_INT8:
+		case F_MIN_INT4:
+		case F_MIN_INT2:
+		case F_MIN_OID:
+		case F_MIN_FLOAT4:
+		case F_MIN_FLOAT8:
+		case F_MIN_DATE:
+		case F_MIN_TIME:
+		case F_MIN_TIMETZ:
+		case F_MIN_MONEY:
+		case F_MIN_TIMESTAMP:
+		case F_MIN_TIMESTAMPTZ:
+		case F_MIN_INTERVAL:
+		case F_MIN_TEXT:
+		case F_MIN_NUMERIC:
+		case F_MIN_ANYARRAY:
+		case F_MIN_ANYENUM:
+		case F_MIN_BPCHAR:
+		case F_MIN_TID:
+		case F_MIN_INET:
+		case F_MIN_PG_LSN:
+		case F_MIN_XID8:
+			return "min";
+		case F_MAX_INT8:
+		case F_MAX_INT4:
+		case F_MAX_INT2:
+		case F_MAX_OID:
+		case F_MAX_FLOAT4:
+		case F_MAX_FLOAT8:
+		case F_MAX_DATE:
+		case F_MAX_TIME:
+		case F_MAX_TIMETZ:
+		case F_MAX_MONEY:
+		case F_MAX_TIMESTAMP:
+		case F_MAX_TIMESTAMPTZ:
+		case F_MAX_INTERVAL:
+		case F_MAX_TEXT:
+		case F_MAX_NUMERIC:
+		case F_MAX_ANYARRAY:
+		case F_MAX_ANYENUM:
+		case F_MAX_BPCHAR:
+		case F_MAX_TID:
+		case F_MAX_INET:
+		case F_MAX_PG_LSN:
+		case F_MAX_XID8:
+			return "max";
+		case F_COUNT_ANY:
+		case F_COUNT_:
+			return "count";
+		case F_AVG_INT8:
+		case F_AVG_INT4:
+		case F_AVG_INT2:
+		case F_AVG_NUMERIC:
+		case F_AVG_FLOAT4:
+		case F_AVG_FLOAT8:
+		case F_AVG_INTERVAL:
+			return "avg";
+		default:
+			return NULL;
+	}
+}
+
+/*
+ * True when func_name is the catalog name for this built-in OID.
+ * get_func_name() is what DocDB is invoked with, so ALTER AGGREGATE
+ * RENAME does not match, and neither does a user aggregate of that name.
+ */
+static bool
+yb_agg_pushdown_fn_is_builtin_unmodified(Oid fnoid, const char *func_name)
+{
+	const char *expected = yb_agg_pushdown_op_name(fnoid);
+
+	return expected != NULL &&
+		func_name != NULL &&
+		strcmp(func_name, expected) == 0;
+}
+
+/*
  * Evaluates whether plan supports pushdowns of aggregates to DocDB, and sets
  * yb_pushdown_supported accordingly in AggState.
  */
@@ -2220,12 +2315,13 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		Aggref	   *aggref = (Aggref *) lfirst(lc_agg);
 		char	   *func_name = get_func_name(aggref->aggfnoid);
 
-		/* Only support COUNT/MIN/MAX/SUM. */
-		if (strcmp(func_name, "count") != 0 &&
-			strcmp(func_name, "min") != 0 &&
-			strcmp(func_name, "max") != 0 &&
-			strcmp(func_name, "sum") != 0 &&
-			strcmp(func_name, "avg") != 0)
+		/*
+		 * Built-in SUM/MIN/MAX/COUNT/AVG only, by OID and name. get_func_name()
+		 * is unqualified, so a user aggregate with one of those names must not
+		 * be sent to DocDB. A renamed built-in keeps the OID but not the
+		 * name DocDB looks up, so it is evaluated in Postgres.
+		 */
+		if (!yb_agg_pushdown_fn_is_builtin_unmodified(aggref->aggfnoid, func_name))
 			return;
 
 		/* No ORDER BY. */
