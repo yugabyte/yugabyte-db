@@ -4044,8 +4044,18 @@ class ControlScript(object):
                     Output.init_animation("Enabling Encryption in Transit and " +
                         "Password Authentication...")
                     if not join_ip and not was_already_setup:
-                        alphadigits = string.ascii_letters + string.digits
-                        new_password = ''.join(PASSWORD_GENNERATOR(alphadigits) for i in range(12))
+                        # The environment's credentials are applied while every default role
+                        # still holds its default password; the universe's password then goes
+                        # to the default roles they leave at their defaults.
+                        self.setup_custom_credentials()
+                        if self.setup_env_init.is_default_ysql_password_set():
+                            new_password = self.setup_env_init.get_ysql_password()
+                        elif self.setup_env_init.is_default_ycql_password_set():
+                            new_password = self.setup_env_init.get_ycql_password()
+                        else:
+                            alphadigits = string.ascii_letters + string.digits
+                            new_password = ''.join(PASSWORD_GENNERATOR(alphadigits)
+                                for i in range(12))
                         self.update_db_passwords(new_password)
                         self.create_password_file()
                     Output.update_animation("Encryption in Transit and " +
@@ -6611,23 +6621,27 @@ class ControlScript(object):
 
     # Updating the database user passwords for postgres and cassandra
     def update_db_passwords(self, new_password):
-        ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
-        Output.log("Attempting to update Postgres password.")
-        try:
-            retry_op_with_argument(ysql_proxy.try_update_password, new_password, timeout=60)
-        except RuntimeError:
-            Output.log_error_and_exit("Could not update Postgress user password." +
-                " Exception: {}".format(traceback.format_exc()))
+        if not self.setup_env_init.is_default_ysql_password_set():
+            ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"),
+                            get_default_credentials=True)
+            Output.log("Attempting to update Postgres password.")
+            try:
+                retry_op_with_argument(ysql_proxy.try_update_password, new_password, timeout=60)
+            except RuntimeError:
+                Output.log_error_and_exit("Could not update Postgress user password." +
+                    " Exception: {}".format(traceback.format_exc()))
 
         self.setup_env_init.setup_cert_file_path(self.configs.saved_data.get("ca_cert_file_path"))
-        ycql_proxy = YcqlProxy(self.advertise_ip(), self.configs.saved_data.get("ycql_port"),
-                        secure=self.configs.saved_data.get("secure"))
-        Output.log("Attempting to update Cassandra password.")
-        try:
-            retry_op_with_argument(ycql_proxy.try_update_password, new_password, timeout=60)
-        except RuntimeError:
-            Output.log_error_and_exit("Could not update Cassandra user password." +
-                " Exception: {}".format(traceback.format_exc()))
+        if not self.setup_env_init.is_default_ycql_password_set():
+            ycql_proxy = YcqlProxy(self.advertise_ip(), self.configs.saved_data.get("ycql_port"),
+                            get_default_credentials=True,
+                            secure=self.configs.saved_data.get("secure"))
+            Output.log("Attempting to update Cassandra password.")
+            try:
+                retry_op_with_argument(ycql_proxy.try_update_password, new_password, timeout=60)
+            except RuntimeError:
+                Output.log_error_and_exit("Could not update Cassandra user password." +
+                    " Exception: {}".format(traceback.format_exc()))
 
         self.setup_env_init.update_passwords(new_password)
         self.configs.saved_data["database_password"] = new_password
@@ -10541,25 +10555,8 @@ class ControlScript(object):
             Output.log_error_and_exit(
                 "{} is not running.".format(SCRIPT_NAME))
 
-        if self.setup_env_init.is_exists('YSQL_USER') or \
-                self.setup_env_init.is_exists('YSQL_PASSWORD') or \
-                self.setup_env_init.is_exists('YSQL_DB'):
-            ysql_proxy = YsqlProxy(ip=self.advertise_ip(),
-                            port=self.configs.saved_data.get("ysql_port"),
-                            get_default_credentials=True)
-            if retry_op(ysql_proxy.is_ysql_up):
-                Output.log("Setting up custom credentials for YSQL...")
-                self.setup_env_init.setup_ysql_credentials(ysql_proxy)
-
-        if self.setup_env_init.is_exists('YCQL_USER') or \
-                self.setup_env_init.is_exists('YCQL_PASSWORD') or \
-                self.setup_env_init.is_exists('YCQL_KEYSPACE'):
-            ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
-                            port=self.configs.saved_data.get("ycql_port"),
-                            get_default_credentials=True)
-            if retry_op(ycql_proxy.is_ycql_up):
-                Output.log("Setting up custom credentials for YCQL...")
-                self.setup_env_init.setup_ycql_credentials(ycql_proxy)
+        if not self.configs.saved_data.get("secure"):
+            self.setup_custom_credentials()
 
         if self.configs.temp_data.get("initial_scripts_dir"):
             init_scripts = os.path.abspath(self.configs.temp_data.get("initial_scripts_dir"))
@@ -10581,6 +10578,33 @@ class ControlScript(object):
                                 port=self.configs.saved_data.get("ycql_port"))
                 if cql_files and retry_op(ycql_proxy.is_ycql_up):
                     self.load_init_scripts(ycql_proxy, init_scripts, cql_files)
+
+    # Applies the YSQL_* and YCQL_* environment variables, logging in as the default roles
+    # with their default passwords.
+    def setup_custom_credentials(self):
+        if self.setup_env_init.is_exists('YSQL_USER') or \
+                self.setup_env_init.is_exists('YSQL_PASSWORD') or \
+                self.setup_env_init.is_exists('YSQL_DB'):
+            ysql_proxy = YsqlProxy(ip=self.advertise_ip(),
+                            port=self.configs.saved_data.get("ysql_port"),
+                            get_default_credentials=True)
+            if retry_op(ysql_proxy.is_ysql_up):
+                Output.log("Setting up custom credentials for YSQL...")
+                self.setup_env_init.setup_ysql_credentials(ysql_proxy)
+
+        if self.setup_env_init.is_exists('YCQL_USER') or \
+                self.setup_env_init.is_exists('YCQL_PASSWORD') or \
+                self.setup_env_init.is_exists('YCQL_KEYSPACE'):
+            if self.configs.saved_data.get("secure"):
+                self.setup_env_init.setup_cert_file_path(
+                    self.configs.saved_data.get("ca_cert_file_path"))
+            ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
+                            port=self.configs.saved_data.get("ycql_port"),
+                            get_default_credentials=True,
+                            secure=self.configs.saved_data.get("secure"))
+            if retry_op(ycql_proxy.is_ycql_up):
+                Output.log("Setting up custom credentials for YCQL...")
+                self.setup_env_init.setup_ycql_credentials(ycql_proxy)
 
     def load_init_scripts(self, proxy_class, init_scripts_dir, files):
         files_path = []
@@ -12799,9 +12823,19 @@ class EnvBasedCredentials(object):
     def set_ycql_password(self, password):
         self.ycql_password = password
 
+    def is_default_ysql_password_set(self):
+        return self.get_ysql_user() == DEFAULT_YSQL_USER and self.is_exists('YSQL_PASSWORD')
+
+    def is_default_ycql_password_set(self):
+        return self.get_ycql_user() == DEFAULT_YCQL_USER and self.is_exists('YCQL_PASSWORD')
+
+    # The universe's password is the default roles' password, so it becomes the password of
+    # each API whose user is its default role and whose password the environment leaves unset.
     def update_passwords(self, new_password):
-        self.set_ysql_password(new_password)
-        self.set_ycql_password(new_password)
+        if self.get_ysql_user() == DEFAULT_YSQL_USER and not self.is_exists('YSQL_PASSWORD'):
+            self.set_ysql_password(new_password)
+        if self.get_ycql_user() == DEFAULT_YCQL_USER and not self.is_exists('YCQL_PASSWORD'):
+            self.set_ycql_password(new_password)
 
     def set_ysql_user(self, user):
         self.ysql_user = user
