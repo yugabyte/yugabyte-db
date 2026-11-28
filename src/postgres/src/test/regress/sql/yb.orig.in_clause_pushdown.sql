@@ -241,3 +241,46 @@ SELECT count(*) FROM in_eq_pk_hash2;
 
 RESET plan_cache_mode;
 DROP TABLE in_eq_pk_hash2;
+
+-- IN list on a non-key column, evaluated in DocDB as a Storage Filter
+CREATE TABLE in_filter (k int PRIMARY KEY, v int, t text) SPLIT INTO 2 TABLETS;
+INSERT INTO in_filter SELECT i, i % 20, 'v' || (i % 20) FROM generate_series(0, 99) i;
+INSERT INTO in_filter VALUES (100, NULL, NULL);
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3);
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3, 4, 5, 6, 7, 8, 9, NULL);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT count(*) FROM in_filter WHERE v NOT IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+SELECT count(*) FROM in_filter WHERE v NOT IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+SELECT count(*) FROM in_filter WHERE v NOT IN (1, 2, 3, 4, 5, 6, 7, 8, 9, NULL);
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, NULL);
+SELECT count(*) FROM in_filter WHERE v NOT IN (1, 2, 3);
+SELECT count(*) FROM in_filter WHERE v NOT IN (1, 2, NULL);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT count(*) FROM in_filter WHERE v = ANY ('{}'::int[]);
+SELECT count(*) FROM in_filter WHERE v = ANY ('{}'::int[]);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT count(*) FROM in_filter
+WHERE t IN ('v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10');
+SELECT count(*) FROM in_filter
+WHERE t IN ('v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10');
+
+SET plan_cache_mode = force_generic_plan;
+PREPARE in_filter_any(int[]) AS SELECT count(*) FROM in_filter WHERE v = ANY ($1);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXECUTE in_filter_any('{1,2,3,4,5,6,7,8,9,10}');
+EXECUTE in_filter_any('{1,2,3,4,5,6,7,8,9,10}');
+RESET plan_cache_mode;
+
+SET yb_enable_saop_pushdown = off;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+SELECT count(*) FROM in_filter WHERE v IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+RESET yb_enable_saop_pushdown;
+
+DROP TABLE in_filter;
