@@ -31,8 +31,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.controllers.handlers.CustomerRegistrationHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import io.ebean.DB;
-import io.ebean.Transaction;
+import io.ebean.annotation.Transactional;
 import java.util.Optional;
 import java.util.UUID;
 import org.apache.commons.validator.routines.EmailValidator;
@@ -69,58 +68,63 @@ public class CustomerManagementHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid email: " + spec.getEmail());
     }
 
-    // Explicit, because ebean.mf enhances @Transactional only under com.yugabyte.yw. The
-    // registration lock, the checks and the inserts must share this transaction.
-    try (Transaction txn = DB.beginTransaction()) {
-      int customerCount = customerRegistrationHandler.countCustomersForRegistration();
-      boolean firstCustomer = customerCount == 0;
-      customerRegistrationHandler
-          .checkAllowed(request, customerCount)
-          .ifPresent(
-              refusal -> {
-                switch (refusal) {
-                  case SINGLE_TENANT:
-                    throw new PlatformServiceException(
-                        CONFLICT,
-                        "A customer is already registered on this single-tenant YBA instance");
-                  case SSO_ENABLED:
-                    throw new PlatformServiceException(
-                        CONFLICT,
-                        "A customer is already registered on this SSO-enabled YBA instance");
-                  case NOT_AUTHENTICATED:
-                    throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
-                  default:
-                    throw new PlatformServiceException(
-                        FORBIDDEN, "Only SuperAdmins can register additional customers");
-                }
-              });
-
-      Users user =
-          customerRegistrationHandler.register(
-              spec.getCode(),
-              spec.getName(),
-              spec.getEmail(),
-              spec.getPassword(),
-              firstCustomer ? Users.Role.SuperAdmin : Users.Role.Admin);
-      String apiToken = user.upsertApiToken();
-      txn.commit();
-
-      Customer customer = Customer.get(user.getCustomerUUID());
-      if (firstCustomer) {
-        // The first registration has no authenticated user to audit; attribute it to the new user.
-        // put, not putIfAbsent: RequestContext is a ThreadLocal, and a user left on this worker
-        // thread by an earlier request must not get the entry. A later registration was set to
-        // the SuperAdmin by superAdminAuthentication.
-        RequestContext.put(
-            TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
-      }
-
-      return new CustomerRegistration()
-          .customerUuid(customer.getUuid())
-          .userUuid(user.getUuid())
-          .apiToken(apiToken)
-          .apiTokenVersion(user.getApiTokenVersion());
+    Registered registered = registerInTxn(request, spec);
+    Users user = registered.user();
+    Customer customer = Customer.get(user.getCustomerUUID());
+    if (registered.firstCustomer()) {
+      // The first registration has no authenticated user to audit; attribute it to the new user.
+      // put, not putIfAbsent: RequestContext is a ThreadLocal, and a user left on this worker
+      // thread by an earlier request must not get the entry. A later registration was set to
+      // the SuperAdmin by superAdminAuthentication.
+      RequestContext.put(TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
     }
+
+    return new CustomerRegistration()
+        .customerUuid(customer.getUuid())
+        .userUuid(user.getUuid())
+        .apiToken(registered.apiToken())
+        .apiTokenVersion(user.getApiTokenVersion());
+  }
+
+  private record Registered(Users user, String apiToken, boolean firstCustomer) {}
+
+  /**
+   * The registration lock, the checks and the inserts share this transaction, which commits before
+   * the caller reads the new customer back.
+   */
+  @Transactional
+  private Registered registerInTxn(Http.Request request, CustomerRegistrationSpec spec) {
+    int customerCount = customerRegistrationHandler.countCustomersForRegistration();
+    boolean firstCustomer = customerCount == 0;
+    customerRegistrationHandler
+        .checkAllowed(request, customerCount)
+        .ifPresent(
+            refusal -> {
+              switch (refusal) {
+                case SINGLE_TENANT:
+                  throw new PlatformServiceException(
+                      CONFLICT,
+                      "A customer is already registered on this single-tenant YBA instance");
+                case SSO_ENABLED:
+                  throw new PlatformServiceException(
+                      CONFLICT,
+                      "A customer is already registered on this SSO-enabled YBA instance");
+                case NOT_AUTHENTICATED:
+                  throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
+                default:
+                  throw new PlatformServiceException(
+                      FORBIDDEN, "Only SuperAdmins can register additional customers");
+              }
+            });
+
+    Users user =
+        customerRegistrationHandler.register(
+            spec.getCode(),
+            spec.getName(),
+            spec.getEmail(),
+            spec.getPassword(),
+            firstCustomer ? Users.Role.SuperAdmin : Users.Role.Admin);
+    return new Registered(user, user.upsertApiToken(), firstCustomer);
   }
 
   public UserApiToken generateApiToken(Http.Request request, UUID cUUID, ApiTokenSpec spec) {

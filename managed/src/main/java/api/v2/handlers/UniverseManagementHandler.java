@@ -914,7 +914,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         platformPaths, releaseManager, swamperHelper, configHelper, ysqlQueryExecutor, confGetter);
   }
 
-  @Transactional
   public void deleteAttachDetachMetadata(Request request, UUID customerUUID, UUID universeUUID)
       throws IOException {
     checkAttachDetachEnabled();
@@ -927,25 +926,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     validateUniverseVersionForAttachDetach(dbVersion);
 
     // Delete metadata is allowed if universe is detached, or if this YBA instance is not the
-    // universe owner (i.e. universe is attached elsewhere)
+    // universe owner (i.e. universe is attached elsewhere). The ownership check queries the
+    // universe over YSQL, so it runs before the transaction.
     if (universe.getUniverseDetails().universeDetached
         || !Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter)) {
-      List<Schedule> schedules =
-          Schedule.getAllSchedulesByOwnerUUIDAndType(
-              universe.getUniverseUUID(), TaskType.CreateBackup);
-
-      for (Schedule schedule : schedules) {
-        log.info("Deleting schedule: {}... of universe: {}", schedule, universeUUID);
-        schedule.delete();
-      }
-
-      List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
-      for (NodeInstance nodeInstance : nodeInstances) {
-        log.info("Deleting node instance: {}", nodeInstance);
-        nodeInstance.delete();
-      }
-      Universe.delete(universe.getUniverseUUID());
-      metricService.markSourceRemoved(customer.getUuid(), universe.getUniverseUUID());
+      deleteUniverseMetadata(customer, universe);
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -955,7 +940,29 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
   }
 
+  /** Deletes the universe with its backup schedules and node instances, all or nothing. */
   @Transactional
+  private void deleteUniverseMetadata(Customer customer, Universe universe) {
+    UUID universeUUID = universe.getUniverseUUID();
+    List<Schedule> schedules =
+        Schedule.getAllSchedulesByOwnerUUIDAndType(universeUUID, TaskType.CreateBackup);
+    for (Schedule schedule : schedules) {
+      log.info("Deleting schedule: {}... of universe: {}", schedule, universeUUID);
+      schedule.delete();
+    }
+
+    List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universeUUID);
+    for (NodeInstance nodeInstance : nodeInstances) {
+      log.info("Deleting node instance: {}", nodeInstance);
+      nodeInstance.delete();
+    }
+    Universe.delete(universeUUID);
+    metricService.markSourceRemoved(customer.getUuid(), universeUUID);
+  }
+
+  // Not @Transactional: the owner check and the owner update are YSQL calls to the universe, which
+  // must not run while a YBA DB transaction is open, and a YBA DB rollback can't undo them anyway.
+  // Each Universe.saveDetails below commits on its own.
   public void rollbackDetachUniverse(
       Request request, UUID customerUUID, UUID universeUUID, Boolean isForceRollback)
       throws IOException {

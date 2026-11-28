@@ -225,6 +225,29 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
   }
 
   @Test
+  public void testBadInputSavesNoMapping() throws Exception {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
+    RoleResourceDefinition rrdSystemRole = new RoleResourceDefinition();
+    rrdSystemRole.setRoleUuid(Role.get(cUUID, "Admin").getRoleUUID());
+
+    AuthGroupToRolesMapping validSpec = new AuthGroupToRolesMapping();
+    validSpec.setGroupIdentifier("test-group-valid");
+    validSpec.setType(TypeEnum.LDAP);
+    validSpec.setRoleResourceDefinitions(new ArrayList<>(List.of(rrdSystemRole)));
+    // Two system roles while RBAC is off; refused after the group mapping row is inserted.
+    AuthGroupToRolesMapping invalidSpec = new AuthGroupToRolesMapping();
+    invalidSpec.setGroupIdentifier("test-group-invalid");
+    invalidSpec.setType(TypeEnum.OIDC);
+    invalidSpec.setRoleResourceDefinitions(new ArrayList<>(List.of(rrdSystemRole, rrdSystemRole)));
+
+    assertThrows(
+        ApiException.class,
+        () -> api.updateGroupMappingsWithHttpInfo(cUUID, List.of(validSpec, invalidSpec)));
+    // The request runs in one transaction: neither mapping is saved.
+    assertEquals(0, GroupMappingInfo.find.query().where().eq("customer_uuid", cUUID).findCount());
+  }
+
+  @Test
   public void testV1toV2migrationRbacOn() throws Exception {
     // Create v1 entries for LDAP and OIDC group mappings.
     // Run the migration and assert that role bindings are added for existing group mappings.
