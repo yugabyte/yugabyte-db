@@ -19,6 +19,7 @@
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -28,6 +29,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
 
@@ -369,8 +371,9 @@ Status XClusterDDLReplicationSwitchoverTest::Switchover() {
   RETURN_NOT_OK(DeleteOutboundReplicationGroup());
   LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
   SetReplicationDirection(ReplicationDirection::BToA);
-  RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
-      VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+  const auto namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
+  RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, cluster_B_));
+  RETURN_NOT_OK(WaitForNotAutomaticTargetOnAllTServers(namespace_id, cluster_B_));
   LOG(INFO) << "===== Switchover done";
 
   return Status::OK();
@@ -390,10 +393,27 @@ Status XClusterDDLReplicationSwitchoverTest::SwitchoverBack() {
   RETURN_NOT_OK(DeleteOutboundReplicationGroup(kBackwardsReplicationGroupId));
   LOG(INFO) << "===== Finishing switchover back: wait for A to no longer be in readonly mode";
   SetReplicationDirection(ReplicationDirection::AToB);
-  RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
-      VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_A_));
+  const auto namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
+  RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, cluster_A_));
+  RETURN_NOT_OK(WaitForNotAutomaticTargetOnAllTServers(namespace_id, cluster_A_));
   LOG(INFO) << "===== Switchover back done";
 
+  return Status::OK();
+}
+
+// The role arrives in a separate heartbeat field from the safe time map behind read-only mode, and
+// AUTOMATIC_TARGET/UNAVAILABLE roles refuse sequence manipulation functions and DDLs.
+Status XClusterDDLReplicationSwitchoverTest::WaitForNotAutomaticTargetOnAllTServers(
+    const NamespaceId& namespace_id, Cluster* cluster) {
+  for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
+    RETURN_NOT_OK(Wait(
+        [&]() -> Result<bool> {
+          const auto role = tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id);
+          return role != XClusterNamespaceInfoPB::AUTOMATIC_TARGET &&
+                 role != XClusterNamespaceInfoPB::UNAVAILABLE;
+        },
+        PropagationDeadline(), Format("Wait for namespace $0 to drop target role", namespace_id)));
+  }
   return Status::OK();
 }
 
