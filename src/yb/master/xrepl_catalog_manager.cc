@@ -2069,6 +2069,11 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
 
   std::vector<cdc::CDCStateTableEntry> entries;
 
+  // cdc_state reads last_replication_time back truncated to milliseconds. Round it up, so that it
+  // does not fall below this stream's MVCC-tracked retention barrier op and show a false sent lag.
+  const auto last_replication_time =
+      (proposed_snapshot_time.GetPhysicalValueMicros() + 999) / 1000 * 1000;
+
   cdc::CDCStateTableEntry entry(tablet_id, cdc_sdk_stream_id);
   entry.checkpoint = OpId::FromPB(snapshot_safe_opid);
   entry.cdc_sdk_safe_time = proposed_snapshot_time.ToUint64();
@@ -2076,7 +2081,7 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     entry.snapshot_key = "";
 
   entry.active_time = GetCurrentTimeMicros();
-  entry.last_replication_time = proposed_snapshot_time.GetPhysicalValueMicros();
+  entry.last_replication_time = last_replication_time;
   entries.push_back(std::move(entry));
 
   // add the colocated table snapshot row if it is a colocated table
@@ -2088,7 +2093,7 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
       col_entry.snapshot_key = "";
 
     col_entry.active_time = GetCurrentTimeMicros();
-    col_entry.last_replication_time = proposed_snapshot_time.GetPhysicalValueMicros();
+    col_entry.last_replication_time = last_replication_time;
     entries.push_back(std::move(col_entry));
   }
 
