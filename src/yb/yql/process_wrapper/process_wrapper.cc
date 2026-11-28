@@ -21,7 +21,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
-#include "yb/util/date_time.h"
 
 using namespace std::literals;
 
@@ -157,7 +156,7 @@ Status ProcessSupervisor::StartProcessUnlocked() {
 #endif
 
   process_wrapper_.swap(process_wrapper);
-  last_process_start_time_ = DateTime::TimestampNow();
+  started_for_restart_request_ = restart_request_count_;
   return Status::OK();
 }
 
@@ -187,13 +186,13 @@ Status ProcessSupervisor::Pause() {
 
 Status ProcessSupervisor::WaitForProcessStartAfterLastRestart(MonoDelta timeout) {
   UniqueLock lock(mtx_);
-  // Note: last_restart_request_time_ is re-read on every wakeup, so a restart requested while
+  // Note: restart_request_count_ is re-read on every wakeup, so a restart requested while
   // we are waiting moves the goalpost to a start that is newer than that request.
   cond_.wait_for(GetLockForCondition(lock), timeout.ToSteadyDuration(), [this]() REQUIRES(mtx_) {
-    return last_process_start_time_ > last_restart_request_time_ ||
+    return started_for_restart_request_ == restart_request_count_ ||
            state_ == YbSubProcessState::kStopping;
   });
-  if (last_process_start_time_ > last_restart_request_time_) {
+  if (started_for_restart_request_ == restart_request_count_) {
     return Status::OK();
   }
   if (state_ == YbSubProcessState::kStopping) {
@@ -201,8 +200,8 @@ Status ProcessSupervisor::WaitForProcessStartAfterLastRestart(MonoDelta timeout)
   }
   return STATUS_FORMAT(
       TimedOut,
-      "Timed out after $0 waiting for the $1 process to start after the last restart request at $2",
-      timeout, GetProcessName(), last_restart_request_time_.ToHumanReadableTime());
+      "Timed out after $0 waiting for the $1 process to start after the last restart request",
+      timeout, GetProcessName());
 }
 
 void ProcessSupervisor::Stop() {
@@ -249,7 +248,7 @@ Status ProcessSupervisor::StopProcessAndChangeState(YbSubProcessState new_state)
           IllegalState, "State must be either paused or running, state is $0", state_);
     }
     if (new_state == YbSubProcessState::kRunning) {
-      last_restart_request_time_ = DateTime::TimestampNow();
+      ++restart_request_count_;
     }
     if (process_wrapper_) {
       process_wrapper_->Shutdown();
