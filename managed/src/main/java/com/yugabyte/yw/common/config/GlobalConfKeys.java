@@ -285,6 +285,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " appear in the UI list.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleRedesignEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.support_bundle_redesign",
+          ScopeType.GLOBAL,
+          "Enable the Redesigned Support Bundle UI",
+          "Temporary flag for developing the redesigned support bundle UI. The UI shows it only"
+              + " when yb.support_bundle.ui_v2_enabled is also true. To be removed when the"
+              + " redesign ships behind yb.support_bundle.ui_v2_enabled alone.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
   public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
       new ConfKeyInfo<>(
           "yb.support_bundle.extra_yb_admin_commands",
