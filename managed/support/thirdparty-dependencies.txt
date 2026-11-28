@@ -11,7 +11,6 @@ https://files.pythonhosted.org/packages/6a/fa/5ec0fa9095c9b72cb1c31a8175c4c6745b
 https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/xxhash.tar.gz
 https://ybm-package-store.s3.amazonaws.com/unified-otelcol/0.165.1-1-fips/otelcol-unified_0.165.1-1-fips_linux_amd64.tar.gz
 https://ybm-package-store.s3.amazonaws.com/unified-otelcol/0.165.1-1-fips/otelcol-unified_0.165.1-1-fips_linux_arm64.tar.gz
-https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/tectia-ssh.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/clockbound-linux-x86_64.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/clockbound-linux-aarch64.tar.gz
 https://github.com/yugabyte/earlyoom/releases/download/v0.0.5-test/earlyoom-linux-amd64.tar.gz
