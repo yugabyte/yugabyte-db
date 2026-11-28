@@ -71,6 +71,7 @@
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/scheduler.h"
+#include "yb/rpc/thread_pool.h"
 
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/pg_create_table.h"
@@ -4946,7 +4947,16 @@ class PgClientSession::Impl {
           DFATAL, database_oid_.load(std::memory_order_relaxed) != kInvalidOid &&
                   !txn_value->GetOriginationInfo().IsSet())
           << "Committing transaction " << txn_value->id() << " without origination stamp";
-      txn_value->Commit(commit_callback);
+      // The commit callback may run on a reactor thread, while HandleCommit makes synchronous
+      // RPCs (e.g. WaitForDdlVerificationToFinish). Blocking a reactor stalls every connection it
+      // serves, including raft heartbeats.
+      txn_value->Commit(
+          [commit_callback, &pool = client_.messenger()->ThreadPool()](const Status& status) {
+            auto task = [commit_callback, status] { commit_callback(status); };
+            if (!pool.EnqueueFunctor(task)) {
+              task();
+            }
+          });
       return std::nullopt;
     } else {
       VLOG_WITH_PREFIX_AND_FUNC(2) << FinishTxnLogPrefix(req, &*txn_value) << "abort";
