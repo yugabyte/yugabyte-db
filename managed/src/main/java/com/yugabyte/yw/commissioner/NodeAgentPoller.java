@@ -654,11 +654,13 @@ public class NodeAgentPoller {
   }
 
   public boolean versionMatched(NodeAgent nodeAgent) {
-    String ybaVersion = Util.getYbaVersion();
-    boolean versionMatched = Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
+    boolean versionMatched = nodeAgent.isOnYbaVersion();
     publishMetric(nodeAgent, NODE_AGENT_VERSION_MISMATCH_GAUGE, versionMatched ? 0 : 1);
     if (!versionMatched) {
-      log.debug("YBA version is {}. Version mismatched for node agent {}", ybaVersion, nodeAgent);
+      log.debug(
+          "YBA version is {}. Version mismatched for node agent {}",
+          Util.getYbaVersion(),
+          nodeAgent);
     }
     return versionMatched;
   }
