@@ -89,3 +89,18 @@ DROP INDEX h3r2n_part_idx;
 \set Q4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 0)*/'
 \set Q5 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
+
+-- yb_hash_code ORDER BY with an INCLUDE column tied to the hash code
+-- yb_hash_code(h1, h2, h3) = n ties the INCLUDE column n to the hash code, but
+-- only key columns can be merge sort columns, so the index path does not merge.
+-- Third hint pins the index and turns sort and incremental sort off so that a
+-- merge scan, if planned, is chosen.
+-- TODO(#39329): merge on the hash code.
+CREATE INDEX NONCONCURRENTLY h3r2n_inc_idx ON h3r2n ((h1, h2, h3) HASH, r1 ASC) INCLUDE (n);
+\set query ':P :Q SELECT r1, n, h1, h2, h3 FROM h3r2n WHERE h1 IN (1, 2) AND h2 = 3 AND h3 = 4 AND yb_hash_code(h1, h2, h3) = n ORDER BY yb_hash_code(h1, h2, h3), r1;'
+\set Q3 '/*+IndexOnlyScan(h3r2n h3r2n_inc_idx) Set(enable_sort off) Set(enable_incremental_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\unset Q4
+\unset Q5
+\i :run_query
+\unset Q3
+DROP INDEX h3r2n_inc_idx;
