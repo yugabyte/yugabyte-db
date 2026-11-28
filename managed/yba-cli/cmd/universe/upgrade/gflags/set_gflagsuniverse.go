@@ -249,8 +249,8 @@ var setGflagsUniverseCmd = &cobra.Command{
 		req := ybaclient.GFlagsUpgradeParams{
 			Clusters:                       clusters,
 			UpgradeOption:                  upgradeOption,
-			SleepAfterTServerRestartMillis: tserverDelay,
-			SleepAfterMasterRestartMillis:  masterDelay,
+			SleepAfterTServerRestartMillis: &tserverDelay,
+			SleepAfterMasterRestartMillis:  &masterDelay,
 			RollMaxBatchSize: universeutil.RollMaxBatchSizeFromFlags(
 				cmd,
 				upgradeOption,
@@ -300,9 +300,13 @@ func init() {
 		"[Optional] Upgrade Options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime), Non-Restart")
 	setGflagsUniverseCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
 	setGflagsUniverseCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
 
 	universeutil.AddRollMaxBatchSizeFlags(setGflagsUniverseCmd)
 

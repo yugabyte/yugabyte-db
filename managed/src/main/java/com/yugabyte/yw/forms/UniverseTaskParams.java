@@ -27,9 +27,23 @@ import lombok.Getter;
 import lombok.Setter;
 
 public class UniverseTaskParams extends AbstractTaskParams {
-  @Nullable public Integer sleepAfterMasterRestartMillis;
+  @ApiModelProperty(
+      value =
+          "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA"
+              + " uses the value stored with the universe, or the runtime config when none is"
+              + " stored.",
+      required = false)
+  @Nullable
+  public Integer sleepAfterMasterRestartMillis;
 
-  @Nullable public Integer sleepAfterTServerRestartMillis;
+  @ApiModelProperty(
+      value =
+          "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA"
+              + " uses the value stored with the universe, or the runtime config when none is"
+              + " stored.",
+      required = false)
+  @Nullable
+  public Integer sleepAfterTServerRestartMillis;
 
   @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {

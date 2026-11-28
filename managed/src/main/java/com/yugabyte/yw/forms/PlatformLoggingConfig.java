@@ -20,8 +20,11 @@ public class PlatformLoggingConfig {
   @Enumerated(EnumType.STRING)
   private Level level;
 
-  @Nullable private String rolloverPattern;
+  @ApiModelProperty(value = "Rollover pattern of the application log file.", required = false)
+  @Nullable
+  private String rolloverPattern;
 
+  @ApiModelProperty(value = "Number of rolled-over log files to keep.", required = false)
   @Nullable
   @Min(value = 0)
   private Integer maxHistory;

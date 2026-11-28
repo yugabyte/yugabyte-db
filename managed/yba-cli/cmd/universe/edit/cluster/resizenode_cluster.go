@@ -133,8 +133,8 @@ var resizeNodeCmd = &cobra.Command{
 			Clusters:                       clusters,
 			UniverseUUID:                   util.GetStringPointer(universeUUID),
 			UpgradeOption:                  "Rolling",
-			SleepAfterTServerRestartMillis: tserverDelay,
-			SleepAfterMasterRestartMillis:  masterDelay,
+			SleepAfterTServerRestartMillis: &tserverDelay,
+			SleepAfterMasterRestartMillis:  &masterDelay,
 		}
 
 		rEdit, response, err := authAPI.ResizeNode(universeUUID).
@@ -169,8 +169,14 @@ func init() {
 			"Applied only when universe has dedicated master nodes.")
 
 	resizeNodeCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
+			" On a node that runs a Master and a TServer, YBA waits the longer delay."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
 	resizeNodeCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
+			" On a node that runs a Master and a TServer, YBA waits the longer delay."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
 
 }
