@@ -45,6 +45,7 @@
 #include "storage/procarray.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
@@ -1173,4 +1174,60 @@ YbIsConnMgrReservedStartupParameter(const char *name)
 		pg_strcasecmp(name, "yb_conn_mgr_client_hostname") == 0 ||
 		pg_strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
 		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
+}
+
+const char *
+YbGetStartupOption(struct Port *port, const char *name)
+{
+	ListCell   *gucopts;
+
+	gucopts = list_head(port->guc_options);
+	while (gucopts)
+	{
+		char	   *optname;
+		char	   *value;
+
+		optname = lfirst(gucopts);
+		gucopts = lnext(port->guc_options, gucopts);
+
+		value = lfirst(gucopts);
+		gucopts = lnext(port->guc_options, gucopts);
+
+		if (pg_strcasecmp(optname, name) == 0)
+			return value;
+	}
+
+	return NULL;
+}
+
+/*
+ * Whether this backend is starting as a Connection Manager pooled server.
+ * InitPostgres calls this before it publishes databaseId, while the
+ * yb_is_client_ysqlconnmgr GUC is not applied yet, so read the startup
+ * parameter the way yb_set_hba_tserver_key does.
+ *
+ * Auth backends and control backends are not pooled servers: an auth backend
+ * connects to the database its client is logging in to, before that client
+ * joins any pool, and so stands for a session; control backends sit on the
+ * internal connection database, which must not be dropped under them.
+ */
+bool
+YbIsConnMgrPooledServerStartup(struct Port *port)
+{
+	const char *value;
+	bool		result;
+
+	if (!IsYugaByteEnabled() || port == NULL)
+		return false;
+
+	if (yb_is_auth_backend || yb_conn_mgr_is_auth_passthrough_backend)
+		return false;
+
+	/* Same requirements as yb_is_client_ysqlconnmgr_check_hook. */
+	if (port->raddr.addr.ss_family != AF_UNIX ||
+		!port->yb_is_tserver_auth_method)
+		return false;
+
+	value = YbGetStartupOption(port, YB_YCM_IS_CLIENT_YSQLCONNMGR);
+	return value && parse_bool(value, &result) && result;
 }

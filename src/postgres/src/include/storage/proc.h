@@ -350,6 +350,14 @@ struct PGPROC
 	 */
 	uint32		yb_wait_event_aux;
 
+	/*
+	 * YB: True for a Connection Manager pooled server. It carries no session of
+	 * its own: the logical clients it serves are counted from Connection
+	 * Manager's stats. Set before databaseId is published, reset in
+	 * InitProcess.
+	 */
+	bool		yb_is_conn_mgr_pooled_server;
+
 	YbcPgSharedDataPlaceholder yb_shared_data;
 };
 

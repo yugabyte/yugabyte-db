@@ -40,6 +40,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   private static final String GET_CURRENT_DB_QUERY = "SELECT current_database()";
 
   private static final String TEST_DB_DROP = "test_db_drop_database_fails";
+  private static final String TEST_DB_DEAD_POOLED_SERVER = "test_db_drop_dead_pooled_server";
   private static final String TEST_DB_RENAME_DB_WITH_NO_PHY_CONN =
       "test_db_rename_db_with_no_phy_conn";
   private static final String TEST_DB_RENAME_DB_WITH_PHY_CONN = "test_db_rename_db_with_phy_conn";
@@ -48,6 +49,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
       "test_db_recreate_with_no_phy_conn";
   private static final String DB_PREFIX_CONCURRENCY_TEST = "test_db_concurrency";
   private static final String TEST_DB_RENAME_DB_FAILS = "test_db_name_rename_fails";
+  private static final String TEST_DB_RENAME_AFTER_DISCONNECT = "test_db_rename_after_disconnect";
   private static final String TEST_DB_MOVE_DB_FAILS = "test_db_name_move_db_fails";
 
   private static final int NUM_THREADS_DB_CONCURRENCY_TESTING = 30;
@@ -224,6 +226,40 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     Thread.sleep(4 * IDLE_CONNECTION_TIME_SECS * 1000);
 
     assertFalse(isProcessAlive(backendPid));
+  }
+
+  // Kill the pool's idle server, then open a direct session and try DROP DATABASE. Connection
+  // Manager still counts the dead server as a physical connection until it next uses it, so the
+  // old check computed 1 direct + 0 logical - 1 physical = 0 sessions and let the DROP through.
+  // The direct session alone must make it fail.
+  @Test
+  public void testDropDbWithDirectSessionAndDeadPooledServer() throws Exception {
+    disableWarmupModeAndRestartCluster();
+    int pooledBackendPid;
+    try (Connection conn = createAndConnectOnDb(TEST_DB_DEAD_POOLED_SERVER, 0);
+        Statement stmt = conn.createStatement()) {
+      pooledBackendPid = getPgBackendPid(stmt);
+    }
+    BasePgSQLTest.waitForStatsToGetUpdated();
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_terminate_backend(" + pooledBackendPid + ")");
+    }
+
+    // Wait for up to 10s
+    for (int i = 0; i < 100 && isProcessAlive(pooledBackendPid); ++i) {
+      Thread.sleep(100);
+    }
+    assertFalse(isProcessAlive(pooledBackendPid));
+
+    try (Connection directConn = getConnectionBuilder()
+            .withDatabase(TEST_DB_DEAD_POOLED_SERVER)
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES).connect()) {
+      dropDatabase(TEST_DB_DEAD_POOLED_SERVER, false);
+    }
+    dropDatabase(TEST_DB_DEAD_POOLED_SERVER, true);
   }
 
   private int getDbOid(String dbName) {
@@ -461,5 +497,18 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     testConnectivityToDb(TEST_DB_RENAME_DB_FAILS, false, false);
     testConnectivityToDb(newDb, true, true);
+  }
+
+  // The stats still count the client for up to a stats interval after it disconnects, so the
+  // RENAME must wait for them to catch up instead of failing.
+  @Test
+  public void testRenameDbRightAfterDisconnect() throws Exception {
+    String newDb = TEST_DB_RENAME_AFTER_DISCONNECT + "_new";
+    try (Connection conn = createAndConnectOnDb(TEST_DB_RENAME_AFTER_DISCONNECT, 0);
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 1");
+    }
+    renameDb(TEST_DB_RENAME_AFTER_DISCONNECT, newDb, true);
+    dropDatabase(newDb, true);
   }
 }

@@ -3834,9 +3834,13 @@ CountUserBackends(Oid roleid)
  * backend startup.  The caller should normally hold an exclusive lock on the
  * target DB before calling this, which is one reason we mustn't wait
  * indefinitely.
+ *
+ * YB: When yb_npooled is not NULL, Connection Manager pooled servers are
+ * counted in *yb_npooled instead of *nbackends.
  */
 bool
-CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
+CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared,
+					 int *yb_npooled)
 {
 	ProcArrayStruct *arrayP = procArray;
 
@@ -3854,6 +3858,9 @@ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
 		CHECK_FOR_INTERRUPTS();
 
 		*nbackends = *nprepared = 0;
+		/* YB */
+		if (yb_npooled)
+			*yb_npooled = 0;
 
 		LWLockAcquire(ProcArrayLock, LW_SHARED);
 
@@ -3867,6 +3874,13 @@ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
 				continue;
 			if (proc == MyProc)
 				continue;
+
+			/* YB: pooled servers don't make the caller wait */
+			if (yb_npooled && proc->yb_is_conn_mgr_pooled_server)
+			{
+				(*yb_npooled)++;
+				continue;
+			}
 
 			found = true;
 

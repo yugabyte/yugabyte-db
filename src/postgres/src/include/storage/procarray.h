@@ -82,8 +82,10 @@ extern int	CountDBBackends(Oid databaseid);
 extern int	CountDBConnections(Oid databaseid);
 extern void CancelDBBackends(Oid databaseid, ProcSignalReason sigmode, bool conflictPending);
 extern int	CountUserBackends(Oid roleid);
+/* YB */
 extern bool CountOtherDBBackends(Oid databaseId,
-								 int *nbackends, int *nprepared);
+								 int *nbackends, int *nprepared,
+								 int *yb_npooled);
 extern void TerminateOtherDBBackends(Oid databaseId);
 
 extern void XidCacheRemoveRunningXids(TransactionId xid,
