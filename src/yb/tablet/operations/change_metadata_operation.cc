@@ -52,6 +52,11 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+DEFINE_RUNTIME_bool(change_metadata_use_mvcc, true,
+    "Whether a tablet leader marks the change metadata operations it creates for MVCC tracking. "
+    "A replica that gets the mark keeps its safe time and history cutoff below such an operation "
+    "until it applies it.");
+
 DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  "Used in tests to ignore applying change metadata operation"
                  " on followers.");
@@ -93,6 +98,14 @@ ChangeMetadataOperation::~ChangeMetadataOperation() = default;
 
 void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
   index_map_.FromPB(indexes);
+}
+
+LWChangeMetadataRequestPB* ChangeMetadataOperation::AllocateRequest(
+    const ChangeMetadataRequestPB& source) {
+  auto* request = ExclusiveSchemaOperation::AllocateRequest();
+  request->CopyFrom(source);
+  request->set_use_mvcc(FLAGS_change_metadata_use_mvcc);
+  return request;
 }
 
 std::string ChangeMetadataOperation::ToString() const {
@@ -369,7 +382,7 @@ Status SyncReplicateChangeMetadataOperation(
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
       VERIFY_RESULT(tablet_peer->shared_tablet()), tablet_peer->log());
-  operation->AllocateRequest()->CopyFrom(*req);
+  operation->AllocateRequest(*req);
 
   Synchronizer synchronizer;
 

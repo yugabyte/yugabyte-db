@@ -795,7 +795,7 @@ void TabletServiceAdminImpl::SubmitChangeMetadataOnLeader(
 
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
-  operation->AllocateRequest()->CopyFrom(*req);
+  operation->AllocateRequest(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock()));
@@ -1338,8 +1338,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
-  auto request = operation->AllocateRequest();
-  request->CopyFrom(*req);
+  operation->AllocateRequest(*req);
 
   // CDC SDK Create Stream Context
   if (req->has_retention_requester_id()) {
