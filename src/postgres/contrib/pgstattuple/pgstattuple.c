@@ -39,6 +39,9 @@
 #include "utils/builtins.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(pgstattuple);
@@ -251,6 +254,9 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot access temporary tables of other sessions")));
+
+	/* YB: YB relations have no heap or index pages to inspect. */
+	YbRejectPageAccess(rel);
 
 	if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind) ||
 		rel->rd_rel->relkind == RELKIND_SEQUENCE)
