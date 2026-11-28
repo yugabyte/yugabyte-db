@@ -58,9 +58,10 @@ import play.mvc.Http.Status;
  * Selection is exercised against the manifest that actually ships, so a manifest edit that would
  * make the server disagree with the CLI fails here. Expected membership is read back out of the
  * parsed manifest rather than hardcoded, so adding a component to a group is not also a test edit.
- * Only {@link #applicationLogsAndUniverseLogsProduceFullSpecs} and {@link
- * #singleFilesMemberGoesThroughTheFileListBuilder} assert exact argv, since those pin the builder
- * dispatch.
+ * Only {@link #applicationLogsAndUniverseLogsProduceFullSpecs}, {@link
+ * #singleFilesMemberGoesThroughTheFileListBuilder} and {@link
+ * #clusterConfigPassesThroughAndNodeHealthLogsIsAFilesSpec} assert exact argv, since those pin the
+ * builder dispatch.
  */
 public class SupportBundleV2ManifestMergerTest {
 
@@ -79,6 +80,7 @@ public class SupportBundleV2ManifestMergerTest {
           "TabletMeta",
           "TabletReport",
           "NodeAgent",
+          "NodeHealthLogs",
           "CoreFiles",
           "YbcLogs",
           "PrometheusMetrics");
@@ -242,17 +244,27 @@ public class SupportBundleV2ManifestMergerTest {
   }
 
   /**
-   * ClusterConfig reaches its v1 component; NodeHealthLogs is dropped until support_bundle_utils.sh
-   * has it.
+   * ClusterConfig reaches its v1 component; NodeHealthLogs becomes a Files spec, so v1's collector
+   * doesn't also run. Its argv comes from the generic builder, as the CLI builds it.
    */
   @Test
-  public void clusterConfigPassesThroughAndNodeHealthLogsIsDropped() {
+  public void clusterConfigPassesThroughAndNodeHealthLogsIsAFilesSpec() {
     SupportBundleCreateSpec merged =
         merger.mergeIfNeeded(request(List.of("ClusterConfig", "NodeHealthLogs")));
 
     List<String> components = componentNames(merged);
     assertTrue(components.contains("ClusterConfig"));
+    assertTrue(components.contains("FilesComponent"));
     assertFalse(components.contains("NodeHealthLogs"));
+    assertEquals(List.of("NodeHealthLogs"), filesNames(merged));
+    assertEquals(
+        List.of(
+            "create_node_health_logs_bundle",
+            "--node_home_dir",
+            "",
+            "--remote_tar_path",
+            "/tmp/node-health-logs-${bundleUuid}-${nodeName}.tar.gz"),
+        merged.getFilesComponentSpecs().get(0).getParams());
   }
 
   /** Which globals are v1 collectors comes from the enum and the manifest, not a list in code. */
@@ -268,7 +280,7 @@ public class SupportBundleV2ManifestMergerTest {
                             name,
                             !SupportBundleV2ManifestLoader.YBA_GLOBAL_GROUP.equals(group),
                             SupportBundleV2ManifestLoader.isV1GlobalComponent(shippedSpec, name))));
-    // Node-level names the manifest doesn't script, v2's YBA runner, and a non-component.
+    // A node-level Files member, v2's runners, and a non-component.
     for (String name :
         List.of("NodeHealthLogs", "FilesComponent", "YBAComponent", "NotAComponent")) {
       assertFalse(name, SupportBundleV2ManifestLoader.isV1GlobalComponent(shippedSpec, name));

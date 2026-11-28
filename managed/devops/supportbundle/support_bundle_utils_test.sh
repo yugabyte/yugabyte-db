@@ -395,6 +395,90 @@ for fn in create_consensus_meta_bundle create_tablet_meta_bundle; do
 done
 
 # ===============================================================================================
+# Node health logs
+# ===============================================================================================
+# As v1's NodeHealthLogsComponent: the textfiles in metrics, and the daily logs in metrics/logs (a
+# symlink onto the data volume) for the window plus the newest one dated before it.
+
+NH_HOME="$TMP_ROOT/node-health-home"
+NH_LOGS="$TMP_ROOT/node-health-data/metrics/logs"
+mkdir -p "$NH_HOME/metrics" "$NH_LOGS" "$TMP_ROOT/out"
+printf 'yb_node_custom_node_metrics 1\n' > "$NH_HOME/metrics/node_health.prom"
+ln -s "$NH_LOGS" "$NH_HOME/metrics/logs"
+for day in 20260112 20260113 20260114; do
+  printf 'health %s\n' "$day" | gzip > "$NH_LOGS/node_health-$day.log.gz"
+done
+printf 'health 20260115\n' > "$NH_LOGS/node_health-20260115.log"
+printf 'health 20260116\n' > "$NH_LOGS/node_health-20260116.log"
+printf 'not a health log\n' > "$NH_LOGS/notes.txt"
+printf 'dated, but not a health log\n' > "$NH_LOGS/otel-20260114.log"
+NH_WINDOW=(--start_date 2026-01-13T10:00:00Z --end_date 2026-01-15T23:00:00Z)
+
+# <entrypoint> <cp log> <tar path> [args...]; cp goes through the stub that records each call.
+run_node_health_logs() {
+  local fn=$1 log=$2 tar_path=$3
+  shift 3
+  : > "$log"
+  CP_CALL_LOG="$log" PATH="$CP_STUB_DIR:$PATH" \
+    bash "$SB_UTILS" "$fn" --remote_tar_path "$tar_path" "$@" 2>&1
+}
+tar_files() {
+  tar -tzf "$1" | grep -v '/$' | sed 's|^\./||' | sort | tr '\n' ' ' | sed 's/ $//'
+}
+
+log="$TMP_ROOT/node-health.cp.log"
+tar_path="$TMP_ROOT/out/node-health.tar.gz"
+output="$(run_node_health_logs create_node_health_logs_bundle "$log" "$tar_path" \
+  --node_home_dir "$NH_HOME" "${NH_WINDOW[@]}")"
+expect_bundle_status "node health: collects" OK zero "$?" "$output"
+want="metrics/logs/node_health-20260113.log.gz metrics/logs/node_health-20260114.log.gz"
+want+=" metrics/logs/node_health-20260115.log metrics/node_health.prom"
+check "node health: the window's logs, the one before it and the textfile, through the symlink" \
+  "$(tar_files "$tar_path")" "$want"
+check_contains "node health: reports what it kept" "$output" "kept 3 of 7 health log file(s)"
+
+want_size=$(cat "$NH_LOGS/node_health-20260113.log.gz" "$NH_LOGS/node_health-20260114.log.gz" \
+  "$NH_LOGS/node_health-20260115.log" "$NH_HOME/metrics/node_health.prom" | wc -c | tr -d ' ')
+tar_path="$TMP_ROOT/out/node-health-estimate.tar.gz"
+output="$(run_node_health_logs estimate_node_health_logs_size "$log" "$tar_path" \
+  --node_home_dir "$NH_HOME" "${NH_WINDOW[@]}")"
+check "node health: estimate sums the files collection takes" \
+  "$(grep '^ESTIMATE_SIZE=' <<< "$output")" "ESTIMATE_SIZE=$want_size"
+check "node health: estimate copies nothing" "$(wc -l < "$log" | tr -d ' ')" "0"
+check "node health: estimate writes no tar" \
+  "$([ -f "$tar_path" ] && echo present || echo absent)" "absent"
+
+tar_path="$TMP_ROOT/out/node-health-later.tar.gz"
+output="$(run_node_health_logs create_node_health_logs_bundle "$log" "$tar_path" \
+  --node_home_dir "$NH_HOME" --start_date 2026-02-01T00:00:00Z --end_date 2026-02-02T00:00:00Z)"
+check "node health: a window after the last log keeps that log" "$(tar_files "$tar_path")" \
+  "metrics/logs/node_health-20260116.log metrics/node_health.prom"
+
+output="$(run_node_health_logs create_node_health_logs_bundle "$log" \
+  "$TMP_ROOT/out/node-health-flags.tar.gz" --node_home_dir "$NH_HOME" "${NH_WINDOW[@]}" \
+  --redact_bin "$REDACT_STUB" --yb_software_version 2.25.0.0 --sensitive_gflags_b64 e30= \
+  --drop_server_conf)"
+expect_bundle_status "node health: takes the redaction flags" OK zero "$?" "$output"
+check_contains "node health: has no server.conf to redact" "$output" \
+  "REDACTION_STATUS=NOT_APPLICABLE"
+
+output="$(run_node_health_logs create_node_health_logs_bundle "$log" \
+  "$TMP_ROOT/out/node-health-empty.tar.gz" --node_home_dir "$TMP_ROOT/no-such-home" \
+  "${NH_WINDOW[@]}")"
+expect_bundle_status "node health: no metrics directory is EMPTY" EMPTY zero "$?" "$output"
+check_contains "node health: EMPTY carries its redaction marker" "$output" \
+  "REDACTION_STATUS=NOT_APPLICABLE"
+
+output="$(run_node_health_logs create_node_health_logs_bundle "$log" \
+  "$TMP_ROOT/out/node-health-nodate.tar.gz" --node_home_dir "$NH_HOME" \
+  --start_date 2026-01-13T10:00:00Z)"
+expect_bundle_status "node health: a missing end_date fails" FAILED nonzero "$?" "$output"
+output="$(run_node_health_logs create_node_health_logs_bundle "$log" \
+  "$TMP_ROOT/out/node-health-baddate.tar.gz" --node_home_dir "$NH_HOME" \
+  --start_date yesterday --end_date 2026-01-15T23:00:00Z)"
+expect_bundle_status "node health: a malformed start_date fails" FAILED nonzero "$?" "$output"
+
+# ===============================================================================================
 # yb-log-parse fallback
 # ===============================================================================================
 # UniverseLogs and YbcLogs must still collect when the yb-log-parse helper cannot be used. They are

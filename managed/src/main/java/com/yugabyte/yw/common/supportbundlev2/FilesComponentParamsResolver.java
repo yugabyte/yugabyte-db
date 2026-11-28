@@ -52,6 +52,8 @@ final class FilesComponentParamsResolver {
   private static final String SYSTEM_LOGS_COMPONENT = "SystemLogs";
   private static final String UNIVERSE_LOGS_COMPONENT = "UniverseLogs";
   private static final String YBC_LOGS_COMPONENT = "YbcLogs";
+  private static final String NODE_HEALTH_LOGS_COMPONENT =
+      BundleDetails.ComponentType.NodeHealthLogs.name();
   private static final String YBC_CONF_RELATIVE_PATH = "controller/conf/server.conf";
   private static final String YBC_LOGS_REGEX_CONFIG_KEY =
       "yb.support_bundle.ybc_logs_regex_pattern";
@@ -99,6 +101,10 @@ final class FilesComponentParamsResolver {
     if (YBC_LOGS_COMPONENT.equals(componentName)) {
       return resolveYbcLogsParams(
           params, universe, node, nodeUniverseManager, config, startDate, endDate);
+    }
+    if (NODE_HEALTH_LOGS_COMPONENT.equals(componentName)) {
+      return resolveNodeHealthLogsParams(
+          params, universe, node, nodeUniverseManager, startDate, endDate);
     }
     return resolveFileListDirParams(
         params, componentName, universe, node, nodeUniverseManager, config, confGetter);
@@ -443,6 +449,26 @@ final class FilesComponentParamsResolver {
       return KubernetesTaskBase.K8S_NODE_YW_DATA_DIR;
     }
     return nodeUniverseManager.getYbHomeDir(node, universe);
+  }
+
+  /** The manifest builds this component generically, so the window is added here, not there. */
+  private static List<String> resolveNodeHealthLogsParams(
+      List<String> params,
+      Universe universe,
+      NodeDetails node,
+      NodeUniverseManager nodeUniverseManager,
+      Date startDate,
+      Date endDate) {
+    List<String> resolved =
+        ensureFlagValue(
+            params, NODE_HOME_DIR_FLAG, nodeUniverseManager.getYbHomeDir(node, universe));
+    if (startDate != null) {
+      resolved = ensureFlagValue(resolved, "--start_date", formatUniverseLogsInstant(startDate));
+    }
+    if (endDate != null) {
+      resolved = ensureFlagValue(resolved, "--end_date", formatUniverseLogsInstant(endDate));
+    }
+    return resolved;
   }
 
   /**

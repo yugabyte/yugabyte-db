@@ -241,6 +241,45 @@ public class SupportBundleScriptParamResolverTest extends FakeDBApplication {
     assertEquals("/custom/yb/home", flagValue(resolved, "--node_home_dir"));
   }
 
+  /** The manifest's generic argv, given the YB home and the window, which it doesn't carry. */
+  @Test
+  public void testNodeHealthLogsGetsTheYbHomeAndTheWindow() throws Exception {
+    when(mockNodeUniverseManager.getYbHomeDir(node, universe)).thenReturn("/custom/yb/home");
+    Date startDate = DateUtils.parseDate("2026-05-20T12:00:00Z", "yyyy-MM-dd'T'HH:mm:ss'Z'");
+    Date endDate = DateUtils.parseDate("2026-05-24T18:30:00Z", "yyyy-MM-dd'T'HH:mm:ss'Z'");
+    List<String> params =
+        Arrays.asList(
+            "create_node_health_logs_bundle",
+            "--node_home_dir",
+            "",
+            "--remote_tar_path",
+            "/tmp/node-health-logs-${bundleUuid}-${nodeName}.tar.gz");
+
+    List<String> resolved =
+        resolveParams(
+            params,
+            "NodeHealthLogs",
+            universe,
+            node,
+            mockNodeUniverseManager,
+            null,
+            startDate,
+            endDate);
+
+    assertEquals(
+        Arrays.asList(
+            "create_node_health_logs_bundle",
+            "--node_home_dir",
+            "/custom/yb/home",
+            "--remote_tar_path",
+            "/tmp/node-health-logs-${bundleUuid}-${nodeName}.tar.gz",
+            "--start_date",
+            "2026-05-20T12:00:00Z",
+            "--end_date",
+            "2026-05-24T18:30:00Z"),
+        resolved);
+  }
+
   @Test
   public void testTabletMetaResolvesDataDirFromNodeDataDirFlag() {
     when(mockConfig.getString("yb.support_bundle.default_mount_point_prefix")).thenReturn("/mnt/d");

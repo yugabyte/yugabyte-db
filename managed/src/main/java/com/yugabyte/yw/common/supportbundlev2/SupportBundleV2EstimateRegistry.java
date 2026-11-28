@@ -45,7 +45,8 @@ public final class SupportBundleV2EstimateRegistry {
           ComponentType.CoreFiles,
           ComponentType.ConsensusMeta,
           ComponentType.TabletMeta,
-          ComponentType.NodeAgent);
+          ComponentType.NodeAgent,
+          ComponentType.NodeHealthLogs);
 
   private SupportBundleV2EstimateRegistry() {}
 
