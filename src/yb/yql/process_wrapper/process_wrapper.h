@@ -111,6 +111,8 @@ class ProcessSupervisor {
   std::shared_ptr<ProcessWrapper> process_wrapper_ GUARDED_BY(mtx_) = nullptr;
   virtual void PrepareForStop() {}
   virtual Status PrepareForStart() { return Status::OK(); }
+  // Called on the supervisor thread after the process has exited, without mtx_ held.
+  virtual void ProcessExited() {}
   virtual std::string GetProcessName() = 0;
 
  private:

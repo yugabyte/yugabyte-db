@@ -44,6 +44,7 @@
 
 #include "yb/tserver/tserver_cgroup_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/csv_util.h"
@@ -1850,8 +1851,10 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
   auto pgwrapper = std::make_shared<PgWrapper>(conf_);
 
   if (FLAGS_enable_ysql_conn_mgr) {
-    if (FLAGS_enable_ysql_conn_mgr_stats)
+    if (FLAGS_enable_ysql_conn_mgr_stats) {
       CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+      ClearPgReady();
+    }
   } else {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr_stats) = false;
   }
@@ -1915,7 +1918,8 @@ key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
   // Let's use a key start at 13000 + 997 (largest 3 digit prime number). Just decreasing
   // the chances of collision with the pg shared memory key space logic.
   key_t shmem_key = 13000 + 997;
-  size_t size_of_shmem = FLAGS_ysql_conn_mgr_max_pools * sizeof(struct ConnectionStats);
+  size_t size_of_shmem = FLAGS_ysql_conn_mgr_max_pools * sizeof(struct ConnectionStats) +
+                         sizeof(struct YsqlConnMgrInstanceStats);
   key_t shmid = -1;
 
   while (true) {
@@ -1941,9 +1945,40 @@ key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
       }
     }
 
+    void* addr = shmat(shmid, nullptr, 0);
+    if (addr == reinterpret_cast<void*>(-1)) {
+      LOG(DFATAL) << "Unable to attach to the ysql connection manager stats shared memory "
+                  << "segment: " << ErrnoToString(errno);
+      return -1;
+    }
+    ysql_conn_mgr_instance_stats_ =
+        YSQL_CONN_MGR_INSTANCE_STATS(addr, FLAGS_ysql_conn_mgr_max_pools);
     ysql_conn_mgr_stats_shmem_key_ = shmem_key;
     return ysql_conn_mgr_stats_shmem_key_;
   }
+}
+
+void PgSupervisor::ClearPgReady() {
+  if (ysql_conn_mgr_instance_stats_) {
+    __atomic_store_n(&ysql_conn_mgr_instance_stats_->pg_ready, 0, __ATOMIC_RELEASE);
+  }
+}
+
+void PgSupervisor::ProcessExited() {
+  ClearPgReady();
+}
+
+Status PgSupervisor::WaitForPostgresReady(MonoDelta timeout) {
+  const auto deadline = CoarseMonoClock::Now() + timeout;
+  RETURN_NOT_OK(WaitForProcessStartAfterLastRestart(timeout));
+  if (!ysql_conn_mgr_instance_stats_) {
+    return Status::OK();
+  }
+  return Wait(
+      [this]() -> Result<bool> {
+        return __atomic_load_n(&ysql_conn_mgr_instance_stats_->pg_ready, __ATOMIC_ACQUIRE) == 1;
+      },
+      deadline, "Waiting for PostgreSQL to accept connections");
 }
 
 }  // namespace pgwrapper

@@ -179,9 +179,9 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_reserve_internal_conns, 15,
 
 DEFINE_RUNTIME_uint32(ysql_conn_mgr_pg_conf_wait_timeout_ms, 15000,
     "Timeout in milliseconds for the YSQL Connection Manager to wait for the PostgreSQL process "
-    "to be started (and hence for ysql_pg.conf to be freshly written) before reading "
-    "ysql_pg.conf to build its own config. If the timeout expires the connection manager start "
-    "fails and is retried by its supervisor.");
+    "to be started (and hence for ysql_pg.conf to be freshly written) and to accept connections "
+    "before reading ysql_pg.conf and starting to accept clients. If the timeout expires the "
+    "connection manager start fails and is retried by its supervisor.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "Dump tcmalloc current heap snapshot of Ysql Connection Manager process. "
@@ -311,7 +311,7 @@ Status YsqlConnMgrWrapper::Start() {
   if (pg_start_waiter_) {
     RETURN_NOT_OK_PREPEND(
         pg_start_waiter_(MonoDelta::FromMilliseconds(FLAGS_ysql_conn_mgr_pg_conf_wait_timeout_ms)),
-        "Failed waiting for the PostgreSQL process to be started before reading ysql_pg.conf");
+        "Failed waiting for PostgreSQL to accept connections before starting");
   }
 
   if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode != "none") {

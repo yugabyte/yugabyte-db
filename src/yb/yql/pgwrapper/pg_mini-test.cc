@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <signal.h>
+
 #include <atomic>
 #include <fstream>
 #include <limits>
@@ -114,6 +116,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_colocated_table_tombstone_cache);
 DECLARE_bool(enable_schema_packing_gc);
 DECLARE_bool(enable_tracing);
+DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
@@ -6308,6 +6311,33 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kIters);
   ASSERT_LE(osc_spec, base_spec + 5)
       << "trigger flush defeats yb_speculatively_execute_pl_statements";
+}
+
+class PgMiniConnMgrPgReadyTest : public PgMiniTestSingleNode {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr) = true;
+    PgMiniTestSingleNode::SetUp();
+  }
+};
+
+TEST_F(PgMiniConnMgrPgReadyTest, WaitForPostgresReady) {
+  const auto kReadyTimeout = 60s * kTimeMultiplier;
+  ASSERT_OK(pg_supervisor_->WaitForPostgresReady(kReadyTimeout));
+  ASSERT_EQ(ASSERT_RESULT(ASSERT_RESULT(Connect()).FetchRow<int32_t>("SELECT 1")), 1);
+
+  const auto postmaster_pid = pg_supervisor_->ProcessId();
+  ASSERT_TRUE(postmaster_pid.has_value());
+  ASSERT_OK(pg_supervisor_->Pause());
+  ASSERT_OK(WaitFor(
+      [pid = static_cast<pid_t>(*postmaster_pid)] { return kill(pid, 0) != 0; },
+      kReadyTimeout, "Wait for postmaster to exit"));
+  auto status = pg_supervisor_->WaitForPostgresReady(2s);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  ASSERT_OK(pg_supervisor_->Restart());
+  ASSERT_OK(pg_supervisor_->WaitForPostgresReady(kReadyTimeout));
+  ASSERT_EQ(ASSERT_RESULT(ASSERT_RESULT(Connect()).FetchRow<int32_t>("SELECT 1")), 1);
 }
 
 }  // namespace yb::pgwrapper

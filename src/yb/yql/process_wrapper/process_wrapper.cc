@@ -86,6 +86,7 @@ void ProcessSupervisor::RunThread() {
     }
     if (pw) {
       Result<int> wait_result = pw->Wait();
+      ProcessExited();
       if (wait_result.ok()) {
         int ret_code = *wait_result;
         if (ret_code == 0) {

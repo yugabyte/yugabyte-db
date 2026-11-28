@@ -158,12 +158,13 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
       FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor.GetYsqlConnManagerStatsShmkey() : 0;
   auto ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
       ysql_conn_mgr_conf, conn_mgr_shmem_key, [pg_supervisor = &pg_supervisor](MonoDelta timeout) {
-        return pg_supervisor->WaitForProcessStartAfterLastRestart(timeout);
+        return pg_supervisor->WaitForPostgresReady(timeout);
       });
-  if (start_paused) {
-    RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
-  } else {
-    RETURN_NOT_OK(ysql_conn_mgr_supervisor->Start());
+  // Even an unpaused connection manager starts from the paused state, so that its wait for PG to
+  // accept connections runs on its supervisor thread rather than blocking tserver startup.
+  RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
+  if (!start_paused) {
+    RETURN_NOT_OK(ysql_conn_mgr_supervisor->StartIfNotStarted());
   }
   tablet_server.RegisterConnectionManagerRestarter(std::bind(
       &ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor::StartIfNotStarted,
@@ -343,7 +344,7 @@ Status StartServices(Services& services) {
   }
 
   // A paused connection manager is started along with PG by TabletServer::RestartPG, so it must be
-  // registered before PG's first start.  An unpaused one waits, at startup, for PG to have started.
+  // registered before PG's first start.
   if (FLAGS_enable_ysql_conn_mgr && pg_starts_paused) {
     services.ysql_conn_mgr_supervisor = VERIFY_RESULT(CreateYsqlConnMgrSupervisor(
         *services.tablet_server, tablet_server_options, *services.pg_supervisor,

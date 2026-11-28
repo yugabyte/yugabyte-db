@@ -32,6 +32,8 @@
 #include "yb/yql/process_wrapper/common_config.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
+struct YsqlConnMgrInstanceStats;
+
 namespace yb {
 
 class Thread;
@@ -200,6 +202,10 @@ class PgSupervisor : public ProcessSupervisor {
   // Get the shared memory key to be used by ysql connection manager to publish stats
   key_t GetYsqlConnManagerStatsShmkey();
 
+  // Waits until a PostgreSQL process started after the last restart request accepts connections.
+  // Without the connection manager stats segment, only waits for that process to start.
+  Status WaitForPostgresReady(MonoDelta timeout);
+
  private:
   Status RegisterPgFlagChangeNotifications() REQUIRES(mtx_);
   Status RegisterReloadConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
@@ -207,11 +213,15 @@ class PgSupervisor : public ProcessSupervisor {
 
   void PrepareForStop() REQUIRES(mtx_) override;
   Status PrepareForStart() REQUIRES(mtx_) override;
+  void ProcessExited() override;
+
+  void ClearPgReady();
 
   PgProcessConf conf_;
   PgWrapperContext* server_;
   std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
+  YsqlConnMgrInstanceStats* ysql_conn_mgr_instance_stats_ = nullptr;
   const bool starts_paused_;
 
   std::string GetProcessName() override {
