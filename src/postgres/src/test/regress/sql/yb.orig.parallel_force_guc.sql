@@ -6,6 +6,9 @@ CREATE DATABASE pctest colocation = true;
 \c pctest
 
 set yb_enable_cbo = on;
+-- This file checks the shape of parallel plans, not the planner's choice
+-- between them, so the worker launch cost per relation is left out.
+set yb_parallel_setup_cost_per_relation = 0;
 
 -- set smaller parallel interval to produce more ranges
 set yb_parallel_range_size to 1024;
@@ -100,9 +103,13 @@ SELECT a FROM pctest1 WHERE a < 10;
 SELECT a FROM pctest1 WHERE a < 10;
 
 -- with grouping
+-- A Finalize HashAggregate over a Gather costs the same within the planner's
+-- fuzz and returns the groups in no fixed order.
+set enable_hashagg = off;
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
+reset enable_hashagg;
 
 -- Joins
 -- Nest loop

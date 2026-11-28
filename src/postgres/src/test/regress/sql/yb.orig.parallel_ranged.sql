@@ -21,6 +21,9 @@ set yb_parallel_range_size to 1024;
 -- enable parallel query for YB tables
 set yb_parallel_range_rows to 1;
 set yb_enable_cbo = on;
+-- This file checks the shape of parallel plans, not the planner's choice
+-- between them, so the worker launch cost per relation is left out.
+set yb_parallel_setup_cost_per_relation = 0;
 
 -- parallel bitmap scan not supported yet
 set enable_bitmapscan = false;

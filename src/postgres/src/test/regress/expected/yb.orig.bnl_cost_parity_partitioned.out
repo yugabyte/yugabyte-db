@@ -99,9 +99,9 @@ group by qid, descr, chosen
 order by qid;
  qid |        descr        |  cost_rank   | chosen |   rt_rank    |      total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
 -----+---------------------+--------------+--------+--------------+----------------------+------------+-----------------------+-------------+-------------+-------------
- 601 | pk inner 256-outer  | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### #####  | 3 6 8 257  | 768 15275 12857 5376  | 2 6 7 257   | 1 0 1 0     |         126
- 602 | pk semi 256-outer   | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### #####  | 3 6 8 257  | 768 15275 12857 5376  | 2 6 7 257   | 1 0 1 0     |         126
- 603 | pk anti 256-outer   | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### #####  | 3 6 8 257  | 768 15275 12857 5376  | 2 6 7 257   | 1 0 1 0     |         130
+ 601 | pk inner 256-outer  | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### ####   | 3 6 8 257  | 768 15275 12857 768   | 2 6 7 256   | 1 0 1 1     |         126
+ 602 | pk semi 256-outer   | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### ####   | 3 6 8 257  | 768 15275 12857 768   | 2 6 7 256   | 1 0 1 1     |         126
+ 603 | pk anti 256-outer   | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### ####   | 3 6 8 257  | 768 15275 12857 768   | 2 6 7 256   | 1 0 1 1     |         130
  611 | pk inner 1024-outer | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | #### #### #### ##### | 4 7 8 1026 | 6144 15275 14393 6144 | 4 7 7 1026  | 0 0 1 0     |         484
  612 | pk semi 1024-outer  | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | #### #### #### ##### | 4 7 8 1026 | 6144 15275 14393 6144 | 4 7 7 1026  | 0 0 1 0     |         484
  613 | pk anti 1024-outer  | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | #### #### #### ##### | 3 7 8 1026 | 3072 15275 14393 6144 | 2 7 7 1026  | 1 0 1 0     |         540

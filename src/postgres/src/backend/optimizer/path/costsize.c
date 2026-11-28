@@ -108,6 +108,7 @@
 #include "catalog/pg_type_d.h"
 #include "commands/defrem.h"
 #include "executor/ybExpr.h"
+#include "optimizer/appendinfo.h"
 #include "optimizer/planner.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
@@ -183,6 +184,7 @@ double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
 double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
 double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
+double		yb_parallel_setup_cost_per_relation = YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -282,6 +284,13 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 											Cost *transfer_cost);
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
+static Cardinality yb_plan_limit_bound(PlannerInfo *root, Path *path);
+static double yb_gather_flush_rows(PlannerInfo *root, Path *gather_path,
+								   Path *subpath);
+static bool yb_params_select_one_partition(RelOptInfo *rel, List *clauses);
+static int	yb_count_scan_relations(Path *path);
+static Cost yb_parallel_catalog_setup_cost(Path *subpath);
+static int	yb_count_bitmap_indexes(Path *bitmapqual);
 
 
 /*
@@ -515,7 +524,40 @@ cost_gather(GatherPath *path, PlannerInfo *root,
 
 	/* Parallel setup and communication cost. */
 	startup_cost += parallel_setup_cost;
+
+	/* YB: the workers load catalog data before their first fetch. */
+	startup_cost += yb_parallel_catalog_setup_cost(path->subpath);
+
 	run_cost += parallel_tuple_cost * path->path.rows;
+
+	/*
+	 * YB: a worker's rows reach the leader only when the worker flushes its
+	 * tuple queue (yb_gather_flush_rows).  When the leader scans too, the
+	 * first rows of the Gather are the leader's own.  Otherwise the Gather
+	 * waits for a worker's first flush, and the cost of the worker getting
+	 * that far is startup cost.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Path	   *subpath = path->subpath;
+		double		first_rows = yb_path_first_batch_rows(subpath);
+
+		if (!parallel_leader_participation)
+		{
+			double		flush_rows = yb_gather_flush_rows(root, &path->path,
+														  subpath);
+			Cost		flush_cost;
+
+			flush_cost = yb_run_cost_for_rows(subpath->total_cost -
+											  subpath->startup_cost,
+											  subpath->rows, first_rows,
+											  flush_rows);
+			startup_cost += flush_cost;
+			run_cost -= flush_cost;
+			first_rows = fmax(first_rows, flush_rows);
+		}
+		path->path.yb_plan_info.first_batch_rows = first_rows;
+	}
 
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = (startup_cost + run_cost);
@@ -582,7 +624,39 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	 * For lack of a better idea, charge an extra 5%.
 	 */
 	startup_cost += parallel_setup_cost;
+
+	/* YB: the workers load catalog data before their first fetch. */
+	startup_cost += yb_parallel_catalog_setup_cost(path->subpath);
+
 	run_cost += parallel_tuple_cost * path->path.rows * 1.05;
+
+	/*
+	 * YB: a Gather Merge returns its first row once every worker has
+	 * delivered one, and a worker's rows reach the leader only when the
+	 * worker flushes its tuple queue (yb_gather_flush_rows).  The cost of a
+	 * worker getting that far is startup cost.  An input that has to be
+	 * sorted has paid for all of its rows by then.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Path	   *subpath = path->subpath;
+		double		flush_rows = yb_gather_flush_rows(root, &path->path,
+													  subpath);
+		double		first_rows = 0;
+		Cost		flush_cost;
+
+		if (pathkeys_contained_in(path->path.pathkeys, subpath->pathkeys))
+			first_rows = yb_path_first_batch_rows(subpath);
+		flush_cost = yb_run_cost_for_rows(input_total_cost -
+										  input_startup_cost,
+										  subpath->rows, first_rows,
+										  flush_rows);
+		startup_cost += flush_cost;
+		run_cost -= flush_cost;
+		if (subpath->rows > 0)
+			path->path.yb_plan_info.first_batch_rows =
+				fmax(first_rows, flush_rows) * path->path.rows / subpath->rows;
+	}
 
 	path->path.startup_cost = startup_cost + input_startup_cost;
 	path->path.total_cost = (startup_cost + run_cost + input_total_cost);
@@ -7776,6 +7850,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	path->yb_plan_info.estimated_num_bmscan_seeks = 0;
 	path->yb_plan_info.estimated_num_bmscan_result_pages = 0;
 	path->yb_plan_info.first_fetch_limit = first_fetch_limit;
+	path->yb_plan_info.first_batch_rows = first_batch_frac * path->rows;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -10665,6 +10740,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	path->yb_plan_info.estimated_num_bmscan_prevs = bmscan_num_prevs;
 	path->yb_plan_info.estimated_num_bmscan_result_pages = ybctid_num_pages;
 	path->yb_plan_info.first_fetch_limit = first_fetch_limit;
+	path->yb_plan_info.first_batch_rows =
+		table_first_batch_frac * path->path.rows;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -11304,7 +11381,11 @@ yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
  *   counts only when the input's duplication (rows per distinct group over
  *   the path's rows; duplicates are adjacent in sorted input) leaves the
  *   bound's rows all distinct.  Otherwise the Unique pulls a default-sized
- *   second page and the untrimmed costing is the closer estimate.
+ *   second page and the untrimmed costing is the closer estimate.  The
+ *   group estimate can fall a little short of the rows where every row is
+ *   distinct, so groups within 1% of the rows count as all distinct, and
+ *   the Limit above is charged for the rows the Unique reads after the
+ *   first response (yb_path_first_batch_rows).
  * - serial only: a parallel range is fetched whole, with the row and size
  *   limits lifted, regardless of any LIMIT
  *   (yb_scan_apply_next_parallel_range).
@@ -11332,12 +11413,27 @@ yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
 static Cardinality
 yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 {
-	Query	   *parse = root->parse;
-
-	if (root->yb_limit_tuples <= 0 ||
-		path->parallel_workers > 0 ||
+	if (path->parallel_workers > 0 ||
 		has_local_quals ||
 		path->param_info != NULL)
+		return 0.0;
+
+	return yb_plan_limit_bound(root, path);
+}
+
+/*
+ * yb_plan_limit_bound
+ *	  The row bound the LIMIT clause puts on a path with the given path's
+ *	  ordering (LIMIT count + OFFSET), or 0 when the plan above the path
+ *	  clears the bound.  These are the rules of yb_first_fetch_limit that do
+ *	  not depend on the scan itself.
+ */
+static Cardinality
+yb_plan_limit_bound(PlannerInfo *root, Path *path)
+{
+	Query	   *parse = root->parse;
+
+	if (root->yb_limit_tuples <= 0)
 		return 0.0;
 
 	if (!pathkeys_contained_in(root->query_pathkeys, path->pathkeys) &&
@@ -11363,7 +11459,8 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 		Cardinality	needed_rows = root->yb_limit_tuples * path->rows /
 			fmax(ngroups, 1.0);
 
-		if (clamp_row_est(needed_rows) > root->yb_limit_tuples)
+		if (clamp_row_est(needed_rows) > root->yb_limit_tuples &&
+			ngroups < 0.99 * path->rows)
 			return 0.0;
 	}
 
@@ -11567,4 +11664,485 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
 	pfree(rows_scale);
 
 	return result;
+}
+
+/*
+ * yb_gather_flush_rows
+ *	  The number of rows a worker under the given Gather or Gather Merge
+ *	  produces before the leader can read any of them.
+ *
+ * A worker puts its rows in a tuple queue, and the queue is handed to the
+ * leader when a quarter of it is filled or the worker finishes (tqueue.c
+ * sends without force_flush, see shm_mq_sendv).  The leader therefore sees
+ * none of a worker's rows until the worker has produced that many bytes of
+ * rows, or all of its rows.
+ *
+ * A worker stops at the LIMIT's rows and finishes only when the executor
+ * gives the Gather or Gather Merge the LIMIT's bound (ExecSetTupleBound),
+ * which passes through no node that can discard or combine rows, and which
+ * a LIMIT WITH TIES does not set.  The Gather must therefore be above the
+ * whole scan/join tree, either at the topmost scan/join rel or at an upper
+ * rel, with no DISTINCT above it; a Gather under a join or a Unique has
+ * workers that run on to their first flush.  yb_plan_limit_bound already
+ * returns 0 when grouping, aggregates, window functions or set-returning
+ * functions sit above the path.
+ */
+static double
+yb_gather_flush_rows(PlannerInfo *root, Path *gather_path, Path *subpath)
+{
+	/* a quarter of PARALLEL_TUPLE_QUEUE_SIZE (execParallel.c) */
+	const double flush_bytes = 65536 / 4;
+
+	/* a minimal tuple's header and the queue's length word */
+	double		tuple_bytes = subpath->pathtarget->width + 24;
+	double		flush_rows = ceil(flush_bytes / tuple_bytes);
+	RelOptInfo *rel = gather_path->parent;
+	Cardinality limit_bound = yb_plan_limit_bound(root, gather_path);
+
+	if (limit_bound > 0 && limit_bound < flush_rows &&
+		root->parse->distinctClause == NIL &&
+		root->parse->limitOption != LIMIT_OPTION_WITH_TIES &&
+		(IS_UPPER_REL(rel) || bms_equal(rel->relids, root->all_baserels)))
+		flush_rows = limit_bound;
+
+	return fmin(flush_rows, subpath->rows);
+}
+
+/*
+ * yb_path_first_batch_rows
+ *	  The number of the path's rows that the path's startup_cost pays for.
+ *
+ * Before a YB scan returns its first row, DocDB produces and ships the whole
+ * first response, so the scan's startup cost holds the cost of every row in
+ * that response and the scan's run cost holds the cost of the later rows
+ * only.  Returns 0 for a path whose startup cost pays for no rows, and for a
+ * path above the scan through which the number is not carried.
+ */
+double
+yb_path_first_batch_rows(Path *path)
+{
+	switch (nodeTag(path))
+	{
+		case T_IndexPath:
+			return ((IndexPath *) path)->yb_plan_info.first_batch_rows;
+		case T_ProjectionPath:
+			return yb_path_first_batch_rows(((ProjectionPath *) path)->subpath);
+		case T_UpperUniquePath:
+			{
+				/* The first batch's rows less its share of the duplicates. */
+				Path	   *subpath = ((UpperUniquePath *) path)->subpath;
+
+				if (subpath->rows <= 0)
+					return 0.0;
+				return yb_path_first_batch_rows(subpath) *
+					path->rows / subpath->rows;
+			}
+		default:
+			return path->yb_plan_info.first_batch_rows;
+	}
+}
+
+/*
+ * yb_run_cost_for_rows
+ *	  The part of a path's run cost that producing its first 'rows' rows
+ *	  takes, for a path of path_rows rows whose startup cost pays for
+ *	  first_batch_rows of them.
+ *
+ * The run cost is the cost of the rows after the first batch only, so it is
+ * spread over those rows, and rows within the first batch take none of it.
+ */
+Cost
+yb_run_cost_for_rows(Cost run_cost, double path_rows, double first_batch_rows,
+					 double rows)
+{
+	double		later_rows = path_rows - first_batch_rows;
+
+	if (rows <= first_batch_rows || later_rows <= 0)
+		return 0.0;
+
+	return run_cost * fmin(rows - first_batch_rows, later_rows) / later_rows;
+}
+
+/*
+ * yb_params_select_one_partition
+ *	  Whether 'clauses', join clauses on the partitioned 'rel', leave at most
+ *	  one partition of 'rel' for each value of the other rels' expressions.
+ *
+ * That is so when every partition key column has a clause that equates the
+ * column, by an operator of the column's partitioning operator family, with
+ * an expression of the other rels: run-time pruning then keeps the one
+ * partition whose bounds hold the value, or none.  As in
+ * match_clause_to_partition_key(), the operator must be strict and take the
+ * partitioning collation, and the expression must not be volatile.  Unlike
+ * match_clause_to_partition_key(), this does not look up the support
+ * function of a comparison across types, which only an operator family that
+ * lacks one fails.
+ */
+static bool
+yb_params_select_one_partition(RelOptInfo *rel, List *clauses)
+{
+	PartitionScheme part_scheme = rel->part_scheme;
+	int			eq_strategy;
+
+	eq_strategy = (part_scheme->strategy == PARTITION_STRATEGY_HASH)
+		? HTEqualStrategyNumber : BTEqualStrategyNumber;
+
+	for (int i = 0; i < part_scheme->partnatts; i++)
+	{
+		bool		found = false;
+		ListCell   *lc;
+
+		foreach(lc, clauses)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+			OpExpr	   *op = (OpExpr *) rinfo->clause;
+			Node	   *leftop;
+			Node	   *rightop;
+			Node	   *other;
+			Relids		other_relids;
+			Oid			opno;
+
+			if (rinfo->pseudoconstant || !IsA(op, OpExpr) ||
+				list_length(op->args) != 2)
+				continue;
+
+			leftop = linitial(op->args);
+			if (IsA(leftop, RelabelType))
+				leftop = (Node *) ((RelabelType *) leftop)->arg;
+			rightop = lsecond(op->args);
+			if (IsA(rightop, RelabelType))
+				rightop = (Node *) ((RelabelType *) rightop)->arg;
+
+			if (list_member(rel->partexprs[i], leftop))
+			{
+				other = rightop;
+				other_relids = rinfo->right_relids;
+				opno = op->opno;
+			}
+			else if (list_member(rel->partexprs[i], rightop))
+			{
+				other = leftop;
+				other_relids = rinfo->left_relids;
+				opno = get_commutator(op->opno);
+			}
+			else
+				continue;
+
+			if (!OidIsValid(opno) || !op_strict(opno) ||
+				bms_overlap(other_relids, rel->relids) ||
+				contain_volatile_functions(other))
+				continue;
+
+			if (OidIsValid(part_scheme->partcollation[i]) &&
+				part_scheme->partcollation[i] != op->inputcollid)
+				continue;
+
+			if (get_op_opfamily_strategy(opno, part_scheme->partopfamily[i]) ==
+				eq_strategy)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+			return false;
+	}
+
+	return true;
+}
+
+/*
+ * yb_cost_append_for_one_partition
+ *	  Redo the costs of cost_append() for an Append of which each rescan runs
+ *	  at most one subpath.
+ *
+ * Unlike cost_append(), which sums the subpaths, the Append is charged one
+ * subpath when it scans the partitions of a partitioned table and the join
+ * clauses of its parameterization select one partition of the table and of
+ * every partitioned partition above a subpath
+ * (yb_params_select_one_partition).  The executor then prunes the other
+ * subpaths at each rescan, with the pruning steps that create_append_plan()
+ * makes from the same clauses when enable_partition_pruning is on, so
+ * summing the subpaths charges a nested loop every partition of its inner
+ * table for each outer row.
+ *
+ * Which subpath a rescan runs depends on the values of the parameters, so
+ * the subpaths are averaged, each weighted by the tuples of its partition:
+ * the rescans are assumed to reach the partitions in proportion to their
+ * sizes.  A partition that no rescan reaches is therefore still charged its
+ * share.
+ *
+ * A batched Append is left as cost_append() costs it, because the keys of one
+ * batch can be in several partitions.
+ */
+void
+yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
+{
+	RelOptInfo *rel = apath->path.parent;
+	ParamPathInfo *param_info = apath->path.param_info;
+	List	   *join_clauses;
+	Relids		checked_relids = NULL;
+	double		total_tuples = 0;
+	double		rows = 0;
+	Cost		startup_cost = 0;
+	Cost		total_cost = 0;
+	ListCell   *lc;
+
+	if (!enable_partition_pruning ||
+		param_info == NULL || param_info->ppi_clauses == NIL ||
+		YB_PATH_NEEDS_BATCHED_RELS(&apath->path) ||
+		rel->reloptkind != RELOPT_BASEREL || !IS_PARTITIONED_REL(rel))
+		return;
+
+	/* cost_append() costs an ordered or parallel-aware Append its own way. */
+	if (apath->path.pathkeys != NIL || apath->path.parallel_aware)
+		return;
+
+	join_clauses = param_info->ppi_clauses;
+	if (!yb_params_select_one_partition(rel, join_clauses))
+		return;
+
+	foreach(lc, apath->subpaths)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+		RelOptInfo *subrel = subpath->parent;
+		Index		relid;
+
+		/*
+		 * The subpath must scan a partition, and the clauses must select one
+		 * partition of every partitioned table between it and rel.
+		 */
+		if (!IS_SIMPLE_REL(subrel) || subrel->part_scheme != NULL)
+			return;
+		for (relid = subrel->relid;;)
+		{
+			AppendRelInfo *appinfo = root->append_rel_array[relid];
+			RelOptInfo *parent;
+			List	   *clauses;
+
+			if (appinfo == NULL)
+				return;
+			relid = appinfo->parent_relid;
+			if (relid == rel->relid)
+				break;
+			if (bms_is_member(relid, checked_relids))
+				continue;
+
+			parent = find_base_rel(root, relid);
+			if (!IS_PARTITIONED_REL(parent))
+				return;
+			clauses = (List *)
+				adjust_appendrel_attrs_multilevel(root, (Node *) join_clauses,
+												  parent->relids, rel->relids);
+			if (!yb_params_select_one_partition(parent, clauses))
+				return;
+			checked_relids = bms_add_member(checked_relids, relid);
+		}
+
+		/* A foreign partition that was never analyzed has -1 tuples. */
+		total_tuples += Max(subrel->tuples, 0);
+	}
+
+	foreach(lc, apath->subpaths)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+		double		weight;
+
+		weight = (total_tuples > 0)
+			? Max(subpath->parent->tuples, 0) / total_tuples
+			: 1.0 / list_length(apath->subpaths);
+
+		rows += weight * subpath->rows;
+		startup_cost += weight * subpath->startup_cost;
+		total_cost += weight * subpath->total_cost;
+	}
+
+	apath->path.rows = clamp_row_est(rows);
+	apath->path.startup_cost = startup_cost;
+	apath->path.total_cost = total_cost +
+		cpu_tuple_cost * APPEND_CPU_COST_MULTIPLIER * apath->path.rows;
+}
+
+/*
+ * yb_count_scan_relations
+ *	  Count the relations the given path tree scans: each table, and each
+ *	  index that a scan of the table uses.
+ *
+ * A parallel worker starts with empty catalog caches, so each of these costs
+ * it a relcache build against the master before its first fetch.  An index
+ * is a relation of its own: a worker reads as much of the catalog for the
+ * index as for the table.  Only the partitions left after plan-time pruning
+ * are in the tree; run-time pruning is not modeled.
+ */
+static int
+yb_count_scan_relations(Path *path)
+{
+	int			count = 0;
+	ListCell   *lc;
+
+	if (path == NULL)
+		return 0;
+
+	switch (nodeTag(path))
+	{
+		case T_Path:
+		case T_ForeignPath:
+			if (path->parent->rtekind == RTE_RELATION)
+				count = 1;
+			break;
+		case T_IndexPath:
+			/* the table and the index */
+			count = 2;
+			break;
+		case T_BitmapHeapPath:
+			count = 1 +
+				yb_count_bitmap_indexes(((BitmapHeapPath *) path)->bitmapqual);
+			break;
+		case T_YbBitmapTablePath:
+			count = 1 +
+				yb_count_bitmap_indexes(((YbBitmapTablePath *) path)->bitmapqual);
+			break;
+		case T_TidPath:
+		case T_TidRangePath:
+			count = 1;
+			break;
+		case T_AppendPath:
+			foreach(lc, ((AppendPath *) path)->subpaths)
+				count += yb_count_scan_relations((Path *) lfirst(lc));
+			break;
+		case T_MergeAppendPath:
+			foreach(lc, ((MergeAppendPath *) path)->subpaths)
+				count += yb_count_scan_relations((Path *) lfirst(lc));
+			break;
+		case T_HashPath:
+		case T_MergePath:
+		case T_NestPath:
+			count = yb_count_scan_relations(((JoinPath *) path)->outerjoinpath) +
+				yb_count_scan_relations(((JoinPath *) path)->innerjoinpath);
+			break;
+		case T_AggPath:
+			count = yb_count_scan_relations(((AggPath *) path)->subpath);
+			break;
+		case T_GroupPath:
+			count = yb_count_scan_relations(((GroupPath *) path)->subpath);
+			break;
+		case T_IncrementalSortPath:
+			count = yb_count_scan_relations(((IncrementalSortPath *) path)->spath.subpath);
+			break;
+		case T_LimitPath:
+			count = yb_count_scan_relations(((LimitPath *) path)->subpath);
+			break;
+		case T_MaterialPath:
+			count = yb_count_scan_relations(((MaterialPath *) path)->subpath);
+			break;
+		case T_MemoizePath:
+			count = yb_count_scan_relations(((MemoizePath *) path)->subpath);
+			break;
+		case T_ProjectSetPath:
+			count = yb_count_scan_relations(((ProjectSetPath *) path)->subpath);
+			break;
+		case T_ProjectionPath:
+			count = yb_count_scan_relations(((ProjectionPath *) path)->subpath);
+			break;
+		case T_SortPath:
+			count = yb_count_scan_relations(((SortPath *) path)->subpath);
+			break;
+		case T_SubqueryScanPath:
+			count = yb_count_scan_relations(((SubqueryScanPath *) path)->subpath);
+			break;
+		case T_UniquePath:
+			count = yb_count_scan_relations(((UniquePath *) path)->subpath);
+			break;
+		case T_UpperUniquePath:
+			count = yb_count_scan_relations(((UpperUniquePath *) path)->subpath);
+			break;
+		default:
+			break;
+	}
+
+	return count;
+}
+
+/*
+ * yb_count_bitmap_indexes
+ *	  Count the index scans under the bitmapqual of a bitmap scan.
+ */
+static int
+yb_count_bitmap_indexes(Path *bitmapqual)
+{
+	int			count = 0;
+	ListCell   *lc;
+
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		foreach(lc, ((BitmapAndPath *) bitmapqual)->bitmapquals)
+			count += yb_count_bitmap_indexes((Path *) lfirst(lc));
+	}
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		foreach(lc, ((BitmapOrPath *) bitmapqual)->bitmapquals)
+			count += yb_count_bitmap_indexes((Path *) lfirst(lc));
+	}
+	else
+		count = 1;
+
+	return count;
+}
+
+/*
+ * yb_parallel_catalog_setup_cost
+ *	  Startup cost of the catalog data the workers of a Gather or Gather
+ *	  Merge load before their first fetch.
+ *
+ * A worker is a new backend, so its catalog caches start empty.  Without
+ * catalog preloading, a worker builds a relcache entry for every table and
+ * index its plan opens, each a few round trips to the master, and the charge
+ * is per relation of the plan.
+ *
+ * Where a new backend preloads its caches (YbCatalogPreloadRequired), a
+ * worker repeats the preload this backend did, and its plan's relations are
+ * in the caches by then.  The delay follows what is preloaded: the relations,
+ * attributes and statistics rows of the database, and the function names
+ * when pg_proc is preloaded.  This backend's own preload counted them
+ * (YbGetCatalogCachePreloadedRows), and a count, unlike the time the preload
+ * took, is the same in every backend of the database.  A cache that was not
+ * preloaded counts nothing.  A minimal preload leaves user relations out, so
+ * both charges apply.
+ *
+ * The preload terms are scaled with yb_parallel_setup_cost_per_relation, so
+ * that setting it to 0 removes the whole charge.  The workers load
+ * concurrently, so the delay before the first tuple grows with the preload
+ * and the relation count rather than with the worker count.
+ */
+static Cost
+yb_parallel_catalog_setup_cost(Path *subpath)
+{
+	Cost		cost = 0;
+	bool		preload = IsYugaByteEnabled() && YbCatalogPreloadRequired();
+
+	if (preload)
+	{
+		double		relations = YbGetCatalogCachePreloadedRows(RELOID);
+		double		attributes = YbGetCatalogCachePreloadedRows(ATTNUM);
+		double		statistics = YbGetCatalogCachePreloadedRows(STATRELATTINH);
+		double		proc_names = YbGetCatalogCachePreloadedLists(PROCOID);
+		Cost		preload_cost;
+
+		preload_cost = YB_PARALLEL_PRELOAD_COST_BASE +
+			YB_PARALLEL_PRELOAD_COST_PER_RELATION * relations +
+			YB_PARALLEL_PRELOAD_COST_PER_ATTRIBUTE * attributes +
+			YB_PARALLEL_PRELOAD_COST_PER_STATISTIC * statistics +
+			YB_PARALLEL_PRELOAD_COST_PER_PROC_NAME_PAIR *
+			proc_names * proc_names / 2;
+
+		cost += preload_cost * yb_parallel_setup_cost_per_relation /
+			YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION;
+	}
+
+	if (!preload || YbUseMinimalCatalogCachesPreload())
+		cost += yb_parallel_setup_cost_per_relation *
+			yb_count_scan_relations(subpath);
+
+	return cost;
 }

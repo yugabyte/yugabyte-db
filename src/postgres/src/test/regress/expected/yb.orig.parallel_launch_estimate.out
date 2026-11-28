@@ -1,0 +1,586 @@
+-- Test the planner's estimate of the catalog reads a parallel worker makes
+-- for the relations in its plan against the reads that EXPLAIN reports.
+-- DEPENDENCY: yb.orig.roundtrip_estimate_setup
+\c roundtrip_test
+set client_min_messages to 'warning';
+-- A parallel worker starts with empty catalog caches and builds a relcache
+-- entry for every table and index its plan opens.  A Gather's startup cost
+-- has yb_parallel_setup_cost_per_relation for each of them, which at the
+-- default is three catalog reads at yb_local_roundtrip_cost (#36424).  This
+-- test reads both sides for the same query:
+--   estimated: the Gather's startup cost with the setting at its default less
+--     the cost with the setting at 0, in relations;
+--   actual: Catalog Read Requests of EXPLAIN (ANALYZE, DIST) for each worker
+--     launched.  The leader's caches are warm, so the workers make all of
+--     the reads.  The smallest of three runs is taken, because the leader
+--     refreshes its own caches once after the DDL below.
+-- A worker also makes catalog reads that do not depend on the relations in its
+-- plan, and the planner charges those in parallel_setup_cost.  The queries
+-- therefore come in groups that differ only in the number of partitions left
+-- after pruning, and a group passes when each relation it adds to the plan
+-- adds three reads.
+create schema pl;
+-- 25 partitions of 100 rows.  A condition on k leaves the first N of them
+-- after plan-time pruning.
+create table pl.p (k int, v int, vv text, primary key (k asc))
+    partition by range (k);
+select format('create table pl.p%s partition of pl.p for values from (%s) to (%s)',
+              i, (i - 1) * 100 + 1, i * 100 + 1)
+from generate_series(1, 25) i \gexec
+create table pl.p1 partition of pl.p for values from (1) to (101)
+create table pl.p2 partition of pl.p for values from (101) to (201)
+create table pl.p3 partition of pl.p for values from (201) to (301)
+create table pl.p4 partition of pl.p for values from (301) to (401)
+create table pl.p5 partition of pl.p for values from (401) to (501)
+create table pl.p6 partition of pl.p for values from (501) to (601)
+create table pl.p7 partition of pl.p for values from (601) to (701)
+create table pl.p8 partition of pl.p for values from (701) to (801)
+create table pl.p9 partition of pl.p for values from (801) to (901)
+create table pl.p10 partition of pl.p for values from (901) to (1001)
+create table pl.p11 partition of pl.p for values from (1001) to (1101)
+create table pl.p12 partition of pl.p for values from (1101) to (1201)
+create table pl.p13 partition of pl.p for values from (1201) to (1301)
+create table pl.p14 partition of pl.p for values from (1301) to (1401)
+create table pl.p15 partition of pl.p for values from (1401) to (1501)
+create table pl.p16 partition of pl.p for values from (1501) to (1601)
+create table pl.p17 partition of pl.p for values from (1601) to (1701)
+create table pl.p18 partition of pl.p for values from (1701) to (1801)
+create table pl.p19 partition of pl.p for values from (1801) to (1901)
+create table pl.p20 partition of pl.p for values from (1901) to (2001)
+create table pl.p21 partition of pl.p for values from (2001) to (2101)
+create table pl.p22 partition of pl.p for values from (2101) to (2201)
+create table pl.p23 partition of pl.p for values from (2201) to (2301)
+create table pl.p24 partition of pl.p for values from (2301) to (2401)
+create table pl.p25 partition of pl.p for values from (2401) to (2501)
+insert into pl.p select i, i, repeat('x', 16) from generate_series(1, 2500) i;
+analyze pl.p;
+-- The same without a primary key, so that a scan can only use the secondary
+-- index.
+create table pl.q (k int, v int, vv text) partition by range (k);
+select format('create table pl.q%s partition of pl.q for values from (%s) to (%s)',
+              i, (i - 1) * 100 + 1, i * 100 + 1)
+from generate_series(1, 25) i \gexec
+create table pl.q1 partition of pl.q for values from (1) to (101)
+create table pl.q2 partition of pl.q for values from (101) to (201)
+create table pl.q3 partition of pl.q for values from (201) to (301)
+create table pl.q4 partition of pl.q for values from (301) to (401)
+create table pl.q5 partition of pl.q for values from (401) to (501)
+create table pl.q6 partition of pl.q for values from (501) to (601)
+create table pl.q7 partition of pl.q for values from (601) to (701)
+create table pl.q8 partition of pl.q for values from (701) to (801)
+create table pl.q9 partition of pl.q for values from (801) to (901)
+create table pl.q10 partition of pl.q for values from (901) to (1001)
+create table pl.q11 partition of pl.q for values from (1001) to (1101)
+create table pl.q12 partition of pl.q for values from (1101) to (1201)
+create table pl.q13 partition of pl.q for values from (1201) to (1301)
+create table pl.q14 partition of pl.q for values from (1301) to (1401)
+create table pl.q15 partition of pl.q for values from (1401) to (1501)
+create table pl.q16 partition of pl.q for values from (1501) to (1601)
+create table pl.q17 partition of pl.q for values from (1601) to (1701)
+create table pl.q18 partition of pl.q for values from (1701) to (1801)
+create table pl.q19 partition of pl.q for values from (1801) to (1901)
+create table pl.q20 partition of pl.q for values from (1901) to (2001)
+create table pl.q21 partition of pl.q for values from (2001) to (2101)
+create table pl.q22 partition of pl.q for values from (2101) to (2201)
+create table pl.q23 partition of pl.q for values from (2201) to (2301)
+create table pl.q24 partition of pl.q for values from (2301) to (2401)
+create table pl.q25 partition of pl.q for values from (2401) to (2501)
+create index nonconcurrently q_v_idx on pl.q (v asc);
+insert into pl.q select * from pl.p;
+analyze pl.q;
+create table pl.t (k int, v int, primary key (k asc));
+insert into pl.t select i, i from generate_series(1, 2500) i;
+analyze pl.t;
+-- Tables of other kinds: five partitions of 100 rows each, which differ from
+-- a plain table in one property.
+create type pl.color as enum ('red', 'green');
+create domain pl.positive as int check (value > 0);
+create function pl.noop() returns trigger language plpgsql as
+$$ begin return new; end; $$;
+create table pl.kinds (kid int primary key, kind text, columns text);
+insert into pl.kinds values
+    (1, 'plain', 'k int, v int, primary key (k asc)'),
+    (2, 'not_null', 'k int, v int not null, primary key (k asc)'),
+    (3, 'default', 'k int, v int default 7, primary key (k asc)'),
+    (4, 'check', 'k int, v int check (v > 0), primary key (k asc)'),
+    (5, 'generated', 'k int, v int, g int generated always as (v * 2) stored, primary key (k asc)'),
+    (6, 'enum', 'k int, v int, c pl.color, primary key (k asc)'),
+    (7, 'domain', 'k int, v pl.positive, primary key (k asc)'),
+    (8, 'fkey', 'k int references pl.t, v int, primary key (k asc)'),
+    (9, 'trigger', 'k int, v int, primary key (k asc)'),
+    (10, 'policy', 'k int, v int, primary key (k asc)'),
+    (11, 'wide', 'k int, v int, ' ||
+         (select string_agg(format('c%s int', i), ', ')
+          from generate_series(1, 40) i) || ', primary key (k asc)'),
+    -- no primary key, so that a scan can only use the secondary index
+    (12, 'expr_index', 'k int, v int'),
+    (13, 'partial_index', 'k int, v int');
+select format('create table pl.k_%s (%s) partition by range (k)',
+              kind, columns)
+from pl.kinds order by kid \gexec
+create table pl.k_plain (k int, v int, primary key (k asc)) partition by range (k)
+create table pl.k_not_null (k int, v int not null, primary key (k asc)) partition by range (k)
+create table pl.k_default (k int, v int default 7, primary key (k asc)) partition by range (k)
+create table pl.k_check (k int, v int check (v > 0), primary key (k asc)) partition by range (k)
+create table pl.k_generated (k int, v int, g int generated always as (v * 2) stored, primary key (k asc)) partition by range (k)
+create table pl.k_enum (k int, v int, c pl.color, primary key (k asc)) partition by range (k)
+create table pl.k_domain (k int, v pl.positive, primary key (k asc)) partition by range (k)
+create table pl.k_fkey (k int references pl.t, v int, primary key (k asc)) partition by range (k)
+create table pl.k_trigger (k int, v int, primary key (k asc)) partition by range (k)
+create table pl.k_policy (k int, v int, primary key (k asc)) partition by range (k)
+create table pl.k_wide (k int, v int, c1 int, c2 int, c3 int, c4 int, c5 int, c6 int, c7 int, c8 int, c9 int, c10 int, c11 int, c12 int, c13 int, c14 int, c15 int, c16 int, c17 int, c18 int, c19 int, c20 int, c21 int, c22 int, c23 int, c24 int, c25 int, c26 int, c27 int, c28 int, c29 int, c30 int, c31 int, c32 int, c33 int, c34 int, c35 int, c36 int, c37 int, c38 int, c39 int, c40 int, primary key (k asc)) partition by range (k)
+create table pl.k_expr_index (k int, v int) partition by range (k)
+create table pl.k_partial_index (k int, v int) partition by range (k)
+select format('create table pl.k_%s_%s partition of pl.k_%s for values from (%s) to (%s)',
+              kind, i, kind, (i - 1) * 100 + 1, i * 100 + 1)
+from pl.kinds, generate_series(1, 5) i order by kid, i \gexec
+create table pl.k_plain_1 partition of pl.k_plain for values from (1) to (101)
+create table pl.k_plain_2 partition of pl.k_plain for values from (101) to (201)
+create table pl.k_plain_3 partition of pl.k_plain for values from (201) to (301)
+create table pl.k_plain_4 partition of pl.k_plain for values from (301) to (401)
+create table pl.k_plain_5 partition of pl.k_plain for values from (401) to (501)
+create table pl.k_not_null_1 partition of pl.k_not_null for values from (1) to (101)
+create table pl.k_not_null_2 partition of pl.k_not_null for values from (101) to (201)
+create table pl.k_not_null_3 partition of pl.k_not_null for values from (201) to (301)
+create table pl.k_not_null_4 partition of pl.k_not_null for values from (301) to (401)
+create table pl.k_not_null_5 partition of pl.k_not_null for values from (401) to (501)
+create table pl.k_default_1 partition of pl.k_default for values from (1) to (101)
+create table pl.k_default_2 partition of pl.k_default for values from (101) to (201)
+create table pl.k_default_3 partition of pl.k_default for values from (201) to (301)
+create table pl.k_default_4 partition of pl.k_default for values from (301) to (401)
+create table pl.k_default_5 partition of pl.k_default for values from (401) to (501)
+create table pl.k_check_1 partition of pl.k_check for values from (1) to (101)
+create table pl.k_check_2 partition of pl.k_check for values from (101) to (201)
+create table pl.k_check_3 partition of pl.k_check for values from (201) to (301)
+create table pl.k_check_4 partition of pl.k_check for values from (301) to (401)
+create table pl.k_check_5 partition of pl.k_check for values from (401) to (501)
+create table pl.k_generated_1 partition of pl.k_generated for values from (1) to (101)
+create table pl.k_generated_2 partition of pl.k_generated for values from (101) to (201)
+create table pl.k_generated_3 partition of pl.k_generated for values from (201) to (301)
+create table pl.k_generated_4 partition of pl.k_generated for values from (301) to (401)
+create table pl.k_generated_5 partition of pl.k_generated for values from (401) to (501)
+create table pl.k_enum_1 partition of pl.k_enum for values from (1) to (101)
+create table pl.k_enum_2 partition of pl.k_enum for values from (101) to (201)
+create table pl.k_enum_3 partition of pl.k_enum for values from (201) to (301)
+create table pl.k_enum_4 partition of pl.k_enum for values from (301) to (401)
+create table pl.k_enum_5 partition of pl.k_enum for values from (401) to (501)
+create table pl.k_domain_1 partition of pl.k_domain for values from (1) to (101)
+create table pl.k_domain_2 partition of pl.k_domain for values from (101) to (201)
+create table pl.k_domain_3 partition of pl.k_domain for values from (201) to (301)
+create table pl.k_domain_4 partition of pl.k_domain for values from (301) to (401)
+create table pl.k_domain_5 partition of pl.k_domain for values from (401) to (501)
+create table pl.k_fkey_1 partition of pl.k_fkey for values from (1) to (101)
+create table pl.k_fkey_2 partition of pl.k_fkey for values from (101) to (201)
+create table pl.k_fkey_3 partition of pl.k_fkey for values from (201) to (301)
+create table pl.k_fkey_4 partition of pl.k_fkey for values from (301) to (401)
+create table pl.k_fkey_5 partition of pl.k_fkey for values from (401) to (501)
+create table pl.k_trigger_1 partition of pl.k_trigger for values from (1) to (101)
+create table pl.k_trigger_2 partition of pl.k_trigger for values from (101) to (201)
+create table pl.k_trigger_3 partition of pl.k_trigger for values from (201) to (301)
+create table pl.k_trigger_4 partition of pl.k_trigger for values from (301) to (401)
+create table pl.k_trigger_5 partition of pl.k_trigger for values from (401) to (501)
+create table pl.k_policy_1 partition of pl.k_policy for values from (1) to (101)
+create table pl.k_policy_2 partition of pl.k_policy for values from (101) to (201)
+create table pl.k_policy_3 partition of pl.k_policy for values from (201) to (301)
+create table pl.k_policy_4 partition of pl.k_policy for values from (301) to (401)
+create table pl.k_policy_5 partition of pl.k_policy for values from (401) to (501)
+create table pl.k_wide_1 partition of pl.k_wide for values from (1) to (101)
+create table pl.k_wide_2 partition of pl.k_wide for values from (101) to (201)
+create table pl.k_wide_3 partition of pl.k_wide for values from (201) to (301)
+create table pl.k_wide_4 partition of pl.k_wide for values from (301) to (401)
+create table pl.k_wide_5 partition of pl.k_wide for values from (401) to (501)
+create table pl.k_expr_index_1 partition of pl.k_expr_index for values from (1) to (101)
+create table pl.k_expr_index_2 partition of pl.k_expr_index for values from (101) to (201)
+create table pl.k_expr_index_3 partition of pl.k_expr_index for values from (201) to (301)
+create table pl.k_expr_index_4 partition of pl.k_expr_index for values from (301) to (401)
+create table pl.k_expr_index_5 partition of pl.k_expr_index for values from (401) to (501)
+create table pl.k_partial_index_1 partition of pl.k_partial_index for values from (1) to (101)
+create table pl.k_partial_index_2 partition of pl.k_partial_index for values from (101) to (201)
+create table pl.k_partial_index_3 partition of pl.k_partial_index for values from (201) to (301)
+create table pl.k_partial_index_4 partition of pl.k_partial_index for values from (301) to (401)
+create table pl.k_partial_index_5 partition of pl.k_partial_index for values from (401) to (501)
+create trigger k_trigger_noop before insert on pl.k_trigger
+    for each row execute function pl.noop();
+select format('alter table pl.k_policy_%s enable row level security', i)
+from generate_series(1, 5) i \gexec
+alter table pl.k_policy_1 enable row level security
+alter table pl.k_policy_2 enable row level security
+alter table pl.k_policy_3 enable row level security
+alter table pl.k_policy_4 enable row level security
+alter table pl.k_policy_5 enable row level security
+select format('create policy k_policy on pl.k_policy_%s using (v > 0)', i)
+from generate_series(1, 5) i \gexec
+create policy k_policy on pl.k_policy_1 using (v > 0)
+create policy k_policy on pl.k_policy_2 using (v > 0)
+create policy k_policy on pl.k_policy_3 using (v > 0)
+create policy k_policy on pl.k_policy_4 using (v > 0)
+create policy k_policy on pl.k_policy_5 using (v > 0)
+create index nonconcurrently k_expr_index_idx on pl.k_expr_index ((v + 1) asc);
+create index nonconcurrently k_partial_index_idx on pl.k_partial_index (v asc)
+    where v > 0;
+select format('insert into pl.k_%s (k, v) select i, i from generate_series(1, 500) i',
+              kind)
+from pl.kinds order by kid \gexec
+insert into pl.k_plain (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_not_null (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_default (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_check (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_generated (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_enum (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_domain (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_fkey (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_trigger (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_policy (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_wide (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_expr_index (k, v) select i, i from generate_series(1, 500) i
+insert into pl.k_partial_index (k, v) select i, i from generate_series(1, 500) i
+select format('analyze pl.k_%s', kind) from pl.kinds order by kid \gexec
+analyze pl.k_plain
+analyze pl.k_not_null
+analyze pl.k_default
+analyze pl.k_check
+analyze pl.k_generated
+analyze pl.k_enum
+analyze pl.k_domain
+analyze pl.k_fkey
+analyze pl.k_trigger
+analyze pl.k_policy
+analyze pl.k_wide
+analyze pl.k_expr_index
+analyze pl.k_partial_index
+create function launch_estimates(qid_from int, qid_to int)
+returns table (qid int, relations numeric, act_reads numeric)
+language plpgsql as
+$$
+declare
+  gather_cost constant jsonpath :=
+    '$.**?(@."Node Type" == "Gather" || @."Node Type" == "Gather Merge")."Startup Cost"';
+  per_relation constant text :=
+    current_setting('yb_parallel_setup_cost_per_relation');
+  q record;
+  plan jsonb;
+  charge numeric;
+  reads numeric;
+begin
+  for q in select * from queries qs
+           where qs.qid between qid_from and qid_to order by qs.qid
+  loop
+    qid := q.qid;
+
+    execute 'explain (format json) ' || q.query into plan;
+    charge := jsonb_path_query_first(plan, gather_cost);
+    perform set_config('yb_parallel_setup_cost_per_relation', '0', true);
+    execute 'explain (format json) ' || q.query into plan;
+    charge := charge - jsonb_path_query_first(plan, gather_cost)::numeric;
+    perform set_config('yb_parallel_setup_cost_per_relation', per_relation,
+                       true);
+    relations := round(charge / per_relation::numeric, 2);
+
+    act_reads := null;
+    for i in 1..3 loop
+      execute 'explain (analyze, dist, timing off, format json) ' || q.query
+        into plan;
+      reads := round((plan->0->>'Catalog Read Requests')::numeric /
+                     jsonb_path_query_first(plan, '$.**."Workers Launched"')::numeric,
+                     2);
+      act_reads := least(act_reads, reads);
+    end loop;
+
+    return next;
+  end loop;
+end;
+$$;
+-- The relations and the reads that each query of a group adds to those of the
+-- group's first query.
+create function check_launch_estimates(qid_from int, qid_to int)
+returns table (qid int, relations numeric, added_relations numeric,
+               added_reads numeric, verdict text)
+language sql as
+$$
+  with e as (select * from launch_estimates(qid_from, qid_to)),
+       first as (select * from e order by qid limit 1)
+  select e.qid, e.relations,
+         e.relations - first.relations,
+         e.act_reads - first.act_reads,
+         case when e.act_reads - first.act_reads =
+                   3 * (e.relations - first.relations)
+              then 'passed' else 'failed' end
+  from e, first
+  order by e.qid;
+$$;
+-- The same for groups of ten qids, one row for each group: the reads for each
+-- relation the group's queries add, taken between its first and last query,
+-- and whether the queries between them are on that line.
+create function check_launch_estimates_by_group(qid_from int, qid_to int)
+returns table (qid_group int, query text, reads_per_relation numeric,
+               linear bool, verdict text)
+language sql as
+$$
+  with e as (select l.*, l.qid / 10 as grp
+             from launch_estimates(qid_from, qid_to) l),
+       ends as (select grp, min(qid) as first_qid, max(qid) as last_qid
+                from e group by grp),
+       slopes as (select ends.grp, f.qid, f.relations, f.act_reads,
+                         (l.act_reads - f.act_reads) /
+                         nullif(l.relations - f.relations, 0) as slope
+                  from ends
+                       join e f on f.qid = ends.first_qid
+                       join e l on l.qid = ends.last_qid)
+  select s.grp, (select q.query from queries q where q.qid = s.qid),
+         round(s.slope, 2),
+         bool_and(e.act_reads - s.act_reads =
+                  s.slope * (e.relations - s.relations)),
+         case when s.slope = 3 then 'passed' else 'failed' end
+  from slopes s join e on e.grp = s.grp
+  group by s.grp, s.qid, s.slope
+  order by s.grp;
+$$;
+delete from queries;
+-- QID categories:
+--   1xx: Seq Scan of each partition
+--   2xx: Index Scan of each partition by its primary key, sorted under a
+--        Gather Merge
+--   3xx: Index Scan of each partition by a secondary index
+--   4xx: Index Only Scan of each partition by its primary key
+--   5xx: the partitions joined to a table
+--   6xx: the partitions pruned at executor startup, not at plan time: now()
+--        is stable, so the planner cannot evaluate the condition
+--   1xxx: Seq Scan of each partition of a table of another kind
+--   2xxx: Index Scan by an index of another kind
+insert into queries (qid, query)
+with shapes(qidbase, query) as (
+    values (100, 'select * from pl.p where k <= ##K##'),
+           (200, 'select * from pl.p where k <= ##K## order by v'),
+           (300, 'select * from pl.q where v > 0 and k <= ##K##'),
+           (400, 'select k from pl.p where k <= ##K##'),
+           (500, 'select * from pl.p p, pl.t t where p.k = t.k and p.k <= ##K##'),
+           (600, 'select * from pl.p where k <= ##K## + extract(year from now())::int * 0')
+),
+partitions(n) as (
+    values (1), (2), (5), (10), (25)
+)
+select s.qidbase + p.n as qid,
+       replace(s.query, '##K##', (p.n * 100)::text) as query
+from shapes s, partitions p;
+insert into queries (qid, query)
+select 1000 + kid * 10 + n,
+       format('select * from pl.k_%s where k <= %s', kind, n * 100)
+from pl.kinds, (values (1), (2), (5)) as partitions(n)
+where kind not in ('expr_index', 'partial_index');
+insert into queries (qid, query)
+select 2000 + kid * 10 + n,
+       format('select * from pl.k_%s where %s and k <= %s', kind,
+              case kind when 'expr_index' then 'v + 1 > 0' else 'v > 0' end,
+              n * 100)
+from pl.kinds, (values (1), (2), (5)) as partitions(n)
+where kind in ('expr_index', 'partial_index');
+select * from queries order by qid;
+ qid  |                                 query                                  
+------+------------------------------------------------------------------------
+  101 | select * from pl.p where k <= 100
+  102 | select * from pl.p where k <= 200
+  105 | select * from pl.p where k <= 500
+  110 | select * from pl.p where k <= 1000
+  125 | select * from pl.p where k <= 2500
+  201 | select * from pl.p where k <= 100 order by v
+  202 | select * from pl.p where k <= 200 order by v
+  205 | select * from pl.p where k <= 500 order by v
+  210 | select * from pl.p where k <= 1000 order by v
+  225 | select * from pl.p where k <= 2500 order by v
+  301 | select * from pl.q where v > 0 and k <= 100
+  302 | select * from pl.q where v > 0 and k <= 200
+  305 | select * from pl.q where v > 0 and k <= 500
+  310 | select * from pl.q where v > 0 and k <= 1000
+  325 | select * from pl.q where v > 0 and k <= 2500
+  401 | select k from pl.p where k <= 100
+  402 | select k from pl.p where k <= 200
+  405 | select k from pl.p where k <= 500
+  410 | select k from pl.p where k <= 1000
+  425 | select k from pl.p where k <= 2500
+  501 | select * from pl.p p, pl.t t where p.k = t.k and p.k <= 100
+  502 | select * from pl.p p, pl.t t where p.k = t.k and p.k <= 200
+  505 | select * from pl.p p, pl.t t where p.k = t.k and p.k <= 500
+  510 | select * from pl.p p, pl.t t where p.k = t.k and p.k <= 1000
+  525 | select * from pl.p p, pl.t t where p.k = t.k and p.k <= 2500
+  601 | select * from pl.p where k <= 100 + extract(year from now())::int * 0
+  602 | select * from pl.p where k <= 200 + extract(year from now())::int * 0
+  605 | select * from pl.p where k <= 500 + extract(year from now())::int * 0
+  610 | select * from pl.p where k <= 1000 + extract(year from now())::int * 0
+  625 | select * from pl.p where k <= 2500 + extract(year from now())::int * 0
+ 1011 | select * from pl.k_plain where k <= 100
+ 1012 | select * from pl.k_plain where k <= 200
+ 1015 | select * from pl.k_plain where k <= 500
+ 1021 | select * from pl.k_not_null where k <= 100
+ 1022 | select * from pl.k_not_null where k <= 200
+ 1025 | select * from pl.k_not_null where k <= 500
+ 1031 | select * from pl.k_default where k <= 100
+ 1032 | select * from pl.k_default where k <= 200
+ 1035 | select * from pl.k_default where k <= 500
+ 1041 | select * from pl.k_check where k <= 100
+ 1042 | select * from pl.k_check where k <= 200
+ 1045 | select * from pl.k_check where k <= 500
+ 1051 | select * from pl.k_generated where k <= 100
+ 1052 | select * from pl.k_generated where k <= 200
+ 1055 | select * from pl.k_generated where k <= 500
+ 1061 | select * from pl.k_enum where k <= 100
+ 1062 | select * from pl.k_enum where k <= 200
+ 1065 | select * from pl.k_enum where k <= 500
+ 1071 | select * from pl.k_domain where k <= 100
+ 1072 | select * from pl.k_domain where k <= 200
+ 1075 | select * from pl.k_domain where k <= 500
+ 1081 | select * from pl.k_fkey where k <= 100
+ 1082 | select * from pl.k_fkey where k <= 200
+ 1085 | select * from pl.k_fkey where k <= 500
+ 1091 | select * from pl.k_trigger where k <= 100
+ 1092 | select * from pl.k_trigger where k <= 200
+ 1095 | select * from pl.k_trigger where k <= 500
+ 1101 | select * from pl.k_policy where k <= 100
+ 1102 | select * from pl.k_policy where k <= 200
+ 1105 | select * from pl.k_policy where k <= 500
+ 1111 | select * from pl.k_wide where k <= 100
+ 1112 | select * from pl.k_wide where k <= 200
+ 1115 | select * from pl.k_wide where k <= 500
+ 2121 | select * from pl.k_expr_index where v + 1 > 0 and k <= 100
+ 2122 | select * from pl.k_expr_index where v + 1 > 0 and k <= 200
+ 2125 | select * from pl.k_expr_index where v + 1 > 0 and k <= 500
+ 2131 | select * from pl.k_partial_index where v > 0 and k <= 100
+ 2132 | select * from pl.k_partial_index where v > 0 and k <= 200
+ 2135 | select * from pl.k_partial_index where v > 0 and k <= 500
+(69 rows)
+
+set yb_test_force_parallel = force;
+set yb_enable_parallel_append = on;
+set max_parallel_workers_per_gather = 2;
+-- Seq Scans.  should return only 'passed' rows.
+set enable_indexscan = off;
+set enable_indexonlyscan = off;
+set enable_bitmapscan = off;
+select * from check_launch_estimates(100, 199);
+ qid | relations | added_relations | added_reads | verdict 
+-----+-----------+-----------------+-------------+---------
+ 101 |      1.00 |            0.00 |        0.00 | passed
+ 102 |      2.00 |            1.00 |        3.00 | passed
+ 105 |      5.00 |            4.00 |       12.00 | passed
+ 110 |     10.00 |            9.00 |       27.00 | passed
+ 125 |     25.00 |           24.00 |       72.00 | passed
+(5 rows)
+
+-- Seq Scans of tables of other kinds.  should return only the rows explained
+-- below as 'failed'.
+-- A worker makes four reads, one more than the charge counts, for a table
+-- with a column default, a check constraint, a generated column, a foreign
+-- key, a trigger or a row security policy.
+select * from check_launch_estimates_by_group(1000, 1999);
+ qid_group |                    query                    | reads_per_relation | linear | verdict 
+-----------+---------------------------------------------+--------------------+--------+---------
+       101 | select * from pl.k_plain where k <= 100     |               3.00 | t      | passed
+       102 | select * from pl.k_not_null where k <= 100  |               3.00 | t      | passed
+       103 | select * from pl.k_default where k <= 100   |               4.00 | t      | failed
+       104 | select * from pl.k_check where k <= 100     |               4.00 | t      | failed
+       105 | select * from pl.k_generated where k <= 100 |               4.00 | t      | failed
+       106 | select * from pl.k_enum where k <= 100      |               3.00 | t      | passed
+       107 | select * from pl.k_domain where k <= 100    |               3.00 | t      | passed
+       108 | select * from pl.k_fkey where k <= 100      |               4.00 | t      | failed
+       109 | select * from pl.k_trigger where k <= 100   |               4.00 | t      | failed
+       110 | select * from pl.k_policy where k <= 100    |               4.00 | t      | failed
+       111 | select * from pl.k_wide where k <= 100      |               3.00 | t      | passed
+(11 rows)
+
+reset enable_indexscan;
+reset enable_indexonlyscan;
+reset enable_bitmapscan;
+-- Index Scans by the primary key.  should return only 'passed' rows.
+set enable_seqscan = off;
+set enable_bitmapscan = off;
+select * from check_launch_estimates(200, 299);
+ qid | relations | added_relations | added_reads | verdict 
+-----+-----------+-----------------+-------------+---------
+ 201 |      2.00 |            0.00 |        0.00 | passed
+ 202 |      4.00 |            2.00 |        6.00 | passed
+ 205 |     10.00 |            8.00 |       24.00 | passed
+ 210 |     20.00 |           18.00 |       54.00 | passed
+ 225 |     50.00 |           48.00 |      144.00 | passed
+(5 rows)
+
+-- Index Scans by a secondary index.  should return only 'passed' rows.
+select * from check_launch_estimates(300, 399);
+ qid | relations | added_relations | added_reads | verdict 
+-----+-----------+-----------------+-------------+---------
+ 301 |      2.00 |            0.00 |        0.00 | passed
+ 302 |      4.00 |            2.00 |        6.00 | passed
+ 305 |     10.00 |            8.00 |       24.00 | passed
+ 310 |     20.00 |           18.00 |       54.00 | passed
+ 325 |     50.00 |           48.00 |      144.00 | passed
+(5 rows)
+
+-- Index Only Scans.  should return only 'passed' rows.
+select * from check_launch_estimates(400, 499);
+ qid | relations | added_relations | added_reads | verdict 
+-----+-----------+-----------------+-------------+---------
+ 401 |      2.00 |            0.00 |        0.00 | passed
+ 402 |      4.00 |            2.00 |        6.00 | passed
+ 405 |     10.00 |            8.00 |       24.00 | passed
+ 410 |     20.00 |           18.00 |       54.00 | passed
+ 425 |     50.00 |           48.00 |      144.00 | passed
+(5 rows)
+
+-- Index Scans by indexes of other kinds.  should return only 'passed' rows.
+select * from check_launch_estimates_by_group(2000, 2999);
+ qid_group |                           query                            | reads_per_relation | linear | verdict 
+-----------+------------------------------------------------------------+--------------------+--------+---------
+       212 | select * from pl.k_expr_index where v + 1 > 0 and k <= 100 |               3.00 | t      | passed
+       213 | select * from pl.k_partial_index where v > 0 and k <= 100  |               3.00 | t      | passed
+(2 rows)
+
+reset enable_seqscan;
+reset enable_bitmapscan;
+-- A join under the Gather.  should return only 'passed' rows.
+select * from check_launch_estimates(500, 599);
+ qid | relations | added_relations | added_reads | verdict 
+-----+-----------+-----------------+-------------+---------
+ 501 |      4.00 |            0.00 |        0.00 | passed
+ 502 |      6.00 |            2.00 |        6.00 | passed
+ 505 |     12.00 |            8.00 |       24.00 | passed
+ 510 |     22.00 |           18.00 |       54.00 | passed
+ 525 |     52.00 |           48.00 |      144.00 | passed
+(5 rows)
+
+-- Partitions pruned at executor startup.  should return only the rows
+-- explained below as 'failed'.
+-- The charge counts every partition in the plan, 25 tables and their primary
+-- keys, whatever the condition leaves.  A worker reads the catalog only for
+-- the partitions that are left after the pruning, five reads for each.
+select * from check_launch_estimates(600, 699);
+ qid | relations | added_relations | added_reads | verdict 
+-----+-----------+-----------------+-------------+---------
+ 601 |     50.00 |            0.00 |        0.00 | passed
+ 602 |     50.00 |            0.00 |        5.00 | failed
+ 605 |     50.00 |            0.00 |       20.00 | failed
+ 610 |     50.00 |            0.00 |       45.00 | failed
+ 625 |     50.00 |            0.00 |      120.00 | failed
+(5 rows)
+
+select format('explain (costs off) %s', query) from queries where qid = 605 \gexec
+explain (costs off) select * from pl.p where k <= 500 + extract(year from now())::int * 0
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Append
+         Subplans Removed: 20
+         ->  Parallel Index Scan using p1_pkey on p1 p_1
+               Index Cond: (k <= (500 + ((EXTRACT(year FROM now()))::integer * 0)))
+         ->  Parallel Index Scan using p2_pkey on p2 p_2
+               Index Cond: (k <= (500 + ((EXTRACT(year FROM now()))::integer * 0)))
+         ->  Parallel Index Scan using p3_pkey on p3 p_3
+               Index Cond: (k <= (500 + ((EXTRACT(year FROM now()))::integer * 0)))
+         ->  Parallel Index Scan using p4_pkey on p4 p_4
+               Index Cond: (k <= (500 + ((EXTRACT(year FROM now()))::integer * 0)))
+         ->  Parallel Index Scan using p5_pkey on p5 p_5
+               Index Cond: (k <= (500 + ((EXTRACT(year FROM now()))::integer * 0)))
+(14 rows)
+
+reset yb_test_force_parallel;
+reset yb_enable_parallel_append;
+reset max_parallel_workers_per_gather;
+drop schema pl cascade;
