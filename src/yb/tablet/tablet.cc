@@ -6987,6 +6987,40 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
   }
 }
 
+bool Tablet::NeedHybridTimeFilterCompaction() {
+  // Other reads step over the filtered out entries once per read, which does not justify a full
+  // compaction of every restored tablet.
+  if (!vector_indexes().List()) {
+    return false;
+  }
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  if (!scoped_operation.ok() || !regular_db_) {
+    return false;
+  }
+  auto files = regular_db_->GetLiveFilesMetaData();
+  return std::any_of(files.begin(), files.end(), [](const auto& file) {
+    return file.largest.user_frontier &&
+           down_cast<const docdb::ConsensusFrontier&>(*file.largest.user_frontier).HasFilter();
+  });
+}
+
+void Tablet::TriggerHybridTimeFilterCompactionIfNeeded() {
+  // Until a compaction drops the filtered out entries, a read steps over them one at a time, and a
+  // vector index search does so for each candidate. A full compaction that is already running
+  // compacts them, or, if it is a post-split compaction, compacts them after it. The vector
+  // indexes keep the rolled back vectors until their own compactions, but checking one costs a
+  // single lookup then.
+  if (!NeedHybridTimeFilterCompaction()) {
+    return;
+  }
+  auto status = TriggerManualCompactionIfNeeded(
+      rocksdb::CompactionReason::kScheduledFullCompaction, IncludeVectorIndexes::kFalse);
+  if (!status.ok() && !status.IsServiceUnavailable()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for hybrid time filtered files: "
+                             << status;
+  }
+}
+
 Status Tablet::TriggerManualCompactionIfNeeded(
     rocksdb::CompactionReason compaction_reason,
     IncludeVectorIndexes include_vector_indexes) {
@@ -7034,6 +7068,18 @@ Status Tablet::TriggerManualCompactionIfNeeded(
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
   RETURN_NOT_OK(full_compaction_task_pool_token_->SubmitFunc([this, token, options] {
     WARN_NOT_OK(TriggerManualCompactionSync(options), "Trigger manual compaction failed");
+    // A post-split compaction can leave out files with a hybrid time filter: it can compact only
+    // the vector indexes or only files below the split's file number bound. While it runs,
+    // TriggerHybridTimeFilterCompactionIfNeeded cannot submit a compaction of its own.
+    if (options.compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction &&
+        NeedHybridTimeFilterCompaction()) {
+      ManualCompactionOptions filter_options;
+      filter_options.compaction_reason = rocksdb::CompactionReason::kScheduledFullCompaction;
+      filter_options.vector_index_only = VectorIndexOnly::kFalse;
+      WARN_NOT_OK(
+          TriggerManualCompactionSync(filter_options),
+          "Compaction of hybrid time filtered files failed");
+    }
   }));
 
   if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {

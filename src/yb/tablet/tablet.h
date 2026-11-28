@@ -1166,6 +1166,10 @@ class Tablet : public AbstractTablet,
   // previously by this tablet.
   void TriggerPostSplitCompactionIfNeeded();
 
+  // Triggers a compaction of the regular DB if the tablet has vector indexes and the regular DB has
+  // files behind a hybrid time filter, which a restore or a clone leaves.
+  void TriggerHybridTimeFilterCompactionIfNeeded();
+
   // Triggers a manual compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
@@ -1551,6 +1555,8 @@ class Tablet : public AbstractTablet,
   // True when a post-split compaction should be (re)scheduled: split child with RocksDB parent
   // data still present, or with a vector index post-split compaction still required.
   bool NeedPostSplitCompaction();
+
+  bool NeedHybridTimeFilterCompaction();
 
   // Split child whose RocksDB parent data has not been compacted away yet. The RocksDB half of
   // NeedPostSplitCompaction(); the tier migration pass waits on this alone.

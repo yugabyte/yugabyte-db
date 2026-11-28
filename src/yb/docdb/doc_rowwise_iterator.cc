@@ -317,7 +317,7 @@ Slice DocRowwiseIterator::GetRowKey() const {
   return row_key_;
 }
 
-void DocRowwiseIterator::SeekTuple(Slice tuple_id, docdb::UpdateFilterKey update_filter_key) {
+Slice DocRowwiseIterator::TupleKey(Slice tuple_id) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
   if (schema_->has_cotable_id() || schema_->has_colocation_id()) {
@@ -341,12 +341,39 @@ void DocRowwiseIterator::SeekTuple(Slice tuple_id, docdb::UpdateFilterKey update
     tuple_key_->AppendRawBytes(tuple_id);
     tuple_id = *tuple_key_;
   }
+  return tuple_id;
+}
+
+void DocRowwiseIterator::SeekTuple(Slice tuple_id, docdb::UpdateFilterKey update_filter_key) {
+  tuple_id = TupleKey(tuple_id);
   if (update_filter_key) {
     UpdateFilterKey(tuple_id);
   }
   Seek(tuple_id);
 
   row_key_.Clear();
+}
+
+void DocRowwiseIterator::SeekSingleTuple(Slice tuple_id) {
+  const auto key = TupleKey(tuple_id);
+  if (upperbound_scope_) {
+    tuple_upper_bound_.Clear();
+    tuple_upper_bound_.AppendRawBytes(key);
+    tuple_upper_bound_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    SetUpperBound(tuple_upper_bound_.AsSlice());
+    tuple_bound_set_ = true;
+  }
+  UpdateFilterKey(key);
+  Seek(key);
+
+  row_key_.Clear();
+}
+
+void DocRowwiseIterator::ClearTupleBound() {
+  if (tuple_bound_set_) {
+    SetUpperBound(Slice());
+    tuple_bound_set_ = false;
+  }
 }
 
 Result<bool> DocRowwiseIterator::FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) {

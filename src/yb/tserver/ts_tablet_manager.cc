@@ -2954,15 +2954,17 @@ void TSTabletManager::OpenTablet(
   }
 
   // The tablet peer is already started, so an applied snapshot restore could be replacing the
-  // storages and resetting the key bounds that TriggerPostSplitCompactionIfNeeded reads (see
-  // Tablet::CompleteShutdownStorages). Only that synchronous check needs the guard, the compaction
-  // it schedules takes its own scoped operation. TabletSnapshots::RestoreCheckpoint calls it
-  // unguarded after releasing its pause: it runs on the apply thread, the only one that replaces
-  // the storages, and TabletPeer shutdown waits for applies before resetting the key bounds.
+  // storages and resetting the key bounds that these triggers read (see
+  // Tablet::CompleteShutdownStorages). Only their synchronous checks need the guard, the
+  // compactions they schedule take their own scoped operations. TabletSnapshots::RestoreCheckpoint
+  // calls them unguarded after releasing its pause: it runs on the apply thread, the only one
+  // that replaces the storages, and TabletPeer shutdown waits for applies before resetting the key
+  // bounds.
   {
     auto scoped_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     if (scoped_op.ok()) {
       tablet->TriggerPostSplitCompactionIfNeeded();
+      tablet->TriggerHybridTimeFilterCompactionIfNeeded();
     } else {
       // The storages are being shut down or replaced, so there's nothing to compact.
       LOG(INFO) << kLogPrefix << "Skipped post split compaction trigger: "
