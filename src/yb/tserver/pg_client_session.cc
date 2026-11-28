@@ -1364,6 +1364,13 @@ class TransactionProvider {
     object_lock_registration_->guard.reset();
   }
 
+  void ResolveObjectLockRegistration() {
+    std::lock_guard lock(object_lock_registration_->mutex);
+    if (object_lock_registration_->guard) {
+      object_lock_registration_->guard->ResolveOwnerInfo();
+    }
+  }
+
   Result<TransactionMetadata> NextTxnMetaForPlain(
       TransactionFullLocality locality, CoarseTimePoint deadline) {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
@@ -3309,6 +3316,8 @@ class PgClientSession::Impl {
     RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");
+
+    transaction_provider_.ResolveObjectLockRegistration();
 
     auto primary_session_kind = GetSessionKindBasedOnDDLOptions(
         options.ddl_mode(), options.ddl_use_regular_transaction_block());
