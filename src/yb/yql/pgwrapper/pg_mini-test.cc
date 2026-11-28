@@ -141,6 +141,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(sampled_trace_1_in_n);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -3471,6 +3472,8 @@ class PgSysCatalogFullCompactionTest : public PgMiniTestBase {
     // Disable the background task of the full compaction manager. The test collects the
     // statistics and schedules the compactions itself.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_check_interval_sec) = 0;
+    // A background full compaction triggered by the L0 file count would reset the stats window.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     PgMiniTestBase::SetUp();
   }
 };
