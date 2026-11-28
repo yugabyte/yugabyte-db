@@ -104,6 +104,14 @@ DEFINE_test_flag(bool, vector_index_skip_reverse_mapping_write, false,
 DEFINE_test_flag(bool, vector_index_duplicate_inserted_vectors, false,
     "Insert every vector into vector indexes twice, into different chunks.");
 
+// An AutoFlag because chunks store normalized vectors in place of the row vectors, which the vector
+// index check of an older binary reports as mismatches. Hidden because turning it off brings back
+// the NaN distances of #37160.
+DEFINE_RUNTIME_AUTO_bool(vector_index_normalize_cosine_vectors, kLocalPersisted, false, true,
+    "Normalize the vectors of cosine vector indexes and build their new chunks with inner "
+    "product. Applies to the indexes opened after it is set.");
+TAG_FLAG(vector_index_normalize_cosine_vectors, hidden);
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
 
@@ -487,7 +495,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     // Normalize cosine vectors, since cosine float kernels return NaN when the squared length
     // leaves the float range, see #37160.
     typename LSM::Options::VectorIndexTraits unnormalized_traits;
-    if (distance_kind == vector_index::DistanceKind::kCosine) {
+    if (distance_kind == vector_index::DistanceKind::kCosine &&
+        FLAGS_vector_index_normalize_cosine_vectors) {
       unnormalized_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
           block_cache_, options_, distance_kind, mem_tracker_)));
       distance_kind = vector_index::DistanceKind::kInnerProduct;

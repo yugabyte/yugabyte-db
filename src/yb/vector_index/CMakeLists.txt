@@ -59,5 +59,6 @@ add_dependencies(
 set(YB_TEST_LINK_LIBS
     vector_index yb_common_test_util ${YB_MIN_TEST_LIBS})
 
+ADD_YB_TEST(distance-test)
 ADD_YB_TEST(hnsw_util-test)
 ADD_YB_TEST(vector_lsm_deletions-test)

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "yb/common/vector_types.h"
@@ -157,7 +158,11 @@ template<IndexableVectorType Vector>
 requires std::is_same_v<typename Vector::value_type, float>
 void NormalizeVector(Vector& vector) {
   const auto squared_length = SquaredLength(vector);
-  if (squared_length == 0) {
+  // Rounding to float moves each coordinate by up to half an ulp, so the squared length of a
+  // normalized vector differs from 1 by up to an ulp of 1. Leaving such vectors as they are makes
+  // normalizing twice give the same bits.
+  if (squared_length == 0 ||
+      std::abs(squared_length - 1) <= 2 * std::numeric_limits<float>::epsilon()) {
     return;
   }
   const auto inverse_length = 1 / std::sqrt(squared_length);
