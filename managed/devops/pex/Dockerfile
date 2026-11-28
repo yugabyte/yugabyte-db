@@ -18,9 +18,6 @@ RUN pip3 install --upgrade pip
 # Install psycopg2==2.9.1 third-party shared dependencies
 RUN yum -y install postgresql-devel python3-devel gcc libcom_err.x86_64
 
-# Install python-ldap==3.3.1 third-party shared dependencies
-RUN yum -y install openldap-devel
-
 # Install pex, wheel, and auditwheel (for constructing and
 # repairing the generated PEX file to ensure compatibility
 # across all python versions, and
