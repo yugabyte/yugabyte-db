@@ -3083,6 +3083,22 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_stats_restore_defer_catalog_version_increment", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, in per-database catalog version mode "
+						 "and when they run in a separate DDL transaction, "
+						 "the pg_restore_*_stats() and pg_clear_*_stats() "
+						 "statistics functions write the catalog without "
+						 "incrementing the catalog version. The caller must "
+						 "increment it once afterwards. Used by ysql_dump "
+						 "restore scripts."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_stats_restore_defer_catalog_version_increment,
+		false,
+		NULL, NULL, NULL
+	},
 
 	{
 		{"yb_test_fail_table_rewrite_after_creation", PGC_USERSET,

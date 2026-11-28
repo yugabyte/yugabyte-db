@@ -16,6 +16,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -3053,6 +3059,8 @@ SELECT pg_catalog.setval('public.tbl2_a_seq', 1, false);
 -- Statistics for Name: hints; Type: STATISTICS DATA; Schema: hint_plan; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'hint_plan',
@@ -3063,9 +3071,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: chat_user; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3077,9 +3089,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: hash_tbl_pk_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3091,9 +3107,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: hash_tbl_pk_with_multiple_included_columns; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3105,9 +3125,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level0; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3119,9 +3143,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level1_0; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3133,9 +3161,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level1_1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3147,9 +3179,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level2_0; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3161,9 +3197,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level2_1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3175,9 +3215,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: p1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3189,9 +3233,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: p2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3203,9 +3251,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3217,9 +3269,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_30_50; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3231,9 +3287,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_50_100; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3245,9 +3305,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_default; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3259,9 +3323,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: pre_split_range; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3273,9 +3341,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: range_tbl_pk_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3287,9 +3359,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: range_tbl_pk_with_multiple_included_columns; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3301,9 +3377,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: range_test; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3340,9 +3420,13 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: rls_private; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3354,9 +3438,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: rls_public; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3368,9 +3456,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3382,9 +3474,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl10; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3396,9 +3492,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl11; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3410,9 +3510,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl12; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3424,9 +3528,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl13; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3438,9 +3546,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3452,9 +3564,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl3; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3466,9 +3582,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl4; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3480,9 +3600,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl5; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3494,9 +3618,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl6; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3508,9 +3636,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl7; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3522,9 +3654,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3536,9 +3672,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl9; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3550,9 +3690,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_after_options; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3564,9 +3708,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_empty_options; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3578,9 +3726,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_in_between_options; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3592,9 +3744,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_no_options_and_tgroup; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3606,9 +3762,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_one_option; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3620,9 +3780,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_one_option_and_tgroup; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3634,9 +3798,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_options; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3648,9 +3816,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_options_and_tgroup; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3662,9 +3834,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_options_tgroup_and_custom_colocation_id; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3676,9 +3852,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tgroup_with_spc; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3690,9 +3870,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3704,9 +3888,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3718,9 +3906,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th3; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3732,9 +3924,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tr1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3746,9 +3942,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tr2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3760,9 +3960,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: uaccount; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -3773,6 +3977,8 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relallvisible', '0'::integer
 );
 
+
+COMMIT;
 
 --
 -- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
@@ -4377,6 +4583,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT,REFERENCES,TRIGGER,TRUNC
 -- Statistics for Name: hints_norm_and_app; Type: STATISTICS DATA; Schema: hint_plan; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'hint_plan',
@@ -4387,9 +4595,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: hints_pkey; Type: STATISTICS DATA; Schema: hint_plan; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4401,9 +4613,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: c1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4415,9 +4631,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: c2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4429,9 +4649,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: chat_user_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4443,9 +4667,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: hash_tbl_pk_with_include_clause_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4457,9 +4685,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: hash_tbl_pk_with_multiple_included_columns_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4471,9 +4703,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level1_0_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4485,9 +4721,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level1_1_c3_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4499,9 +4739,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level1_1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4513,9 +4757,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level2_1_c3_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4527,9 +4775,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: level2_1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4541,9 +4793,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: non_unique_idx_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4555,9 +4811,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: p1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4569,9 +4829,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: p2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4583,9 +4847,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_30_50_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4597,9 +4865,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_30_50_v1_v2_key; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4611,9 +4883,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_50_100_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4625,9 +4901,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_50_100_v1_v2_key; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4639,9 +4919,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_50_100_v2_uniq; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4653,9 +4937,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_default_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4667,9 +4955,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_default_v1_v2_key; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4681,9 +4973,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4695,9 +4991,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: part_uniq_const_unique; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4709,9 +5009,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: pre_split_range_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4723,9 +5027,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: range_tbl_pk_with_include_clause_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4737,9 +5045,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: range_tbl_pk_with_multiple_included_columns_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4751,9 +5063,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: range_test_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4765,9 +5081,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: rls_private_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4779,9 +5099,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: rls_public_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4793,9 +5117,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl10_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4807,9 +5135,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl11_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4821,9 +5153,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl12_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4835,9 +5171,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl13_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4849,9 +5189,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl3_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4863,9 +5207,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl4_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4877,9 +5225,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl5_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4891,9 +5243,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl6_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4905,9 +5261,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl7_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4919,9 +5279,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4933,9 +5297,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8_idx2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4947,9 +5315,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8_idx3; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4961,9 +5333,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8_idx4; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4975,9 +5351,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8_idx5; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -4989,9 +5369,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl8_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5003,9 +5387,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tbl9_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5017,9 +5405,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th2_c_b_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5031,9 +5423,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5045,9 +5441,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th3_c_b_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5059,9 +5459,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: th3_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5073,9 +5477,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tr1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5087,9 +5495,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tr2_c_b_a_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5101,9 +5513,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tr2_c_idx; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5115,9 +5531,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: tr2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5129,9 +5549,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: uaccount_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5143,9 +5567,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: unique_idx_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -5156,6 +5584,18 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relallvisible', '0'::integer
 );
 
+
+COMMIT;
+
+-- YB: increment the catalog version once for the restored statistics
+DO $$
+BEGIN
+  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
+    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
+      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
+      false, NULL, 2147483647);
+  END IF;
+END $$;
 
 -- YB: re-enable auto analyze after all catalog changes
 DO $$

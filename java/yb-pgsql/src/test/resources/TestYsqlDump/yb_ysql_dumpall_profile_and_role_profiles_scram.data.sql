@@ -239,6 +239,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -357,6 +363,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -473,6 +485,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -528,6 +546,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -627,6 +651,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -682,6 +712,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;

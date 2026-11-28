@@ -16,6 +16,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -106,6 +112,8 @@ COPY public.test_table (id) FROM stdin;
 -- Statistics for Name: test_table; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'public',
@@ -127,6 +135,8 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'correlation', '1'::real
 );
 
+
+COMMIT;
 
 --
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
@@ -191,6 +201,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- Statistics for Name: test_table_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'public',
@@ -200,6 +212,18 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relallvisible', '0'::integer
 );
 
+
+COMMIT;
+
+-- YB: increment the catalog version once for the restored statistics
+DO $$
+BEGIN
+  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
+    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
+      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
+      false, NULL, 2147483647);
+  END IF;
+END $$;
 
 -- YB: re-enable auto analyze after all catalog changes
 DO $$

@@ -23,10 +23,12 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -766,6 +768,209 @@ public class TestYsqlDump extends BasePgSQLTest {
       "results/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
       /* outputDescribeFileRelativePath */
     );
+  }
+
+  /**
+   * Restoring a relation's statistics is a catalog-version-incrementing DDL per
+   * pg_restore_*_stats() call, and a dump has one call per column.  A --include-yb-metadata
+   * restore script (backup restore, clone) wraps each relation's calls in a transaction block,
+   * so with transactional DDL restoring the statistics adds one catalog version per relation,
+   * plus the script's final increment, which the script runs whenever the server has
+   * yb_stats_restore_defer_catalog_version_increment.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionPerRelation() throws Exception {
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ false,
+        /* disableGlobalObjectLocks */ false, /* includeYbMetadata */ true);
+  }
+
+  /**
+   * With transactional DDL but without global object locks, each pg_restore_*_stats() call runs
+   * in its own DDL transaction, so the server defers the increments as without transactional
+   * DDL, and restoring the statistics adds one catalog version.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnceWithoutGlobalObjectLocks()
+      throws Exception {
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ false,
+        /* disableGlobalObjectLocks */ true, /* includeYbMetadata */ true);
+  }
+
+  /**
+   * Without transactional DDL, the script defers the increments with
+   * yb_stats_restore_defer_catalog_version_increment and increments the catalog version once at
+   * the end, so restoring the statistics adds one catalog version whatever the number of
+   * relations and columns.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnceLegacyDdlMode()
+      throws Exception {
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ true,
+        /* disableGlobalObjectLocks */ false, /* includeYbMetadata */ true);
+  }
+
+  /**
+   * Without --include-yb-metadata, the script is unchanged: each pg_restore_*_stats() call
+   * increments the catalog version.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreWithoutYbMetadataIncrementsCatalogVersionPerCall()
+      throws Exception {
+    assertStatisticsRestoreCatalogVersions(/* useLegacyDdlMode */ false,
+        /* disableGlobalObjectLocks */ false, /* includeYbMetadata */ false);
+  }
+
+  /**
+   * Without transactional DDL, with yb_stats_restore_defer_catalog_version_increment, a
+   * statistics write still runs as a DDL but does not increment the catalog version; without the
+   * parameter, it increments the version as before.
+   */
+  @Test
+  public void ysqlDumpStatisticsDeferCatalogVersionIncrementLegacyDdlMode() throws Exception {
+    assertStatisticsDeferCatalogVersionIncrement(/* useLegacyDdlMode */ true);
+  }
+
+  /**
+   * With transactional DDL and global object locking, a statistics write uses the DDL transaction
+   * state, and yb_stats_restore_defer_catalog_version_increment has no effect: the write
+   * increments the catalog version, so that other backends refresh their cached pg_class row
+   * before they can lock the relation.
+   */
+  @Test
+  public void ysqlDumpStatisticsDeferCatalogVersionIncrementIgnoredWithGlobalObjectLocks()
+      throws Exception {
+    assertStatisticsDeferCatalogVersionIncrement(/* useLegacyDdlMode */ false);
+  }
+
+  private void assertStatisticsDeferCatalogVersionIncrement(boolean useLegacyDdlMode)
+      throws Exception {
+    Map<String, String> masterFlags = getMasterFlags();
+    Map<String, String> tserverFlags = getTServerFlags();
+    toggleDDLMode(masterFlags, useLegacyDdlMode);
+    toggleDDLMode(tserverFlags, useLegacyDdlMode);
+    // toggleDDLMode turns object locking on with transactional DDL; make sure the transactions
+    // also take global object locks.
+    tserverFlags.put("disable_global_object_locks", "false");
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    final String versionQuery = "SELECT current_version FROM pg_yb_catalog_version " +
+        "WHERE db_oid = (SELECT oid FROM pg_database WHERE datname = current_database())";
+    final String restoreQuery = "SELECT pg_catalog.pg_restore_relation_stats(" +
+        "'schemaname', 'public', 'relname', 'defer_t', 'relpages', '%d'::integer)";
+    final String relpagesQuery =
+        "SELECT relpages::bigint FROM pg_class WHERE relname = 'defer_t'";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE defer_t (k int PRIMARY KEY, v int)");
+
+      long before = getSingleRow(stmt, versionQuery).getLong(0);
+      stmt.execute(String.format(restoreQuery, 1));
+      long afterNotDeferred = getSingleRow(stmt, versionQuery).getLong(0);
+      assertEquals(before + 1, afterNotDeferred);
+      assertEquals(1L, getSingleRow(stmt, relpagesQuery).getLong(0).longValue());
+
+      stmt.execute("SET yb_stats_restore_defer_catalog_version_increment = true");
+      stmt.execute(String.format(restoreQuery, 2));
+      assertEquals(useLegacyDdlMode ? afterNotDeferred : afterNotDeferred + 1,
+          getSingleRow(stmt, versionQuery).getLong(0).longValue());
+      assertEquals(2L, getSingleRow(stmt, relpagesQuery).getLong(0).longValue());
+    }
+  }
+
+  private void assertStatisticsRestoreCatalogVersions(boolean useLegacyDdlMode,
+      boolean disableGlobalObjectLocks, boolean includeYbMetadata) throws Exception {
+    Map<String, String> masterFlags = getMasterFlags();
+    Map<String, String> tserverFlags = getTServerFlags();
+    toggleDDLMode(masterFlags, useLegacyDdlMode);
+    toggleDDLMode(tserverFlags, useLegacyDdlMode);
+    tserverFlags.put("disable_global_object_locks", String.valueOf(disableGlobalObjectLocks));
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    final int numTables = 3;
+    final int numColumns = 20;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE stats_src");
+    }
+    try (Connection conn = getConnectionBuilder().withDatabase("stats_src").connect();
+         Statement stmt = conn.createStatement()) {
+      for (int t = 1; t <= numTables; ++t) {
+        StringBuilder cols = new StringBuilder();
+        for (int c = 1; c <= numColumns; ++c) {
+          cols.append(String.format(", c%d int DEFAULT %d", c, c));
+        }
+        stmt.execute(String.format("CREATE TABLE t%d (k int PRIMARY KEY%s)", t, cols));
+        stmt.execute(String.format("INSERT INTO t%d (k) SELECT generate_series(1, 10)", t));
+      }
+      stmt.execute("ANALYZE");
+    }
+
+    // Restore the schema without statistics and with statistics into two new databases.  The
+    // difference in their catalog versions is what restoring the statistics cost.
+    int tserverIndex = 0;
+    File testDir = TestUtils.getClassResourceDir(getClass());
+    File ysqlDumpExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dump");
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    Map<String, Long> versions = new HashMap<>();
+    int numStatsEntries = 0;
+    int numStatsCalls = 0;
+    for (String target : Arrays.asList("stats_none", "stats_restored")) {
+      boolean withStats = target.equals("stats_restored");
+      File dump = new File(testDir, "results/yb.orig.ysql_dump_" + target + ".out");
+      dump.getParentFile().mkdirs();
+      List<String> args = new ArrayList<>(Arrays.asList(
+          ysqlDumpExec.toString(),
+          "-h", getPgHost(tserverIndex),
+          "-p", Integer.toString(getPgPort(tserverIndex)),
+          "-U", DEFAULT_PG_USER,
+          "-f", dump.toString(),
+          "--schema-only",
+          "--create",
+          "--rename-database=" + target,
+          withStats ? "--with-statistics" : "--no-statistics"));
+      if (includeYbMetadata) {
+        args.add("--include-yb-metadata");
+      }
+      args.add("stats_src");
+      ProcessUtil.executeSimple(args, "ysql_dump");
+      if (withStats) {
+        List<String> lines = FileUtils.readLines(dump, StandardCharsets.UTF_8);
+        numStatsEntries = (int) lines.stream()
+            .filter(l -> l.contains("Type: STATISTICS DATA;")).count();
+        numStatsCalls = (int) lines.stream()
+            .filter(l -> l.startsWith("SELECT * FROM pg_catalog.pg_restore_")).count();
+        // Only --include-yb-metadata scripts wrap the statistics in transaction blocks.
+        assertEquals(includeYbMetadata ? numStatsEntries : 0,
+            (int) lines.stream().filter(l -> l.equals("BEGIN;")).count());
+      }
+      ProcessUtil.executeSimple(Arrays.asList(
+          ysqlshExec.toString(),
+          "-h", getPgHost(tserverIndex),
+          "-p", Integer.toString(getPgPort(tserverIndex)),
+          "-U", DEFAULT_PG_USER,
+          "-v", "ON_ERROR_STOP=1",
+          "-f", dump.toString()), "ysqlsh");
+      try (Statement stmt = connection.createStatement()) {
+        versions.put(target, getSingleRow(stmt, String.format(
+            "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = " +
+            "(SELECT oid FROM pg_database WHERE datname = '%s')", target)).getLong(0));
+      }
+    }
+
+    // All the column statistics were restored.  Read them from another node, whose backend
+    // loads its catalog cache after the restore.
+    try (Connection conn = getConnectionBuilder().withTServer(1)
+             .withDatabase("stats_restored").connect();
+         Statement stmt = conn.createStatement()) {
+      assertEquals((long) numTables * numColumns, getSingleRow(stmt,
+          "SELECT count(*) FROM pg_statistic s JOIN pg_class c ON c.oid = s.starelid " +
+          "WHERE c.relname LIKE 't%' AND s.staattnum > 1").getLong(0).longValue());
+    }
+    // One entry per table and one per primary key index.
+    assertEquals(2 * numTables, numStatsEntries);
+    assertEquals(
+        String.format("catalog versions: %s", versions),
+        !includeYbMetadata ? (long) numStatsCalls
+            : (useLegacyDdlMode || disableGlobalObjectLocks) ? 1L : numStatsEntries + 1L,
+        versions.get("stats_restored") - versions.get("stats_none"));
   }
 
   void ysqlDumpTester(final String binaryName,

@@ -1207,6 +1207,10 @@ extern void YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode);
 extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();
 
+extern bool yb_stats_restore_defer_catalog_version_increment;
+extern bool YbStatsCatalogWriteBegin(void);
+extern void YbStatsCatalogWriteEnd(bool use_regular_txn_block);
+
 typedef struct YbDdlModeOptional
 {
 	bool		has_value;
