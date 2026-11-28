@@ -216,6 +216,14 @@ extern const FilterPolicy* NewFixedSizeFilterPolicy(size_t total_bits,
                                                     double error_rate,
                                                     Logger* logger);
 
+// Returns the number of keys after which the FilterBitsBuilder of a fixed size filter policy with
+// these parameters is full.
+extern size_t FixedSizeFilterMaxKeys(size_t total_bits, double error_rate);
+
+// Whether key may be in filter, which the FilterBitsBuilder of a fixed size filter policy built.
+// Unlike FilterPolicy::GetFilterBitsReader, allocates nothing.
+extern bool FixedSizeFilterKeyMayMatch(Slice filter, Slice key);
+
 // Cache filter key produced from user key by particular transformer.
 struct FilterKeyCache {
   explicit FilterKeyCache(Slice user_key) : filter_key(user_key) {}

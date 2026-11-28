@@ -365,6 +365,31 @@ class BloomFilterPolicy : public FilterPolicy {
   }
 };
 
+// Returns the number of cache lines of a fixed size filter of total_bits. AddHash gives a much
+// higher false positive rate when the number of lines is even, so it is odd.
+size_t FixedSizeFilterNumLines(size_t total_bits) {
+  auto num_lines = yb::ceil_div<size_t>(total_bits, CACHE_LINE_SIZE * 8);
+  if (num_lines % 2 == 0) {
+    // For small filter blocks - add one line, so we can have enough keys in block.
+    // For bigger filter block - remove one line, so filter block will fit desired size.
+    if (num_lines * CACHE_LINE_SIZE < 4096) {
+      ++num_lines;
+    } else {
+      --num_lines;
+    }
+  }
+  return num_lines;
+}
+
+// Returns the number of keys a filter of total_bits holds at error_rate.
+size_t FilterMaxKeys(size_t total_bits, double error_rate) {
+  const double minus_log_error_rate = -log(error_rate);
+  DCHECK_GT(minus_log_error_rate, 0);
+  const double max_keys = total_bits * LOG2 * LOG2 / minus_log_error_rate;
+  DCHECK_LT(max_keys, std::numeric_limits<size_t>::max());
+  return static_cast<size_t>(max_keys);
+}
+
 // A fixed size filter bits builder will build (with memory allocation)
 // and return a Bloom filter of given size and expected false positive rate.
 //
@@ -390,18 +415,7 @@ class FixedSizeFilterBitsBuilder : public FilterBitsBuilder {
       : error_rate_(error_rate) {
     DCHECK_GT(error_rate, 0);
     DCHECK_GT(total_bits, 0);
-    num_lines_ = yb::ceil_div<size_t>(total_bits, CACHE_LINE_SIZE * 8);
-    // AddHash implementation gives much higher false positive rate when num_lines_ is even, so
-    // make sure it is odd.
-    if (num_lines_ % 2 == 0) {
-      // For small filter blocks - add one line, so we can have enough keys in block.
-      // For bigger filter block - remove one line, so filter block will fit desired size.
-      if (num_lines_ * CACHE_LINE_SIZE < 4096) {
-        num_lines_++;
-      } else {
-        num_lines_--;
-      }
-    }
+    num_lines_ = FixedSizeFilterNumLines(total_bits);
     total_bits_ = num_lines_ * CACHE_LINE_SIZE * 8;
 
     const double minus_log_error_rate = -log(error_rate_);
@@ -409,9 +423,7 @@ class FixedSizeFilterBitsBuilder : public FilterBitsBuilder {
     num_probes_ = static_cast<size_t> (minus_log_error_rate / LOG2);
     num_probes_ = std::max<size_t>(num_probes_, 1);
     num_probes_ = std::min<size_t>(num_probes_, 255);
-    const double max_keys = total_bits_ * LOG2 * LOG2 / minus_log_error_rate;
-    DCHECK_LT(max_keys, std::numeric_limits<size_t>::max());
-    max_keys_ = static_cast<size_t> (max_keys);
+    max_keys_ = FilterMaxKeys(total_bits_, error_rate_);
     keys_added_ = 0;
 
     // TODO - add tests verifying that after inserting max_keys we will have required error rate
@@ -515,6 +527,15 @@ const FilterPolicy* NewFixedSizeFilterPolicy(size_t total_bits,
                                              double error_rate,
                                              Logger* logger) {
   return new FixedSizeFilterPolicy(total_bits, error_rate, logger);
+}
+
+size_t FixedSizeFilterMaxKeys(size_t total_bits, double error_rate) {
+  return FilterMaxKeys(FixedSizeFilterNumLines(total_bits) * CACHE_LINE_SIZE * 8, error_rate);
+}
+
+bool FixedSizeFilterKeyMayMatch(Slice filter, Slice key) {
+  FixedSizeFilterBitsReader reader(filter, nullptr);
+  return reader.MayMatch(key);
 }
 
 }  // namespace rocksdb

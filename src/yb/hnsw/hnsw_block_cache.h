@@ -41,8 +41,8 @@ class FileBlockCacheBuilder {
     return has_block_trailers_;
   }
 
+  // A block is empty only when it has no data and no trailer, see Header::deletion_block.
   void Add(DataBlock&& block) {
-    DCHECK_GT(block.size, 0);
     blocks_.push_back(std::move(block));
   }
 
@@ -88,6 +88,9 @@ class FileBlockCache {
   Result<const std::byte*> Take(size_t index);
   void Release(size_t index);
 
+  // Returns the size of the block data, without its trailer.
+  size_t BlockSize(size_t index) const;
+
  private:
   void AllocateBlocks(size_t size);
 
@@ -97,6 +100,8 @@ class FileBlockCache {
   size_t size_ = 0;
   // False for files without footer flag 0x02, which have no block trailers.
   HasBlockTrailers has_block_trailers_ = HasBlockTrailers::kTrue;
+  // The size of the block trailers the file has, also while they are ignored.
+  size_t block_trailer_size_ = kBlockTrailerSize;
 };
 
 class BlockCacheHandle {

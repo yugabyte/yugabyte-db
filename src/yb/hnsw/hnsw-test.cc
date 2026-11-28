@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <algorithm>
+
 #include "yb/hnsw/hnsw.h"
 #include "yb/hnsw/hnsw_block_cache.h"
 #include "yb/hnsw/vector_index_test_base.h"
@@ -24,6 +26,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -43,12 +46,16 @@ using namespace yb::size_literals;
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_yb_hnsw_ignore_block_trailers);
 DECLARE_bool(yb_hnsw_write_block_checksums);
+DECLARE_uint64(yb_hnsw_max_block_size);
 
 METRIC_DEFINE_entity(table);
 
 namespace yb::hnsw {
 
 using IndexImpl = HnswlibIndex<YbHnsw::DistanceType>;
+
+// Whether the vector ids of the deletions share their first 4 bytes, see TestDeletions.
+YB_STRONGLY_TYPED_BOOL(CommonPrefix);
 
 constexpr size_t kConnectivity = 64;
 constexpr size_t kExpansionAdd = 128;
@@ -173,6 +180,7 @@ class YbHnswTest : public VectorIndexTestBase {
 
   void TestSimple(bool load);
   void TestRandom(bool load, size_t background_threads);
+  void TestDeletions(size_t num_vectors, CommonPrefix common_prefix);
 
   UsearchMetric::Impl metric_;
   std::optional<UsearchSpace> space_;
@@ -187,11 +195,11 @@ Status YbHnswTest::InitYbHnsw(bool load) {
   if (load) {
     {
       YbHnsw temp(metric_, block_cache_);
-      RETURN_NOT_OK(temp.Import(*index_, path, &payloads_));
+      RETURN_NOT_OK(temp.Import(*index_, path, &payloads_, /* deletions= */ {}));
     }
     RETURN_NOT_OK(yb_hnsw_->Init(path));
   } else {
-    RETURN_NOT_OK(yb_hnsw_->Import(*index_, path, &payloads_));
+    RETURN_NOT_OK(yb_hnsw_->Import(*index_, path, &payloads_, /* deletions= */ {}));
   }
   return Status::OK();
 }
@@ -246,7 +254,7 @@ TEST_F(YbHnswTest, IgnoreBlockTrailers) {
 TEST_F(YbHnswTest, UnknownFooterFlags) {
   TestSimple(/* load= */ true);
   const auto path = YbHnswPath();
-  for (uint8_t flags : {0x0f, 0x02}) {
+  for (uint8_t flags : {0x1f, 0x02}) {
     ASSERT_OK(SetYbHnswFooterFlags(path, flags));
     YbHnsw yb_hnsw(metric_, block_cache_);
     auto status = yb_hnsw.Init(path);
@@ -263,7 +271,7 @@ Result<std::string> YbHnswTest::InitDamagedYbHnsw(size_t num_vectors) {
   const auto path = YbHnswPath();
   {
     YbHnsw temp(metric_, block_cache_);
-    RETURN_NOT_OK(temp.Import(*index_, path, &payloads_));
+    RETURN_NOT_OK(temp.Import(*index_, path, &payloads_, /* deletions= */ {}));
   }
   faststring original;
   RETURN_NOT_OK(ReadFileToString(env_.get(), path, &original));
@@ -396,6 +404,101 @@ void YbHnswTest::TestRandom(bool load, size_t background_threads = 0) {
       ASSERT_NO_FATALS(VerifySearch(query_vector, kMaxResults));
     }
   }
+}
+
+void YbHnswTest::TestDeletions(size_t num_vectors, CommonPrefix common_prefix) {
+  constexpr size_t kNumDeletions = 10000;
+  constexpr size_t kNumMissing = 1000;
+  constexpr size_t kMaxResults = 10;
+  constexpr uint8_t kFooterDeletions = 0x08;
+
+  // So the deletions take at least 8 bits, and their entries skip the first byte of the vector id.
+  const auto old_max_block_size = FLAGS_yb_hnsw_max_block_size;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_max_block_size) = 1_KB;
+  auto restore_max_block_size = ScopeExit([old_max_block_size] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_max_block_size) = old_max_block_size;
+  });
+
+  InsertRandomVectors(num_vectors);
+  auto random_vector_id = [common_prefix] {
+    auto result = vector_index::VectorId::GenerateRandom();
+    if (!common_prefix) {
+      return result;
+    }
+    std::array<std::byte, sizeof(vector_index::VectorId)> bytes;
+    memcpy(bytes.data(), result.data(), bytes.size());
+    memset(bytes.data(), 0, sizeof(uint32_t));
+    return vector_index::TryFullyDecodeVectorId(Slice(bytes.data(), bytes.size()));
+  };
+  vector_index::VectorLSMDeletionList deletions;
+  for (size_t i = 0; i != kNumDeletions; ++i) {
+    deletions.push_back(vector_index::VectorLSMDeletion {
+      .vector_id = random_vector_id(),
+      .hybrid_time = HybridTime(RandomUniformInt<uint64_t>(1, 1'000'000'000)),
+    });
+  }
+  std::ranges::sort(deletions, {}, &vector_index::VectorLSMDeletion::vector_id);
+  const auto path = YbHnswPath();
+  {
+    YbHnsw temp(metric_, block_cache_);
+    ASSERT_OK(temp.Import(*index_, path, &payloads_, deletions));
+  }
+  ASSERT_OK(yb_hnsw_->Init(path));
+  ASSERT_TRUE(ASSERT_RESULT(YbHnswFooterFlags(path)) & kFooterDeletions);
+  const auto& header = yb_hnsw_->header();
+  ASSERT_EQ(header.num_deletions, deletions.size());
+  ASSERT_GE(header.deletion_bits, 8);
+  ASSERT_GE(header.deletion_filter_bits, 1);
+  if (!num_vectors) {
+    ASSERT_EQ(header.dimensions, 0);
+    ASSERT_EQ(header.vector_data_size, 0);
+    ASSERT_EQ(header.entry, 0);
+    ASSERT_EQ(header.max_level, 0);
+    ASSERT_EQ(header.max_vectors_per_non_base_block, 0);
+    ASSERT_EQ(header.vector_data_block, 0);
+    ASSERT_EQ(header.vector_data_amount_per_block, 0);
+  }
+
+  for (const auto& deletion : deletions) {
+    ASSERT_EQ(ASSERT_RESULT(yb_hnsw_->FindDeletion(deletion.vector_id)), deletion.hybrid_time);
+  }
+  for (size_t i = 0; i != kNumMissing; ++i) {
+    ASSERT_EQ(ASSERT_RESULT(yb_hnsw_->FindDeletion(random_vector_id())), HybridTime::kInvalid);
+  }
+  vector_index::VectorLSMDeletionList read_deletions;
+  ASSERT_OK(yb_hnsw_->ForEachDeletion(
+      [&read_deletions](const vector_index::VectorLSMDeletion& deletion) {
+    read_deletions.push_back(deletion);
+    return Status::OK();
+  }));
+  ASSERT_EQ(AsString(read_deletions), AsString(deletions));
+
+  auto query_vector = RandomVector();
+  if (num_vectors) {
+    ASSERT_NO_FATALS(VerifySearch(query_vector, kMaxResults));
+  } else {
+    auto result = ASSERT_RESULT(
+        yb_hnsw_->Search(query_vector.data(), MakeSearchOptions(kMaxResults), context_));
+    ASSERT_TRUE(result.empty());
+  }
+}
+
+// Deletions are saved after the vectors in blocks addressed by the first bits of their vector ids,
+// with bloom filters over them.
+TEST_F(YbHnswTest, Deletions) {
+  TestDeletions(/* num_vectors= */ 100, CommonPrefix::kFalse);
+}
+
+// A chunk which received only deletions has no vectors.
+TEST_F(YbHnswTest, DeletionsWithoutVectors) {
+  TestDeletions(/* num_vectors= */ 0, CommonPrefix::kFalse);
+}
+
+// Vector ids which are not random put the deletions into few blocks, and leave the others empty,
+// without trailers too.
+TEST_F(YbHnswTest, DeletionsWithCommonPrefix) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_write_block_checksums) = false;
+  TestDeletions(/* num_vectors= */ 100, CommonPrefix::kTrue);
 }
 
 TEST_F(YbHnswTest, Random) {

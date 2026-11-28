@@ -6,7 +6,7 @@ Status: in development, #37982. The feature lands in parts; each section below n
 |---|---|---|
 | M0 | `VectorLSMDeletionMap`, the in-memory map | Done |
 | M | The deletions in the indexes of the in-memory chunks, `VectorLSM::DeletionsLookup` | Done |
-| A1 | The deletion blocks of the YbHnsw file | Planned |
+| A1 | The deletion blocks of the YbHnsw file | Done |
 | S | A chunk save writes its deletions, a compaction keeps the deletions of its inputs | Planned |
 | B2 | A compaction drops the deleted vectors, and the deletions it no longer needs | Planned |
 | D | The write time of a vector in its payload | Planned |
@@ -56,7 +56,7 @@ The `deletions` MemTracker under the tracker of the index tracks the maps.
 
 ### On disk
 
-Part A1 for the format and S for the save, planned.
+Part A1 for the format, done; S for the save, planned.
 
 A chunk save writes the deletions of the chunk into its YbHnsw file, after the blocks of the graph. A chunk which received only deletions gets a YbHnsw file without vectors. Footer flag `0x08` marks a file with deletions. Vector ids are random UUIDs (`VectorId::GenerateRandom`), so their first bits address the blocks, and no index of the blocks is kept:
 

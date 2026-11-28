@@ -109,14 +109,14 @@ class YbHnswIndex :
       const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
       const vector_index::VectorPayloadMap* payloads) {
     VLOG_WITH_FUNC(3) << "index: " << index.size() << ", path: " << path;
-    return index_.Import(index, path, payloads);
+    return index_.Import(index, path, payloads, /* deletions= */ {});
   }
 
   Status Import(
       const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
       const vector_index::VectorPayloadMap* payloads) {
     VLOG_WITH_FUNC(3) << "index: " << index.cur_element_count << ", path: " << path;
-    return index_.Import(index, path, payloads);
+    return index_.Import(index, path, payloads, /* deletions= */ {});
   }
 
   std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {

@@ -14,6 +14,7 @@
 #include "yb/hnsw/hnsw.h"
 
 #include <algorithm>
+#include <array>
 #include <numeric>
 #include <ranges>
 
@@ -21,6 +22,8 @@
 
 #include "yb/hnsw/block_writer.h"
 #include "yb/hnsw/hnsw_block_cache.h"
+
+#include "yb/rocksdb/filter_policy.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
@@ -178,27 +181,62 @@ size_t CalcMaxVectorsPerLayerBlock(size_t max_block_size, size_t connectivity) {
   return result;
 }
 
+// Limits the number of blocks of the deletions, see Header::deletion_bits.
+constexpr size_t kMaxDeletionBits = 24;
+
+// Returns the first bits bits of the vector id, see Header::deletion_bits.
+size_t VectorIdPrefix(Slice vector_id, size_t bits) {
+  return bits ? BigEndian::Load32(vector_id.data()) >> (32 - bits) : 0;
+}
+
+// Returns the number of the first vector id bits that split num_entries random vector ids into
+// groups of up to group_size.
+size_t VectorIdPrefixBits(size_t num_entries, size_t group_size) {
+  size_t result = 0;
+  while (result < kMaxDeletionBits && (num_entries >> result) > group_size) {
+    ++result;
+  }
+  return result;
+}
+
+// Returns the size of a deletion entry, see Header::deletion_bits.
+size_t DeletionEntrySize(size_t deletion_bits) {
+  return sizeof(vector_index::VectorId) - deletion_bits / 8 + sizeof(uint64_t);
+}
+
 class YbHnswBuilder {
  public:
   using CoordinateType = float;
 
   YbHnswBuilder(
       YbHnswIndexAdapter& inspector,
-      BlockCache& block_cache, const std::string& path)
-      : inspector_(inspector), block_cache_(block_cache), path_(path) {}
+      BlockCache& block_cache, const std::string& path,
+      std::span<const vector_index::VectorLSMDeletion> deletions)
+      : inspector_(inspector), block_cache_(block_cache), path_(path), deletions_(deletions) {}
 
   Result<std::pair<FileBlockCachePtr, Header>> Build() {
-    header_ = inspector_.MakeHeader();
-    PrepareVectors();
-    VLOG_WITH_FUNC(4) << "Size: " << inspector_.Size() << ", header: " << header_.ToString();
+    size_ = inspector_.Size();
+    if (size_) {
+      header_ = inspector_.MakeHeader();
+      PrepareVectors();
+    } else {
+      // Only deletions, see YbHnsw::Import.
+      SCHECK(!deletions_.empty(), InvalidArgument, "Neither vectors nor deletions");
+      header_.max_block_size = FLAGS_yb_hnsw_max_block_size;
+      header_.layers.resize(1);
+    }
+    VLOG_WITH_FUNC(4) << "Size: " << size_ << ", header: " << header_.ToString();
 
     auto tmp_path = path_ + ".tmp";
     RETURN_NOT_OK(block_cache_.env().NewWritableFile(tmp_path, &out_));
-    RETURN_NOT_OK(BuildAuxilaryDataBlocks());
-    RETURN_NOT_OK(BuildNonBaseLayers());
-    RETURN_NOT_OK(BuildBaseLayer());
-    RETURN_NOT_OK(BuildVectorDataBlocks());
-    RETURN_NOT_OK(BuildTenantDirectoryBlocks());
+    if (size_) {
+      RETURN_NOT_OK(BuildAuxilaryDataBlocks());
+      RETURN_NOT_OK(BuildNonBaseLayers());
+      RETURN_NOT_OK(BuildBaseLayer());
+      RETURN_NOT_OK(BuildVectorDataBlocks());
+      RETURN_NOT_OK(BuildTenantDirectoryBlocks());
+    }
+    RETURN_NOT_OK(BuildDeletionBlocks());
     RETURN_NOT_OK(FlushBlock());
     RETURN_NOT_OK(WriteFooter());
     RETURN_NOT_OK(out_->Sync());
@@ -273,8 +311,7 @@ class YbHnswBuilder {
 
   void PrepareVectors() {
     header_.layers.resize(header_.max_level + 1);
-    vectors_.reserve(inspector_.Size());
-    size_ = inspector_.Size();
+    vectors_.reserve(size_);
     // Upper layers are prefixes of vector numbers, so higher vectors go first.
     auto order = SortByHeight();
     if (FLAGS_yb_hnsw_reorder_vectors) {
@@ -363,6 +400,63 @@ class YbHnswBuilder {
       entries_writer.Append<VectorNo>(entry);
       end += narrow_cast<uint32_t>(tenant.size() + sizeof(VectorNo));
       ends_writer.Append<uint32_t>(end);
+    }
+    return Status::OK();
+  }
+
+  // Writes the deletions into blocks addressed by the first bits of their vector ids, see
+  // Header::deletion_bits, and their bloom filters likewise.
+  Status BuildDeletionBlocks() {
+    if (deletions_.empty()) {
+      return Status::OK();
+    }
+    DCHECK(std::ranges::is_sorted(deletions_, {}, &vector_index::VectorLSMDeletion::vector_id));
+    header_.num_deletions = deletions_.size();
+    header_.deletion_bits = VectorIdPrefixBits(
+        deletions_.size(), header_.max_block_size / DeletionEntrySize(/* deletion_bits= */ 0));
+    const auto skipped_bytes = header_.deletion_bits / 8;
+    const auto entry_size = DeletionEntrySize(header_.deletion_bits);
+    header_.deletion_block = NextBlockId();
+    auto it = deletions_.begin();
+    for (size_t prefix = 0; prefix != size_t{1} << header_.deletion_bits; ++prefix) {
+      auto end = std::find_if(it, deletions_.end(), [this, prefix](const auto& deletion) {
+        return VectorIdPrefix(deletion.vector_id.AsSlice(), header_.deletion_bits) != prefix;
+      });
+      auto writer = VERIFY_RESULT(StartNewBlock((end - it) * entry_size));
+      for (; it != end; ++it) {
+        writer.AppendBytes(it->vector_id.AsSlice().WithoutPrefix(skipped_bytes));
+        writer.Append<uint64_t>(it->hybrid_time.ToUint64());
+      }
+    }
+    // Unsorted deletions would leave some of them out of every block.
+    SCHECK(it == deletions_.end(), InvalidArgument, "Deletions are not sorted by vector id");
+
+    // The fixed size filter blocks of the regular DB.
+    const auto filter_bits = header_.max_block_size * 8;
+    constexpr auto kFilterErrorRate = rocksdb::FilterPolicy::kDefaultFixedSizeFilterErrorRate;
+    std::unique_ptr<const rocksdb::FilterPolicy> policy(rocksdb::NewFixedSizeFilterPolicy(
+        filter_bits, kFilterErrorRate, /* logger= */ nullptr));
+    header_.deletion_filter_bits = VectorIdPrefixBits(
+        deletions_.size(), rocksdb::FixedSizeFilterMaxKeys(filter_bits, kFilterErrorRate));
+    header_.deletion_filter_block = NextBlockId();
+    it = deletions_.begin();
+    for (size_t prefix = 0; prefix != size_t{1} << header_.deletion_filter_bits; ++prefix) {
+      std::unique_ptr<rocksdb::FilterBitsBuilder> filter(policy->GetFilterBitsBuilder());
+      for (; it != deletions_.end() &&
+             VectorIdPrefix(it->vector_id.AsSlice(), header_.deletion_filter_bits) == prefix;
+           ++it) {
+        filter->AddKey(it->vector_id.AsSlice());
+      }
+      std::unique_ptr<const char[]> buffer;
+      auto contents = filter->Finish(&buffer);
+      if (!prefix) {
+        header_.deletion_filter_size = contents.size();
+      }
+      SCHECK_EQ(
+          contents.size(), header_.deletion_filter_size, IllegalState,
+          "Fixed size filter blocks of different sizes");
+      auto writer = VERIFY_RESULT(StartNewBlock(contents.size()));
+      writer.AppendBytes(contents);
     }
     return Status::OK();
   }
@@ -551,6 +645,7 @@ class YbHnswBuilder {
   YbHnswIndexAdapter& inspector_;
   BlockCache& block_cache_;
   const std::string path_;
+  const std::span<const vector_index::VectorLSMDeletion> deletions_;
   Header header_;
   size_t num_blocks_ = 0;
   DataBlock current_block_;
@@ -653,9 +748,10 @@ YbHnsw::~YbHnsw() = default;
 
 Status YbHnsw::Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    const vector_index::VectorPayloadMap* payloads) {
+    const vector_index::VectorPayloadMap* payloads,
+    std::span<const vector_index::VectorLSMDeletion> deletions) {
   YbHnswUsearchIndexAdapter inspector(index, payloads);
-  YbHnswBuilder builder(inspector, *block_cache_, path);
+  YbHnswBuilder builder(inspector, *block_cache_, path, deletions);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
   return Status::OK();
 }
@@ -737,9 +833,10 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
 Status YbHnsw::Import(
     const HnswlibIndex<DistanceType>& index,
     const std::string& path,
-    const vector_index::VectorPayloadMap* payloads) {
+    const vector_index::VectorPayloadMap* payloads,
+    std::span<const vector_index::VectorLSMDeletion> deletions) {
   YbHnswHnswlibIndexAdapter inspector(index, payloads);
-  YbHnswBuilder builder(inspector, *block_cache_, path);
+  YbHnswBuilder builder(inspector, *block_cache_, path, deletions);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
   return Status::OK();
 }
@@ -755,6 +852,10 @@ Status YbHnsw::Init(const std::string& path) {
 Result<YbHnsw::SearchResult> YbHnsw::Search(
     const std::byte* query_vector, const vector_index::SearchOptions& options,
     YbHnswSearchContext& context) const {
+  // A chunk with only deletions has neither vectors nor tenants.
+  if (!header_.layers.front().size) {
+    return SearchResult();
+  }
   const bool has_tenants = header_.num_tenant_directory_blocks;
   SCHECK(has_tenants || options.tenant.empty(), InvalidArgument,
          "Tenant search of a vector index without tenants");
@@ -939,6 +1040,78 @@ YbHnsw::DistanceType YbHnsw::Distance(
 
 const Header& YbHnsw::header() const {
   return header_;
+}
+
+Result<HybridTime> YbHnsw::FindDeletion(const vector_index::VectorId& vector_id) const {
+  if (!header_.num_deletions) {
+    return HybridTime::kInvalid;
+  }
+  const auto key = vector_id.AsSlice();
+  const auto filter_block =
+      header_.deletion_filter_block + VectorIdPrefix(key, header_.deletion_filter_bits);
+  auto* filter = VERIFY_RESULT(file_block_cache_->Take(filter_block));
+  auto may_match = rocksdb::FixedSizeFilterKeyMayMatch(
+      Slice(filter, header_.deletion_filter_size), key);
+  file_block_cache_->Release(filter_block);
+  if (!may_match) {
+    return HybridTime::kInvalid;
+  }
+
+  const auto block = header_.deletion_block + VectorIdPrefix(key, header_.deletion_bits);
+  const auto block_size = file_block_cache_->BlockSize(block);
+  if (!block_size) {
+    return HybridTime::kInvalid;
+  }
+  const auto suffix = key.WithoutPrefix(header_.deletion_bits / 8);
+  const auto entry_size = DeletionEntrySize(header_.deletion_bits);
+  auto* data = VERIFY_RESULT(file_block_cache_->Take(block));
+  auto release = ScopeExit([this, block] { file_block_cache_->Release(block); });
+  auto entries = std::views::iota(size_t{0}, block_size / entry_size);
+  auto entry_suffix = [data, entry_size, &suffix](size_t entry) {
+    return Slice(data + entry * entry_size, suffix.size());
+  };
+  auto it = std::ranges::lower_bound(entries, suffix, {}, entry_suffix);
+  if (it == entries.end() || entry_suffix(*it) != suffix) {
+    return HybridTime::kInvalid;
+  }
+  return HybridTime(Load<uint64_t, HnswEndian>(data + *it * entry_size + suffix.size()));
+}
+
+Status YbHnsw::ForEachDeletion(
+    const std::function<Status(const vector_index::VectorLSMDeletion&)>& f) const {
+  if (!header_.num_deletions) {
+    return Status::OK();
+  }
+  const auto skipped_bytes = header_.deletion_bits / 8;
+  const auto suffix_size = sizeof(vector_index::VectorId) - skipped_bytes;
+  const auto entry_size = DeletionEntrySize(header_.deletion_bits);
+  std::array<std::byte, sizeof(vector_index::VectorId)> vector_id;
+  for (size_t prefix = 0; prefix != size_t{1} << header_.deletion_bits; ++prefix) {
+    const auto block = header_.deletion_block + prefix;
+    const auto block_size = file_block_cache_->BlockSize(block);
+    if (!block_size) {
+      continue;
+    }
+    if (skipped_bytes) {
+      // The skipped bytes are the leading bytes of the prefix.
+      std::array<std::byte, sizeof(uint32_t)> prefix_bytes;
+      BigEndian::Store32(prefix_bytes.data(), narrow_cast<uint32_t>(
+          prefix << (32 - header_.deletion_bits)));
+      memcpy(vector_id.data(), prefix_bytes.data(), skipped_bytes);
+    }
+    auto* data = VERIFY_RESULT(file_block_cache_->Take(block));
+    auto release = ScopeExit([this, block] { file_block_cache_->Release(block); });
+    for (auto* entry = data, *end = data + block_size / entry_size * entry_size; entry != end;
+         entry += entry_size) {
+      memcpy(vector_id.data() + skipped_bytes, entry, suffix_size);
+      RETURN_NOT_OK(f(vector_index::VectorLSMDeletion {
+        .vector_id = vector_index::TryFullyDecodeVectorId(
+            Slice(vector_id.data(), vector_id.size())),
+        .hybrid_time = HybridTime(Load<uint64_t, HnswEndian>(entry + suffix_size)),
+      }));
+    }
+  }
+  return Status::OK();
 }
 
 const std::byte* SearchCache::Data(size_t index) {

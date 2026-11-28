@@ -148,17 +148,22 @@ void Convert(size_t flags, RefForConverter<Converter, Config> config, Converter&
 //   0x01, always set: the fields of every release.
 //   0x02: every block ends with a CRC32C trailer, see kBlockTrailerSize.
 //   0x04: the tenant directory, see Header::tenant_directory_block.
-// A chunk without trailers and tenants holds 0x01 alone, which older releases read as their
-// version 1. They also read 0x03 like version 1: they find data inside a block by offsets from
-// other blocks and never read past them, so they ignore the trailers, keeping rollback possible.
+//   0x08: vector deletions, see Header::deletion_block.
+// A chunk without trailers, tenants and deletions holds 0x01 alone, which older releases read as
+// their version 1. They also read 0x03 like version 1: they find data inside a block by offsets
+// from other blocks and never read past them, so they ignore the trailers, keeping rollback
+// possible.
 constexpr uint8_t kFooterBase = 0x01;
 constexpr uint8_t kFooterBlockTrailers = 0x02;
 constexpr uint8_t kFooterTenantDirectory = 0x04;
-constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterBlockTrailers | kFooterTenantDirectory;
+constexpr uint8_t kFooterDeletions = 0x08;
+constexpr uint8_t kFooterKnownFlags =
+    kFooterBase | kFooterBlockTrailers | kFooterTenantDirectory | kFooterDeletions;
 
 uint8_t FooterFlags(const Header& header, HasBlockTrailers has_block_trailers) {
   return kFooterBase | (has_block_trailers ? kFooterBlockTrailers : 0) |
-         (header.num_tenant_directory_blocks ? kFooterTenantDirectory : 0);
+         (header.num_tenant_directory_blocks ? kFooterTenantDirectory : 0) |
+         (header.num_deletions ? kFooterDeletions : 0);
 }
 
 template <class Converter>
@@ -177,6 +182,14 @@ void Convert(size_t flags, RefForConverter<Converter, Header> header, Converter&
     ConvertField<uint64_t>(header.tenant_directory_block, serializer);
     ConvertField<uint64_t>(header.num_tenant_directory_blocks, serializer);
     ConvertVector(flags, header.tenant_directory_boundaries, serializer);
+  }
+  if (flags & kFooterDeletions) {
+    ConvertField<uint64_t>(header.num_deletions, serializer);
+    ConvertField<uint64_t>(header.deletion_bits, serializer);
+    ConvertField<uint64_t>(header.deletion_block, serializer);
+    ConvertField<uint64_t>(header.deletion_filter_bits, serializer);
+    ConvertField<uint64_t>(header.deletion_filter_block, serializer);
+    ConvertField<uint64_t>(header.deletion_filter_size, serializer);
   }
 }
 
@@ -296,7 +309,6 @@ struct CachedBlock {
   void Init(BlockCache& cache_, DataBlock&& context_data, size_t block_end) {
     Init(cache_, context_data.size, block_end);
 
-    DCHECK_GT(context_data.size, 0);
     bool has_data;
     {
       std::lock_guard lock(mutex);
@@ -461,6 +473,7 @@ FileBlockCache::FileBlockCache(
   }
   has_block_trailers_ = HasBlockTrailers(
       builder->has_block_trailers() && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
+  block_trailer_size_ = builder->has_block_trailers() ? kBlockTrailerSize : 0;
   auto& blocks = builder->blocks();
   size_t total_size = 0;
   size_t index = 0;
@@ -524,6 +537,7 @@ Result<Header> FileBlockCache::Load() {
       reader.Left(), SerializedSize(Header(), flags), Corruption, "Footer size too small");
   has_block_trailers_ = HasBlockTrailers(
       (flags & kFooterBlockTrailers) && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
+  block_trailer_size_ = (flags & kFooterBlockTrailers) ? kBlockTrailerSize : 0;
   Deserialize(flags, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
@@ -541,6 +555,10 @@ Result<const std::byte*> FileBlockCache::Take(size_t index) {
 
 void FileBlockCache::Release(size_t index) {
   blocks_[index].Release();
+}
+
+size_t FileBlockCache::BlockSize(size_t index) const {
+  return blocks_[index].size - block_trailer_size_;
 }
 
 BlockCache::BlockCache(

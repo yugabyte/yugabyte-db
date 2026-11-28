@@ -68,16 +68,16 @@ struct LayerInfo {
 class YbHnswIndexAdapter;
 
 struct Header {
-  size_t dimensions;
-  size_t vector_data_size;
-  VectorNo entry;
-  size_t max_level;
+  size_t dimensions = 0;
+  size_t vector_data_size = 0;
+  VectorNo entry = 0;
+  size_t max_level = 0;
   Config config;
-  size_t max_block_size;
-  size_t max_vectors_per_non_base_block;
+  size_t max_block_size = 0;
+  size_t max_vectors_per_non_base_block = 0;
 
-  size_t vector_data_block;
-  size_t vector_data_amount_per_block;
+  size_t vector_data_block = 0;
+  size_t vector_data_amount_per_block = 0;
   std::vector<LayerInfo> layers;
 
   // Vectors of different tenants are not linked. num_tenant_directory_blocks blocks, consecutive
@@ -88,11 +88,28 @@ struct Header {
   size_t num_tenant_directory_blocks = 0;
   std::vector<std::string> tenant_directory_boundaries;
 
+  // num_deletions vector deletions saved with the chunk, see vector_index::VectorLSMDeletion.
+  // Vector ids are random, so their leading bits address blocks. 2^deletion_bits blocks,
+  // consecutive from deletion_block, hold the deletions sorted by vector id: those whose vector ids
+  // start with the deletion_bits bits p are in block deletion_block + p. An entry is the vector id
+  // without its first deletion_bits / 8 bytes, which the block implies, followed by the hybrid
+  // time. Likewise 2^deletion_filter_bits blocks of deletion_filter_size bytes from
+  // deletion_filter_block hold fixed size bloom filters over the vector ids by their first
+  // deletion_filter_bits bits.
+  size_t num_deletions = 0;
+  size_t deletion_bits = 0;
+  size_t deletion_block = 0;
+  size_t deletion_filter_bits = 0;
+  size_t deletion_filter_block = 0;
+  size_t deletion_filter_size = 0;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         dimensions, vector_data_size, entry, max_level, config, max_block_size,
         max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers,
-        tenant_directory_block, num_tenant_directory_blocks, tenant_directory_boundaries);
+        tenant_directory_block, num_tenant_directory_blocks, tenant_directory_boundaries,
+        num_deletions, deletion_bits, deletion_block, deletion_filter_bits, deletion_filter_block,
+        deletion_filter_size);
   }
 };
 
