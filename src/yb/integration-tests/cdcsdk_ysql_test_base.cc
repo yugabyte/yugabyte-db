@@ -2966,29 +2966,27 @@ void CDCSDKYsqlTest::CompareExpirationTime(
   ASSERT_OK(WaitFor(
       [&]() {
         CoarseTimePoint current_expiry_time;
-        while (true) {
-          for (auto const& peer : test_cluster()->GetTabletPeers(current_leader_idx)) {
-            if (peer->tablet_id() == tablet_id) {
-              current_expiry_time = peer->cdc_sdk_min_checkpoint_op_id_expiration();
-              break;
-            }
+        for (auto const& peer : test_cluster()->GetTabletPeers(current_leader_idx)) {
+          if (peer->tablet_id() == tablet_id) {
+            current_expiry_time = peer->cdc_sdk_min_checkpoint_op_id_expiration();
+            break;
           }
-          if (strictly_greater_than) {
-            if (current_expiry_time > prev_leader_expiry_time) {
-              LOG(INFO) << "The expiration time for the current LEADER is: "
-                        << current_expiry_time.time_since_epoch().count()
-                        << ", and the previous LEADER expiration time should be: "
-                        << prev_leader_expiry_time.time_since_epoch().count();
-              return true;
-            }
-          } else {
-            if (current_expiry_time >= prev_leader_expiry_time) {
-              LOG(INFO) << "The expiration time for the current LEADER is: "
-                        << current_expiry_time.time_since_epoch().count()
-                        << ", and the previous LEADER expiration time should be: "
-                        << prev_leader_expiry_time.time_since_epoch().count();
-              return true;
-            }
+        }
+        if (strictly_greater_than) {
+          if (current_expiry_time > prev_leader_expiry_time) {
+            LOG(INFO) << "The expiration time for the current LEADER is: "
+                      << current_expiry_time.time_since_epoch().count()
+                      << ", and the previous LEADER expiration time should be: "
+                      << prev_leader_expiry_time.time_since_epoch().count();
+            return true;
+          }
+        } else {
+          if (current_expiry_time >= prev_leader_expiry_time) {
+            LOG(INFO) << "The expiration time for the current LEADER is: "
+                      << current_expiry_time.time_since_epoch().count()
+                      << ", and the previous LEADER expiration time should be: "
+                      << prev_leader_expiry_time.time_since_epoch().count();
+            return true;
           }
         }
         return false;

@@ -4404,7 +4404,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWhenAFollowerIsUna
   test_cluster()->mini_tablet_server(first_follower_index)->Shutdown();
   LOG(INFO) << "TServer hosting tablet follower shutdown";
   // Call GetChanges so that the last active time is updated on the new leader.
-  result = GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
+  // The stream uses explicit checkpoints: only a request that carries one updates the active time.
+  ASSERT_OK(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
 
   // Call the test RPC to get last active time of the current leader (original), and it must
   // be greater than or equal to the previously recorded last_active_time.
