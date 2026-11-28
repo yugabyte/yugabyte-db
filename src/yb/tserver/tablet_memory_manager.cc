@@ -31,6 +31,7 @@
 
 #include "yb/util/background_task.h"
 #include "yb/util/cgroups.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -96,6 +97,20 @@ DEFINE_RUNTIME_int32(db_block_cache_num_shard_bits, -1,
              "overridden, that value would be used in favor of the dynamic scheme. "
              "The maximum permissible value is 19.");
 TAG_FLAG(db_block_cache_num_shard_bits, advanced);
+
+DEFINE_NON_RUNTIME_string(db_block_cache_type, "lru",
+    "Replacement policy of the shared RocksDB block cache. lru: LRU with separate single-touch and "
+    "multi-touch pools, each shard behind a mutex. hyper_clock: lock-free CLOCK cache ported from "
+    "upstream RocksDB's HyperClockCache, which scales better when many threads read the same "
+    "blocks. It has a single pool, reported as multi-touch usage.");
+DEFINE_validator(db_block_cache_type, FLAG_IN_SET_VALIDATOR("lru", "hyper_clock"));
+TAG_FLAG(db_block_cache_type, advanced);
+
+DEFINE_NON_RUNTIME_uint64(db_block_cache_hyper_clock_estimated_entry_charge, 0,
+    "For --db_block_cache_type=hyper_clock: the expected average charge of a block cache entry. "
+    "0 makes each shard's hash table grow as needed. A positive value sizes the tables up front, "
+    "which is slightly faster when the estimate is accurate.");
+TAG_FLAG(db_block_cache_hyper_clock_estimated_entry_charge, advanced);
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                   "Always pretend memory has been exceeded to enforce background flush.");
@@ -263,8 +278,17 @@ void TabletMemoryManager::InitBlockCache(
   // BlockBasedTableBuilder->[Regular|Intents]DB->tablet-<tablet_id>->Tablets_overhead->server->root
 
   if (block_cache_size_bytes != DB_CACHE_SIZE_CACHE_DISABLED) {
-    options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
-                                                GetDbBlockCacheNumShardBits());
+    const auto num_shard_bits = GetDbBlockCacheNumShardBits();
+    if (FLAGS_db_block_cache_type == "hyper_clock") {
+      options->block_cache = rocksdb::NewHyperClockCache(
+          block_cache_size_bytes, num_shard_bits, /* strict_capacity_limit= */ false,
+          FLAGS_db_block_cache_hyper_clock_estimated_entry_charge);
+    } else {
+      options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes, num_shard_bits);
+    }
+    LOG(INFO) << "Block cache: " << FLAGS_db_block_cache_type << ", "
+              << HumanReadableNumBytes::ToString(block_cache_size_bytes) << ", "
+              << (1 << num_shard_bits) << " shards";
     options->block_cache->SetMetrics(metrics);
     block_based_table_gc_ = std::make_shared<LRUCacheGC>(options->block_cache);
     block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
