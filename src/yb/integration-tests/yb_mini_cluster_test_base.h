@@ -34,6 +34,8 @@ YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
 template <class T>
 class YBMiniClusterTestBase: public YBTest {
  public:
+  YBMiniClusterTestBase();
+
   virtual void SetUp() override;
 
   // We override TearDown finally here, because we need to make sure DoBeforeTearDown is always

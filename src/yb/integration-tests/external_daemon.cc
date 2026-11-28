@@ -162,12 +162,19 @@ ExternalDaemon::LogTailerThread::LogTailerThread(
           if (state->listener) {
             state->listener->Handle(GStringPiece(line_buf, l));
           }
+          for (const auto& stream_listener : state->stream_listeners) {
+            stream_listener->Handle(GStringPiece(line_buf, l));
+          }
         }
         fclose(fp);
         bool stopped;
         {
           lock_guard<mutex> lock(state->mutex);
           stopped = state->stopped;
+          for (const auto& stream_listener : state->stream_listeners) {
+            stream_listener->StreamEnded();
+          }
+          state->stream_listeners.clear();
         }
         if (!stopped) {
           // It might not be safe to log anything if we have already stopped.
@@ -181,6 +188,12 @@ ExternalDaemon::LogTailerThread::LogTailerThread(
 void ExternalDaemon::LogTailerThread::SetListener(StringListener* listener) {
   std::lock_guard<std::mutex> lock(state_->mutex);
   state_->listener = listener;
+}
+
+void ExternalDaemon::LogTailerThread::AddStreamListener(
+    std::shared_ptr<StringListener> listener) {
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  state_->stream_listeners.push_back(std::move(listener));
 }
 
 ExternalDaemon::StringListener* ExternalDaemon::LogTailerThread::listener() {
@@ -207,6 +220,10 @@ ExternalDaemon::LogTailerThread::~LogTailerThread() {
   std::lock_guard<std::mutex> lock(state_->mutex);
   state_->stopped = true;
   state_->listener = nullptr;
+  for (const auto& stream_listener : state_->stream_listeners) {
+    stream_listener->StreamEnded();
+  }
+  state_->stream_listeners.clear();
 }
 
 ExternalDaemon::ExternalDaemon(
@@ -359,6 +376,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
       default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
   if (listener) {
     stderr_tailer_thread_->SetListener(listener);
+  }
+  for (const auto& factory : stream_listener_factories_) {
+    for (auto* tailer : {stdout_tailer_thread_.get(), stderr_tailer_thread_.get()}) {
+      if (auto stream_listener = factory()) {
+        tailer->AddStreamListener(std::move(stream_listener));
+      }
+    }
   }
 
   process_.swap(p);
@@ -611,6 +635,10 @@ string ExternalDaemon::LogPrefix() {
 void ExternalDaemon::SetLogListener(StringListener* listener) {
   stdout_tailer_thread_->SetListener(listener);
   stderr_tailer_thread_->SetListener(listener);
+}
+
+void ExternalDaemon::AddStreamListenerFactory(StreamListenerFactory factory) {
+  stream_listener_factories_.push_back(std::move(factory));
 }
 
 void ExternalDaemon::RemoveLogListener(StringListener* listener) {

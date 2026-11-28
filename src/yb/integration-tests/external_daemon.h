@@ -15,6 +15,7 @@
 
 #include <sys/types.h>
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -59,8 +60,13 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   class StringListener {
    public:
     virtual void Handle(const GStringPiece& s) = 0;
+    // Called once on a stream listener when its stream reaches EOF or its tailer stops.
+    virtual void StreamEnded() {}
     virtual ~StringListener() {}
   };
+
+  // Makes a listener for one output stream of one process start. May return nullptr.
+  using StreamListenerFactory = std::function<std::shared_ptr<StringListener>()>;
 
   class LogTailerThread {
    public:
@@ -69,6 +75,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     void SetListener(StringListener* listener);
 
     void RemoveListener(StringListener* listener);
+
+    // Unlike the listener above, a stream listener is owned by the tailer, sees every line of this
+    // stream, and is told when the stream ends.
+    void AddStreamListener(std::shared_ptr<StringListener> listener);
 
     StringListener* listener();
 
@@ -88,6 +98,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
       std::mutex mutex;
       bool stopped GUARDED_BY(mutex) = false;
       StringListener* listener GUARDED_BY(mutex) = nullptr;
+      std::vector<std::shared_ptr<StringListener>> stream_listeners GUARDED_BY(mutex);
     };
 
     static GlobalLogTailerState* global_state();
@@ -181,6 +192,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   void SetLogListener(StringListener* listener);
 
   void RemoveLogListener(StringListener* listener);
+
+  // Each later process start, including restarts, gets new stream listeners from factory, one for
+  // stdout and one for stderr.
+  void AddStreamListenerFactory(StreamListenerFactory factory);
 
   template <class ValueType>
   static Result<ValueType> GetMetricFromHost(
@@ -310,6 +325,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
  private:
   std::unique_ptr<LogTailerThread> stdout_tailer_thread_, stderr_tailer_thread_;
+  std::vector<StreamListenerFactory> stream_listener_factories_;
 
   DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
 };

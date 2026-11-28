@@ -110,6 +110,7 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mem_report.h"
 
 
 using namespace std::literals;  // NOLINT
@@ -208,6 +209,31 @@ void AppendFlagToAllowedPreviewFlagsCsv(
 namespace {
 
 constexpr auto kDefaultTimeout = 10s * kTimeMultiplier;
+
+class PgMemStreamListener : public ExternalDaemon::StringListener {
+ public:
+  explicit PgMemStreamListener(std::shared_ptr<pgwrapper::PgMemLogSource> source)
+      : source_(std::move(source)) {}
+
+  void Handle(const GStringPiece& s) override {
+    source_->AddLine(std::string_view(s.data(), s.size()));
+  }
+
+  void StreamEnded() override {
+    source_->Close();
+  }
+
+ private:
+  const std::shared_ptr<pgwrapper::PgMemLogSource> source_;
+};
+
+std::shared_ptr<ExternalDaemon::StringListener> NewPgMemStreamListener() {
+  auto source = pgwrapper::PgMemReportCollector::Get().NewSource();
+  if (!source) {
+    return nullptr;
+  }
+  return std::make_shared<PgMemStreamListener>(std::move(source));
+}
 
 std::vector<std::string> FsRootDirs(const std::string& data_dir,
                                     uint16_t num_drives) {
@@ -313,6 +339,13 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   // our memory for per-tablet overhead.
   opts_.extra_tserver_flags.insert(
       opts_.extra_tserver_flags.begin(), "--tablet_overhead_size_percentage=30"s);
+  auto pg_mem_flags = pgwrapper::PgMemReportFlagsForChildProcess();
+  opts_.extra_tserver_flags.insert(
+      opts_.extra_tserver_flags.begin(), pg_mem_flags.begin(), pg_mem_flags.end());
+  // Upgrade tests boot older yb-tserver binaries that do not have these flags.
+  for (const auto& name : pgwrapper::PgMemReportFlagNames()) {
+    AppendCsvFlagValue(opts_.extra_tserver_flags, "undefok", name);
+  }
   AddExtraFlagsFromEnvVar("YB_EXTRA_MASTER_FLAGS", &opts_.extra_master_flags);
   AddExtraFlagsFromEnvVar("YB_EXTRA_TSERVER_FLAGS", &opts_.extra_tserver_flags);
 }
@@ -1547,6 +1580,7 @@ Result<size_t> ExternalMiniCluster::LaunchTabletServer(
       GetDataPath(Format("ts-$0", idx + 1)), num_drives, GetBindIpForTabletServer(idx), ts_rpc_port,
       ts_http_port, redis_rpc_port, redis_http_port, cql_rpc_port, cql_http_port, pgsql_rpc_port,
       ysql_conn_mgr_rpc_port, pgsql_http_port, master_hostports, SubstituteInFlags(flags, idx));
+  ts->AddStreamListenerFactory(NewPgMemStreamListener);
   RETURN_NOT_OK(ts->Launch(start_cql_proxy));
   tablet_servers_.push_back(ts);
 

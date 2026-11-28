@@ -29,6 +29,7 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -200,6 +201,19 @@ public class BaseMiniClusterTest extends BaseYBTest {
   }
 
   /**
+   * Destroys a cluster marked for recreation right after the test instead of before the next one,
+   * so that the checks that run at cluster shutdown (daemon crashes, postgres memory budgets) fail
+   * the test that caused them.
+   */
+  @After
+  public void destroyMiniClusterIfNeedsRecreation() throws Exception {
+    if (clusterNeedsRecreation) {
+      clusterNeedsRecreation = false;
+      destroyMiniCluster();
+    }
+  }
+
+  /**
    * A helper function to wait for existing tservers to heartbeat to master leader.
    * @return true if the number of tablet servers found is as expected
    */
@@ -344,8 +358,11 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static void destroyMiniCluster() throws Exception {
     if (miniCluster != null) {
       LOG.info("Destroying mini cluster");
-      miniCluster.shutdown();
-      miniCluster = null;
+      try {
+        miniCluster.shutdown();
+      } finally {
+        miniCluster = null;
+      }
     }
   }
 

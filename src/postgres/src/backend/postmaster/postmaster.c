@@ -159,6 +159,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
 #include "yb_internal_conn.h"
+#include "yb_mem_report.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
 
@@ -1168,6 +1169,9 @@ PostmasterMain(int argc, char *argv[])
 		puts(config_val ? config_val : "");
 		ExitPostmaster(0);
 	}
+
+	/* YB: reads the flags that size its shared memory, so goes first. */
+	YbMemReportPostmasterInit();
 
 	/*
 	 * Set up shared memory and semaphores.
@@ -3492,7 +3496,8 @@ reaper(SIGNAL_ARGS)
 	ereport(DEBUG4,
 			(errmsg_internal("reaping dead processes")));
 
-	while ((pid = waitpid(-1, &exitstatus, WNOHANG)) > 0)
+	/* YB: waitpid(-1, &exitstatus, WNOHANG) that also logs the memory report */
+	while ((pid = YbMemReportWaitpid(&exitstatus)) > 0)
 	{
 		int			i;
 		bool		foundProcStruct = false;

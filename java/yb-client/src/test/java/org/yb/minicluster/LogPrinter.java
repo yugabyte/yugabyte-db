@@ -49,6 +49,7 @@ public class LogPrinter implements AutoCloseable {
 
   private boolean stopped = false;
   private String errorMessage;
+  private volatile boolean reachedEndOfStream = false;
 
   private static final boolean LOG_PRINTER_DEBUG = false;
 
@@ -134,6 +135,8 @@ public class LogPrinter implements AutoCloseable {
               }
               System.out.flush();
             }
+            // readLine() returns null only once every process holding the stream has closed it.
+            reachedEndOfStream = true;
             // Sleep for a short time and give the child process a chance to generate more output.
             Thread.sleep(10);
           }
@@ -182,6 +185,23 @@ public class LogPrinter implements AutoCloseable {
       }
       LOG.info(withPrefix("Finished thread"));
     }
+  }
+
+  /**
+   * Waits until the stream has ended, i.e. the process and every child that inherited its output
+   * have exited, so that all of their output has been passed to the listeners.
+   *
+   * @return whether the stream ended within the timeout
+   */
+  public boolean waitForEndOfStream(long timeoutMs) throws InterruptedException {
+    long deadlineMs = System.currentTimeMillis() + timeoutMs;
+    while (!reachedEndOfStream) {
+      if (System.currentTimeMillis() >= deadlineMs) {
+        return false;
+      }
+      Thread.sleep(10);
+    }
+    return true;
   }
 
   public void stop() throws InterruptedException {

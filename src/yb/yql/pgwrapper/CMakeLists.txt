@@ -14,6 +14,7 @@
 set(YB_PCH_PREFIX pgwrapper)
 
 set(PGWRAPPER_SRCS
+    pg_mem_report.cc
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
     yb_ash
@@ -191,6 +192,7 @@ ADD_YB_TEST(pg_libpq_err-test)
 ADD_YB_TEST(pg_local_limit_optimization-test)
 ADD_YB_TEST(pg_load_balancer-test)
 ADD_YB_TEST(pg_master_failover-test)
+ADD_YB_TEST(pg_mem_report-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_namespace-test)
 ADD_YB_TEST(pg_namespace_master_restart-test)

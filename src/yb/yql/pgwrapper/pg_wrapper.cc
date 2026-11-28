@@ -71,12 +71,14 @@
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mem_report.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_bool(openssl_require_fips);
 DECLARE_bool(enable_qos);
+DECLARE_bool(TEST_ysql_pg_mem_report);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
@@ -1218,8 +1220,16 @@ Status PgWrapper::Start() {
                    std::to_string(FLAGS_ysql_conn_mgr_max_pools));
   }
 
-  proc_->ShareParentStderr();
+  // An in-process test cluster tees postgres stderr so the test can collect YB_PG_MEM_* lines.
+  auto pg_mem_source = FLAGS_TEST_ysql_pg_mem_report
+      ? PgMemReportCollector::Get().NewSource() : nullptr;
+  if (pg_mem_source) {
+    proc_->PipeParentStderr();
+  } else {
+    proc_->ShareParentStderr();
+  }
   proc_->ShareParentStdout();
+  SetPgMemReportEnv(&*proc_);
   proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                 FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
@@ -1258,6 +1268,9 @@ Status PgWrapper::Start() {
   }
 #endif
   RETURN_NOT_OK(proc_->Start());
+  if (pg_mem_source) {
+    StartPgMemStderrTee(proc_->ReleaseChildStderrFd(), std::move(pg_mem_source));
+  }
   LOG(INFO) << "PostgreSQL server running as pid " << proc_->pid();
   return Status::OK();
 }

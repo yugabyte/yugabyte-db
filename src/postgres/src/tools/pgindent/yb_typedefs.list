@@ -141,6 +141,10 @@ YbLockMechanism
 YbLockRowsStateInfo
 YbLogicalClientVersionType
 YbLsmBuildState
+YbMemReportKind
+YbMemReportLine
+YbMemReportShared
+YbMemReportSlot
 YbMergeScanInfo
 YbMergeScanStreamColInfo
 YbNLBatchStatus
