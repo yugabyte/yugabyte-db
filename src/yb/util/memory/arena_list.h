@@ -208,6 +208,17 @@ class ArenaList {
     assign(collection.begin(), collection.end());
   }
 
+  // Sort the list in place using the given comparator over Entry values. boost::intrusive::list
+  // sorts by relinking node pointers - no allocations, no payload movement. References to
+  // entries (and Slices that point into entry-owned arena memory) remain valid.
+  template <class Compare>
+  void sort(Compare cmp) {
+    list_.sort([cmp = std::move(cmp)](const ArenaListNode<Entry>& a,
+                                      const ArenaListNode<Entry>& b) {
+      return cmp(*a.value_ptr, *b.value_ptr);
+    });
+  }
+
   void swap(ArenaList* rhs) {
     std::swap(arena_, rhs->arena_);
     list_.swap(rhs->list_);
