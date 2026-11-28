@@ -86,8 +86,9 @@ class PgRequestSequencerTest : public YBTest {
   }
 
   void Shutdown() {
+    sequencer_.StartShutdown();
     std::unique_lock lock(mutex_);
-    sequencer_.Shutdown();
+    sequencer_.CompleteShutdown();
     is_active_ = false;
   }
 

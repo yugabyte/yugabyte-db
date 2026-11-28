@@ -36,7 +36,7 @@ PgSessionCrossThreadGuard::~PgSessionCrossThreadGuard() {
     state_->before_release_(PgSessionGuardState::IsCrossThreadLock::kTrue);
     state_->is_cross_thread_locked_ = false;
   }
-  state_->cond_.notify_one();
+  state_->cond_.notify_all();
 }
 
 PgSessionCrossThreadGuard::PgSessionCrossThreadGuard(
