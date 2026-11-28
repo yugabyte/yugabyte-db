@@ -2829,6 +2829,19 @@ Default: `15000`
 
 Per-node timeout, in milliseconds, for the RPC that carries a [cluster-wide database view](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/) remote query. Runtime-modifiable. A node that exceeds this timeout is skipped with a WARNING, and the query returns rows from the remaining nodes.
 
+##### --ysql_yb_enable_pg_duckdb
+
+{{% tags/wrap %}}
+{{<tags/feature/tp>}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables the [pg_duckdb](../../../additional-features/pg-extensions/extension-pgduckdb/) extension for data-lake I/O (Parquet, CSV, and JSON import and export). Available in v2026.2 and later.
+
+This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list. Not available on sanitizer (ASAN/TSAN) builds.
+
 ##### --ysql_enable_write_pipelining
 
 {{% tags/wrap %}}
