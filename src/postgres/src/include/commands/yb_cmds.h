@@ -94,6 +94,8 @@ extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 
 extern void YBCDropIndex(Relation index);
 
+extern void YbWriteColocatedIndexTombstone(Relation index);
+
 extern bool YbAddColumnUsesDocdbMissingValue(Expr *cooked_default);
 
 extern List *YBCPrepareAlterTable(List **subcmds,
