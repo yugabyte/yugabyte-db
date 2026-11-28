@@ -5423,8 +5423,8 @@ YbRefreshCacheBetweenStatements(uint64_t catalog_master_version, bool is_retry)
 	PG_END_TRY();
 }
 
-static void
-YBCheckSharedCatalogCacheVersion()
+void
+YBCheckSharedCatalogCacheVersion(void)
 {
 	/*
 	 * We cannot refresh the cache if we are already inside a transaction, so don't

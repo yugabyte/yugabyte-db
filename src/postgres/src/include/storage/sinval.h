@@ -211,6 +211,8 @@ extern void LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg);
 
 extern bool YbCanApplyMessage(const SharedInvalidationMessage *msg);
 
+extern bool YbIsCrossProcessInvalMessage(const SharedInvalidationMessage *msg);
+
 /* debugging helper */
 extern void YbLogInvalidationMessages(const SharedInvalidationMessage *msgs, int nmsgs);
 
