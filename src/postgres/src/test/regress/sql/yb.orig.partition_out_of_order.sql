@@ -120,3 +120,155 @@ UPDATE base SET (b, c, a) = (SELECT base.b || 'y', base.c, base.a + 1);
 INSERT INTO base (a, b) VALUES (12, 'foo'), (32, 'baz') ON CONFLICT(a) DO UPDATE SET (a, b) = (SELECT EXCLUDED.a, base.b || 'x');
 
 SELECT * FROM base ORDER BY a;
+
+-- GH-36896: ON CONFLICT DO UPDATE on a routed partition must fire the
+-- UPDATE OF <col> triggers of the updated column, using the partition's
+-- attribute numbers. A plain UPDATE is the control.
+CREATE FUNCTION gh36896_say() RETURNS trigger LANGUAGE plpgsql AS
+  $$BEGIN RAISE NOTICE 'fired %', TG_NAME; RETURN NEW; END$$;
+-- Partition with reordered columns.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_p (c int, b int, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+CREATE TRIGGER upd_c AFTER UPDATE OF c ON t FOR EACH ROW EXECUTE FUNCTION gh36896_say();
+CREATE TRIGGER upd_a BEFORE UPDATE OF a ON t FOR EACH ROW EXECUTE FUNCTION gh36896_say();
+INSERT INTO t VALUES (1, 1, 1);
+INSERT INTO t VALUES (1, 5, 5) ON CONFLICT (a) DO UPDATE SET c = EXCLUDED.c;
+UPDATE t SET c = 9 WHERE a = 1;
+SELECT * FROM t;
+DROP TABLE t;
+-- Partition with a dropped column, so attribute numbers shift without a
+-- visible reorder.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_p (x int, a int NOT NULL, b int, c int, PRIMARY KEY (a));
+ALTER TABLE t_p DROP COLUMN x;
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+CREATE TRIGGER upd_b AFTER UPDATE OF b ON t FOR EACH ROW EXECUTE FUNCTION gh36896_say();
+INSERT INTO t VALUES (1, 1, 1);
+INSERT INTO t VALUES (1, 5, 5) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+UPDATE t SET b = 9 WHERE a = 1;
+SELECT * FROM t;
+DROP TABLE t;
+-- Two levels: only the sub-partition is reordered.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_mid PARTITION OF t FOR VALUES FROM (0) TO (100) PARTITION BY RANGE (a);
+CREATE TABLE t_leaf (c int, b int, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t_mid ATTACH PARTITION t_leaf FOR VALUES FROM (0) TO (50);
+CREATE TRIGGER upd_c AFTER UPDATE OF c ON t FOR EACH ROW EXECUTE FUNCTION gh36896_say();
+INSERT INTO t VALUES (1, 1, 1);
+INSERT INTO t VALUES (1, 5, 5) ON CONFLICT (a) DO UPDATE SET c = EXCLUDED.c;
+UPDATE t SET c = 9 WHERE a = 1;
+SELECT * FROM t;
+DROP TABLE t;
+-- Trigger defined on the reordered partition itself. ON CONFLICT through the
+-- parent routes the row; ON CONFLICT on the partition does not.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_p (c int, b int, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+CREATE TRIGGER p_upd_c AFTER UPDATE OF c ON t_p FOR EACH ROW EXECUTE FUNCTION gh36896_say();
+INSERT INTO t VALUES (1, 1, 1);
+INSERT INTO t VALUES (1, 5, 5) ON CONFLICT (a) DO UPDATE SET c = EXCLUDED.c;
+INSERT INTO t_p (a, b, c) VALUES (1, 6, 6) ON CONFLICT (a) DO UPDATE SET c = EXCLUDED.c;
+SELECT * FROM t;
+DROP TABLE t;
+DROP FUNCTION gh36896_say;
+
+-- GH-36896: more cases where the routed partition's attribute numbers differ
+-- from the root's.
+CREATE FUNCTION gh36896_log() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE NOTICE '% (% %) on %: %', TG_NAME, TG_WHEN, TG_OP, TG_TABLE_NAME, OLD;
+    RETURN OLD;
+  END IF;
+  RAISE NOTICE '% (% %) on %: %', TG_NAME, TG_WHEN, TG_OP, TG_TABLE_NAME, NEW;
+  RETURN NEW;
+END$$;
+-- Multi-row ON CONFLICT DO UPDATE across a partition with the root's layout
+-- and a reordered partition.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_1 PARTITION OF t FOR VALUES FROM (0) TO (10);
+CREATE TABLE t_2 (c int, b int, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_2 FOR VALUES FROM (10) TO (20);
+CREATE TRIGGER upd_c AFTER UPDATE OF c ON t FOR EACH ROW EXECUTE FUNCTION gh36896_log();
+CREATE TRIGGER upd_a AFTER UPDATE OF a ON t FOR EACH ROW EXECUTE FUNCTION gh36896_log();
+INSERT INTO t VALUES (1, 1, 1), (11, 11, 11);
+INSERT INTO t VALUES (1, 2, 2), (11, 12, 12)
+  ON CONFLICT (a) DO UPDATE SET c = EXCLUDED.c RETURNING *;
+SELECT * FROM t ORDER BY a;
+DROP TABLE t;
+-- Cross-partition UPDATE (row movement) into and out of a reordered
+-- partition fires DELETE and INSERT triggers with the right row layout.
+CREATE TABLE t (a int, b text, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_1 PARTITION OF t FOR VALUES FROM (0) TO (10);
+CREATE TABLE t_2 (c int, b text, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_2 FOR VALUES FROM (10) TO (20);
+CREATE TRIGGER bef_ins BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION gh36896_log();
+CREATE TRIGGER aft_ins AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION gh36896_log();
+CREATE TRIGGER bef_del BEFORE DELETE ON t FOR EACH ROW EXECUTE FUNCTION gh36896_log();
+CREATE TRIGGER aft_upd_c AFTER UPDATE OF c ON t FOR EACH ROW EXECUTE FUNCTION gh36896_log();
+INSERT INTO t VALUES (1, 'x', 1);
+UPDATE t SET a = 11, c = 7 WHERE a = 1 RETURNING *;
+UPDATE t SET c = 8 WHERE a = 11 RETURNING *;
+UPDATE t SET a = 2 WHERE a = 11 RETURNING *;
+SELECT * FROM t ORDER BY a;
+DROP TABLE t;
+-- ON CONFLICT DO UPDATE of a stored generated column's source column, where
+-- the source column moved, with an index on the generated column.
+CREATE TABLE t (a int, b int, g int GENERATED ALWAYS AS (b * 10) STORED,
+  PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_p (b int, g int GENERATED ALWAYS AS (b * 10) STORED,
+  a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+CREATE INDEX t_g ON t (g);
+INSERT INTO t (a, b) VALUES (1, 1);
+INSERT INTO t (a, b) VALUES (1, 5) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+SELECT a, b, g FROM t;
+SELECT yb_index_check('t_p_g_idx'::regclass);
+DROP TABLE t;
+-- ON CONFLICT DO UPDATE with a secondary index on a moved column: the index
+-- is updated when its column changes and left alone otherwise.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_p (c int, b int, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+CREATE INDEX t_c ON t (c);
+INSERT INTO t VALUES (1, 1, 1);
+INSERT INTO t VALUES (1, 5, 5) ON CONFLICT (a) DO UPDATE SET c = EXCLUDED.c;
+INSERT INTO t VALUES (1, 6, 6) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+SELECT * FROM t;
+SELECT yb_index_check('t_p_c_idx'::regclass);
+DROP TABLE t;
+-- Column privileges: a constraint violation on a routed, reordered partition
+-- must only show columns the role may see (CVE-2021-3393).
+CREATE TABLE t (a int, b int, secret int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_1 PARTITION OF t FOR VALUES FROM (100) TO (200);
+CREATE TABLE t_p (secret int, b int CHECK (b < 100), a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+INSERT INTO t VALUES (1, 1, 42), (101, 1, 43);
+CREATE ROLE regress_gh36896;
+GRANT INSERT (a, b), UPDATE (a, b), SELECT (a, b) ON t TO regress_gh36896;
+SET ROLE regress_gh36896;
+INSERT INTO t (a, b) VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 500;
+INSERT INTO t (a, b) VALUES (2, 500);
+UPDATE t SET a = 3, b = 500 WHERE a = 101;
+RESET ROLE;
+SELECT * FROM t ORDER BY a;
+DROP TABLE t;
+-- COPY into a partitioned table with a reordered partition and a BEFORE
+-- INSERT trigger that changes a column.
+CREATE TABLE t (a int, b int, c int, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE t_p (c int, b int, a int NOT NULL, PRIMARY KEY (a));
+ALTER TABLE t ATTACH PARTITION t_p FOR VALUES FROM (0) TO (100);
+CREATE FUNCTION gh36896_set_c() RETURNS trigger LANGUAGE plpgsql AS
+  $$BEGIN NEW.c := NEW.b * 100; RETURN NEW; END$$;
+CREATE TRIGGER set_c BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION gh36896_set_c();
+COPY t FROM stdin WITH (ROWS_PER_TRANSACTION 0);
+1	2	3
+\.
+COPY t (b, a) FROM stdin WITH (ROWS_PER_TRANSACTION 0);
+4	5
+\.
+SELECT * FROM t ORDER BY a;
+DROP TABLE t;
+DROP FUNCTION gh36896_log, gh36896_set_c;
+DROP ROLE regress_gh36896;
