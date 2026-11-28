@@ -56,16 +56,19 @@ SET yb_bnl_batch_size = 3;
 -- bnl_serial and bnl_unbatched so a caller can assert more than the counts;
 -- the next call replaces them.
 --
--- `query` carries its own hint comment.  pg_hint_plan prefers a nested
--- statement's own hints to the caller's, and everything built in front of the
--- comment here -- EXPLAIN options, a table name -- stays within the characters
--- it allows to precede a hint.  The settings are local, so the caller's session
--- is unchanged on return.
+-- `query` carries its own hint comment, with YbBatchedNL on each join it
+-- batches.  The unbatched run replaces those hints with NestLoop and sets the
+-- batch size to 1, so none of its joins batches.  pg_hint_plan prefers a
+-- nested statement's own hints to the caller's, and everything built in front
+-- of the comment here -- EXPLAIN options, a table name -- stays within the
+-- characters it allows to precede a hint.  The settings are local, so the
+-- caller's session is unchanged on return.
 create function bnl_variants(query text) returns setof text
 language plpgsql as $$
 declare
   regimes  text[] := array['parallel', 'serial', 'unbatched'];
   regime   text;
+  rquery   text;
   line     text;
   n        bigint;
   counts   text := '';
@@ -86,20 +89,20 @@ begin
                        case regime when 'parallel' then '2' else '0' end, true);
     perform set_config('yb_bnl_batch_size',
                        case regime when 'unbatched' then '1' else '3' end, true);
-    -- Batching is the only join method the settings above leave enabled, so
-    -- plain nested loops have to come back for the run that takes it away.
-    perform set_config('enable_nestloop',
-                       case regime when 'unbatched' then 'on' else 'off' end,
-                       true);
+    rquery := case regime
+                when 'unbatched' then regexp_replace(query, '\mYbBatchedNL\(',
+                                                     'NestLoop(', 'g')
+                else query
+              end;
 
     return next '-- ' || regime;
     begin
-      for line in execute 'explain (costs off) ' || query
+      for line in execute 'explain (costs off) ' || rquery
       loop
         return next line;
       end loop;
 
-      execute 'create temporary table bnl_' || regime || ' as ' || query;
+      execute 'create temporary table bnl_' || regime || ' as ' || rquery;
     exception when others then
       -- One regime failing must not take the others down with it, or a planner
       -- error in any of them hides every result this reports.  Parenthesized
@@ -196,9 +199,11 @@ reset join_collapse_limit;
 -- No Leading hint: that hint is what enables the join pruning that rejects a
 -- Gather at an intermediate join (#28510), and without it that pruning never
 -- runs.  The explicit joins and the collapse limit fix the join tree instead,
--- and the data fixes each join's direction: t1a and t1b are small, t2 is not,
--- so each join is cheapest with the t1 side, or the filtered t2b, as its
--- batched outer.
+-- and the data fixes the direction of the batched joins: t1a is small, t2 is
+-- not, so each batched join is cheapest with t1a, or the filtered t2b, as its
+-- batched outer.  t1b stays the outer of the top join only while the session
+-- turns sequential scans off: with them on, the serial plan puts t1b, which a
+-- sequential scan reads, on the inner side, where no join batches t1b.
 -- Expected: the top join cannot batch t1b without splitting the expression
 -- across two joins, so it stays a plain nested loop despite its YbBatchedNL
 -- hint, and all three runs return the same rows.
