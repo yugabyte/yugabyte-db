@@ -187,6 +187,13 @@ race:k5_once
 race:od_logger_format
 race:od_stat_query_end
 race:od_route_pool_stat
+# Odyssey config reload (SIGHUP and console RELOAD). od_rules_cleanup frees
+# rule storages under rules.mu, but the system thread walked them at startup
+# (od_rules_storages_watchdogs_run) without it; od_config_reload copies config
+# fields, including YB's yb_max_prepared_statements, with no synchronization.
+# Matches any stack containing od_system_config_reload, so it also hides races
+# in od_hba_reload, od_logger_set_debug and the TLS reload loop.
+race:od_system_config_reload
 
 # pg_documentdb_gw_host bundles Rust code (tokio runtime, Rust stdlib, the
 # documentdb_gateway crate, and our bgworker glue) that is not compiled with
