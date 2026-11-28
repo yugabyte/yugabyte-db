@@ -20,6 +20,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.gson.JsonObject;
+import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -42,6 +43,7 @@ public class TestNonTransactionalStickiness extends BaseYsqlConnMgr {
   private static final String ROLE = "nontxn_role";
   private static final String WEAK_PASSWORD = "tooshrt";
   private static final String PROCEDURE = "nontxn_proc";
+  private static final String DBLINK_CONNECT = "nontxn_dblink_connect";
   private static final String ORIGIN_USER = "nontxn_origin_user";
   private static final String ORIGIN_USER_PASSWORD = "pwd";
   private static final String ORIGIN_FUNCTIONS =
@@ -101,6 +103,13 @@ public class TestNonTransactionalStickiness extends BaseYsqlConnMgr {
         return intResult(stmt, "SELECT hll_log2m(hll_empty())") == 10;
       }
     },
+    DBLINK("SELECT " + DBLINK_CONNECT + "()", "PERFORM " + DBLINK_CONNECT + "()") {
+      @Override
+      boolean hasState(Statement stmt) throws Exception {
+        return intResult(stmt,
+            "SELECT coalesce(array_length(dblink_get_connections(), 1), 0)") > 0;
+      }
+    },
     SESSION_SEQUENCE("SELECT nextval('" + SEQUENCE + "')",
         "PERFORM nextval('" + SEQUENCE + "')") {
       @Override
@@ -139,6 +148,13 @@ public class TestNonTransactionalStickiness extends BaseYsqlConnMgr {
     try (Connection conn = pgConn();
          Statement stmt = conn.createStatement()) {
       stmt.execute("CREATE EXTENSION IF NOT EXISTS hll");
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS dblink");
+      InetSocketAddress pgAddr = miniCluster.getPostgresContactPoints().get(0);
+      stmt.execute(String.format(
+          "CREATE OR REPLACE FUNCTION %s() RETURNS text LANGUAGE sql AS "
+              + "$$ SELECT dblink_connect('nontxn_dblink', "
+              + "'host=%s port=%d dbname=yugabyte user=yugabyte') $$",
+          DBLINK_CONNECT, pgAddr.getHostName(), pgAddr.getPort()));
       stmt.execute("CREATE SEQUENCE IF NOT EXISTS " + SEQUENCE);
       stmt.execute(String.format(
           "SELECT pg_replication_origin_create('%s') "
