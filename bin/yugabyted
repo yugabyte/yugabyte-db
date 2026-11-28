@@ -10514,8 +10514,9 @@ class ControlScript(object):
             self.configs.saved_data.get("master_flags"), self.configs.saved_data.get("secure"),
             self.configs.saved_data.get("certs_dir"), self.find_hostname_of_node())
 
-        YBTableServerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
-            self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
+        YBTableServerCLIProxy.set_certs_dir(
+            self.configs.saved_data.get("master_flags"), self.configs.saved_data.get("secure"),
+            self.configs.saved_data.get("certs_dir"), self.find_hostname_of_node())
 
         if self.script.daemon_status.in_daemon:
             Output.console_access = True
@@ -11149,23 +11150,32 @@ class YBTableServerCLIProxy(object):
         YBTableServerCLIProxy.cmd_args.append(find_binary_location("yb-ts-cli"))
 
     @staticmethod
-    def set_certs_dir(master_flags, secure, certs_dir):
-        # If the user is attempting to use TLS, let's point yb-admin to
+    def set_certs_dir(master_flags, secure, certs_dir, hostname):
+        # If the user is attempting to use TLS, let's point yb-ts-cli to
         # the same certs dir as the master
         if secure:
             YBTableServerCLIProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
-        elif master_flags:
+
+        if master_flags:
             flags_list = master_flags.split(",")
-            if 'use_node_to_node_encryption=true' not in flags_list:
-                return
-            certs_dir_name = [y for y in
-                [re.match('certs_dir=(.*)', x) for x in flags_list]
-                if y is not None]
-            if not certs_dir_name[0]:
-                raise RuntimeError("use_node_to_node_encryption=true must "
-                                "be accompanied by a certs_dir setting")
-            YBTableServerCLIProxy.cmd_args.append('--certs_dir_name={}'.
-                                                 format(certs_dir_name[0].group(1)))
+
+            if not secure:
+                if 'use_node_to_node_encryption=true' not in flags_list:
+                    return
+                certs_dir_name = [y for y in
+                    [re.match('certs_dir=(.*)', x) for x in flags_list]
+                    if y is not None]
+                if not certs_dir_name[0]:
+                    raise RuntimeError("use_node_to_node_encryption=true must "
+                                    "be accompanied by a certs_dir setting")
+                YBTableServerCLIProxy.cmd_args.append('--certs_dir_name={}'.
+                                                     format(certs_dir_name[0].group(1)))
+
+            if 'node_to_node_encryption_use_client_certificates=true' in flags_list:
+                YBTableServerCLIProxy.cmd_args.append('--client_node_name={}'.format(hostname))
+
+            if 'verify_server_endpoint=false' in flags_list:
+                YBTableServerCLIProxy.cmd_args.append('--verify_server_endpoint=false')
 
     @staticmethod
     def update_gflag_in_tserver(tserver_ip, tserver_port, gflag, gflag_value, byForce=False):
@@ -11452,6 +11462,9 @@ class YBAdminProxy(object):
 
             if 'node_to_node_encryption_use_client_certificates=true' in flags_list:
                 YBAdminProxy.cmd_args.append('--client_node_name={}'.format(hostname))
+
+            if 'verify_server_endpoint=false' in flags_list:
+                YBAdminProxy.cmd_args.append('--verify_server_endpoint=false')
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=30):
