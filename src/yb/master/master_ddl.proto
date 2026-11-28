@@ -894,6 +894,10 @@ message ReleaseObjectLocksGlobalRequestPB {
   // returned deferring the release of object locks to the ddl verifier.
   optional bool wait_for_completion = 8;
   repeated docdb.ObjectLockPB object_locks = 9;
+  // Set on a release of all locks of the transaction: the latest ignore_after_hybrid_time of the
+  // global acquires the session host sent for it. The master rejects acquires for the transaction
+  // until then.
+  optional fixed64 max_acquire_deadline_ht = 10;
 }
 
 message ReleaseObjectLocksGlobalResponsePB {

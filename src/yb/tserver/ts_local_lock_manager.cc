@@ -947,6 +947,17 @@ void TSLocalLockManager::TrackDeadlineForGlobalAcquire(
   impl_->TrackDeadlineForGlobalAcquire(txn_id, subtxn_id, apply_after_ht);
 }
 
+std::optional<HybridTime> TSLocalLockManager::MaxAcquireDeadlineHtForTxn(
+    const TransactionId& txn_id) {
+  auto deadline = impl_->MaxDeadlineForTxn(txn_id, std::nullopt /* subtxn_id */);
+  // Unset for no deadline, which the conversion below would overflow. The master then uses its
+  // fallback.
+  if (!deadline || *deadline == CoarseTimePoint::max()) {
+    return std::nullopt;
+  }
+  return clock()->Now().AddMicroseconds(ToMicroseconds(*deadline - CoarseMonoClock::Now()));
+}
+
 void TSLocalLockManager::ScheduleReleaseForLostMessages(
     yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
     const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
@@ -971,6 +982,12 @@ void ReleaseWithRetriesGlobal(
     return;
   }
 
+  // Read before ScheduleReleaseForLostMessages, which drops the tracked deadlines of a release-all.
+  if (!subtxn_id && release_req->object_locks().empty()) {
+    if (auto max_deadline_ht = ptr->MaxAcquireDeadlineHtForTxn(txn_id)) {
+      release_req->set_max_acquire_deadline_ht(max_deadline_ht->ToUint64());
+    }
+  }
   ptr->ScheduleReleaseForLostMessages(client, lock_manager_weak, txn_id, subtxn_id, release_req);
 
   std::optional<StdStatusCallback> opt_cb;

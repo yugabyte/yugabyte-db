@@ -538,6 +538,19 @@ message SysObjectLockEntryPB {
   }
   optional LeaseInfoPB lease_info = 2;
   map<uint64, tserver.ReleaseObjectLockRequestPB> in_progress_release_request = 3;
+
+  // A transaction whose locks were all released. The master rejects any later acquire for it, so
+  // that an acquire arriving after the release (a queued waiter, a delayed or retried RPC) can't
+  // leave locks behind. Dropped once reject_acquires_until_ht passes: any later acquire for the
+  // transaction is past its ignore_after_hybrid_time and is rejected anyway.
+  message ReleasedTxnPB {
+    optional fixed64 reject_acquires_until_ht = 1;
+    // The lease epoch of the session host the transaction ran under. Acquires from older lease
+    // epochs are rejected by the lease check, so the record is dropped once the epoch changes.
+    optional uint64 lease_epoch = 2;
+  }
+  // txn_id -> ReleasedTxnPB
+  map<string, ReleasedTxnPB> released_txns = 4;
 }
 
 message SysXClusterConfigEntryPB {

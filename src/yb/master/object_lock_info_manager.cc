@@ -60,6 +60,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 
@@ -100,6 +101,13 @@ DEFINE_RUNTIME_uint32(object_lock_release_fence_hold_off_lease_periods, 2,
     "After a fenced tserver's ysql lease expires, refuse it a new lease for this many multiples "
     "of master_ysql_operation_lease_ttl_ms.");
 TAG_FLAG(object_lock_release_fence_hold_off_lease_periods, advanced);
+
+DEFINE_RUNTIME_uint64(ysql_ddl_max_object_lock_deadline_secs, 10 * 60,
+    "How long the master rejects acquires for a transaction after releasing all its object locks, "
+    "when the release doesn't carry the transaction's latest acquire deadline (for instance a "
+    "release done by the DDL verifier). Should be at least the longest deadline a global object "
+    "lock acquire can have.");
+TAG_FLAG(ysql_ddl_max_object_lock_deadline_secs, advanced);
 
 DEFINE_test_flag(bool, skip_launch_release_request, false,
     "If true, skip launching the release request after persisting it to in progress requests.");
@@ -208,6 +216,24 @@ using UnackedTServers = std::unordered_map<TabletServerId, uint64_t>;
 
 bool IsReleaseAll(const ReleaseObjectLockRequestPB& req) {
   return !req.subtxn_id() && req.object_locks_size() == 0;
+}
+
+// Releases of locks held by expired lease epochs need no released-txn record and must not wait for
+// in-flight acquires: the lease check rejects every acquire from those epochs.
+bool IsLeaseExpiryRelease(const ReleaseObjectLockRequestPB& req) {
+  return req.has_ignore_lease_epochs_before();
+}
+
+// A release after which the master rejects further acquires for the transaction, and which waits
+// for the transaction's in-flight acquires to finish before it is applied.
+bool IsTxnFinalRelease(const ReleaseObjectLockRequestPB& req) {
+  return IsReleaseAll(req) && !IsLeaseExpiryRelease(req);
+}
+
+Status TxnAlreadyReleasedStatus(const TransactionId& txn_id) {
+  return STATUS_FORMAT(
+      Expired, "Object locks of transaction $0 were already released, rejecting the acquire",
+      txn_id);
 }
 
 }  // namespace
@@ -365,6 +391,21 @@ class ObjectLockInfoManager::Impl {
       EXCLUDES(mutex_);
   std::optional<UnackedTServers> GetUnackedReleaseTServers(uint64_t request_id) EXCLUDES(mutex_);
 
+  // Returns false if the transaction's locks were released, in which case the acquire must be
+  // rejected. Otherwise counts the acquire in flight until FinishAcquire. Checking for the release
+  // and counting under mutex_ makes this atomic w.r.t. a release, which persists its released-txn
+  // record before reading the in-flight count under mutex_: either the acquire sees the record, or
+  // the release sees the acquire in flight and waits for it.
+  bool StartAcquireIfNotReleased(const std::string& session_host_uuid, const TransactionId& txn_id)
+      EXCLUDES(mutex_);
+  void FinishAcquire(const TransactionId& txn_id) EXCLUDES(mutex_);
+  bool IsTxnReleased(const std::string& session_host_uuid, const TransactionId& txn_id)
+      EXCLUDES(mutex_);
+  bool HasInFlightAcquires(const TransactionId& txn_id) EXCLUDES(mutex_);
+  // Whether lease_epoch is the session host's current lease epoch and the lease is live.
+  bool IsLeaseEpochLive(const std::string& session_host_uuid, uint64_t lease_epoch)
+      EXCLUDES(mutex_);
+
   void UpdateTxnHostSessionMap(
       const TransactionId& txn_id, const std::string& host_session_uuid, uint64_t lease_epoch)
       EXCLUDES(mutex_);
@@ -434,6 +475,13 @@ class ObjectLockInfoManager::Impl {
   // Starts the lease hold-off of fenced tservers whose lease is no longer live.
   void StartLeaseHoldOffs() EXCLUDES(mutex_);
 
+  // Drops released-txn records that no acquire can get past anymore: those past their
+  // reject_acquires_until_ht, and those from an older lease epoch of the session host.
+  void CleanupReleasedTxns(const LeaderEpoch& leader_epoch) EXCLUDES(mutex_);
+
+  bool IsTxnReleasedUnlocked(const std::string& session_host_uuid, const TransactionId& txn_id)
+      REQUIRES(mutex_);
+
   Status CheckLeaseFence(const TabletServerId& ts_uuid, int64_t instance_seqno)
       EXCLUDES(mutex_);
 
@@ -469,6 +517,12 @@ class ObjectLockInfoManager::Impl {
 
   // Number of release tasks in flight per request id.
   std::unordered_map<uint64_t, size_t> in_flight_releases_ GUARDED_BY(mutex_);
+
+  // Number of acquires in flight per transaction: from the time the master accepts the acquire
+  // until it fails, or until its fanout to the tservers completes. A release of all the
+  // transaction's locks waits for these, so that no acquire reaches a tserver after the release.
+  // Not cleared on leadership changes, since the acquires of an earlier term still finish.
+  std::unordered_map<TransactionId, size_t> in_flight_acquires_ GUARDED_BY(mutex_);
 
   // Tservers that failed to ack the release with the given request id.
   std::unordered_map<uint64_t, UnackedTServers> unacked_release_tservers_ GUARDED_BY(mutex_);
@@ -506,6 +560,8 @@ class UpdateAll {
   virtual std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) = 0;
   virtual std::string LogPrefix() const = 0;
   virtual const ash::WaitStateInfoPtr& wait_state() const = 0;
+  // Returns an error if the fanout should not retry a tserver anymore.
+  virtual Status CheckCanRetry() = 0;
 };
 
 template <class Req>
@@ -553,6 +609,17 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
 
   const ash::WaitStateInfoPtr& wait_state() const override {
     return wait_state_;
+  }
+
+  // An acquire stops retrying once its transaction's locks were released: the release waits for
+  // the fanout, and the transaction has no use for the locks anymore.
+  Status CheckCanRetry() override {
+    if constexpr (std::is_same_v<Req, AcquireObjectLockRequestPB>) {
+      if (object_lock_info_manager_.IsTxnReleased(req_.session_host_uuid(), txn_id_)) {
+        return TxnAlreadyReleasedStatus(txn_id_);
+      }
+    }
+    return Status::OK();
   }
 
   std::string LogPrefix() const override;
@@ -708,6 +775,9 @@ ReleaseObjectLockRequestPB TserverRequestFor(
   }
   req.set_request_id(request_id);
   req.mutable_object_locks()->CopyFrom(master_request.object_locks());
+  if (master_request.has_max_acquire_deadline_ht()) {
+    req.set_max_acquire_deadline_ht(master_request.max_acquire_deadline_ht());
+  }
   return req;
 }
 
@@ -804,6 +874,9 @@ ReleaseObjectLockRequestPB ReleaseRequestToPersist(const ReleaseObjectLockReques
   req_to_persist.mutable_object_locks()->CopyFrom(req.object_locks());
   if (req.has_ignore_lease_epochs_before()) {
     req_to_persist.set_ignore_lease_epochs_before(req.ignore_lease_epochs_before());
+  }
+  if (req.has_max_acquire_deadline_ht()) {
+    req_to_persist.set_max_acquire_deadline_ht(req.max_acquire_deadline_ht());
   }
 
 #ifndef NDEBUG
@@ -1052,8 +1125,10 @@ Status ObjectLockInfoManager::Impl::AddToInProgress(
   DCHECK(req.has_request_id()) << "Request id not set for release request: "
                                << req.ShortDebugString();
   auto lock = object_lock_info->LockForWrite();
+  bool modified = false;
   auto iter = lock->pb.in_progress_release_request().find(req.request_id());
-  if (iter != lock->pb.in_progress_release_request().end()) {
+  const bool is_new_request = iter == lock->pb.in_progress_release_request().end();
+  if (!is_new_request) {
     const auto& existing_req = iter->second;
     VLOG(0) << "Request already found among persisted in progress requests: "
             << ReleaseObjectLockRequestToString(existing_req);
@@ -1066,11 +1141,38 @@ Status ObjectLockInfoManager::Impl::AddToInProgress(
                                << ReleaseObjectLockRequestToString(req) << "\n difference: \n"
                                << diff_str;
 #endif
-
+  } else {
+    (*lock.mutable_data()->pb.mutable_in_progress_release_request())[req.request_id()] =
+        ReleaseRequestToPersist(req);
+    modified = true;
+  }
+  // Persisted with the release in one write, and before the release reads the in-flight acquires.
+  // See StartAcquireIfNotReleased.
+  if (IsTxnFinalRelease(req)) {
+    const auto txn_id_str = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())).ToString();
+    const auto reject_until = req.has_max_acquire_deadline_ht()
+        ? HybridTime(req.max_acquire_deadline_ht())
+        : clock_->Now().AddSeconds(FLAGS_ysql_ddl_max_object_lock_deadline_secs);
+    auto& released_txns = *lock.mutable_data()->pb.mutable_released_txns();
+    auto it = released_txns.find(txn_id_str);
+    // A record CleanupReleasedTxns would drop right away isn't needed: acquires for the txn are
+    // rejected by their ignore_after_hybrid_time, or by the lease check.
+    const bool expired = reject_until < clock_->Now() ||
+                         req.lease_epoch() < lock->pb.lease_info().lease_epoch();
+    // A relaunch of the same request keeps the existing record, so that a release deferred for
+    // in-flight acquires doesn't rewrite it on every poll.
+    if (!expired &&
+        (it == released_txns.end() ||
+         (is_new_request && it->second.reject_acquires_until_ht() < reject_until.ToUint64()))) {
+      auto& record = released_txns[txn_id_str];
+      record.set_reject_acquires_until_ht(reject_until.ToUint64());
+      record.set_lease_epoch(req.lease_epoch());
+      modified = true;
+    }
+  }
+  if (!modified) {
     return Status::OK();
   }
-  (*lock.mutable_data()->pb.mutable_in_progress_release_request())[req.request_id()] =
-      ReleaseRequestToPersist(req);
   RETURN_NOT_OK(catalog_manager_.sys_catalog()->Upsert(epoch, object_lock_info));
   lock.Commit();
   return Status::OK();
@@ -1256,6 +1358,35 @@ void ObjectLockInfoManager::Impl::LockObject(
     local_lock_manager = ts_local_lock_manager();
   }
 
+  if (!StartAcquireIfNotReleased(req.session_host_uuid(), txn_id)) {
+    auto status = TxnAlreadyReleasedStatus(txn_id);
+    VLOG(1) << status;
+    callback(status);
+    return;
+  }
+  // Ends the acquire's in-flight period exactly once: when it responds, or if the callback is
+  // dropped without being run.
+  class InFlightAcquire {
+   public:
+    InFlightAcquire(Impl& impl, const TransactionId& txn_id) : impl_(impl), txn_id_(txn_id) {}
+    ~InFlightAcquire() { Finish(); }
+    void Finish() {
+      if (!finished_.exchange(true)) {
+        impl_.FinishAcquire(txn_id_);
+      }
+    }
+
+   private:
+    Impl& impl_;
+    const TransactionId txn_id_;
+    std::atomic<bool> finished_{false};
+  };
+  callback = [in_flight = std::make_shared<InFlightAcquire>(*this, txn_id),
+              callback = std::move(callback)](const Status& s) {
+    in_flight->Finish();
+    callback(s);
+  };
+
   // Acquire locks locally first
   auto req_shared = std::make_shared<AcquireObjectLockRequestPB>(std::move(req));
   ASH_ENABLE_CONCURRENT_UPDATES();
@@ -1267,6 +1398,14 @@ void ObjectLockInfoManager::Impl::LockObject(
         if (!s.ok()) {
           LOG(WARNING) << "Failed to acquire object locks locally: " << s;
           callback(s);
+          return;
+        }
+        // The transaction's locks were released while this acquire waited locally. Don't fan it
+        // out: the release waits for this acquire, and then releases the lock just granted here.
+        if (IsTxnReleased(req_shared->session_host_uuid(), txn_id)) {
+          auto status = TxnAlreadyReleasedStatus(txn_id);
+          VLOG(1) << status;
+          callback(status);
           return;
         }
 
@@ -1469,6 +1608,21 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
     return callback_and_return(Status::OK());
   }
 
+  // An acquire of the transaction that is still in flight could reach a tserver after the release.
+  // The release is persisted, so RetryFailedReleases relaunches it once the acquires finish. The
+  // poll interval also gives a tserver time to finish an acquire rpc that the master stopped
+  // waiting for. No new acquire can start, since the released-txn record is persisted by now.
+  // Once the session host's lease epoch is no longer live, the lease check fences the acquires
+  // instead, and the release must not wait: the lease expiry cleanup leaves the txn to it.
+  if (IsTxnFinalRelease(req) && HasInFlightAcquires(txn_id) &&
+      IsLeaseEpochLive(req.session_host_uuid(), req.lease_epoch())) {
+    VLOG(1) << "Deferring release request " << req.request_id() << " for txn " << txn_id
+            << " until its in-flight acquires finish";
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "ObjectLockInfoManager::Impl::UnlockObject:DeferredForInFlightAcquires", &txn_id);
+    return callback_and_return(Status::OK());
+  }
+
   // The request stays persisted as in progress, so RetryFailedReleases relaunches it. No tserver
   // was contacted, so this counts no failures toward a fence.
   if (auto s = PopulateDbCatalogVersionCache(req); !s.ok()) {
@@ -1508,6 +1662,118 @@ Status ObjectLockInfoManager::Impl::PopulateHostInfo(
   req.set_session_host_uuid(txn_host_info.host_session_uuid);
   req.set_lease_epoch(txn_host_info.lease_epoch);
   return Status::OK();
+}
+
+bool ObjectLockInfoManager::Impl::IsTxnReleasedUnlocked(
+    const std::string& session_host_uuid, const TransactionId& txn_id) {
+  auto it = object_lock_infos_map_.find(session_host_uuid);
+  if (it == object_lock_infos_map_.end()) {
+    return false;
+  }
+  return it->second->LockForRead()->pb.released_txns().contains(txn_id.ToString());
+}
+
+bool ObjectLockInfoManager::Impl::IsTxnReleased(
+    const std::string& session_host_uuid, const TransactionId& txn_id) {
+  LockGuard lock(mutex_);
+  return IsTxnReleasedUnlocked(session_host_uuid, txn_id);
+}
+
+bool ObjectLockInfoManager::Impl::StartAcquireIfNotReleased(
+    const std::string& session_host_uuid, const TransactionId& txn_id) {
+  LockGuard lock(mutex_);
+  if (IsTxnReleasedUnlocked(session_host_uuid, txn_id)) {
+    return false;
+  }
+  ++in_flight_acquires_[txn_id];
+  return true;
+}
+
+void ObjectLockInfoManager::Impl::FinishAcquire(const TransactionId& txn_id) {
+  LockGuard lock(mutex_);
+  auto it = in_flight_acquires_.find(txn_id);
+  if (it == in_flight_acquires_.end()) {
+    LOG(DFATAL) << "No in-flight acquire for txn " << txn_id;
+    return;
+  }
+  if (--it->second == 0) {
+    in_flight_acquires_.erase(it);
+  }
+}
+
+bool ObjectLockInfoManager::Impl::HasInFlightAcquires(const TransactionId& txn_id) {
+  LockGuard lock(mutex_);
+  return in_flight_acquires_.contains(txn_id);
+}
+
+bool ObjectLockInfoManager::Impl::IsLeaseEpochLive(
+    const std::string& session_host_uuid, uint64_t lease_epoch) {
+  LockGuard lock(mutex_);
+  auto it = object_lock_infos_map_.find(session_host_uuid);
+  if (it == object_lock_infos_map_.end()) {
+    return false;
+  }
+  auto l = it->second->LockForRead();
+  return l->pb.lease_info().live_lease() && l->pb.lease_info().lease_epoch() == lease_epoch;
+}
+
+void ObjectLockInfoManager::Impl::CleanupReleasedTxns(const LeaderEpoch& leader_epoch) {
+  const auto now = clock_->Now().ToUint64();
+  auto is_expired = [now](const SysObjectLockEntryPB::ReleasedTxnPB& record,
+                          uint64_t current_lease_epoch) {
+    return record.reject_acquires_until_ht() < now || record.lease_epoch() < current_lease_epoch;
+  };
+  // Checked under the read lock first, since taking the write lock copies the whole entry.
+  std::vector<std::shared_ptr<ObjectLockInfo>> infos_with_expired_records;
+  {
+    LockGuard lock(mutex_);
+    for (const auto& [_, object_info] : object_lock_infos_map_) {
+      auto l = object_info->LockForRead();
+      const auto current_lease_epoch = l->pb.lease_info().lease_epoch();
+      for (const auto& entry : l->pb.released_txns()) {
+        if (is_expired(entry.second, current_lease_epoch)) {
+          infos_with_expired_records.push_back(object_info);
+          break;
+        }
+      }
+    }
+  }
+  if (infos_with_expired_records.empty()) {
+    return;
+  }
+  std::vector<ObjectLockInfo*> object_infos_to_write;
+  std::vector<ObjectLockInfo::WriteLock> write_locks;
+  for (const auto& object_info : infos_with_expired_records) {
+    auto object_info_lock = object_info->LockForWrite();
+    const auto current_lease_epoch = object_info_lock->pb.lease_info().lease_epoch();
+    auto& released_txns = *object_info_lock.mutable_data()->pb.mutable_released_txns();
+    size_t num_erased = 0;
+    for (auto it = released_txns.begin(); it != released_txns.end();) {
+      if (is_expired(it->second, current_lease_epoch)) {
+        it = released_txns.erase(it);
+        ++num_erased;
+      } else {
+        ++it;
+      }
+    }
+    if (num_erased) {
+      VLOG(1) << "Dropping " << num_erased << " released txn records of tserver "
+              << object_info->id();
+      object_infos_to_write.push_back(object_info.get());
+      write_locks.push_back(std::move(object_info_lock));
+    }
+  }
+  if (object_infos_to_write.empty()) {
+    return;
+  }
+  auto write_status = catalog_manager_.sys_catalog()->Upsert(leader_epoch, object_infos_to_write);
+  if (!write_status.ok()) {
+    LOG(WARNING) << "Failed to drop expired released txn records: " << write_status;
+    return;
+  }
+  for (auto& lock : write_locks) {
+    lock.Commit();
+  }
 }
 
 void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
@@ -2011,6 +2277,7 @@ void ObjectLockInfoManager::Impl::Poll() {
   CleanupExpiredLeaseEpochs(leader_epoch);
   StartLeaseHoldOffs();
   RetryFailedReleases(leader_epoch);
+  CleanupReleasedTxns(leader_epoch);
 }
 
 void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs(const LeaderEpoch& leader_epoch) {
@@ -2439,6 +2706,11 @@ Status UpdateAllTServers<ReleaseObjectLockRequestPB>::AfterRpcs() {
   // Persist before releasing locally: otherwise a conflicting acquire could be persisted while this
   // lock still is, and a new leader's lock manager bootstrap fails on the conflict.
   RETURN_NOT_OK(DoPersistRequestUnlocked(l));
+  {
+    auto txn_id = txn_id_;
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "UpdateAllTServers<ReleaseObjectLockRequestPB>::AfterRpcs:BeforeLocalRelease", &txn_id);
+  }
   auto local_lock_manager = object_lock_info_manager_.ts_local_lock_manager();
   Status status;
   if (PREDICT_FALSE(FLAGS_TEST_fail_master_local_release_once)) {
@@ -2594,6 +2866,11 @@ void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
     TransitionToCompleteState();
     return;
   }
+  if (auto s = shared_all_tservers_->CheckCanRetry(); !s.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Not retrying after " << status << ": " << s;
+    TransitionToFailedState(server::MonitoredTaskState::kRunning, s);
+    return;
+  }
   // Upon ysql lease changes, the object lock manager fails outstanding lock requests with
   // ShutdownInProgress. Can retry the request to prevent exclusive lock requests from failing
   // due to ysql lease membership changes w.r.t master leader's view.
@@ -2636,6 +2913,10 @@ bool UpdateTServer<Req, Resp>::RetryTaskAfterRPCFailure(const Status& status) {
   if (!shared_all_tservers_->TabletServerHasLiveLease(permanent_uuid_)) {
     LOG_WITH_PREFIX(WARNING) << "TServer no longer has a live lease. "
                              << "Ignoring this tserver, rpc status: " << rpc_.status();
+    return false;
+  }
+  if (auto s = shared_all_tservers_->CheckCanRetry(); !s.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Not retrying after rpc status " << rpc_.status() << ": " << s;
     return false;
   }
   return true;
