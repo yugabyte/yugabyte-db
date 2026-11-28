@@ -50,6 +50,7 @@ class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
+class TabletContext;
 class TabletMetrics;
 class TabletMetricsHolder;
 class TabletSnapshots;
