@@ -1490,7 +1490,8 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid)
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
 	/* YB: Add view dependency on the foreign table */
-	Oid			yb_base_relid = YbGetFederatedForeignTableBackingRelid(relid);
+	Oid			yb_base_relid = YbGetFederatedForeignTableBackingRelid(server,
+																	   stmt->options);
 
 	if (OidIsValid(yb_base_relid))
 	{

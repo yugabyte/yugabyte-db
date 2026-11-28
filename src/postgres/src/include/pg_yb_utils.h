@@ -933,6 +933,12 @@ extern bool yb_test_inval_message_portability;
 extern int	yb_test_delay_after_applying_inval_message_ms;
 
 /*
+ * If true, invalidate all system caches after each catalog row delete, before
+ * its index entries are deleted.
+ */
+extern bool yb_test_invalidate_caches_after_catalog_delete;
+
+/*
  * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
  */
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
@@ -1937,13 +1943,21 @@ extern CommandId YbSetWriteCommandId(CommandId command_id);
  */
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
+struct ForeignServer;
+
+/* Returns true if the server has server_type = 'federatedYugabyteDB'. */
+extern bool YbIsFederatedYbForeignServer(struct ForeignServer *server);
+
 /*
- * If 'ft_relid' is a federatedYugabyteDB foreign table, resolve the local
- * relation named by its schema_name/table_name options and return its OID.
- * Returns InvalidOid if the table is not federated or the relation is not
- * found locally.
+ * If a foreign table on 'server' with options 'ft_options' is a
+ * federatedYugabyteDB foreign table, resolve the local relation named by its
+ * schema_name/table_name options and return its OID.  Returns InvalidOid if
+ * the table is not federated or the relation is not found locally.  It takes
+ * the options rather than the table, so that CREATE FOREIGN TABLE can call it
+ * before its catalog rows become visible.
  */
-extern Oid	YbGetFederatedForeignTableBackingRelid(Oid ft_relid);
+extern Oid	YbGetFederatedForeignTableBackingRelid(struct ForeignServer *server,
+												   List *ft_options);
 
 struct PlannerInfo;
 struct RelOptInfo;
