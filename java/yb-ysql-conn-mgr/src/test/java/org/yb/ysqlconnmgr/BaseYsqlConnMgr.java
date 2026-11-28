@@ -38,6 +38,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -229,7 +231,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return getConnectionStats(TSERVER_IDX);
   }
 
-  protected JsonObject getConnectionStats(int tserverIndex) throws IOException {
+  private String getPgWebEndpoint(int tserverIndex, String path) {
     String host_name = getPgHost(tserverIndex);
     MiniYBDaemon[] ts_list = miniCluster.getTabletServers()
                                         .values()
@@ -245,8 +247,11 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
     assertNotNull(ts);
 
-    String connection_endpoint = String.format("http://%s:%d/connections",
-      ts.getLocalhostIP(), ts.getPgsqlWebPort());
+    return String.format("http://%s:%d%s", ts.getLocalhostIP(), ts.getPgsqlWebPort(), path);
+  }
+
+  protected JsonObject getConnectionStats(int tserverIndex) throws IOException {
+    String connection_endpoint = getPgWebEndpoint(tserverIndex, "/connections");
     URL url = new URL(connection_endpoint);
     LOG.info("Trying to gather stats at the endpoint " + connection_endpoint);
 
@@ -257,6 +262,23 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
        LOG.error(e.getMessage());
       return null;
     }
+  }
+
+  protected String getPrometheusMetrics() throws IOException {
+    return getPrometheusMetrics(TSERVER_IDX);
+  }
+
+  protected String getPrometheusMetrics(int tserverIndex) throws IOException {
+    URL url = new URL(getPgWebEndpoint(tserverIndex, "/prometheus-metrics"));
+    try (Scanner scanner = new Scanner(url.openConnection().getInputStream())) {
+      return scanner.useDelimiter("\\A").next();
+    }
+  }
+
+  protected static Long getPrometheusMetric(String metrics, String name) {
+    Matcher m = Pattern.compile("^" + Pattern.quote(name) + "\\{[^}]*\\}\\s+(\\d+)",
+        Pattern.MULTILINE).matcher(metrics);
+    return m.find() ? Long.parseLong(m.group(1)) : null;
   }
 
   // /connections is served by the YSQL webserver, which the postmaster on that node starts after
