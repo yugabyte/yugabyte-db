@@ -26,6 +26,8 @@
 
 #include "yb/rpc/rpc_context.h"
 
+#include <string.h>
+
 #include "yb/util/crypt.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
@@ -129,7 +131,7 @@ Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   }
 
   // Create in memory object.
-  Status s = CreateRoleUnlocked(kDefaultCassandraUsername, std::string(hash, kBcryptHashSize),
+  Status s = CreateRoleUnlocked(kDefaultCassandraUsername, std::string(hash),
                                 true, true, term, false /* Don't increment the roles version */);
   if (PREDICT_TRUE(s.ok())) {
     if (FLAGS_ycql_allow_cassandra_drop) {

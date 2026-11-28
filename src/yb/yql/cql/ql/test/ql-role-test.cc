@@ -14,6 +14,8 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/util/flags.h"
+#include <string.h>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -720,6 +722,8 @@ class TestQLRole : public QLTestAuthentication {
       char hash[kBcryptHashSize];
       bcrypt_hashpw(password, hash);
       const auto &saved_hash = row.column(4).string_value();
+      // No trailing bytes past the NUL-terminated bcrypt hash; cqlsh fails to decode them.
+      EXPECT_EQ(strlen(hash), saved_hash.size());
       bool password_match = true;
       if (bcrypt_checkpw(password, saved_hash.c_str())) {
         password_match = false;
@@ -738,6 +742,9 @@ class TestQLRole : public QLTestAuthentication {
     EXPECT_EQ(1, row_block_after_drop->row_count());
     row = row_block_after_drop->row(0);
     EXPECT_EQ("cassandra", row.column(0).string_value());
+    // The default role is written by PrepareDefaultRoles; its hash must also be unpadded.
+    const auto& cassandra_hash = row.column(4).string_value();
+    EXPECT_EQ(strlen(cassandra_hash.c_str()), cassandra_hash.size());
   }
 
   void CheckRole(TestQLProcessor* processor, const string& role_name, const char* password,
@@ -759,6 +766,8 @@ class TestQLRole : public QLTestAuthentication {
       char hash[kBcryptHashSize];
       bcrypt_hashpw(password, hash);
       const auto& saved_hash = row.column(4).string_value();
+      // No trailing bytes past the NUL-terminated bcrypt hash; cqlsh fails to decode them.
+      EXPECT_EQ(strlen(hash), saved_hash.size());
       const bool password_match = (0 == bcrypt_checkpw(password, saved_hash.c_str()));
       EXPECT_TRUE(password_match);
     }
