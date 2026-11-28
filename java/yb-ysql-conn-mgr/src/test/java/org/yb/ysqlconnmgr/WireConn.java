@@ -20,6 +20,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,7 +41,7 @@ public class WireConn implements AutoCloseable {
 
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30000;
   private static final String USER = "yugabyte";
-  private static final String DATABASE = "yugabyte";
+  private static final String DEFAULT_DATABASE = "yugabyte";
   private static final int SSL_REQUEST_CODE = 80877103;
 
   private final Socket socket;
@@ -58,12 +60,18 @@ public class WireConn implements AutoCloseable {
   }
 
   public Pipeline createPipeline() {
+    return createPipeline(StandardCharsets.UTF_8);
+  }
+
+  // charset is the client_encoding the session is on: it encodes query() text and decodes the
+  // DataRow and ParameterStatus values the pipeline reads.
+  public Pipeline createPipeline(Charset charset) {
     if (tailUnread) {
       throw new IllegalStateException(
           "The previous pipeline declared allowUnreadTail(), so unread responses are still queued"
           + " on this connection and would be misread as the new pipeline's");
     }
-    return new Pipeline(this);
+    return new Pipeline(this, charset);
   }
 
   public void sendRaw(byte[] bytes) throws IOException {
@@ -109,6 +117,7 @@ public class WireConn implements AutoCloseable {
     private final Map<String, String> startupParams = new LinkedHashMap<>();
     private int socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
     private ConnectionEndpoint endpoint = ConnectionEndpoint.YSQL_CONN_MGR;
+    private String database = DEFAULT_DATABASE;
     private boolean ssl;
 
     Builder(MiniYBCluster cluster) {
@@ -118,6 +127,11 @@ public class WireConn implements AutoCloseable {
     // Bypasses the connection manager when set to POSTGRES.
     public Builder endpoint(ConnectionEndpoint endpoint) {
       this.endpoint = endpoint;
+      return this;
+    }
+
+    public Builder database(String database) {
+      this.database = database;
       return this;
     }
 
@@ -167,7 +181,7 @@ public class WireConn implements AutoCloseable {
       InetSocketAddress target = endpoint == ConnectionEndpoint.POSTGRES
           ? cluster.getPostgresContactPoints().get(0)
           : cluster.getYsqlConnMgrContactPoints().get(0);
-      LOG.info("Connecting raw socket to {} as {}/{}", target, USER, DATABASE);
+      LOG.info("Connecting raw socket to {} as {}/{}", target, USER, database);
       Socket socket = new Socket();
       try {
         socket.setTcpNoDelay(true);
@@ -177,7 +191,7 @@ public class WireConn implements AutoCloseable {
           socket = startTls(socket, target);
         }
         WireConn conn = new WireConn(socket);
-        conn.sendRaw(PgWireProtocol.buildStartupMessage(USER, DATABASE, startupParams));
+        conn.sendRaw(PgWireProtocol.buildStartupMessage(USER, database, startupParams));
         return conn;
       } catch (Exception e) {
         try {
