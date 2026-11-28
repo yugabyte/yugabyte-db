@@ -111,6 +111,7 @@
 #include "optimizer/planner.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
+#include "partitioning/partprune.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
@@ -11567,4 +11568,92 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
 	pfree(rows_scale);
 
 	return result;
+}
+
+/*
+ * yb_cost_append_for_one_partition
+ *	  Redo the costs of cost_append() for an Append whose rescans each run at
+ *	  most one subpath.
+ *
+ * Unlike cost_append(), which sums the subpaths, this charges the Append one
+ * subpath when the executor's partition pruning leaves at most one of them to
+ * each rescan (yb_exec_pruning_leaves_one_subpath).  Pruning does so when the
+ * join clauses of the path's parameterization equate the whole partition key
+ * with values of the outer row, so summing the subpaths charges a nested loop
+ * every partition of its inner table for each outer row.
+ *
+ * Which subpath a rescan runs depends on the values of the parameters, so
+ * the subpaths are averaged, each weighted by the tuples of its partition:
+ * the rescans are assumed to reach the partitions in proportion to their
+ * sizes.  A partition that no rescan reaches is therefore still charged its
+ * share.
+ *
+ * A batched Append is left as cost_append() costs it, because the keys of one
+ * batch can be in several partitions.
+ */
+void
+yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
+{
+	RelOptInfo *rel = apath->path.parent;
+	ParamPathInfo *param_info = apath->path.param_info;
+	List	   *prunequal;
+	double		total_tuples = 0;
+	double		rows = 0;
+	Cost		startup_cost = 0;
+	Cost		total_cost = 0;
+	ListCell   *lc;
+
+	if (!enable_partition_pruning ||
+		param_info == NULL || param_info->ppi_clauses == NIL ||
+		YB_PATH_NEEDS_BATCHED_RELS(&apath->path))
+		return;
+
+	/* cost_append() costs an ordered or parallel-aware Append its own way. */
+	if (apath->path.pathkeys != NIL || apath->path.parallel_aware)
+		return;
+
+	foreach(lc, apath->subpaths)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+
+		/*
+		 * The average would leave a disabled subpath only a share of its
+		 * disable_cost, and the Append would no longer count as disabled.
+		 */
+		if (subpath->total_cost >= disable_cost)
+			return;
+
+		/* The weights need the tuples of one partition for each subpath. */
+		if (subpath->parent->part_scheme != NULL)
+			return;
+
+		total_tuples += subpath->parent->tuples;
+	}
+
+	/* The clauses that create_append_plan() passes for run-time pruning. */
+	prunequal = list_concat(extract_actual_clauses(rel->baserestrictinfo,
+												   false),
+							get_actual_clauses(param_info->ppi_clauses));
+	if (!yb_exec_pruning_leaves_one_subpath(root, rel, apath->subpaths,
+											prunequal))
+		return;
+
+	foreach(lc, apath->subpaths)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+		double		weight;
+
+		weight = (total_tuples > 0)
+			? subpath->parent->tuples / total_tuples
+			: 1.0 / list_length(apath->subpaths);
+
+		rows += weight * subpath->rows;
+		startup_cost += weight * subpath->startup_cost;
+		total_cost += weight * subpath->total_cost;
+	}
+
+	apath->path.rows = clamp_row_est(rows);
+	apath->path.startup_cost = startup_cost;
+	apath->path.total_cost = total_cost +
+		cpu_tuple_cost * APPEND_CPU_COST_MULTIPLIER * apath->path.rows;
 }
