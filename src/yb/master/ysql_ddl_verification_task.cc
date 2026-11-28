@@ -768,9 +768,9 @@ Status NamespaceVerificationTask::FirstStep() {
 }
 
 void NamespaceVerificationTask::TransactionPending() {
-  this->ScheduleNextStep([this] {
+  this->ScheduleNextStepWithDelay([this] {
     return VerifyTransaction();
-  }, "VerifyTransaction");
+  }, "VerifyTransaction", MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 }
 
 void NamespaceVerificationTask::FinishPollTransaction(bool /*aborted*/) {
@@ -863,9 +863,9 @@ Status TableSchemaVerificationTask::FirstStep() {
 }
 
 void TableSchemaVerificationTask::TransactionPending() {
-  this->ScheduleNextStep([this] {
+  this->ScheduleNextStepWithDelay([this] {
     return VerifyTransaction();
-  }, "VerifyTransaction");
+  }, "VerifyTransaction", MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 }
 
 Status TableSchemaVerificationTask::ValidateRunnable() {
