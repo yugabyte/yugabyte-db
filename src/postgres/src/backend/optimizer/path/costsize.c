@@ -8371,6 +8371,13 @@ yb_get_non_pushable_attnums(IndexOptInfo *index)
  * clauses only, so that an index path without an OR clause pays no planning
  * time for the proof.
  *
+ * Unlike create_indexscan_plan(), this function proves from the index
+ * clauses of the path, not from the index conditions that
+ * fix_indexqual_references() builds for the plan.  The plan's list has each
+ * clause of a batched nested loop join in its batched form and adds the
+ * derived stream clauses of a merge scan, so the two proofs can differ for
+ * an OR clause whose proof needs one of those clauses.
+ *
  * qual_clauses is a list of RestrictInfos and is modified in place.
  * indexclauses is a list of IndexClauses.
  */
