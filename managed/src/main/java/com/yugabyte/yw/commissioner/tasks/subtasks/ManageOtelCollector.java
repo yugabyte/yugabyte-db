@@ -31,8 +31,9 @@ public class ManageOtelCollector extends NodeTaskBase {
   // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
   // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
   // must stay in step with the URLs in support/thirdparty-dependencies.txt.
-  // The -1 is a rebuild of 0.145.0 with Go 1.27.3 and patched Go dependencies (PLAT-22934).
-  public static String OtelCollectorVersion = "0.145.0-1";
+  // The number after the dash is the YB rebuild count; published artifacts are immutable, so any
+  // rebuild bumps it. 0.165.1-1 carries brotli v1.2.7 (CVE-2026-111497) and Prometheus 0.315.1.
+  public static String OtelCollectorVersion = "0.165.1-1";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeUniverseManager nodeUniverseManager;
