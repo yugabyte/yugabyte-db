@@ -10,16 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <array>
+#include <atomic>
+
 #include "yb/client/yb_table_name.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -33,6 +41,36 @@ class ColocatedDBTest : public LibPqTestBase {
     PGConn conn = VERIFY_RESULT(ConnectToDB("yugabyte"));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", db_name));
     return ConnectToDB(db_name);
+  }
+
+  Result<master::ListTablesResponsePB_TableInfo> GetTableFromMasterLeader(
+      const std::string& db_name, const std::string& table_name) {
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+    req.mutable_namespace_()->set_name(db_name);
+    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+    req.set_include_not_running(true);
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(10 * kTimeMultiplier));
+    RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    for (const auto& table : resp.tables()) {
+      if (table.name() == table_name) {
+        return table;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Table $0 not found in $1", table_name, db_name);
+  }
+
+  // A failed lookup counts as false, so that it can be polled across a master leader change.
+  bool TableHasState(
+      const std::string& db_name, const std::string& table_name,
+      master::SysTablesEntryPB::State state) {
+    auto table = GetTableFromMasterLeader(db_name, table_name);
+    return table.ok() && table->state() == state;
   }
 };
 
@@ -398,6 +436,67 @@ TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {
   insertion_thread.join();
   ASSERT_OK(s);
   ASSERT_OK(conn.Execute("INSERT INTO test_tbl1 values (1, 1)"));
+}
+
+// Each colocated table which a new master leader loads as PREPARING becomes RUNNING once its own
+// AddTableToTablet finishes, also when another table on the same tablet is PREPARING too. See issue
+// #38982.
+TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
+  const std::string db_name = "test_db";
+  auto conn = ASSERT_RESULT(CreateColocatedDB(db_name));
+  // The first colocated table creates the colocation tablet. Create it up front, so that both
+  // tables below join the same tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE t_first (key INT PRIMARY KEY)"));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "true"));
+  std::array<std::atomic<int32_t>, 2> create_table_pids{};
+  std::atomic<size_t> num_created_tables{0};
+  TestThreadHolder thread_holder;
+  for (size_t i = 0; i != create_table_pids.size(); ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &db_name, i, &pid = create_table_pids[i], &num_created_tables] {
+      auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+      pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+      // The two concurrent DDLs conflict when the second one commits, after its table was created.
+      for (;;) {
+        auto status = conn.ExecuteFormat("CREATE TABLE t$0 (key INT PRIMARY KEY, value INT)", i);
+        if (!IsSerializeAccessError(status)) {
+          ASSERT_OK(status);
+          break;
+        }
+        LOG(INFO) << "Retrying CREATE TABLE t" << i << ": " << status;
+      }
+      ++num_created_tables;
+    });
+  }
+  // CREATE TABLE waits for the table to become RUNNING. Kill it on failure, so the thread can be
+  // joined.
+  auto kill_create_tables = ScopeExit([&create_table_pids] {
+    if (!HasFailure()) {
+      return;
+    }
+    for (const auto& pid : create_table_pids) {
+      if (pid) {
+        kill(pid, SIGKILL);
+      }
+    }
+  });
+
+  ASSERT_OK(WaitFor([this, &db_name] {
+    return TableHasState(db_name, "t0", master::SysTablesEntryPB::PREPARING) &&
+           TableHasState(db_name, "t1", master::SysTablesEntryPB::PREPARING);
+  }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "Both tables PREPARING"));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "false"));
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  ASSERT_OK(WaitFor([&num_created_tables, &create_table_pids] {
+    return num_created_tables == create_table_pids.size();
+  }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "Both tables created"));
+  thread_holder.JoinAll();
+  for (const auto* table : {"t0", "t1"}) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
+  }
 }
 
 TEST_F(ColocatedDBTest, ListColocatedTables) {

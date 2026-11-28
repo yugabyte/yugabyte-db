@@ -3473,7 +3473,9 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         index_info->indexed_table_id()));
     VLOG_WITH_PREFIX_AND_FUNC(3) << table_info_ptr->ToString();
-    RETURN_NOT_OK(vector_indexes_->CreateIndex(
+    // AddTable above keeps the existing table info for a repeated add, so an existing index stays
+    // as it is.
+    RETURN_NOT_OK(vector_indexes_->CreateIndexIfMissing(
         *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
   }
 

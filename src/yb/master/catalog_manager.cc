@@ -1741,6 +1741,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
   RETURN_NOT_OK(Load<TableLoader>("tables", state));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", state));
+  // Must follow the tablet loader, which collects the PREPARING tables.
+  AddPostLoadTaskToSendAddTableToTablet(state);
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
@@ -1765,6 +1767,61 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
 
   return Status::OK();
+}
+
+void CatalogManager::AddPostLoadTaskToSendAddTableToTablet(SysCatalogLoadingState* state) {
+  if (state->preparing_colocated_tables.empty()) {
+    return;
+  }
+  state->AddPostLoadTask(
+      [this, preparing_tables = std::move(state->preparing_colocated_tables),
+       epoch = state->epoch] {
+        for (const auto& [table_id, table] : preparing_tables) {
+          // Only the active tablets, as at creation: inactive ones, e.g. hidden or deleted split
+          // parents, also list a vector index, but never add it.
+          auto tablets = table->GetTablets();
+          if (!tablets.ok()) {
+            LOG(WARNING) << "Failed to get tablets of " << table->ToString() << ": "
+                         << tablets.status();
+            continue;
+          }
+          ScheduleAddTableToTablet(table, *tablets, epoch);
+        }
+      },
+      "Send AddTableToTablet for PREPARING tables");
+}
+
+void CatalogManager::ScheduleAddTableToTablet(
+    const TableInfoPtr& table, const TabletInfos& tablets, const LeaderEpoch& epoch) {
+  // The last task to finish promotes the table to RUNNING, so the counter must cover all of the
+  // table's tablets.
+  auto counter = std::make_shared<std::atomic<size_t>>(tablets.size());
+  std::vector<std::shared_ptr<AsyncAddTableToTablet>> calls;
+  calls.reserve(tablets.size());
+  for (const auto& tablet : tablets) {
+    calls.push_back(std::make_shared<AsyncAddTableToTablet>(
+        master_, AsyncTaskPool(), tablet, table, epoch, counter));
+  }
+  {
+    // DeleteTable aborts the tasks of the table after it commits DELETING, which waits for this
+    // lock. So the table is either deleting here, or the tasks are added in time to be aborted.
+    auto l = table->LockForRead();
+    if (l->started_hiding_or_deleting()) {
+      LOG(INFO) << "Not sending AddTableToTablet for " << table->ToString()
+                << ", which is being deleted";
+      for (const auto& call : calls) {
+        call->AbortAndReturnPrevState(STATUS(Aborted, "Table is being deleted"));
+      }
+      return;
+    }
+    DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
+    for (const auto& call : calls) {
+      table->AddTask(call);
+    }
+  }
+  for (const auto& call : calls) {
+    WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
+  }
 }
 
 bool CatalogManager::IsDeletedTabletLoadedFromSysCatalog(const TabletId& tablet_id) const {
@@ -5434,15 +5491,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (joining_colocation_group) {
-    auto counter = std::make_shared<std::atomic<size_t>>(tablets.size());
-    auto duplicate_counter = FLAGS_TEST_duplicate_addtabletotablet_request
-        ? std::make_shared<std::atomic<size_t>>(tablets.size()) : nullptr;
-    for (auto& tablet : tablets) {
-      auto call = std::make_shared<AsyncAddTableToTablet>(
-          master_, AsyncTaskPool(), tablet, table, epoch, counter);
-      table->AddTask(call);
-      WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
-      if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+    ScheduleAddTableToTablet(table, tablets, epoch);
+    if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+      auto duplicate_counter = std::make_shared<std::atomic<size_t>>(tablets.size());
+      for (auto& tablet : tablets) {
         auto duplicate_call = std::make_shared<AsyncAddTableToTablet>(
             master_, AsyncTaskPool(), tablet, table, epoch, duplicate_counter);
         table->AddTask(duplicate_call);
@@ -15242,6 +15294,12 @@ void CatalogManager::SchedulePostTabletCreationTasks(
   }
 
   if (!table_info->LockForRead()->IsPreparing()) {
+    return;
+  }
+  // A secondary table, e.g. a colocated table or a vector index, joins tablets which are usually
+  // RUNNING before it is added to them. AsyncAddTableToTablet promotes it once all of its tablets
+  // have added it.
+  if (table_info->IsSecondaryTable()) {
     return;
   }
   auto tablets_running_result = table_info->AreAllTabletsRunning(new_running_tablets);
