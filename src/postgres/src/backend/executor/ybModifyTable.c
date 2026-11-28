@@ -120,11 +120,28 @@ YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 
 	if (ActivePortal->stmts->length != 1 || !YBCIsSingleRowModify(pstmt))
 		return false;
-	if (pstmt->commandType == CMD_UPDATE)
-		return true;
 
 	ResultRelInfo *resultRelInfo =
 		(ResultRelInfo *) linitial(estate->es_opened_result_relations);
+
+	/*
+	 * For UPDATE, the planner refuses the single-row plan when a row trigger,
+	 * a transition table or an updated secondary index needs the old row
+	 * (yb_single_row_update_or_delete_path), so the checks below don't apply.
+	 * The planner keeps the plan for statement triggers: skipping the scan is
+	 * also used when the statement runs in a distributed transaction, such as
+	 * in a transaction block, and the trigger's error rolls the write back
+	 * there.  The fast path commits the write on its own, so an AFTER
+	 * STATEMENT trigger, which fires after the write, could not roll it back.
+	 * Statement triggers of a partitioned table fire on the root, which is the
+	 * first opened result relation.
+	 */
+	if (pstmt->commandType == CMD_UPDATE)
+	{
+		TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
+
+		return !(trigdesc && trigdesc->trig_update_after_statement);
+	}
 
 	if (!YBCIsSingleRowTxnCapableRel(resultRelInfo))
 		return false;
