@@ -25,6 +25,7 @@
 #include "yb/dockv/reader_projection.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
@@ -108,6 +109,9 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   LOG_WITH_FUNC(INFO) << "Initializing xCluster Streams";
   RETURN_NOT_OK(CreateAllBootstrapStreams());
   RETURN_NOT_OK(ConstructServerToTabletsMapping());
+
+  TEST_SYNC_POINT_CALLBACK(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", cdc_service_context_);
 
   LOG_WITH_FUNC(INFO) << "Retrieving Latest OpIDs for each tablet.";
   RETURN_NOT_OK(GetLatestOpIdsFromLocalPeers());
@@ -230,7 +234,16 @@ Status XClusterProducerBootstrap::GetLatestOpIdsFromLocalPeers() {
   OpId op_id = yb::OpId::Invalid();
   for (const auto& [bootstrap_id, tablet_id] : local_tablets_) {
     // Check if this tablet has local information cached.
-    auto tablet_peer = VERIFY_RESULT(cdc_service_context_->GetServingTablet(tablet_id));
+    auto tablet_peer_result = cdc_service_context_->GetServingTablet(tablet_id);
+    if (!tablet_peer_result.ok()) {
+      // The peer may have been tombstoned since the locations were read, or may still be copying.
+      LOG(WARNING) << "Fetching the latest op id of tablet " << tablet_id
+                   << " from its leader, since the local peer cannot serve: "
+                   << tablet_peer_result.status();
+      remote_tablets_to_fetch_opids_for_.emplace(bootstrap_id, tablet_id);
+      continue;
+    }
+    const auto& tablet_peer = *tablet_peer_result;
 
     if (!tablet_peer->log_available()) {
       const std::string err_msg = GetErrMsgForUninitializedLocalPeer(tablet_id, tablet_peer);
