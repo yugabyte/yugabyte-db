@@ -428,18 +428,30 @@ export const MASTER_DISK_IO_METRIC_KEYS: Readonly<Record<string, string>> = {
   tserver_log_bytes_written: 'master_log_bytes_written'
 };
 
+// Panels fed only by PSS collection, which is off when the health check PSS interval is negative.
+// The Postgres PSS Memory panel stays: without PSS it shows an approximation.
+export const PSS_ONLY_METRICS: readonly string[] = [
+  'postgres_worker_pss_max',
+  'postgres_worker_pss_p95'
+];
+
 /**
  * Returns the metric keys to query for a tab, adjusted for Kubernetes universes, for master
- * servers, and for whether YBA scrapes the node_exporter sidecar.
+ * servers, for whether YBA scrapes the node_exporter sidecar, and for whether postgres PSS is
+ * collected.
  */
 export const metricsForTab = (
   type: string,
   isKubernetes: boolean,
   isMaster: boolean,
-  isSidecarScraped: boolean
+  isSidecarScraped: boolean,
+  isPssCollected = true
 ): string[] => {
   const tab = (MetricTypesWithOperations as Record<string, { metrics: readonly string[] }>)[type];
   let metrics: string[] = [...tab.metrics];
+  if (!isPssCollected) {
+    metrics = metrics.filter((metric) => !PSS_ONLY_METRICS.includes(metric));
+  }
   if (isKubernetes) {
     metrics = metrics
       .filter((metric) => {

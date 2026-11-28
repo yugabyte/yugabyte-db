@@ -5,9 +5,14 @@ import { MetricMeasure, MetricOrigin, MetricTypes, NodeType } from '../constants
 vi.mock('../GraphTab/GraphTab', () => ({ GraphTab: () => null }));
 vi.mock('../../metrics', () => ({ GraphPanelHeaderContainer: () => null }));
 
-const universe = (providerType: string, nodeExporterSidecarScraped?: boolean) => ({
+const universe = (
+  providerType: string,
+  nodeExporterSidecarScraped?: boolean,
+  postgresPssCollected?: boolean
+) => ({
   universeUUID: 'u1',
   nodeExporterSidecarScraped,
+  postgresPssCollected,
   universeDetails: {
     clusters: [{ clusterType: 'PRIMARY', userIntent: { providerType, enableYSQL: true } }],
     nodeDetailsSet: []
@@ -18,7 +23,8 @@ const renderBody = (
   selectedUniverse: any,
   currentSelectedNodeType: string = NodeType.ALL,
   nodeName = 'all',
-  origin: string = MetricOrigin.UNIVERSE
+  origin: string = MetricOrigin.UNIVERSE,
+  configEntries: any[] = []
 ) =>
   PanelBody({
     origin,
@@ -33,7 +39,7 @@ const renderBody = (
         nodeName
       }
     },
-    customer: { runtimeConfigs: { data: { configEntries: [] } } },
+    customer: { runtimeConfigs: { data: { configEntries } } },
     printMode: false
   } as any) as any;
 
@@ -117,6 +123,29 @@ describe('PanelBody tabs on VMs', () => {
 
   it('shows Disk I/O for the Master node type', () => {
     expect(tabsFor(universe('aws'), NodeType.MASTER)).toContain(MetricTypes.DISK_IO);
+  });
+});
+
+describe('PanelBody Per Process keys', () => {
+  const perProcessFlag = [{ key: 'yb.ui.feature_flags.enable_per_process_metrics', value: 'true' }];
+  const perProcessKeysFor = (selectedUniverse: any): string[] => {
+    const tab = tabElements(renderBody(selectedUniverse, NodeType.ALL, 'all', perProcessFlag)).find(
+      (t: any) => t.props.eventKey === MetricTypes.PER_PROCESS
+    );
+    return tab.props.children.props.metricsKey;
+  };
+
+  it('hides the PSS worker panels when the universe does not collect PSS', () => {
+    const keys = perProcessKeysFor(universe('aws', false, false));
+    expect(keys).not.toContain('postgres_worker_pss_max');
+    expect(keys).not.toContain('postgres_worker_pss_p95');
+    expect(keys).toContain('process_proportional_memory');
+  });
+
+  it.each([true, undefined])('shows the PSS worker panels otherwise (%s)', (collected) => {
+    const keys = perProcessKeysFor(universe('aws', false, collected));
+    expect(keys).toContain('postgres_worker_pss_max');
+    expect(keys).toContain('postgres_worker_pss_p95');
   });
 });
 

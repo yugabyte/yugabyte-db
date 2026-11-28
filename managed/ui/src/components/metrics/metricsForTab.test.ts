@@ -2,6 +2,7 @@ import {
   MetricTypes,
   MetricTypesWithOperations,
   NODE_EXPORTER_PANEL_SOURCES,
+  PSS_ONLY_METRICS,
   metricsForTab
 } from './constants';
 
@@ -99,6 +100,23 @@ describe('metricsForTab', () => {
     );
     expect(metricsForTab(MetricTypes.DISK_IO, false, true, false)).toEqual(
       metricsForTab(MetricTypes.DISK_IO, false, true, true)
+    );
+  });
+
+  it('keeps the PSS panels by default and when PSS is collected', () => {
+    const perProcess = MetricTypesWithOperations[MetricTypes.PER_PROCESS].metrics;
+    expect(metricsForTab(MetricTypes.PER_PROCESS, false, false, false)).toEqual(perProcess);
+    expect(metricsForTab(MetricTypes.PER_PROCESS, false, false, false, true)).toEqual(perProcess);
+  });
+
+  it('drops only the PSS worker panels when PSS is not collected', () => {
+    const metrics = metricsForTab(MetricTypes.PER_PROCESS, false, false, false, false);
+    PSS_ONLY_METRICS.forEach((metric) => expect(metrics).not.toContain(metric));
+    expect(metrics).toContain('process_proportional_memory');
+    expect(metrics).toEqual(
+      MetricTypesWithOperations[MetricTypes.PER_PROCESS].metrics.filter(
+        (metric) => !PSS_ONLY_METRICS.includes(metric)
+      )
     );
   });
 

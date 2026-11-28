@@ -136,7 +136,9 @@ export const PanelBody = ({
         type,
         isKubernetesUniverse,
         isMasterView,
-        !!selectedUniverse?.nodeExporterSidecarScraped
+        !!selectedUniverse?.nodeExporterSidecarScraped,
+        // Hidden only when the universe says PSS is off. 'All universes' has no setting to read.
+        selectedUniverse?.postgresPssCollected !== false
       );
       if (
         !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
