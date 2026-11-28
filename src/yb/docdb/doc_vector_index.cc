@@ -139,13 +139,14 @@ vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   FATAL_INVALID_ENUM_VALUE(PgVectorDistanceType, dist_type);
 }
 
-vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& options) {
+vector_index::HNSWOptions ConvertToHnswOptions(
+    const PgVectorIdxOptionsPB& options, vector_index::DistanceKind distance_kind) {
   return {
     .dimensions = options.dimensions(),
     .num_neighbors_per_vertex = options.hnsw().m(),
     .num_neighbors_per_vertex_base = options.hnsw().m0(),
     .ef_construction = options.hnsw().ef_construction(),
-    .distance_kind = ConvertDistanceKind(options.dist_type()),
+    .distance_kind = distance_kind,
   };
 }
 
@@ -153,8 +154,8 @@ template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
-    const MemTrackerPtr& mem_tracker) {
-  auto hnsw_options = ConvertToHnswOptions(options);
+    vector_index::DistanceKind distance_kind, const MemTrackerPtr& mem_tracker) {
+  auto hnsw_options = ConvertToHnswOptions(options, distance_kind);
   auto backend = options.hnsw().backend();
   switch (backend) {
     case HnswBackend::YB_HNSW_USEARCH:
@@ -185,11 +186,11 @@ template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 auto GetVectorLSMTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
-    const MemTrackerPtr& mem_tracker)
+    vector_index::DistanceKind distance_kind, const MemTrackerPtr& mem_tracker)
     -> Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> {
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return HnswTraits<Vector, DistanceResult>(block_cache, options, mem_tracker);
+      return HnswTraits<Vector, DistanceResult>(block_cache, options, distance_kind, mem_tracker);
     case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -482,11 +483,20 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
     name_ = RemoveLogPrefixColon(log_prefix);
     auto thread_pools = thread_pool_provider();
+    auto distance_kind = ConvertDistanceKind(options_.dist_type());
+    // Normalize cosine vectors, since cosine float kernels return NaN when the squared length
+    // leaves the float range, see #37160.
+    typename LSM::Options::VectorIndexTraits unnormalized_traits;
+    if (distance_kind == vector_index::DistanceKind::kCosine) {
+      unnormalized_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
+          block_cache_, options_, distance_kind, mem_tracker_)));
+      distance_kind = vector_index::DistanceKind::kInnerProduct;
+    }
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = storage_dir,
       .vector_index_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
-          block_cache_, options_, mem_tracker_))),
+          block_cache_, options_, distance_kind, mem_tracker_))),
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
@@ -501,6 +511,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       // Fixed by master at index creation: the chunk payload mode and the reverse mapping
       // writes must stay consistent for the whole lifetime of the index.
       .store_vector_payload = vector_index::StoreVectorPayload(StoresPayload()),
+      .unnormalized_vector_index_traits = std::move(unnormalized_traits),
     };
     RETURN_NOT_OK(lsm_.Open(std::move(lsm_options)));
 

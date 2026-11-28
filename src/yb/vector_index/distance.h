@@ -141,6 +141,24 @@ inline auto DistanceCosine(
 
 }  // namespace distance
 
+// Scales the vector to unit length, leaving a zero vector as is. The squared length is summed in
+// double, which holds the square of any float.
+template<IndexableVectorType Vector>
+requires std::is_same_v<typename Vector::value_type, float>
+void NormalizeVector(Vector& vector) {
+  double squared_length = 0;
+  for (auto x : vector) {
+    squared_length += static_cast<double>(x) * x;
+  }
+  if (squared_length == 0) {
+    return;
+  }
+  const auto inverse_length = 1 / std::sqrt(squared_length);
+  for (auto& x : vector) {
+    x = static_cast<float>(x * inverse_length);
+  }
+}
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using DistanceFunction = std::function<DistanceResult(const Vector&, const Vector&)>;
 

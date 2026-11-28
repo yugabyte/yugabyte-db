@@ -130,6 +130,13 @@ struct VectorLSMOptions {
 
   // Whether newly created chunks store payloads attached to vectors, see StoreVectorPayload.
   vector_index::StoreVectorPayload store_vector_payload = vector_index::StoreVectorPayload::kFalse;
+
+  // Set for cosine distance, whose float kernels return NaN when the squared length leaves the
+  // float range. Float vectors are then scaled to unit length before inserting or searching them,
+  // so vector_index_traits could use inner product, equal to cosine distance for unit vectors.
+  // Opens chunks built from vectors that were not normalized, see
+  // VectorLSMChunkPB::vectors_normalized.
+  VectorIndexTraits unnormalized_vector_index_traits;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -297,6 +304,21 @@ class VectorLSM {
 
   // StartDestroy cancels the registries. A destroyed LSM saves no chunks.
   bool IsDestroyed() const;
+
+  // Whether vectors are normalized, see Options::unnormalized_vector_index_traits.
+  bool NormalizesVectors() const {
+    return options_.unnormalized_vector_index_traits != nullptr;
+  }
+
+  // Normalizes the vector when NormalizesVectors().
+  void PrepareVector(Vector& vector) const;
+
+  // NormalizeVector for float vectors. VectorLSM is also instantiated for uint8 vectors, which Open
+  // does not let normalize.
+  static void Normalize(Vector& vector);
+
+  // Returns vector, or its normalized copy in buffer when NormalizesVectors().
+  const Vector& PreparedVector(const Vector& vector, Vector& buffer) const;
 
   // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
   void ReleaseChunkHold(MutableChunk& chunk);

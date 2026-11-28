@@ -105,6 +105,7 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
   void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
   void TestMetric(const std::string& expected);
   void TestRandom();
+  void TestCosineExtremeVector(double scale);
   void TestNullVectorsInIntents(bool commit);
   void TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory);
 };
@@ -1027,6 +1028,74 @@ TEST_P(PgVectorIndexTest, InnerProduct) {
 TEST_P(PgVectorIndexTest, Cosine) {
   distance_kind_ = vector_index::DistanceKind::kCosine;
   TestMetric("2; 3; 1");
+}
+
+// The squared length of a vector scaled by `scale` leaves the float range. Cosine distances to
+// such a vector used to be NaN, which broke the search for the other vectors, see #37160.
+void PgVectorIndexTest::TestCosineExtremeVector(double scale) {
+  constexpr size_t kDimensions = 32;
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(3000, 300);
+  constexpr size_t kNumQueries = 20;
+  constexpr size_t kLimit = 10;
+  constexpr auto kGaussian = "sqrt(-2 * ln(1 - random())) * cos(2 * pi() * random())";
+  // Backfill inserts the vectors in key order, so the extreme one goes first and every later
+  // insert could reach it.
+  constexpr size_t kExtremeId = 0;
+
+  // The index search goes through the graph, the exact one scans the table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  distance_kind_ = vector_index::DistanceKind::kCosine;
+  auto conn = ASSERT_RESULT(MakeTable(kDimensions));
+  // WHERE i > 0 makes the subquery generate a new vector for each row.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, (SELECT array_agg($0)::real[] FROM generate_series(1, $1) "
+      "WHERE i > 0)::vector FROM generate_series(1, $2) i",
+      kGaussian, kDimensions, kNumRows));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT $0, (SELECT array_agg($1 * $2)::real[] "
+      "FROM generate_series(1, $3))::vector",
+      kExtremeId, scale, kGaussian, kDimensions));
+  // The default build options. The denser graph of kDefaultIndexBuildOptions hides the problem.
+  ASSERT_OK(CreateIndex(conn, kVectorIndexName, std::nullopt, std::string(), "m = 32"));
+
+  size_t total_hits = 0;
+  size_t min_hits = kLimit;
+  for (size_t i = 0; i != kNumQueries; ++i) {
+    // A row plus some noise.
+    auto query_vector = ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+        "SELECT (SELECT array_agg(x + 0.3 * $0)::real[] FROM unnest(embedding::real[]) x)"
+        "::vector::text FROM test WHERE id = $1",
+        kGaussian, 1 + i * kNumRows / kNumQueries)));
+    ASSERT_OK(conn.Execute("SET enable_indexscan = off"));
+    auto expected = ASSERT_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test WHERE id <> $0$1", kExtremeId,
+        IndexQuerySuffix(query_vector, kLimit))));
+    ASSERT_OK(conn.Execute("SET enable_indexscan = on"));
+    auto found = ASSERT_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM (SELECT id FROM test$0) s WHERE id <> $1 LIMIT $2",
+        IndexQuerySuffix(query_vector, kLimit + 1), kExtremeId, kLimit)));
+    std::ranges::sort(expected);
+    std::ranges::sort(found);
+    std::vector<int64_t> hits;
+    std::ranges::set_intersection(expected, found, std::back_inserter(hits));
+    LOG(INFO) << "Query " << i << ", hits: " << hits.size() << ", expected: " << AsString(expected)
+              << ", found: " << AsString(found);
+    total_hits += hits.size();
+    min_hits = std::min(min_hits, hits.size());
+  }
+  LOG(INFO) << "Recall: " << total_hits * 1.0 / (kLimit * kNumQueries)
+            << ", worst query hits: " << min_hits;
+  ASSERT_GE(total_hits * 20, kLimit * kNumQueries * 19);
+  ASSERT_GE(min_hits, kLimit / 2);
+}
+
+TEST_P(PgVectorIndexTest, CosineTinyVector) {
+  TestCosineExtremeVector(1e-23);
+}
+
+TEST_P(PgVectorIndexTest, CosineHugeVector) {
+  TestCosineExtremeVector(1e20);
 }
 
 TEST_P(PgVectorIndexTest, EfSearch) {

@@ -255,6 +255,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
       size_t block_size = std::numeric_limits<size_t>::max(),
       size_t min_entry_idx = 0);
 
+  // Inserts inserted_entries_[begin, end) in blocks of block_size.
+  Status InsertEntryRange(FloatVectorLSM& lsm, size_t begin, size_t end, size_t block_size);
+
   Status InsertRandom(
       FloatVectorLSM& lsm, size_t dimensions, size_t num_entries,
       size_t block_size = std::numeric_limits<size_t>::max());
@@ -269,10 +272,11 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   Status WaitForCompactionsDone(
       const FloatVectorLSM& lsm, MonoDelta timeout = MonoDelta::FromSeconds(60));
 
-  void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
+  void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions, float distance_tolerance = 0);
 
   void CheckQueryVector(
-      FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results);
+      FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results,
+      float distance_tolerance = 0);
 
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
 
@@ -358,6 +362,8 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   MergeFilterPtr merge_filter_;
   // Passed to the indexes opened by OpenVectorLSM.
   vector_index::VectorTenantExtractor tenant_extractor_;
+  // Makes OpenVectorLSM normalize cosine vectors the way DocDB does.
+  bool normalize_vectors_ = false;
 
   MetricEntityPtr vector_index_metric_entity_ =
       METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
@@ -476,6 +482,20 @@ Status VectorLSMTestBase::InsertCube(
   return Status::OK();
 }
 
+Status VectorLSMTestBase::InsertEntryRange(
+    FloatVectorLSM& lsm, size_t begin, size_t end, size_t block_size) {
+  for (auto i = begin; i < end; i += block_size) {
+    FloatVectorLSM::InsertEntries block_entries(
+        inserted_entries_.begin() + i, inserted_entries_.begin() + std::min(i + block_size, end));
+    TestFrontiers frontiers(block_entries);
+    for (size_t j = 0; j != block_entries.size(); ++j) {
+      key_value_storage_.StoreVector(block_entries[j].vector_id, i + j + 1);
+    }
+    RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
+  }
+  return Status::OK();
+}
+
 Status VectorLSMTestBase::InsertRandom(
     FloatVectorLSM& lsm, size_t dimensions, size_t num_entries, size_t batch_size) {
   inserted_entries_ = RandomEntries(dimensions, num_entries, store_vector_payload());
@@ -536,6 +556,13 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .dimensions = dimensions,
     .distance_kind = distance_kind,
   };
+  FloatVectorLSM::Options::VectorIndexTraits unnormalized_traits;
+  if (normalize_vectors_) {
+    SCHECK_EQ(distance_kind, vector_index::DistanceKind::kCosine, InvalidArgument, "Not cosine");
+    unnormalized_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
+        block_cache_, hnsw_options, mem_tracker, tenant_extractor_)));
+    hnsw_options.distance_kind = vector_index::DistanceKind::kInnerProduct;
+  }
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = dir,
@@ -551,6 +578,7 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .metric_entity = vector_index_metric_entity_,
     .block_cache_capacity = block_cache_->capacity(),
     .store_vector_payload = store_vector_payload(),
+    .unnormalized_vector_index_traits = std::move(unnormalized_traits),
   };
   auto status = lsm.Open(std::move(options));
   if (status.ok()) {
@@ -640,7 +668,8 @@ Status VectorLSMTestBase::InitVectorLSM(
   return InsertCube(lsm, dimensions, vectors_per_chunk);
 }
 
-void VectorLSMTestBase::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
+void VectorLSMTestBase::VerifyVectorLSM(
+    FloatVectorLSM& lsm, size_t dimensions, float distance_tolerance) {
   // Use power-of-2 query vectors to guarantee unique distances for all distance kinds
   // (L2, inner product, cosine). Uniform queries like (0,...,0) are degenerate for cosine,
   // and linear queries like (1,2,3,...) produce ties for cosine (e.g., subsets {0,5} and {1,4}
@@ -651,12 +680,13 @@ void VectorLSMTestBase::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) 
     query1[d] = static_cast<float>(1 << d);
     query2[d] = static_cast<float>(1 << (dimensions - 1 - d));
   }
-  CheckQueryVector(lsm, query1, dimensions + 1);
-  CheckQueryVector(lsm, query2, dimensions + 1);
+  CheckQueryVector(lsm, query1, dimensions + 1, distance_tolerance);
+  CheckQueryVector(lsm, query2, dimensions + 1, distance_tolerance);
 }
 
 void VectorLSMTestBase::CheckQueryVector(
-    FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results) {
+    FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results,
+    float distance_tolerance) {
   bool stop = false;
 
   FloatVectorLSM::SearchResults expected_results;
@@ -687,7 +717,7 @@ void VectorLSMTestBase::CheckQueryVector(
     std::sort(search_result.begin(), search_result.end(), less_condition);
 
     for (size_t i = 0; i != expected_results.size(); ++i) {
-      ASSERT_EQ(search_result[i].distance, expected_results[i].distance);
+      ASSERT_NEAR(search_result[i].distance, expected_results[i].distance, distance_tolerance);
       ASSERT_EQ(search_result[i].vector_id, expected_results[i].vector_id);
       ASSERT_EQ(
           search_result[i].payload.ToStringBuffer(),
@@ -1479,6 +1509,62 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionInnerProduct) {
 
 TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionCosine) {
   TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kCosine);
+}
+
+// Chunks written before cosine vectors were normalized keep cosine distance, while the new ones
+// use inner product. Search and compaction should handle both, see #37160.
+TEST_P(VectorLSMTest, NormalizeCosineVectors) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kBlockSize = kDefaultChunkSize / 4;
+  // Cosine and inner product kernels, and the inner product kernels of hnswlib and yb_hnsw, differ
+  // in rounding.
+  constexpr float kDistanceTolerance = 1e-6;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  inserted_entries_ = CubeInsertEntries(kDimensions, store_vector_payload());
+  const auto half = inserted_entries_.size() / 2;
+  std::string storage_dir;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine));
+    storage_dir = lsm.StorageDir();
+    ASSERT_OK(InsertEntryRange(lsm, 0, half, kBlockSize));
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+  }
+
+  normalize_vectors_ = true;
+  auto check_normalized_chunks = [&storage_dir](size_t expected) {
+    auto chunks = ASSERT_RESULT(LoadAliveManifestChunks(Env::Default(), storage_dir));
+    size_t normalized = 0;
+    for (const auto& chunk : chunks) {
+      normalized += chunk.vectors_normalized();
+    }
+    ASSERT_EQ(normalized, expected);
+    ASSERT_GT(chunks.size(), 0);
+  };
+  ASSERT_NO_FATALS(check_normalized_chunks(0));
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {}, storage_dir));
+    const auto old_chunks = lsm.NumImmutableChunks();
+    ASSERT_OK(InsertEntryRange(lsm, half, inserted_entries_.size(), kBlockSize));
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_NO_FATALS(check_normalized_chunks(lsm.NumImmutableChunks() - old_chunks));
+    VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
+
+    ASSERT_OK(lsm.Compact(/* wait = */ true));
+    ASSERT_EQ(1, lsm.NumImmutableChunks());
+    ASSERT_NO_FATALS(check_normalized_chunks(1));
+    VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
+  }
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {}, storage_dir));
+  VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
 }
 
 // The purpose of this test is to make sure compaction works fine if all chunks got
