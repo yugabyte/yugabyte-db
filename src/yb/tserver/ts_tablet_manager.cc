@@ -3013,7 +3013,25 @@ Status TSTabletManager::TriggerAdminCompaction(
   };
 
   for (auto tablet : tablets) {
-    RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
+    // Do not return here: callbacks of already submitted compactions reference this frame.
+    // The wait is short: a tablet object exists once bootstrap is done, so it is for the rest of
+    // TabletPeer::Start, or for a truncate or restore that reopened the DB to complete.
+    auto status = tablet->WaitCompactionsEnabled(options.deadline);
+    if (status.ok()) {
+      status = tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options);
+    }
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to trigger admin compaction of tablet "
+                               << tablet->tablet_id() << ": " << status;
+      {
+        std::lock_guard lock(first_compaction_error_mutex);
+        if (first_compaction_error.ok()) {
+          first_compaction_error = std::move(status);
+        }
+      }
+      latch.CountDown();
+      continue;
+    }
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
@@ -3036,7 +3054,8 @@ Status TSTabletManager::TriggerAdminCompaction(
     }
   }
 
-  return Status::OK();
+  // Without should_wait, only a submission failure sets it.
+  return first_compaction_error;
 }
 
 void TSTabletManager::StartShutdown() {

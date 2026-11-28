@@ -64,6 +64,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -253,6 +254,10 @@ void MiniTabletServer::Shutdown() {
 
 namespace {
 
+CoarseTimePoint CompactionsEnabledDeadline() {
+  return CoarseMonoClock::Now() + std::chrono::seconds(30) * kTimeMultiplier;
+}
+
 Status ForAllTablets(
     MiniTabletServer* mts,
     std::function<Status(TabletPeer* tablet_peer)> action) {
@@ -309,9 +314,13 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     if (!tablet) {
       return Status::OK();
     }
-    const auto status = tablet->ForceManualRocksDBCompact(skip_flush);
-    // A tablet whose RocksDB shutdown has already started, e.g. because it is being deleted
-    // concurrently, has nothing left to compact.
+    // A tablet whose shutdown has already started, e.g. because it is being deleted
+    // concurrently, or whose peer failed to start has nothing left to compact.
+    auto status = tablet->WaitCompactionsEnabled(CompactionsEnabledDeadline());
+    if (!status.ok()) {
+      return status.IsShutdownInProgress() || !tablet_peer->error().ok() ? Status::OK() : status;
+    }
+    status = tablet->ForceManualRocksDBCompact(skip_flush);
     return status.IsShutdownInProgress() ? Status::OK() : status;
   });
 }
@@ -325,6 +334,7 @@ Status MiniTabletServer::CompactTablet(const TabletId& tablet_id, docdb::SkipFlu
     return Status::OK();
   }
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
+  RETURN_NOT_OK(tablet->WaitCompactionsEnabled(CompactionsEnabledDeadline()));
   return tablet->ForceManualRocksDBCompact(skip_flush);
 }
 

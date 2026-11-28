@@ -1326,6 +1326,7 @@ std::string Tablet::LogPrefix(docdb::StorageDbType db_type) const {
 }
 
 Status Tablet::OpenKeyValueTablet() {
+  compactions_enabled_ = false;
   auto common_options = VERIFY_RESULT(CommonRocksDBOptions());
 
   key_bounds_ = metadata()->MakeKeyBounds();
@@ -1885,6 +1886,8 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
+  // Set even if enabling auto compactions fails below, since manual compactions do not need them.
+  compactions_enabled_ = true;
   vector_indexes().List().EnableAutoCompactions();
 
   Status regular_db_status;
@@ -5581,6 +5584,7 @@ Status Tablet::ForceRocksDBCompact(
     const rocksdb::CompactRangeOptions& intents_options) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
+  RETURN_NOT_OK(CheckCompactionsEnabled());
   if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), regular_options));
   }
@@ -6994,6 +6998,7 @@ Status Tablet::TriggerManualCompactionIfNeeded(
   if (!full_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
   }
+  RETURN_NOT_OK(CheckCompactionsEnabled());
 
   std::lock_guard lock(full_compaction_token_mutex_);
   if (HasActiveFullCompactionUnlocked()) {
@@ -7047,6 +7052,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
   if (!admin_triggered_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
   }
+  RETURN_NOT_OK(CheckCompactionsEnabled());
 
   std::lock_guard lock(full_compaction_token_mutex_);
   if (!admin_full_compaction_task_pool_token_) {
@@ -7127,8 +7133,31 @@ bool Tablet::HasActiveTTLFileExpiration() {
             dockv::ValueControlFields::kMaxTtl;
 }
 
+Status Tablet::WaitCompactionsEnabled(CoarseTimePoint deadline) const {
+  if (compactions_enabled_) {
+    return Status::OK();
+  }
+  TEST_SYNC_POINT("Tablet::WaitCompactionsEnabled");
+  return Wait(
+      [this]() -> Result<bool> {
+        if (compactions_enabled_) {
+          return true;
+        }
+        SCHECK(!IsShutdownRequested(), ShutdownInProgress, "Tablet is shutting down");
+        SCHECK(!peer_failed_, IllegalState, "Tablet peer failed");
+        return false;
+      },
+      deadline, Format("$0Compactions enabled", LogPrefix()));
+}
+
+Status Tablet::CheckCompactionsEnabled() const {
+  SCHECK(compactions_enabled_, ServiceUnavailable, "Compactions are not enabled yet");
+  return Status::OK();
+}
+
 bool Tablet::IsEligibleForFullCompaction() {
-  return !HasActiveFullCompaction()
+  return compactions_enabled_
+      && !HasActiveFullCompaction()
       && !HasActiveTTLFileExpiration()
       && GetCurrentVersionNumSSTFiles() != 0;
 }

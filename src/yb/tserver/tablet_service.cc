@@ -2143,7 +2143,8 @@ Result<TableIdsPtr> CollectVectorIndexesForCompaction(const FlushTabletsRequestP
 Status TriggerCompact(
     TSTabletManager& tablet_manager,
     const TSTabletManager::TabletPtrs& tablets,
-    const FlushTabletsRequestPB& req) {
+    const FlushTabletsRequestPB& req,
+    CoarseTimePoint deadline) {
   // FlushCompactFlags for COMPACT operation:
   // 1. FLUSH_COMPACT_DEFAULT
   //    Compact regular + intents + vector indexes. If vector_index_ids field is not empty,
@@ -2171,6 +2172,9 @@ Status TriggerCompact(
     VERIFY_RESULT(CollectVectorIndexesForCompaction(req)),
     tablet::VectorIndexOnly(IsVectorIndexOnly(req))
   };
+  // Tablets of RUNNING peers can still be completing startup. Without this wait such a tablet
+  // fails the request, and the master retries it with all its tablets.
+  options.deadline = deadline;
 
   return tablet_manager.TriggerAdminCompaction(tablets, options);
 }
@@ -2241,7 +2245,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     }
     case FlushTabletsRequestPB::COMPACT: {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          TriggerCompact(*server_->tablet_manager(), tablet_ptrs, *req),
+          TriggerCompact(
+              *server_->tablet_manager(), tablet_ptrs, *req, context.GetClientDeadline()),
           resp, &context);
       break;
     }

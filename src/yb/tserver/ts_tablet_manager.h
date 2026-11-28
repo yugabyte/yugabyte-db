@@ -142,6 +142,9 @@ struct AdminCompactionOptions {
   rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe;
   TableIdsPtr vector_index_ids;
   tablet::VectorIndexOnly vector_index_only;
+  // Until when to wait for a tablet that is completing startup to enable compactions. The default
+  // does not wait.
+  CoarseTimePoint deadline = CoarseTimePoint();
 
   AdminCompactionOptions() = delete;
 

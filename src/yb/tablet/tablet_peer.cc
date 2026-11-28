@@ -2101,6 +2101,9 @@ TableType TabletPeer::TEST_table_type() {
 void TabletPeer::SetFailed(const Status& error) {
   DCHECK(error_.get(std::memory_order_acquire) == nullptr);
   error_ = MakeAtomicUniquePtr<Status>(error);
+  if (auto tablet = shared_tablet_maybe_null()) {
+    tablet->SetPeerFailed();
+  }
   auto state = state_.load(std::memory_order_acquire);
   while (state != RaftGroupStatePB::FAILED && state != RaftGroupStatePB::QUIESCING &&
          state != RaftGroupStatePB::SHUTDOWN) {
