@@ -13413,7 +13413,7 @@ Status CatalogManager::SendCreateTabletRequests(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
                  stream->IsTablesWithoutPrimaryKeyAllowed(),
                  stream->DetectPublicationChangesImplicitly()) &&
-             CDCSDKStreamTakesNewTable(*stream, *tablet->table()))) {
+             CDCSDKStreamTakesNewTable(*stream, *tablet->table(), nullptr))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }

@@ -158,6 +158,8 @@ using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 
 using TableToTabletInfos = std::unordered_map<TableId, std::vector<TabletInfoPtr>>;
 
+YB_STRONGLY_TYPED_BOOL(RequireLogicalReplication);
+
 YB_DEFINE_ENUM(CDCSDKStreamCreationState,
     // Stream has been initialized but no in-memory data structures or sys-catalog have been
     // modified.
@@ -1787,6 +1789,20 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
+  // What WillCDCSDKStreamAcceptTable needs from a stream. A caller that tests many tables against
+  // one stream builds it once with GetCDCSDKStreamTableInfo instead of recomputing it per table.
+  struct CDCSDKStreamTableInfo {
+    std::unordered_set<TableId> table_ids;
+    std::optional<std::unordered_set<uint32_t>> pg_table_oids;
+  };
+
+  // Returns true if the CDC bg thread would add 'table' to 'stream_info'. 'stream_table_info', if
+  // given, is GetCDCSDKStreamTableInfo of 'stream_info'; when null it is computed here.
+  bool WillCDCSDKStreamAcceptTable(
+      const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table,
+      const CDCSDKStreamTableInfo* stream_table_info) const
+      REQUIRES_SHARED(mutex_);
+
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
@@ -1838,7 +1854,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Whether 'table', created after the CDCSDK stream, can be added to the stream: a regular stream
   // and one bound to a FOR ALL TABLES publication take every new table, while a stream bound to a
   // publication with a table list takes it only if it is a rewrite of one of its tables.
-  bool CDCSDKStreamTakesNewTable(const CDCStreamInfo& stream, const TableInfo& table) const
+  // 'stream_table_info' is as in WillCDCSDKStreamAcceptTable.
+  bool CDCSDKStreamTakesNewTable(
+      const CDCStreamInfo& stream, const TableInfo& table,
+      const CDCSDKStreamTableInfo* stream_table_info) const
+      REQUIRES_SHARED(mutex_);
+
+  // Returns the per-stream data that WillCDCSDKStreamAcceptTable checks every table against.
+  CDCSDKStreamTableInfo GetCDCSDKStreamTableInfo(const CDCStreamInfo& stream) const
       REQUIRES_SHARED(mutex_);
 
   // Whether 'table' is a rewrite of one of the tables of a CDCSDK stream, whose tables have the PG
@@ -2670,6 +2693,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
+  // Returns true if the table is in a CDCSDK stream, or is waiting in the unprocessed map and a
+  // stream would accept it once the CDC bg thread runs.
   bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_logical_replication = false) const
       REQUIRES_SHARED(mutex_);
 
@@ -3420,10 +3445,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
   // This method returns all tables in the namespace based on the criteria specified by
-  // 'allows_tables_without_primary_key'.
+  // 'allows_tables_without_primary_key'. If 'hidden_tables' is set, eligible tables that started
+  // hiding are returned in it instead of being skipped.
   std::vector<TableInfoPtr> FindAllTablesForCDCSDK(
       const NamespaceId& ns_id, const bool allow_tables_without_primary_key,
-      const bool include_catalog_tables = false) REQUIRES_SHARED(mutex_);
+      const bool include_catalog_tables = false,
+      std::vector<TableInfoPtr>* hidden_tables = nullptr) REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.
   std::vector<CDCStreamInfoPtr> GetXReplStreamsForTable(
@@ -3472,6 +3499,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool* const bootstrap_required);
 
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
+      REQUIRES_SHARED(mutex_);
+
+  // The unprocessed streams of 'table_id': streams that would pick it up once the CDC bg thread
+  // registers it. Empty unless the table is in the unprocessed map.
+  std::unordered_set<xrepl::StreamId> GetCDCSDKUnprocessedStreamsForTable(
+      const TableId& table_id, RequireLogicalReplication require_logical_replication) const
       REQUIRES_SHARED(mutex_);
 
   std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
