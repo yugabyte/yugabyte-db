@@ -1611,7 +1611,10 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                                      IsolationLevel isolation,
                                      List<Boolean> expectRetriedPerStmt,
                                      List<String> sessionSetupSqls) {
-      super(cb, getShortString(), 50 /* numInserts */);
+      // A statement expected to surface read restarts needs an INSERT to commit while it runs, so
+      // give it a bigger INSERT budget (see ConcurrentInsertSelectTester).
+      super(cb, getShortString(),
+            expectRetriedPerStmt.contains(false) ? 150 : 50 /* numInserts */);
       assertEquals("execSqls and expectRetriedPerStmt must have the same length",
           execSqls.size(), expectRetriedPerStmt.size());
       this.execSqls = execSqls;
