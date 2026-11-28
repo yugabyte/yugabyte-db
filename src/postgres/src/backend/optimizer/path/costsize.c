@@ -8361,6 +8361,7 @@ yb_bitmap_index_selectivity(IndexPath *path,
 	List	   *filter_quals;
 	List	   *all_index_quals = NIL;
 	List	   *index_remote_quals = NIL;
+	List	   *selectivity_quals;
 	Selectivity	sel;
 
 	if (path->yb_bitmap_idx_pushdowns)
@@ -8400,9 +8401,17 @@ yb_bitmap_index_selectivity(IndexPath *path,
 
 	all_index_quals = list_concat(index_remote_quals, index_conds);
 
-	sel = clauselist_selectivity(root, all_index_quals,
+	/*
+	 * As in genericcostestimate(), a partial index's predicate counts when
+	 * the quals do not imply it: the bitmap holds rows of the index only.
+	 */
+	selectivity_quals = add_predicate_to_index_quals(index, all_index_quals);
+
+	sel = clauselist_selectivity(root, selectivity_quals,
 								 index->rel->relid, JOIN_INNER, NULL);
 
+	if (selectivity_quals != all_index_quals)
+		list_free(selectivity_quals);
 	list_free(all_index_quals);
 
 	return sel;
@@ -10970,28 +10979,54 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	List	   *remote_table_quals = NIL;
 	List	   *table_colrefs = NIL;
 
-	yb_extract_pushdown_clauses(non_index_clauses,
-								NULL,	/* index_info */
-								false,	/* bitmapindex */
-								&local_clauses,
-								&remote_table_quals,
-								&table_colrefs,
-								NULL,	/* idx_remote_quals */
-								NULL,	/* idx_colrefs */
-								baserel_oid,
-								NULL);
+	yb_extract_pushdown_restrictinfos(non_index_clauses,
+									  NULL, /* index_info */
+									  false,	/* bitmapindex */
+									  &local_clauses,
+									  &remote_table_quals,
+									  &table_colrefs,
+									  NULL, /* idx_remote_quals */
+									  NULL, /* idx_colrefs */
+									  baserel_oid,
+									  NULL);
 
-	tuples_fetched = clamp_row_est(adjusted_baserel_tuples *
-								   clauselist_selectivity(root, indexquals,
-														  baserel->relid,
-														  JOIN_INNER, NULL));
+	/*
+	 * The scan fetches the tuples that the bitmap holds.  For a bitmap of one
+	 * index, their number follows the selectivity of the Bitmap Index Scan,
+	 * as in compute_bitmap_pages(): that selectivity is estimated from
+	 * RestrictInfos, so extended statistics apply to it.  A BitmapAnd
+	 * multiplies and a BitmapOr adds the selectivities of its inputs, which
+	 * ignores how the quals of the inputs overlap, so the quals of such a
+	 * bitmap are estimated together.
+	 */
+	if (IsA(bitmapqual, IndexPath))
+		tuples_fetched = clamp_row_est(adjusted_baserel_tuples *
+									   indexSelectivity);
+	else
+		tuples_fetched =
+			clamp_row_est(adjusted_baserel_tuples *
+						  clauselist_selectivity(root, indexquals,
+												 baserel->relid, JOIN_INNER,
+												 NULL));
 
-	result_tuples =
-		clamp_row_est(adjusted_baserel_tuples *
-					  clauselist_selectivity(root,
-											 list_union(indexquals,
-														remote_table_quals),
-											 baserel->relid, JOIN_INNER, NULL));
+	/*
+	 * DocDB returns the rows of the path before the local filters.  The
+	 * path's row estimate comes from the RestrictInfos of all the scan's
+	 * clauses, including a parameterized scan's join clauses, so extended
+	 * statistics apply to it.  They do not apply to the bare expressions
+	 * that yb_get_bitmap_index_quals() returns.
+	 */
+	result_tuples = path->rows;
+	if (local_clauses != NIL)
+	{
+		Selectivity local_selectivity =
+			clauselist_selectivity(root, local_clauses, baserel->relid,
+								   JOIN_INNER, NULL);
+
+		result_tuples = (local_selectivity > 0.0) ?
+			clamp_row_est(path->rows / local_selectivity) : tuples_fetched;
+	}
+	result_tuples = Min(result_tuples, tuples_fetched);
 
 	pages_fetched = ceil(tuples_fetched * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
 

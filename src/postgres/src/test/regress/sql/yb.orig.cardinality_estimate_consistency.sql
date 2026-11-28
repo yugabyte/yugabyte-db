@@ -273,3 +273,70 @@ from
 
 explain (costs off)
 /*+ Leading((s r)) NestLoop(s r) BitmapScan(r) Set(yb_bnl_batch_size 1) */select * from r, s where (a = x or b <= 300) and a + b >= y;
+
+--
+-- extended statistics in Bitmap Table Scan.
+-- k = 5 implies s = 0 and t = 0 (rd_k_s, rd_k_t), so the scans using i_rd_k
+-- should have the Estimated Nexts and the Estimated Table Roundtrips of
+-- k = 5 alone, with a Filter as well.  With the partial index i_rd_k_part,
+-- the Estimated Nexts should be the rows of the Bitmap Index Scan, and a
+-- Storage Filter on t should not change the estimates.
+--
+drop function if exists explain_analyze_debug_json cascade;
+drop function if exists non_pushable cascade;
+
+create function explain_analyze_debug_json(query_sql text)
+returns table (explain_line json)
+language plpgsql as
+$$
+begin
+  return query execute
+    'EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT json) ' || query_sql;
+end;
+$$;
+
+create function non_pushable(v int)
+returns int
+language plpgsql immutable as
+$$
+begin
+    return v;
+end;
+$$;
+
+-- EXPLAIN prints the estimates only with DEBUG.
+set yb_explain_hide_non_deterministic_fields = off;
+
+-- With these limits the Estimated Table Roundtrips follow the rows that the
+-- scan returns, not only the rows that it fetches.
+set yb_fetch_row_limit = 0;
+set yb_fetch_size_limit = '1kB';
+
+select
+  q.cond,
+  bts->'Plans'->0->'Index Name' bmis_index,
+  bts->'Plans'->0->'Storage Index Filter' bmis_filter,
+  bts->'Storage Filter' bmts_filter,
+  bts->'Filter' bmts_local_filter,
+  bts->'Plans'->0->'Plan Rows' bmis_rows,
+  bts->'Estimated Nexts' est_nexts,
+  bts->'Estimated Table Roundtrips' est_table_roundtrips
+from
+  (values
+    (1, 'i_rd_k', 'k = 5'),
+    (2, 'i_rd_k', 'k = 5 and s = 0'),
+    (3, 'i_rd_k', 'k = 5 and t = 0'),
+    (4, 'i_rd_k', 'k = 5 and t = 0 and non_pushable(pk) > 0'),
+    (5, 'i_rd_k_part', 'k = 5 and pk <= 6000'),
+    (6, 'i_rd_k_part', 'k = 5 and pk <= 6000 and t = 0')) q(n, idx, cond),
+  lateral explain_analyze_debug_json(
+    '/*+ BitmapScan(rd ' || q.idx || ') */ select pk from rd where ' || q.cond) js,
+  lateral to_json(js.explain_line->0->'Plan') bts
+order by q.n;
+
+reset yb_fetch_size_limit;
+reset yb_fetch_row_limit;
+reset yb_explain_hide_non_deterministic_fields;
+
+drop function explain_analyze_debug_json;
+drop function non_pushable;
