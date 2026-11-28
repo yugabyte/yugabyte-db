@@ -58,6 +58,7 @@
 #include "pg_yb_utils.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
+#include "utils/inval.h"
 
 /*
  * No more than this many tuples per CopyMultiInsertBuffer
@@ -535,6 +536,15 @@ CopyMultiInsertInfoStore(CopyMultiInsertInfo *miinfo, ResultRelInfo *rri,
 uint64
 CopyFrom(CopyFromState cstate)
 {
+	/*
+	 * YB: Each later batch of a batched COPY starts here, after the batch
+	 * before it has committed.  Going through the declarations again gives
+	 * each variable its initial value, so the batch builds its indexes,
+	 * partition routing, triggers and constraints from the catalog as it is
+	 * now, like a new transaction.
+	 */
+yb_process_more_batches:
+	;
 	ResultRelInfo *resultRelInfo;
 	ResultRelInfo *target_resultRelInfo;
 	ResultRelInfo *prevResultRelInfo = NULL;
@@ -565,6 +575,10 @@ CopyFrom(CopyFromState cstate)
 	bool		yb_is_copy_replace = false;
 	/* on_conflict_action for the relation or partition being inserted into */
 	OnConflictAction yb_on_conflict_action = ONCONFLICT_NONE;
+
+	/* YB: the rows of the batches loaded before this one */
+	processed = cstate->yb_processed;
+	excluded = cstate->yb_excluded;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -954,6 +968,16 @@ CopyFrom(CopyFromState cstate)
 		 * Was upsert requested, by WITH (REPLACE) or by
 		 * yb_enable_upsert_mode?
 		 */
+		/*
+		 * Each batch decides again, since a DDL between two batches can make
+		 * the target unsafe for upsert.  Decide from what the user asked for,
+		 * not from what the previous batch set below.
+		 */
+		if (!cstate->yb_loaded_a_batch)
+			cstate->yb_requested_on_conflict_action = cstate->opts.on_conflict_action;
+		else
+			cstate->opts.on_conflict_action = cstate->yb_requested_on_conflict_action;
+
 		if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE)
 			yb_is_copy_replace = true;
 		else if (yb_enable_upsert_mode &&
@@ -1005,9 +1029,9 @@ CopyFrom(CopyFromState cstate)
 
 	/*
 	 * Warn if non-txn COPY enabled and relation does not meet non-txn
-	 * criteria.
+	 * criteria.  YB: once per COPY, not once per batch.
 	 */
-	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert)
+	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert && !cstate->yb_loaded_a_batch)
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("non-transactional COPY is not supported on this relation; "
@@ -1017,8 +1041,10 @@ CopyFrom(CopyFromState cstate)
 
 	has_more_tuples = true;
 
-	/* Skip num_initial_skipped_rows. */
-	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
+	/* Skip num_initial_skipped_rows.  YB: in the first batch only. */
+	for (uint64 i = 0;
+		 !cstate->yb_loaded_a_batch && i < cstate->opts.num_initial_skipped_rows;
+		 i++)
 	{
 		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */ );
 		if (!has_more_tuples)
@@ -1028,7 +1054,6 @@ CopyFrom(CopyFromState cstate)
 	if (!has_more_tuples)
 		goto yb_no_more_tuples;
 
-yb_process_more_batches:
 	/*
 	 * When batch size is not provided from the query option,
 	 * default behavior is to read each line from the file
@@ -1390,80 +1415,23 @@ yb_process_more_batches:
 		}
 	}
 
+	/*
+	 * YB: A batch ends like a COPY: the code below fires the AFTER triggers
+	 * and closes what the batch opened.  If input is left, the batch is then
+	 * committed and the next one starts from the top.
+	 */
 	if (cstate->opts.batch_size > 0)
-	{
-		/*
-		 * YB: Fire AFTER triggers in the query context, as upstream does
-		 * before AfterTriggerEndQuery() at the end of CopyFrom(). The last
-		 * batch gets here in the per-tuple context, from the break after
-		 * NextCopyFrom().
-		 */
-		MemoryContextSwitchTo(oldcontext);
+		cstate->yb_more_batches = has_more_tuples;
 
-		/*
-		 * Handle queued AFTER triggers before committing. If there are errors,
-		 * do not commit the current batch.
-		 */
-		AfterTriggerEndQuery(estate);
+	/*
+	 * We need to flush buffered operations so that error callback is
+	 * executed
+	 */
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextCopyBatch(processed, RelationGetRelationName(cstate->rel)));
 
-		/*
-		 * Commit transaction per batch.
-		 * When CopyFrom method is called, we are already inside a transaction block
-		 * and relevant transaction state properties have been previously set.
-		 */
-		YBCommitTransactionIntermediate();
-
-		/*
-		 * Update progress of the COPY command as well.
-		 */
-		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
-		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-
-		/* Start a new AFTER trigger */
-		AfterTriggerBeginQuery();
-	}
-	else
-	{
-		/*
-		 * We need to flush buffered operations so that error callback is
-		 * executed
-		 */
-		YBFlushBufferedOperations(YBCMakeFlushDebugContextCopyBatch(processed, RelationGetRelationName(cstate->rel)));
-
-		/* Update progress of the COPY command as well */
-		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
-		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-	}
-
-	if (has_more_tuples)
-	{
-		if (cstate->opts.batch_size > 0)
-		{
-			/*
-			 * Re-acquire the relation lock(s) for the new transaction. This is
-			 * necessary because when YB performs batched COPY, it commits the
-			 * intermediate transaction, resulting in release of all the object
-			 * locks associated with that transaction.
-			 *
-			 * It still doesn't resolve the problem fully as a ddl could have
-			 * changed the schema and 'cstate' would need to be computed again,
-			 * without which the subsequent batches may fail. Nevertheless,
-			 * acquire locks to gate ddls for the duration of the batch.
-			 *
-			 * TODO(#27120): Once session level object locking is supported, we
-			 * could acquire session locks and skip transactional object locks
-			 * all together, leaving no window for DDLs to come in between
-			 * internal batches of COPY execution.
-			 */
-			LockRelation(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
-			for (int i = 0; i < resultRelInfo->ri_NumIndices; ++i)
-			{
-				LockRelation(resultRelInfo->ri_IndexRelationDescs[i],
-							 RowExclusiveLock);
-			}
-		}
-		goto yb_process_more_batches;
-	}
+	/* Update progress of the COPY command as well */
+	pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+	pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 
 yb_no_more_tuples:
 	/* Flush any remaining buffered tuples */
@@ -1508,6 +1476,81 @@ yb_no_more_tuples:
 	ExecCloseRangeTableRelations(estate);
 
 	FreeExecutorState(estate);
+
+	/*
+	 * YB: Commit the batch and start the next one.
+	 *
+	 * The commit ends the YB transaction only.  The locks the batch holds are
+	 * carried across it with session locks, so that a DDL that conflicts with
+	 * them waits for the whole COPY.  A DDL that does not conflict, such as an
+	 * online CREATE INDEX, can commit between two batches; the next batch
+	 * sees it because it processes invalidations, as every new transaction
+	 * does (see AtStart_Cache), and then builds its state from the top.
+	 * Another backend's DDL reaches this backend's caches only through
+	 * YbMaybeRefreshCache, so this holds when invalidation messages are on.
+	 */
+	if (cstate->yb_more_batches)
+	{
+		cstate->yb_more_batches = false;
+		cstate->yb_loaded_a_batch = true;
+		cstate->yb_processed = processed;
+		cstate->yb_excluded = excluded;
+
+		if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
+		{
+			/*
+			 * A session lock outlives the transaction, and a subtransaction
+			 * abort does not release it: an error caught by a subtransaction
+			 * would leave the session locks taken here held.
+			 *
+			 * Interrupts are held so that a cancel cannot land between the
+			 * tserver granting a session lock and the local lock table
+			 * recording it, which would leave a session lock that no release
+			 * names.
+			 */
+			HOLD_INTERRUPTS();
+			PG_TRY();
+			{
+				YbHoldTxnObjectLocksForSession();
+				YBCommitTransactionIntermediate();
+				YbReacquireTxnObjectLocks();
+			}
+			PG_CATCH();
+			{
+				/* Do not let a failed release replace the original error. */
+				YbReleaseAllSessionObjectLocks(WARNING);
+				RESUME_INTERRUPTS();
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+			RESUME_INTERRUPTS();
+		}
+		else
+			YBCommitTransactionIntermediate();
+
+		AcceptInvalidationMessages();
+
+		/*
+		 * The setup of each batch is allocated in the context current at the
+		 * top of CopyFrom.  Give each batch after the first its own context,
+		 * and delete the previous one, so that memory does not grow with the
+		 * number of batches.
+		 */
+		if (cstate->yb_batch_cxt == NULL)
+			cstate->yb_caller_cxt = CurrentMemoryContext;
+		MemoryContextSwitchTo(cstate->yb_caller_cxt);
+		if (cstate->yb_batch_cxt != NULL)
+			MemoryContextDelete(cstate->yb_batch_cxt);
+		cstate->yb_batch_cxt = AllocSetContextCreate(cstate->yb_caller_cxt,
+													 "YB COPY batch",
+													 ALLOCSET_DEFAULT_SIZES);
+		MemoryContextSwitchTo(cstate->yb_batch_cxt);
+
+		goto yb_process_more_batches;
+	}
+
+	if (cstate->yb_batch_cxt != NULL)
+		MemoryContextSwitchTo(cstate->yb_caller_cxt);
 
 	return processed;
 }

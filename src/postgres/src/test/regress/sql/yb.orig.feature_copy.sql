@@ -660,6 +660,16 @@ copy upsert_guard_part8 from stdin with (format csv);
 4,40
 \.
 
+-- The same in several batches: each batch decides again from what the COPY
+-- asked for, so the partition with the index keeps falling back to a normal
+-- insert, with a warning in each batch that reaches it.
+copy upsert_guard_part8 from stdin with (format csv, rows_per_transaction 2);
+5,50
+103,1030
+6,60
+104,1040
+\.
+
 -- A conflicting row in the partition with the index is a duplicate key error.
 copy upsert_guard_part8 from stdin with (format csv);
 1,12

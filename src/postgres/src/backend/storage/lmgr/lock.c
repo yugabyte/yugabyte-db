@@ -5324,6 +5324,139 @@ YbLockHeldOnObjectBySession(const LOCKTAG *locktag)
 	return false;
 }
 
+/*
+ * Batched COPY commits the YB transaction after each batch (see
+ * YBCommitTransactionIntermediate) while the PG transaction continues.  DocDB
+ * releases the transaction's object locks at that commit, but the local lock
+ * table still shows them as held.  Later requests for them then stop at the
+ * local table, and a concurrent DDL does not wait for the COPY.
+ *
+ * YbHoldTxnObjectLocksForSession and YbReacquireTxnObjectLocks keep every lock
+ * the transaction holds across such a commit.  They do it the way upstream
+ * keeps a lock across CommitTransactionCommand (see DefineIndex): a session
+ * lock, taken while the transaction still holds the same lock, covers the
+ * commit.  After the commit, the new YB transaction takes the locks again and
+ * the session locks are released, so the local lock table matches DocDB.
+ *
+ * One release-all request releases the session locks.  The tserver applies a
+ * release after it returns, and only a release-all request is limited to the
+ * subtransaction that took the locks.  A release that names an object can
+ * arrive after the next batch has taken its session lock on that object, and
+ * then releases that lock too.
+ *
+ * The session locks are not held while COPY runs user code, because the
+ * tserver rejects a session advisory lock request from a session that holds
+ * session object locks.
+ */
+static List *
+YbTxnObjectLockTags(void)
+{
+	HASH_SEQ_STATUS status;
+	LOCALLOCK  *locallock;
+	List	   *tags = NIL;
+
+	hash_seq_init(&status, LockMethodLocalHash);
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		/*
+		 * A tag that stays in the local lock table has nothing in DocDB to
+		 * carry, and a session lock on it would reach the tserver.
+		 */
+		if (locallock->nLocks <= 0 ||
+			LOCALLOCK_LOCKMETHOD(*locallock) != DEFAULT_LOCKMETHOD ||
+			!YbIsObjectLockTag(&locallock->tag.lock))
+			continue;
+		for (int i = 0; i < locallock->numLockOwners; i++)
+		{
+			if (locallock->lockOwners[i].owner != NULL)
+			{
+				LOCALLOCKTAG *tag = palloc(sizeof(LOCALLOCKTAG));
+
+				*tag = locallock->tag;
+				tags = lappend(tags, tag);
+				break;
+			}
+		}
+	}
+	return tags;
+}
+
+void
+YbReleaseAllSessionObjectLocks(int elevel)
+{
+	HASH_SEQ_STATUS status;
+	LOCALLOCK  *locallock;
+	bool		released = false;
+
+	hash_seq_init(&status, LockMethodLocalHash);
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
+
+		if (LOCALLOCK_LOCKMETHOD(*locallock) != DEFAULT_LOCKMETHOD)
+			continue;
+		for (int i = 0; i < locallock->numLockOwners; i++)
+		{
+			if (lockOwners[i].owner != NULL)
+				continue;
+
+			locallock->nLocks -= lockOwners[i].nLocks;
+			locallock->numLockOwners--;
+			if (i < locallock->numLockOwners)
+				lockOwners[i] = lockOwners[locallock->numLockOwners];
+			if (locallock->nLocks == 0)
+				RemoveLocalLock(locallock);
+			released = true;
+			break;
+		}
+	}
+
+	if (released)
+		HandleYBStatusAtErrorLevel(YBCReleaseSessionObjectLock((YbcObjectLockId) {}, true),
+								   elevel);
+}
+
+void
+YbHoldTxnObjectLocksForSession(void)
+{
+	List	   *tags;
+	ListCell   *lc;
+
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+	Assert(YbNumSessionObjectLocks() == 0);
+
+	tags = YbTxnObjectLockTags();
+	foreach(lc, tags)
+	{
+		LOCALLOCKTAG *tag = (LOCALLOCKTAG *) lfirst(lc);
+
+		(void) LockAcquire(&tag->lock, tag->mode, true, false);
+	}
+	list_free_deep(tags);
+}
+
+void
+YbReacquireTxnObjectLocks(void)
+{
+	List	   *tags;
+	ListCell   *lc;
+
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+
+	tags = YbTxnObjectLockTags();
+	foreach(lc, tags)
+	{
+		LOCALLOCKTAG *tag = (LOCALLOCKTAG *) lfirst(lc);
+
+		HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(&tag->lock),
+											(YbcObjectLockMode) tag->mode,
+											false /* is_session_lock */ ));
+	}
+	list_free_deep(tags);
+
+	YbReleaseAllSessionObjectLocks(ERROR);
+}
+
 #ifdef USE_ASSERT_CHECKING
 int
 YbGetNumTxnLocks()
