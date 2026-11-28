@@ -1,33 +1,20 @@
 import { makeStyles, Typography } from '@material-ui/core';
-import moment from 'moment';
+import { YBButton as YBLibraryButton } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
-import { useQuery } from 'react-query';
 import { browserHistory } from 'react-router';
-import { getAlertConfigurations } from '../../../actions/universe';
 
 import { YBButton } from '../../../redesign/components';
-import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import {
-  hasNecessaryPerm,
-  RbacValidator
-} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { alertConfigQueryKey, api, metricQueryKey } from '../../../redesign/helpers/api';
-import { MetricsQueryParams, Universe } from '../../../redesign/helpers/dtos';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { Universe } from '../../../redesign/helpers/dtos';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
-import { NodeAggregation, SplitType } from '../../metrics/dtos';
+import { XClusterConfigAction } from '../constants';
+import { getTableCountsOfConcern } from '../ReplicationUtils';
 import {
-  I18N_KEY_PREFIX_XCLUSTER_TERMS,
-  liveMetricTimeRangeUnit,
-  liveMetricTimeRangeValue,
-  MetricName,
-  XClusterConfigAction,
-  XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL
-} from '../constants';
-import {
-  getStrictestReplicationLagAlertThreshold,
-  getTableCountsOfConcern
-} from '../ReplicationUtils';
+  XClusterTableWarningBanner,
+  XCLUSTER_TABLE_WARNING_BANNER_TEST_ID
+} from '../sharedComponents/XClusterTableWarningBanner';
+import { useNumTablesAboveLagThreshold } from '../sharedComponents/useNumTablesAboveLagThreshold';
 import { DrConfigAction } from './constants';
 
 import { DrConfig, DrConfigState } from './dtos';
@@ -39,6 +26,7 @@ interface DrBannerSectionProps {
   enabledXClusterConfigActions: XClusterConfigAction[];
   openRepairConfigModal: () => void;
   openRestartConfigModal: () => void;
+  onViewTables: () => void;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -64,7 +52,6 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery';
-const TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT = 'clusterDetail.xCluster.shared';
 
 export const DrBannerSection = ({
   drConfig,
@@ -72,76 +59,17 @@ export const DrBannerSection = ({
   enabledDrConfigActions,
   enabledXClusterConfigActions,
   openRepairConfigModal,
-  openRestartConfigModal
+  openRestartConfigModal,
+  onViewTables
 }: DrBannerSectionProps) => {
   const classes = useStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
-
-  const alertConfigFilter = {
-    template: AlertTemplate.REPLICATION_LAG,
-    targetUuid: sourceUniverse?.universeUUID
-  };
-  const replicationLagAlertConfigQuery = useQuery(
-    alertConfigQueryKey.list(alertConfigFilter),
-    () => getAlertConfigurations(alertConfigFilter),
-    {
-      enabled: !!sourceUniverse
-    }
+  const numTablesAboveLagThreshold = useNumTablesAboveLagThreshold(
+    sourceUniverse,
+    drConfig.xclusterConfigUuid
   );
-
-  const replicationLagMetricSettings = {
-    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
-    nodeAggregation: NodeAggregation.MAX,
-    splitType: SplitType.TABLE
-  };
-  const replicationLagMetricRequestParams: MetricsQueryParams = {
-    metricsWithSettings: [replicationLagMetricSettings],
-    nodePrefix: sourceUniverse?.universeDetails.nodePrefix,
-    xClusterConfigUuid: drConfig.xclusterConfigUuid,
-    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
-    end: moment().format('X')
-  };
-  const tableReplicationLagQuery = useQuery(
-    metricQueryKey.live(
-      replicationLagMetricRequestParams,
-      liveMetricTimeRangeValue,
-      liveMetricTimeRangeUnit
-    ),
-    () => api.fetchMetrics(replicationLagMetricRequestParams),
-    {
-      enabled: !!sourceUniverse
-    }
-  );
-  let numTablesAboveLagThreshold = 0;
-  if (replicationLagAlertConfigQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
-    const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
-      replicationLagAlertConfigQuery.data
-    );
-    tableReplicationLagQuery.data.async_replication_sent_lag?.data.forEach((trace) => {
-      if (
-        trace.y[trace.y.length - 1] &&
-        maxAcceptableLag &&
-        trace.y[trace.y.length - 1] > maxAcceptableLag
-      ) {
-        numTablesAboveLagThreshold += 1;
-      }
-    });
-  }
 
   const xClusterConfigTables = drConfig.tableDetails ?? [];
-  const shouldShowTableLagWarning =
-    replicationLagAlertConfigQuery.isSuccess &&
-    tableReplicationLagQuery.isSuccess &&
-    numTablesAboveLagThreshold > 0 &&
-    xClusterConfigTables.length > 0;
-
-  const tableCountsOfConcern = getTableCountsOfConcern(drConfig.tableDetails);
-  const shouldShowRestartReplicationBanner = tableCountsOfConcern.restartRequired > 0;
-  const shouldShowUnableToFetchTableStatusBanner = tableCountsOfConcern.unableToFetchStatus > 0;
-  const shouldShowAutoFlagMismatchBanner = tableCountsOfConcern.autoFlagMismatched > 0;
-  const shouldShowUnknownErrorBanner = tableCountsOfConcern.unknownError > 0;
-  const shouldShowFailedReplicationSetup = tableCountsOfConcern.failedReplicationSetup > 0;
-  const shouldShowMismatchedTablesBanner = tableCountsOfConcern.dbSchemaMismatched > 0;
   const isRepairDrPossible =
     enabledDrConfigActions.includes(DrConfigAction.EDIT_TARGET) ||
     enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART);
@@ -246,157 +174,40 @@ export const DrBannerSection = ({
             </div>
           </div>
         </YBBanner>
-      ) : null}
-      {shouldShowRestartReplicationBanner && (
-        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.tableMissingOperation`}
-                components={{ bold: <b /> }}
-              />
-            </Typography>
-            <div className={classes.bannerActionButtonContainer}>
-              <RbacValidator
-                customValidateFunction={() => {
-                  return (
-                    hasNecessaryPerm({
-                      ...ApiPermissionMap.DR_CONFIG_RESTART,
-                      onResource: drConfig.primaryUniverseUuid
-                    }) &&
-                    hasNecessaryPerm({
-                      ...ApiPermissionMap.DR_CONFIG_RESTART,
-                      onResource: drConfig.drReplicaUniverseUuid
-                    })
-                  );
-                }}
-                overrideStyle={{ display: 'block' }}
-                isControl
-              >
-                <YBButton
-                  variant="secondary"
-                  size="large"
-                  onClick={openRestartConfigModal}
-                  disabled={!enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART)}
-                >
-                  {t('actionButton.restartReplication')}
-                </YBButton>
-              </RbacValidator>
-            </div>
-          </div>
-        </YBBanner>
-      )}
-      {shouldShowUnableToFetchTableStatusBanner && (
-        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.unableToFetchTableStatus`}
-                components={{
-                  bold: <b />
-                }}
-                values={{
-                  targetUniverseTerm: t('target.dr', {
-                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                  })
-                }}
-              />
-            </Typography>
-          </div>
-        </YBBanner>
-      )}
-      {shouldShowAutoFlagMismatchBanner && (
-        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.autoFlagMismatch`}
-                components={{
-                  bold: <b />
-                }}
-                values={{
-                  sourceUniverseTerm: t('source.dr', {
-                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                  }),
-                  targetUniverseTerm: t('target.dr', {
-                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                  })
-                }}
-              />
-            </Typography>
-          </div>
-        </YBBanner>
-      )}
-      {shouldShowUnknownErrorBanner && (
-        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.tableUnknownError`}
-                components={{
-                  bold: <b />
-                }}
-              />
-            </Typography>
-          </div>
-        </YBBanner>
-      )}
-      {shouldShowFailedReplicationSetup && (
-        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.tableFailedReplicationSetup`}
-                components={{
-                  bold: <b />
-                }}
-              />
-            </Typography>
-          </div>
-        </YBBanner>
-      )}
-      {shouldShowMismatchedTablesBanner && (
-        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.mismatchedTables`}
-                components={{
-                  bold: <b />,
-                  ddlChangeStepsDocsLink: (
-                    <a
-                      href={XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  )
-                }}
-                values={{
-                  sourceUniverseTerm: t('source.dr', {
-                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                  }),
-                  targetUniverseTerm: t('target.dr', {
-                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                  })
-                }}
-              />
-            </Typography>
-          </div>
-        </YBBanner>
-      )}
-      {shouldShowTableLagWarning && (
-        <YBBanner variant={YBBannerVariant.WARNING} isFeatureBanner={true}>
-          <div className={classes.bannerContent}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.tableReplicationLagAlertThresholdExceeded`}
-                components={{
-                  bold: <b />
-                }}
-              />
-            </Typography>
-          </div>
-        </YBBanner>
+      ) : (
+        // A DR state banner already covers table problems: they are expected while a DR task runs or
+        // replication is halted, and fixing them is that banner's action (e.g. Repair DR).
+        <XClusterTableWarningBanner
+          tableCountsOfConcern={getTableCountsOfConcern(xClusterConfigTables)}
+          numTablesAboveLagThreshold={
+            xClusterConfigTables.length > 0 ? numTablesAboveLagThreshold : 0
+          }
+          isDrInterface={true}
+          onViewTables={onViewTables}
+          restartButton={
+            // Not wrapped in RbacValidator: its <div> wrapper is invalid inside the banner
+            // description <p>.
+            <YBLibraryButton
+              variant="secondary"
+              size="small"
+              onClick={openRestartConfigModal}
+              disabled={
+                !enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART) ||
+                !hasNecessaryPerm({
+                  ...ApiPermissionMap.DR_CONFIG_RESTART,
+                  onResource: drConfig.primaryUniverseUuid
+                }) ||
+                !hasNecessaryPerm({
+                  ...ApiPermissionMap.DR_CONFIG_RESTART,
+                  onResource: drConfig.drReplicaUniverseUuid
+                })
+              }
+              dataTestId={`${XCLUSTER_TABLE_WARNING_BANNER_TEST_ID}-restart`}
+            >
+              {t('restartReplication', { keyPrefix: 'clusterDetail.xCluster.shared.banner' })}
+            </YBLibraryButton>
+          }
+        />
       )}
     </div>
   );

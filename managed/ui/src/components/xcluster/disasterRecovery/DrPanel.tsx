@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
@@ -7,7 +7,7 @@ import { useInterval } from 'react-use';
 import { Link } from 'react-router';
 
 import { DeleteConfigModal } from './deleteConfig/DeleteConfigModal';
-import { DrConfigDetails } from './drConfig/DrConfigDetails';
+import { DEFAULT_DR_CONFIG_TAB, DrConfigDetails, DrConfigTab } from './drConfig/DrConfigDetails';
 import { DrConfigAction } from './constants';
 import { EditTablesModal } from './editTables/EditTablesModal';
 import {
@@ -116,6 +116,8 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
   const [isRepairConfigModalOpen, setIsRepairConfigModalOpen] = useState<boolean>(false);
   const [isRestartConfigModalOpen, setIsRestartConfigModalOpen] = useState<boolean>(false);
   const [isDbSyncModalOpen, setIsDbSyncModalOpen] = useState<boolean>(false);
+  const [currentDrConfigTab, setCurrentDrConfigTab] = useState<DrConfigTab>(DEFAULT_DR_CONFIG_TAB);
+  const drConfigDetailsRef = useRef<HTMLDivElement>(null);
   const classes = useStyles();
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -335,6 +337,10 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
             openRestartConfigModal={openRestartConfigModal}
             enabledDrConfigActions={enabledDrConfigActions}
             enabledXClusterConfigActions={enabledXClusterConfigActions}
+            onViewTables={() => {
+              setCurrentDrConfigTab(DrConfigTab.TABLES);
+              drConfigDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
           />
           <div className={classes.header}>
             <Typography variant="h3">{t('heading')}</Typography>
@@ -650,10 +656,14 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
           </div>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
             <DrConfigOverview drConfig={drConfig} />
-            <DrConfigDetails
-              drConfig={drConfig}
-              isTableInfoIncludedInConfig={drConfigFullQuery.isSuccess}
-            />
+            <div ref={drConfigDetailsRef}>
+              <DrConfigDetails
+                drConfig={drConfig}
+                isTableInfoIncludedInConfig={drConfigFullQuery.isSuccess}
+                currentTab={currentDrConfigTab}
+                onTabChange={setCurrentDrConfigTab}
+              />
+            </div>
           </Box>
           {isSwitchoverModalOpen && (
             <InitiateSwitchoverModal

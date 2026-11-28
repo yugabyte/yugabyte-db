@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ButtonGroup, Col, DropdownButton, MenuItem, Row, Tab } from 'react-bootstrap';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
-import { Link } from 'react-router';
+import { browserHistory, Link } from 'react-router';
 import { toast } from 'react-toastify';
 import { useInterval } from 'react-use';
 import _ from 'lodash';
@@ -74,6 +74,7 @@ export function ReplicationDetails({
   params: { uuid: currentUniverseUuid, replicationUUID: xClusterConfigUuid }
 }: Props) {
   const [isActionDropdownOpen, setIsActionDropdownOpen] = useState(false);
+  const tabsPanelRef = useRef<HTMLDivElement>(null);
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
@@ -468,6 +469,16 @@ export function ReplicationDetails({
             xClusterConfig={xClusterConfig}
             enabledConfigActions={enabledConfigActions}
             openRestartConfigModal={() => dispatch(openDialog(XClusterModalName.RESTART_CONFIG))}
+            onViewTables={() => {
+              // Replace rather than push so repeated clicks don't pile up history entries.
+              if (window.location.search !== '?tab=tables') {
+                browserHistory.replace({
+                  pathname: window.location.pathname,
+                  query: { tab: 'tables' }
+                });
+              }
+              tabsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
           />
           <Row className="replication-status">
             <Col lg={4}>
@@ -512,6 +523,8 @@ export function ReplicationDetails({
               </div>
             </Col>
           </Row>
+          {/* Scroll target for the banner's View Tables action. */}
+          <div ref={tabsPanelRef} />
           <Row className="replication-details-panel noPadding">
             <Col lg={12} className="noPadding">
               <YBTabsPanel defaultTab={'overview'} id="replication-tab-panel">
