@@ -98,6 +98,7 @@ DEFAULT_START_FAULT_TOLERANCE = "none"
 DEAFULT_RETENTION_PERIOD = 7
 CALLHOME_TYPE = "yugabyted"
 CALLHOME_EVENT_START = "start"
+CALLHOME_HTTP_TIMEOUT_SECS = 10
 CALLHOME_EVENT_HEARTBEAT_STATUS = "heartbeat_status"
 CALLHOME_EVENT_BACKUP = "backup"
 CALLHOME_EVENT_RESTORE = "restore"
@@ -11134,7 +11135,9 @@ class Diagnostics(object):
                 }
                 data = callhome_payload.to_json()
                 req = Request(url, headers=headers, data=data.encode('utf8'))
-                _ = urlopen(req)
+                # Bounded: the monitor loop joins the 'start' callhome thread, so an
+                # unanswered POST would otherwise delay restarting crashed children.
+                _ = urlopen(req, timeout=CALLHOME_HTTP_TIMEOUT_SECS)
                 Output.log("Callhome event '{}' sent.".format(event_name))
             except Exception as e:
                 Output.log("Callhome failed: " + str(e))
