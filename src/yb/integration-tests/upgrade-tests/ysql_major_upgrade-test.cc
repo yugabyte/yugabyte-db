@@ -165,12 +165,9 @@ TEST_F(YsqlMajorUpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimp
 TEST_F(YsqlMajorUpgradeTest, SimpleTableRollback) {
   ASSERT_OK(TestRollbackWithSimpleTable());
 
-// Disabled the re-upgrade step on debug builds because it times out.
-#if defined(NDEBUG)
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
-#endif
 }
 
 // The catalog upgrade connects as yugabyte and replays each role's stored, pre-hashed password:
@@ -428,7 +425,7 @@ TEST_F(YsqlMajorUpgradeTest, Schemas) {
   }
 }
 
-TEST_F(YsqlMajorUpgradeTest, YB_RELEASE_ONLY_TEST(MultipleDatabases)) {
+TEST_F(YsqlMajorUpgradeTest, MultipleDatabases) {
   /* Cases:
    * - We support creating / altering databases to disallow connections - but neither YB nor PG
    *   support upgrading those databases. That is tested by DatabaseWithDisallowedConnections below.
@@ -1159,8 +1156,6 @@ TEST_F(YsqlMajorUpgradeTest, NoTserverOnMasterNode) {
 // If there is no tserver on the master node make sure the upgrade fails unless the yugabyte_upgrade
 // user is created.
 TEST_F(YsqlMajorUpgradeTestWithAuth, NoTserverOnMasterNode) {
-// Disabled the rollback step on debug builds because it times out.
-#if defined(NDEBUG)
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   {
@@ -1170,7 +1165,6 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, NoTserverOnMasterNode) {
     ASSERT_OK(RollbackYsqlMajorCatalogVersion());
     ASSERT_OK(master_tserver->Restart());
   }
-#endif
 
   // Rollback and create the upgrade user.
   ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
