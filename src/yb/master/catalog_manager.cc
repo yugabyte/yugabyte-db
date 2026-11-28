@@ -7452,7 +7452,7 @@ Status CatalogManager::StartTableBackfill(
   LOG(INFO) << "StartTableBackfill for " << req->source_table().ShortDebugString();
 
   HybridTime backfill_ts(req->backfill_timestamp());
-  if (!req->has_source_table() || req->target_table_oid() == kPgInvalidOid ||
+  if (!req->has_source_table() || !req->has_target_table() ||
       req->transform_fn_oid() == kPgInvalidOid || req->pg_job_id() == 0 ||
       !req->has_backfill_timestamp() || !backfill_ts.is_valid()) {
     return SetupError(
@@ -7475,6 +7475,13 @@ Status CatalogManager::StartTableBackfill(
         STATUS(InvalidArgument, "Online schema change backfill only supported for YSQL tables"));
   }
 
+  scoped_refptr<TableInfo> target_table = VERIFY_RESULT(FindTable(req->target_table()));
+  if (target_table == nullptr) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(NotFound, "Target table not found", req->target_table().ShortDebugString()));
+  }
+
   auto ns_info = FindNamespaceById(source_table->namespace_id());
   RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for online schema change backfill");
 
@@ -7482,8 +7489,9 @@ Status CatalogManager::StartTableBackfill(
   job.set_pg_job_id(req->pg_job_id());
   job.set_state(OnlineSchemaChangeJobPB::COMPUTING_READ_TIME);
   job.set_backfilling_timestamp(backfill_ts.ToUint64());
-  job.set_source_table_oid(VERIFY_RESULT(GetPgsqlTableOid(source_table->id())));
-  job.set_target_table_oid(req->target_table_oid());
+  job.set_source_table_oid(VERIFY_RESULT(source_table->GetPgTableOid()));
+  job.set_target_table_oid(VERIFY_RESULT(target_table->GetPgTableOid()));
+  job.set_target_table_id(target_table->id());
   job.set_transform_fn_oid(req->transform_fn_oid());
   job.set_database_name((*ns_info)->name());
 
@@ -7494,10 +7502,101 @@ Status CatalogManager::StartTableBackfill(
   return Status::OK();
 }
 
-Result<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangeTargetTable(
-    const NamespaceId& source_namespace_id, uint32_t target_table_oid) {
-  const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id));
-  return FindTableById(GetPgsqlTableId(db_oid, target_table_oid));
+Status CatalogManager::AbortTableBackfill(
+    const AbortTableBackfillRequestPB* req,
+    AbortTableBackfillResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << "AbortTableBackfill for " << req->source_table().ShortDebugString()
+            << " job " << req->pg_job_id();
+
+  scoped_refptr<TableInfo> source_table = VERIFY_RESULT(FindTable(req->source_table()));
+  if (source_table == nullptr) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(NotFound, "Source table not found", req->source_table().ShortDebugString()));
+  }
+
+  const int64_t pg_job_id = req->pg_job_id();
+
+  // Once ABORTED, the job is no longer driven, and a pass already running cannot overwrite the
+  // state: the controller only moves an unfinished entry. A job that is already terminal, or gone,
+  // is left alone.
+  {
+    auto l = source_table->LockForWrite();
+    if (l->pb.has_online_schema_change_job() &&
+        l->pb.online_schema_change_job().pg_job_id() == pg_job_id) {
+      auto& job = *l.mutable_data()->pb.mutable_online_schema_change_job();
+      if (IsOnlineSchemaChangeJobResumable(job.state())) {
+        job.set_state(OnlineSchemaChangeJobPB::ABORTED);
+        job.set_finished_at(master_->clock()->Now().ToUint64());
+        RETURN_NOT_OK_PREPEND(
+            sys_catalog_->Upsert(epoch, source_table),
+            "Failed to persist online schema change backfill abort.");
+        l.Commit();
+      }
+    }
+  }
+
+  // A visit stops resending the job's chunks and releases what the job still holds.
+  online_schema_change_->Reconcile(source_table, epoch);
+
+  return Status::OK();
+}
+
+Status CatalogManager::GetTableBackfillStatus(
+    const GetTableBackfillStatusRequestPB* req,
+    GetTableBackfillStatusResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  scoped_refptr<TableInfo> source_table = VERIFY_RESULT(FindTable(req->source_table()));
+  if (source_table == nullptr) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(NotFound, "Source table not found", req->source_table().ShortDebugString()));
+  }
+  auto s = FillTableBackfillStatus(source_table, req->pg_job_id(), resp->mutable_job_status());
+  if (s.IsNotFound()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  return s;
+}
+
+Status CatalogManager::FillTableBackfillStatus(
+    const scoped_refptr<TableInfo>& source_table, int64_t pg_job_id,
+    TableBackfillStatusPB* status) {
+  OnlineSchemaChangeJobPB job;
+  {
+    auto l = source_table->LockForRead();
+    const bool found = l->pb.has_online_schema_change_job() &&
+                       l->pb.online_schema_change_job().pg_job_id() == pg_job_id;
+    if (found) {
+      job = l->pb.online_schema_change_job();
+    }
+    if (!found) {
+      return STATUS_FORMAT(
+          NotFound, "Online schema change job $0 not found on table $1", pg_job_id,
+          source_table->ToString());
+    }
+  }
+  status->set_state(job.state());
+  status->set_rows_done(job.num_rows_processed());
+  if (job.has_error_message()) {
+    status->set_error_message(job.error_message());
+  }
+  if (!IsOnlineSchemaChangeJobResumable(job.state())) {
+    status->set_tablets_done(job.num_tablets_done());
+    status->set_tablets_total(job.num_tablets_total());
+    return Status::OK();
+  }
+
+  const auto progress = VERIFY_RESULT(ReadOnlineSchemaChangeProgress(
+      {source_table},
+      pg_job_id));
+  status->set_rows_done(progress.rows_done);
+  status->set_tablets_done(progress.tablets_done);
+  status->set_tablets_total(progress.tablets_total);
+  return Status::OK();
 }
 
 std::vector<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangePinnedTables(
@@ -7564,7 +7663,9 @@ Status CatalogManager::PinOnlineSchemaChangeTargetDeleteMarkers(
 }
 
 Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
-    const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch) {
+    const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch,
+    HybridTime birth_time) {
+  const uint64_t birth = birth_time.is_valid() ? birth_time.ToUint64() : 0;
   for (const auto& table : GetOnlineSchemaChangePinnedTables(target)) {
     {
       auto l = table->LockForWrite();
@@ -7575,6 +7676,9 @@ Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
       }
       pb.clear_table_backfill_pin_job_id();
       pb.mutable_schema()->mutable_table_properties()->set_retain_delete_markers(false);
+      if (birth != 0 && pb.has_index_info()) {
+        pb.mutable_index_info()->set_birth_time(birth);
+      }
       // No version bump: the BACKFILL_DONE op below carries the clear to the tablets.
       RETURN_NOT_OK_PREPEND(
           sys_catalog_->Upsert(epoch, table),
@@ -7584,8 +7688,10 @@ Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
 
     for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       auto call = std::make_shared<AsyncBackfillDone>(
-          master_, AsyncTaskPool(), tablet, table->id(), epoch);
-      table->AddTask(call);
+          master_, AsyncTaskPool(), tablet, table->id(), epoch, birth);
+      // The task removes itself from the tablet's table. A vector index has no tablets of its own,
+      // so registering the task on the index would leave it there for good.
+      tablet->table()->AddTask(call);
       RETURN_NOT_OK_PREPEND(
           ScheduleTask(call), "Failed to send mark-backfill-done to the target.");
     }

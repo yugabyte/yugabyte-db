@@ -1458,17 +1458,33 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
 }
 
 Status PgApiImpl::StartTableBackfill(
-    const PgObjectId& source_table_id, uint32_t target_table_oid,
+    const PgObjectId& source_table_id, const PgObjectId& target_table_id,
     uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id) {
   tserver::PgStartTableBackfillRequestPB req;
   source_table_id.ToPB(req.mutable_source_table_id());
-  req.set_target_table_oid(target_table_oid);
+  target_table_id.ToPB(req.mutable_target_table_id());
   req.set_transform_fn_oid(transform_fn_oid);
   req.set_backfill_timestamp(backfill_timestamp);
   req.set_pg_job_id(pg_job_id);
   // Unlike BackfillIndex, this RPC only starts the job and does not wait for the copy, so a DDL
   // deadline is enough.
   return pg_client_.StartTableBackfill(&req, DdlDeadline());
+}
+
+Status PgApiImpl::AbortTableBackfill(
+    const PgObjectId& source_table_id, int64_t pg_job_id) {
+  tserver::PgAbortTableBackfillRequestPB req;
+  source_table_id.ToPB(req.mutable_source_table_id());
+  req.set_pg_job_id(pg_job_id);
+  return pg_client_.AbortTableBackfill(&req, DdlDeadline());
+}
+
+Result<master::TableBackfillStatusPB> PgApiImpl::GetTableBackfillStatus(
+    const PgObjectId& source_table_id, int64_t pg_job_id) {
+  tserver::PgGetTableBackfillStatusRequestPB req;
+  source_table_id.ToPB(req.mutable_source_table_id());
+  req.set_pg_job_id(pg_job_id);
+  return pg_client_.GetTableBackfillStatus(&req, DdlDeadline());
 }
 
 Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {

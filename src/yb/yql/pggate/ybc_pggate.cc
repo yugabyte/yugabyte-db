@@ -514,6 +514,33 @@ std::pair<int32_t, std::string> GetCDCColumnKey(const DatumMessagePB& datum, boo
                       : std::make_pair(0, datum.column_name());
 }
 
+YbcPgTableBackfillStatus ToTableBackfillStatus(const master::TableBackfillStatusPB& pb) {
+  YbcPgTableBackfillState state = YB_TABLE_BACKFILL_RUNNING;
+  switch (pb.state()) {
+    case master::OnlineSchemaChangeJobPB::COMPUTING_READ_TIME:
+    case master::OnlineSchemaChangeJobPB::IN_PROGRESS:
+      state = YB_TABLE_BACKFILL_RUNNING;
+      break;
+    case master::OnlineSchemaChangeJobPB::SUCCESS:
+      state = YB_TABLE_BACKFILL_SUCCEEDED;
+      break;
+    case master::OnlineSchemaChangeJobPB::FAILED:
+    case master::OnlineSchemaChangeJobPB::CANCELLED:
+      state = YB_TABLE_BACKFILL_FAILED;
+      break;
+    case master::OnlineSchemaChangeJobPB::ABORTED:
+      state = YB_TABLE_BACKFILL_ABORTED;
+      break;
+  }
+  return {
+    .state = state,
+    .rows_done = pb.rows_done(),
+    .tablets_done = pb.tablets_done(),
+    .tablets_total = pb.tablets_total(),
+    .error_message = pb.has_error_message() ? YBCPAllocStdString(pb.error_message()) : nullptr,
+  };
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -1449,14 +1476,34 @@ YbcStatus YBCPgBackfillIndex(
 
 YbcStatus YBCPgStartTableBackfill(
     const YbcPgOid database_oid,
-    const YbcPgOid source_table_oid,
-    const YbcPgOid target_table_oid,
+    const YbcPgOid source_relfilenode_oid,
+    const YbcPgOid target_relfilenode_oid,
     const YbcPgOid transform_fn_oid,
     uint64_t backfill_timestamp,
     int64_t pg_job_id) {
-  const PgObjectId source_id(database_oid, source_table_oid);
+  const PgObjectId source_id(database_oid, source_relfilenode_oid);
+  const PgObjectId target_id(database_oid, target_relfilenode_oid);
   return ToYBCStatus(pgapi->StartTableBackfill(
-      source_id, target_table_oid, transform_fn_oid, backfill_timestamp, pg_job_id));
+      source_id, target_id, transform_fn_oid, backfill_timestamp, pg_job_id));
+}
+
+YbcStatus YBCPgAbortTableBackfill(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_relfilenode_oid,
+    int64_t pg_job_id) {
+  const PgObjectId source_id(database_oid, source_relfilenode_oid);
+  return ToYBCStatus(pgapi->AbortTableBackfill(source_id, pg_job_id));
+}
+
+YbcStatus YBCPgGetTableBackfillStatus(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_relfilenode_oid,
+    int64_t pg_job_id,
+    YbcPgTableBackfillStatus *status) {
+  const PgObjectId source_id(database_oid, source_relfilenode_oid);
+  return ExtractValueFromResult(
+      pgapi->GetTableBackfillStatus(source_id, pg_job_id),
+      [status](const master::TableBackfillStatusPB& pb) { *status = ToTableBackfillStatus(pb); });
 }
 
 YbcStatus YBCPgWaitVectorIndexReady(
