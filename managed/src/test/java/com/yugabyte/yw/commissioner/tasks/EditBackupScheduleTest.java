@@ -14,6 +14,8 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -230,5 +232,32 @@ public class EditBackupScheduleTest extends CommissionerBaseTest {
     tInfo = submitTask(scheduleParams, scheduleUUID);
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
     assertEquals(State.Stopped, schedule.getStatus());
+  }
+
+  @Test
+  public void testEditRetentionOverIntRangeKeepsBackupExpiryAfterCreation() {
+    Schedule schedule =
+        createSchedule(100000000L, 86200000L, null /* cron */, false /* enablePITRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    Backup backup =
+        ModelFactory.createExpiredBackupWithScheduleUUID(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            storageConfig.getConfigUUID(),
+            scheduleUUID);
+    backup.setState(BackupState.Completed);
+    backup.save();
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    BackupScheduleEditParams editParams = new BackupScheduleEditParams(scheduleParams);
+    editParams.incrementalBackupFrequency = 86400000L;
+    editParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
+    // 30 days: more milliseconds than an int holds.
+    long thirtyDays = 30L * 24 * 3600 * 1000;
+    editParams.timeBeforeDelete = thirtyDays;
+    scheduleParams.applyScheduleEditParams(editParams);
+    submitTask(scheduleParams, scheduleUUID);
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(backup.getCreateTime().getTime() + thirtyDays, backup.getExpiry().getTime());
   }
 }

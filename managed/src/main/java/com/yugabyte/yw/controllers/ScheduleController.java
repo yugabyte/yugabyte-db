@@ -269,9 +269,7 @@ public class ScheduleController extends AuthenticatedController {
             .forEach(
                 backup -> {
                   Date newExpiry =
-                      new DateTime(backup.getCreateTime())
-                          .plusMillis((int) params.timeBeforeDelete)
-                          .toDate();
+                      new DateTime(backup.getCreateTime()).plus(params.timeBeforeDelete).toDate();
                   backup.setExpiry(newExpiry);
                   backup.save();
                 });

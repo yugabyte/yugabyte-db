@@ -7844,7 +7844,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 backup -> {
                   Date newExpiry =
                       new DateTime(backup.getCreateTime())
-                          .plusMillis((int) scheduleParams.timeBeforeDelete)
+                          .plus(scheduleParams.timeBeforeDelete)
                           .toDate();
                   backup.setExpiry(newExpiry);
                   backup.save();

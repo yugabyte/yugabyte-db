@@ -32,6 +32,8 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -408,6 +410,40 @@ public class ScheduleControllerTest extends FakeDBApplication {
         Json.fromJson(resultJson.get("taskParams"), BackupRequestParams.class);
     assertEquals(259200000L, requestParams.timeBeforeDelete);
     assertAuditEntry(1, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testEditScheduleRetentionOverIntRangeKeepsBackupExpiryAfterCreation() {
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
+    schedule.setStatus(State.Stopped);
+    schedule.save();
+    Backup backup =
+        ModelFactory.createExpiredBackupWithScheduleUUID(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            schedule.getScheduleUUID());
+    backup.setState(BackupState.Completed);
+    backup.save();
+    // 30 days: more milliseconds than an int holds.
+    long thirtyDays = 30L * 24 * 3600 * 1000;
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.timeBeforeDelete = thirtyDays;
+    params.cronExpression = "0 12 * * *";
+    Result result =
+        editSchedule(schedule.getScheduleUUID(), defaultCustomer.getUuid(), Json.toJson(params));
+    assertOk(result);
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(backup.getCreateTime().getTime() + thirtyDays, backup.getExpiry().getTime());
   }
 
   @Test
