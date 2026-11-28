@@ -8984,6 +8984,7 @@ static bool yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
 									   bool *skip_check);
 static void YbSendConnMgrParamStatus(const char *name, const char *val,
 									 uint8 flags);
+static char *YbShowOptionRaw(struct config_generic *record);
 
 
 /*
@@ -11058,6 +11059,7 @@ ReportGUCOption(struct config_generic *record)
 		if (YbIsClientYsqlConnMgr())
 		{
 			uint8		flags = 0;
+			char	   *raw_val;
 
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
@@ -11109,22 +11111,29 @@ ReportGUCOption(struct config_generic *record)
 					break;
 			}
 
+			/*
+			 * Connection Manager replays the stored value through
+			 * set_config_option, so it gets the raw value: show hook
+			 * output need not be valid input.  The client is still
+			 * reported the show hook output.
+			 */
+			raw_val = YbShowOptionRaw(record);
 			if (!(flags & YB_PARAM_STATUS_REPORT_ENABLED))
-				YbSendConnMgrParamStatus(record->name, val, flags);
+				YbSendConnMgrParamStatus(record->name, raw_val, flags);
 			else
 			{
 				char	   *client_val = pg_server_to_client(val,
 															 strlen(val));
 
-				if (strcmp(client_val, val) == 0)
-					YbSendConnMgrParamStatus(record->name, val, flags);
+				if (strcmp(client_val, raw_val) == 0)
+					YbSendConnMgrParamStatus(record->name, raw_val, flags);
 				else
 				{
 					uint8		stored_flags =
 						flags & ~YB_PARAM_STATUS_REPORT_ENABLED;
 
 					if (stored_flags & ~YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY)
-						YbSendConnMgrParamStatus(record->name, val,
+						YbSendConnMgrParamStatus(record->name, raw_val,
 												 stored_flags);
 					YbSendConnMgrParamStatus(record->name, client_val,
 											 YB_PARAM_STATUS_REPORT_ENABLED);
@@ -11133,6 +11142,8 @@ ReportGUCOption(struct config_generic *record)
 				if (client_val != val)
 					pfree(client_val);
 			}
+
+			pfree(raw_val);
 		}
 		else
 		{
@@ -19157,6 +19168,19 @@ YbSendConnMgrParamStatus(const char *name, const char *val, uint8 flags)
 	pq_sendbytes(&msgbuf, val, strlen(val) + 1);
 	pq_sendbyte(&msgbuf, flags);
 	pq_endmessage(&msgbuf);
+}
+
+/*
+ * Same as _ShowOption(record, false), minus the show hook.
+ */
+static char *
+YbShowOptionRaw(struct config_generic *record)
+{
+	char		buffer[256];
+	const char *val = YbFormatConfigValue(record, NULL /* val */ , buffer,
+										  sizeof(buffer));
+
+	return pstrdup(val ? val : "");
 }
 
 #include "guc-file.c"
