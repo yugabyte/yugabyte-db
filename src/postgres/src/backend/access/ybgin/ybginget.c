@@ -498,6 +498,14 @@ ybginExecSelect(IndexScanDesc scan, ScanDirection dir)
 	if (ScanDirectionIsForward(dir))
 		HandleYBStatus(YBCPgSetForwardScan(ybso->handle, true));
 
+	/*
+	 * Of the executor's parameters, apply only the read command id.  GIN
+	 * scans have never taken the others, such as the row limit and row marks.
+	 */
+	if (scan->yb_exec_params && scan->yb_exec_params->has_read_command_id)
+		HandleYBStatus(YBCPgSetReadCommandId(ybso->handle,
+											 scan->yb_exec_params->read_command_id));
+
 	HandleYBStatus(YBCPgExecSelect(ybso->handle, NULL /* exec_params */ ));
 }
 

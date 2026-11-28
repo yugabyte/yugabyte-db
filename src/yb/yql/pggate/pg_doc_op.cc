@@ -40,6 +40,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -791,6 +792,7 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   SetBackfillSpec();
   SetRowMark();
   SetReadTimeForBackfill();
+  SetReadCommandId();
   return Status::OK();
 }
 
@@ -1441,6 +1443,15 @@ void PgDocReadOp::SetBackfillSpec() {
     req.dup_backfill_spec(Slice(exec_params_.bfinstr));
   } else {
     req.clear_backfill_spec();
+  }
+}
+
+void PgDocReadOp::SetReadCommandId() {
+  auto& req = read_op_->read_request();
+  if (!yb_enable_command_id_infra) {
+    req.clear_read_command_id();
+  } else if (exec_params_.has_read_command_id) {
+    req.set_read_command_id(exec_params_.read_command_id);
   }
 }
 

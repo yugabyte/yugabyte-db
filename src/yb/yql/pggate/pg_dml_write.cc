@@ -27,6 +27,8 @@
 #include "yb/util/debug-util.h"
 
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #include "catalog/pg_type_d.h"
 
@@ -130,6 +132,10 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
     auto* exprpb = write_req_->mutable_ybctid_column_value();
     CHECK(exprpb->has_value() && exprpb->value().has_binary_value())
       << "YBCTID must be of BINARY datatype";
+  }
+
+  if (transaction_setting_ != YB_NON_TRANSACTIONAL && yb_enable_command_id_infra) {
+    write_req_->set_command_id(YBCGetPgCallbacks()->GetWriteCommandId());
   }
 
   // Initialize doc operator.

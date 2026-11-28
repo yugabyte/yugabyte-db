@@ -54,7 +54,7 @@ BEGIN;
   INSERT INTO test_cursor VALUES (1, 'one');
   DECLARE c CURSOR FOR SELECT * FROM test_cursor;
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following FETCH, but there's 3.
+  -- The cursor reads with the snapshot of its DECLARE, so only one row is output.
   FETCH ALL FROM c;
 ROLLBACK;
 -- CURSOR in PL/PGSQL block (Issue 6627).
@@ -66,7 +66,7 @@ BEGIN
   INSERT INTO test_cursor VALUES (1, 'one');
   OPEN c_pl;
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following LOOP, but there's 3.
+  -- The cursor reads with the snapshot of its OPEN, so only one row is output.
   LOOP
     FETCH FROM c_pl INTO row;
     EXIT WHEN NOT FOUND;
@@ -83,7 +83,7 @@ BEGIN
   INSERT INTO test_cursor VALUES (1, 'one');
   OPEN c_proc;
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following LOOP, but there's 3.
+  -- The cursor reads with the snapshot of its OPEN, so only one row is output.
   LOOP
     FETCH FROM c_proc INTO row;
     EXIT WHEN NOT FOUND;
@@ -121,7 +121,7 @@ BEGIN;
   INSERT INTO test_cursor VALUES (1, 'one');
   DECLARE c_cnt CURSOR FOR SELECT cnt(), cnt_v(), cnt_s(), cnt_i();
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following FETCH.
+  -- The STABLE function sees the rows as of the DECLARE.
   FETCH ALL FROM c_cnt;
 ROLLBACK;
 --

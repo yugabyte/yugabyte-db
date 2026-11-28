@@ -2843,6 +2843,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_command_id_infra", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Use PostgreSQL command ids for the visibility of a "
+						 "transaction's own writes."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_command_id_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow specifying LSN type while creating replication slot"),
 			NULL,

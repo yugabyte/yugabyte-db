@@ -46,6 +46,7 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -167,6 +168,16 @@ void PgDmlRead::SetForwardScan(bool is_forward_scan) {
   } else {
     DCHECK(read_req_->is_forward_scan() == is_forward_scan) << "Cannot change scan direction";
   }
+}
+
+void PgDmlRead::SetReadCommandId(uint32_t command_id) {
+  if (!yb_enable_command_id_infra) {
+    return;
+  }
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    secondary_index->SetReadCommandId(command_id);
+  }
+  read_req_->set_read_command_id(command_id);
 }
 
 void PgDmlRead::SetDistinctPrefixLength(int distinct_prefix_length) {

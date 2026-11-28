@@ -1012,6 +1012,83 @@ GetDebugQueryString()
 	return debug_query_string;
 }
 
+/* See YbSetWriteCommandId. */
+static CommandId yb_write_command_id = InvalidCommandId;
+
+/* yb_write_command_id when each open subtransaction started. */
+static List *yb_subxact_write_command_ids = NIL;
+
+static void
+YbWriteCommandIdXactCallback(XactEvent event, void *arg)
+{
+	yb_write_command_id = InvalidCommandId;
+	yb_subxact_write_command_ids = NIL;
+}
+
+static void
+YbWriteCommandIdSubXactCallback(SubXactEvent event, SubTransactionId mySubid,
+								SubTransactionId parentSubid, void *arg)
+{
+	switch (event)
+	{
+		case SUBXACT_EVENT_START_SUB:
+			{
+				MemoryContext oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+
+				yb_subxact_write_command_ids =
+					lappend_oid(yb_subxact_write_command_ids,
+								(Oid) yb_write_command_id);
+				MemoryContextSwitchTo(oldcxt);
+				break;
+			}
+		case SUBXACT_EVENT_COMMIT_SUB:
+		case SUBXACT_EVENT_ABORT_SUB:
+			if (yb_subxact_write_command_ids != NIL)
+			{
+				/* An error skipped the callers that would restore it. */
+				if (event == SUBXACT_EVENT_ABORT_SUB)
+					yb_write_command_id =
+						(CommandId) llast_oid(yb_subxact_write_command_ids);
+				yb_subxact_write_command_ids =
+					list_delete_last(yb_subxact_write_command_ids);
+			}
+			break;
+		case SUBXACT_EVENT_PRE_COMMIT_SUB:
+			break;
+	}
+}
+
+/*
+ * Sets the command id that writes record while a ModifyTable node runs, its
+ * es_output_cid, as heap writes record es_output_cid even after a trigger or
+ * a function the node calls has advanced the current command id.  Returns the
+ * previous one, which the caller restores.  InvalidCommandId outside of a
+ * node, and in utility commands that the node runs.
+ */
+CommandId
+YbSetWriteCommandId(CommandId command_id)
+{
+	CommandId	prev = yb_write_command_id;
+
+	yb_write_command_id = command_id;
+	return prev;
+}
+
+/*
+ * The command id that a write records in its intents, the counterpart of the
+ * cmin/cmax a heap write stores: the es_output_cid of the ModifyTable node that
+ * writes, otherwise, like heap_insert callers outside the executor, the
+ * current command id, marked used so that the next CommandCounterIncrement
+ * makes the write visible to later commands.
+ */
+static uint32_t
+YbGetWriteCommandId()
+{
+	if (yb_write_command_id != InvalidCommandId)
+		return yb_write_command_id;
+	return GetCurrentCommandId(true);
+}
+
 /*
  * Ensure we've defined the correct postgres Oid values. This function only
  * contains compile-time assertions. It would have been made 'static' but it is
@@ -1219,6 +1296,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
+			.GetWriteCommandId = &YbGetWriteCommandId,
 		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
@@ -1259,6 +1337,9 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
+
+		RegisterXactCallback(YbWriteCommandIdXactCallback, NULL);
+		RegisterSubXactCallback(YbWriteCommandIdSubXactCallback, NULL);
 
 		/*
 		 * Initialize OpenTelemetry batch span processor for distributed

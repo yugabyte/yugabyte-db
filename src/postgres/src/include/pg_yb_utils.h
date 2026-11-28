@@ -1929,6 +1929,8 @@ extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_co
 															char *traceparent_out);
 extern bool YBHasSkippedIntentsWrite();
 
+extern CommandId YbSetWriteCommandId(CommandId command_id);
+
 /*
  * Returns true if 'relid' is a foreign table whose foreign server has
  * server_type = 'federatedYugabyteDB'.

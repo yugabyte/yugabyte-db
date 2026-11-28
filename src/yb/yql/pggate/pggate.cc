@@ -1840,6 +1840,11 @@ Status PgApiImpl::SetDistinctPrefixLength(PgStatement* handle, int distinct_pref
   return Status::OK();
 }
 
+Status PgApiImpl::SetReadCommandId(PgStatement* handle, uint32_t command_id) {
+  VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetReadCommandId(command_id);
+  return Status::OK();
+}
+
 Result<bool> PgApiImpl::RetrieveYbctids(
     PgStatement* handle, const YbcPgExecParameters* exec_params, int natts, YbcSliceVector* ybctids,
     size_t* count) {
