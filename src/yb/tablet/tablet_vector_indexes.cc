@@ -402,6 +402,8 @@ TabletVectorIndexes::TabletVectorIndexes(
       compaction_token_provider_(compaction_token_provider),
       block_cache_(block_cache),
       mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())),
+      insert_queue_mem_tracker_(
+          MemTracker::CreateTracker(-1, "vector_insert_queue", tablet->mem_tracker())),
       metric_registry_(metric_registry),
       pending_destroys_(std::make_shared<PendingDestroys>(env())) {
 }
@@ -549,8 +551,9 @@ Status TabletVectorIndexes::DoCreateIndex(
       // A shut down index of a replaced storage (e.g. truncate) could still be referenced, e.g. by
       // an aborted backfill, so its tracker could still exist.
       block_cache_, MemTracker::FindOrCreateTracker(-1, index_table.table_id, mem_tracker_),
-      vector_index_metric_entity));
+      vector_index_metric_entity, insert_queue_mem_tracker_));
   vector_index->SetDeactivatedHybridTime(index_table.vector_index_deactivated_ht);
+  vector_index->SetInsertsWaitForFreeTasks(!bootstrap_done_);
 
   // Backfilling before the indexed table's reverse mapping repair would put vectors without a
   // reverse mapping entry into the index, which compaction then drops; the repair launches it. Read
@@ -721,6 +724,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
       .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
+      .wait_for_free_tasks = true,
     };
     auto num_entries = entries().size();
     TEST_SYNC_POINT_CALLBACK("VectorIndexBackfillHelper::Flush:NumEntries", &num_entries);
@@ -1326,6 +1330,14 @@ VectorIndexList TabletVectorIndexes::List() const {
   }
   SharedLock lock(vector_indexes_mutex_);
   return VectorIndexList(vector_indexes_list_);
+}
+
+void TabletVectorIndexes::FinishBootstrap() {
+  std::lock_guard lock(vector_indexes_mutex_);
+  bootstrap_done_ = true;
+  for (const auto& [_, index] : vector_indexes_map_) {
+    index->SetInsertsWaitForFreeTasks(false);
+  }
 }
 
 bool TabletVectorIndexes::HasActiveBackfill() const {

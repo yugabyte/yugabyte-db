@@ -64,6 +64,7 @@ class CountingVectorIndex : public DocVectorIndex {
 
   // Unused on the external-apply vector-feed path.
   const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
+  const TableId& indexed_table_id() const override { LOG(FATAL) << "Unexpected call"; }
   const PgVectorIdxOptionsPB& options() const override { LOG(FATAL) << "Unexpected call"; }
   const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
@@ -103,6 +104,8 @@ class CountingVectorIndex : public DocVectorIndex {
   uint64_t OnDiskSize() const override { LOG(FATAL) << "Unexpected call"; }
   void StartShutdown() override { LOG(FATAL) << "Unexpected call"; }
   void CompleteShutdown() override { LOG(FATAL) << "Unexpected call"; }
+  bool InsertTasksSoftLimitReached() const override { LOG(FATAL) << "Unexpected call"; }
+  void SetInsertsWaitForFreeTasks(bool) override { LOG(FATAL) << "Unexpected call"; }
   bool TEST_HasBackgroundInserts() const override { LOG(FATAL) << "Unexpected call"; }
   size_t TEST_NextManifestFileNo() const override { LOG(FATAL) << "Unexpected call"; }
 

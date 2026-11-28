@@ -1922,6 +1922,7 @@ Status Tablet::DoEnableCompactions() {
 
 void Tablet::MarkFinishedBootstrapping() {
   CHECK_EQ(state_, kBootstrapping);
+  vector_indexes_->FinishBootstrap();
   state_ = kOpen;
 }
 

@@ -137,6 +137,11 @@ class TabletVectorIndexes :
   // postpone tablet splitting until the backfill completes (see GH#32321).
   bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
+  // Inserts of the writes replayed by tablet bootstrap wait for free insert tasks, since no Raft
+  // lock is held yet. Called once bootstrap is done, before Raft applies writes, which must not
+  // wait. Indexes opened later, e.g. after a restore, never make inserts wait.
+  void FinishBootstrap() EXCLUDES(vector_indexes_mutex_);
+
   // Earliest backfill time of the active vector indexes not done backfilling, or kMax: each
   // backfill reads at that time until done, so its history must not be garbage collected.
   HybridTime AllowedHistoryCutoff() const EXCLUDES(vector_indexes_mutex_);
@@ -273,6 +278,8 @@ class TabletVectorIndexes :
   const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
+  // Vectors queued for insertion, kept apart from the vector_indexes tracker of the index memory.
+  const MemTrackerPtr insert_queue_mem_tracker_;
   MetricRegistry* metric_registry_ = nullptr;
 
   std::atomic<bool> has_vector_indexes_{false};
@@ -282,6 +289,7 @@ class TabletVectorIndexes :
   std::unordered_map<TableId, docdb::DocVectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
+  bool bootstrap_done_ GUARDED_BY(vector_indexes_mutex_) = false;
 
   ShutdownController shutdown_controller_;
 

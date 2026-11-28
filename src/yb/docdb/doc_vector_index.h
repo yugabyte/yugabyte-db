@@ -176,6 +176,8 @@ struct InsertOptions {
       rocksdb::Cache::ReservationMode::kAlways;
   // See vector_index::VectorLSMInsertContext::chunk_holds.
   vector_index::VectorLSMChunkHolds* chunk_holds = nullptr;
+  // See vector_index::VectorLSMInsertContext::wait_for_free_tasks.
+  bool wait_for_free_tasks = false;
 };
 
 class DocVectorIndex {
@@ -183,6 +185,7 @@ class DocVectorIndex {
   virtual ~DocVectorIndex() = default;
 
   virtual const TableId& table_id() const = 0;
+  virtual const TableId& indexed_table_id() const = 0;
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
   virtual const PgVectorIdxOptionsPB& options() const = 0;
@@ -277,6 +280,12 @@ class DocVectorIndex {
   virtual void StartShutdown() = 0;
   virtual void CompleteShutdown() = 0;
 
+  // See VectorLSM::InsertTasksSoftLimitReached.
+  virtual bool InsertTasksSoftLimitReached() const = 0;
+
+  // See VectorLSM::SetInsertsWaitForFreeTasks.
+  virtual void SetInsertsWaitForFreeTasks(bool value) = 0;
+
   virtual bool TEST_HasBackgroundInserts() const = 0;
   virtual size_t TEST_NextManifestFileNo() const = 0;
 
@@ -354,6 +363,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
-    const MetricEntityPtr& metric_entity);
+    const MetricEntityPtr& metric_entity,
+    const MemTrackerPtr& insert_queue_mem_tracker = nullptr);
 
 }  // namespace yb::docdb

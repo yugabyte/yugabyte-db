@@ -81,6 +81,9 @@ struct VectorLSMInsertContext {
   // Deletions of vectors in any chunk. They take capacity of the chunk the insert goes to, which
   // keeps them until it is saved.
   std::span<const VectorLSMDeletion> deletions = {};
+  // Whether to wait while vector_index_max_insert_tasks are taken by other inserts that wait. An
+  // applied write must not wait: it runs under the Raft lock of the tablet.
+  bool wait_for_free_tasks = false;
 };
 
 template<IndexableVectorType Vector,
@@ -127,6 +130,8 @@ struct VectorLSMOptions {
   std::string file_extension;
   MetricEntityPtr metric_entity;
   size_t block_cache_capacity = 0;
+  // Charged with the vectors queued for insertion, until their insert task is done. Can be null.
+  MemTrackerPtr insert_queue_mem_tracker;
 
   // Whether newly created chunks store payloads attached to vectors, see StoreVectorPayload.
   vector_index::StoreVectorPayload store_vector_payload = vector_index::StoreVectorPayload::kFalse;
@@ -225,6 +230,15 @@ class VectorLSM {
   void CompleteShutdown();
   bool IsShuttingDown() const;
 
+  // Whether the insert tasks of inserts that do not wait for free tasks, i.e. of applied writes,
+  // reached vector_index_insert_tasks_soft_limit_percentage of vector_index_max_insert_tasks.
+  bool InsertTasksSoftLimitReached() const;
+
+  // Makes every insert wait for free insert tasks, as if
+  // VectorLSMInsertContext::wait_for_free_tasks were set. For tablet bootstrap, whose replayed
+  // writes do not run under the Raft lock.
+  void SetInsertsWaitForFreeTasks(bool value);
+
   size_t NumImmutableChunks() const EXCLUDES(mutex_);
   size_t NumSavedImmutableChunks() const EXCLUDES(mutex_);
 
@@ -242,6 +256,7 @@ class VectorLSM {
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   size_t TEST_PendingSaveTasks() const;
+
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
@@ -448,6 +463,7 @@ class VectorLSM {
   std::condition_variable_any compaction_tasks_cv_;
   std::unordered_set<CompactionTask*> compaction_tasks_ GUARDED_BY(compaction_tasks_mutex_);
   std::atomic<bool> auto_compactions_enabled_ = false;
+  std::atomic<bool> inserts_wait_for_free_tasks_ = false;
 
   // Used to inform background compactions that there's a manual compaction task which is
   // waiting for background compactions completion and prevents new background compactions.

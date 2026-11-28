@@ -20,11 +20,16 @@
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/doc_vector_index.h"
+
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_vector_indexes.h"
+
+#include "yb/tserver/tserver.messages.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_types.messages.h"
@@ -447,6 +452,33 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
     return RejectWrite(tablet_peer, status, score + FLAGS_TEST_write_rejection_percentage * 0.01);
   }
 
+  return Status::OK();
+}
+
+Status CheckVectorIndexWriteThrottling(
+    const WriteRequestMsg& req, tablet::Tablet& tablet, tablet::TabletPeer* tablet_peer) {
+  if (req.pgsql_write_batch().empty()) {
+    return Status::OK();
+  }
+  auto indexes = tablet.vector_indexes().List();
+  if (!indexes) {
+    return Status::OK();
+  }
+  for (const auto& index : *indexes) {
+    if (!index->InsertTasksSoftLimitReached()) {
+      continue;
+    }
+    for (const auto& pg_req : req.pgsql_write_batch()) {
+      // A delete takes no insert tasks.
+      if (pg_req.stmt_type() != PgsqlWriteRequestPB::PGSQL_DELETE &&
+          pg_req.table_id() == Slice(index->indexed_table_id())) {
+        return RejectWrite(
+            tablet_peer,
+            Format("Insert tasks of vector index $0 reached the soft limit", index->table_id()),
+            1.0 + req.rejection_score());
+      }
+    }
+  }
   return Status::OK();
 }
 
