@@ -285,15 +285,17 @@ yb::Result<std::unique_ptr<yb::Env>> GetEnv() {
   auto messenger = VERIFY_RESULT(messenger_builder.Build());
   auto se =
       messenger ? MakeOptionalScopeExit([&messenger] { messenger->Shutdown(); }) : std::nullopt;
-  auto yb_client = VERIFY_RESULT(yb::client::YBClientBuilder()
-                                 .add_master_server_addr(addrs)
-                                 .default_admin_operation_timeout(yb::MonoDelta::FromSeconds(30))
-                                 .Build(messenger.get()));
-  auto universe_key_registry = yb_client->GetFullUniverseKeyRegistry();
+  auto yb_client = yb::client::YBClientBuilder()
+                       .add_master_server_addr(addrs)
+                       .default_admin_operation_timeout(yb::MonoDelta::FromSeconds(30))
+                       .Build(messenger.get());
+  RETURN_NOT_OK(yb::tools::AddClientCertificateHint(ResultToStatus(yb_client)));
+  auto universe_key_registry = (*yb_client)->GetFullUniverseKeyRegistry();
   if (!universe_key_registry.ok()) {
     return STATUS_FORMAT(IllegalState,
                          "Fail to get full universe key registry from master $0, error: $1",
-                         addrs, universe_key_registry.status());
+                         addrs,
+                         yb::tools::AddClientCertificateHint(universe_key_registry.status()));
   }
   LOG(INFO) << "GetFullUniverseKeyRegistry returned successefully";
   universe_key_manager = std::make_unique<yb::encryption::UniverseKeyManager>();

@@ -214,7 +214,7 @@ PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 // the error to cerr and return a non-zero exit code. Should be used in main().
 #define RETURN_NOT_OK_PREPEND_FROM_MAIN(to_call, to_prepend) \
   do { \
-    ::yb::Status s = (to_call); \
+    ::yb::Status s = ::yb::tools::AddClientCertificateHint(to_call); \
     if (!s.ok()) { \
       std::cerr << (to_prepend) << ": " << s.ToString() << std::endl; \
       return 1; \
@@ -1248,7 +1248,8 @@ namespace {
 void SetUsage(const char* argv0) {
   std::ostringstream str;
 
-  str << argv0 << " [--server_address=<addr>] <operation> <flags>\n"
+  str << argv0 << " [--server_address=<addr>] [--certs_dir_name=<dir>]"
+      << " [--client_node_name=<name>] <operation> <flags>\n"
       << "<operation> must be one of:\n"
       << "  " << kListTabletsOp << "\n"
       << "  " << kAreTabletsRunningOp << "\n"
