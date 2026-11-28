@@ -3639,7 +3639,9 @@ send_message_to_server_log(ErrorData *edata)
 		{
 			log_line_prefix(&buf, edata);
 			appendStringInfoString(&buf, _("QUERY:  "));
-			append_with_tabs(&buf, edata->internalquery);
+			/* YB */
+			append_with_tabs(&buf,
+							 YbRedactPasswordInCurrentQueryText(edata->internalquery));
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->context && !edata->hide_ctx)
@@ -3682,7 +3684,9 @@ send_message_to_server_log(ErrorData *edata)
 	{
 		log_line_prefix(&buf, edata);
 		appendStringInfoString(&buf, _("STATEMENT:  "));
-		append_with_tabs(&buf, debug_query_string);
+		/* YB */
+		append_with_tabs(&buf,
+						 YbRedactPasswordInCurrentQueryText(debug_query_string));
 		appendStringInfoChar(&buf, '\n');
 	}
 

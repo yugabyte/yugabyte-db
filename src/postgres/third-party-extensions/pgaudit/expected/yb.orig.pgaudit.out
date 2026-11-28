@@ -7,3 +7,78 @@ SET pgaudit.log_parameter = ON;
 SET pgaudit.log = 'NONE';
 SET pgaudit.log = 'ALL';
 NOTICE:  AUDIT: SESSION,1,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
+-- A role password sent in a multi-statement query must be redacted in the
+-- records of every statement of that query, not only the role statement's.
+CREATE ROLE regress_yb_pw_role LOGIN;
+NOTICE:  AUDIT: SESSION,2,1,ROLE,CREATE ROLE,,,CREATE ROLE regress_yb_pw_role LOGIN;,<none>
+SELECT 1 \; ALTER ROLE regress_yb_pw_role PASSWORD 'pw_middle' \; SELECT 2;
+NOTICE:  AUDIT: SESSION,3,1,READ,SELECT,,,SELECT 1 ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,4,1,ROLE,ALTER ROLE,,,SELECT 1 ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,5,1,READ,SELECT,,,SELECT 1 ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        2
+(1 row)
+
+ALTER ROLE regress_yb_pw_role PASSWORD 'pw_first' \; SELECT 3;
+NOTICE:  AUDIT: SESSION,6,1,ROLE,ALTER ROLE,,,ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,7,1,READ,SELECT,,,ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+ ?column? 
+----------
+        3
+(1 row)
+
+BEGIN \; ALTER ROLE regress_yb_pw_role PASSWORD 'pw_txn' \; COMMIT;
+NOTICE:  AUDIT: SESSION,8,1,MISC,BEGIN,,,BEGIN ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,9,1,ROLE,ALTER ROLE,,,BEGIN ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,10,1,MISC,COMMIT,,,BEGIN ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+CREATE ROLE regress_yb_pw_role2 PASSWORD 'pw_create' \; GRANT regress_yb_pw_role2 TO regress_yb_pw_role;
+NOTICE:  AUDIT: SESSION,11,1,ROLE,CREATE ROLE,,,CREATE ROLE regress_yb_pw_role2 PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,12,1,ROLE,GRANT ROLE,,,CREATE ROLE regress_yb_pw_role2 PASSWORD <REDACTED>,<none>
+SELECT query FROM pg_stat_activity WHERE pid = pg_backend_pid() \; ALTER ROLE regress_yb_pw_role PASSWORD 'pw_activity';
+NOTICE:  AUDIT: SESSION,13,1,READ,SELECT,,,SELECT query FROM pg_stat_activity WHERE pid = pg_backend_pid() ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,14,1,ROLE,ALTER ROLE,,,SELECT query FROM pg_stat_activity WHERE pid = pg_backend_pid() ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+                                                        query                                                        
+---------------------------------------------------------------------------------------------------------------------
+ SELECT query FROM pg_stat_activity WHERE pid = pg_backend_pid() ; ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>
+(1 row)
+
+-- Without a role statement, text containing the password token is kept.
+SELECT 'password' AS col \; SELECT 4;
+NOTICE:  AUDIT: SESSION,15,1,READ,SELECT,,,SELECT 'password' AS col ; SELECT 4;,<none>
+NOTICE:  AUDIT: SESSION,16,1,READ,SELECT,,,SELECT 'password' AS col ; SELECT 4;,<none>
+   col    
+----------
+ password
+(1 row)
+
+ ?column? 
+----------
+        4
+(1 row)
+
+DO $$ BEGIN EXECUTE 'ALTER ROLE regress_yb_pw_role PASSWORD ''pw_do'''; END $$;
+NOTICE:  AUDIT: SESSION,17,1,FUNCTION,DO,,,DO $$ BEGIN EXECUTE 'ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+NOTICE:  AUDIT: SESSION,17,2,ROLE,ALTER ROLE,,,ALTER ROLE regress_yb_pw_role PASSWORD <REDACTED>,<none>
+CREATE FOREIGN DATA WRAPPER regress_yb_pw_fdw;
+NOTICE:  AUDIT: SESSION,18,1,DDL,CREATE FOREIGN DATA WRAPPER,,,CREATE FOREIGN DATA WRAPPER regress_yb_pw_fdw;,<none>
+CREATE SERVER regress_yb_pw_srv FOREIGN DATA WRAPPER regress_yb_pw_fdw;
+NOTICE:  AUDIT: SESSION,19,1,DDL,CREATE SERVER,,,CREATE SERVER regress_yb_pw_srv FOREIGN DATA WRAPPER regress_yb_pw_fdw;,<none>
+CREATE USER MAPPING FOR regress_yb_pw_role SERVER regress_yb_pw_srv OPTIONS (user 'u', password 'pw_um');
+NOTICE:  AUDIT: SESSION,20,1,DDL,CREATE USER MAPPING,,,"CREATE USER MAPPING FOR regress_yb_pw_role SERVER regress_yb_pw_srv OPTIONS (user 'u', password <REDACTED>",<none>
+ALTER USER MAPPING FOR regress_yb_pw_role SERVER regress_yb_pw_srv OPTIONS (SET password 'pw_um_alter');
+NOTICE:  AUDIT: SESSION,21,1,DDL,ALTER USER MAPPING,,,ALTER USER MAPPING FOR regress_yb_pw_role SERVER regress_yb_pw_srv OPTIONS (SET password <REDACTED>,<none>
+DROP SERVER regress_yb_pw_srv CASCADE;
+NOTICE:  drop cascades to user mapping for regress_yb_pw_role on server regress_yb_pw_srv
+NOTICE:  AUDIT: SESSION,22,1,DDL,DROP SERVER,,,DROP SERVER regress_yb_pw_srv CASCADE;,<none>
+DROP FOREIGN DATA WRAPPER regress_yb_pw_fdw;
+NOTICE:  AUDIT: SESSION,23,1,DDL,DROP FOREIGN DATA WRAPPER,,,DROP FOREIGN DATA WRAPPER regress_yb_pw_fdw;,<none>
+DROP ROLE regress_yb_pw_role2;
+NOTICE:  AUDIT: SESSION,24,1,ROLE,DROP ROLE,,,DROP ROLE regress_yb_pw_role2;,<none>
+DROP ROLE regress_yb_pw_role;
+NOTICE:  AUDIT: SESSION,25,1,ROLE,DROP ROLE,,,DROP ROLE regress_yb_pw_role;,<none>

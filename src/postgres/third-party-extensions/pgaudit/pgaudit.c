@@ -640,6 +640,10 @@ log_audit_event(AuditEventStackItem *stackItem)
     if (!stackItem->auditEvent.granted && !(auditLogBitmap & class))
         return;
 
+    /* YB */
+    stackItem->auditEvent.commandText =
+        YbRedactPasswordInCurrentQueryText(stackItem->auditEvent.commandText);
+
     /*
      * Use audit memory context in case something is not free'd while
      * appending strings and parameters.

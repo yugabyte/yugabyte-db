@@ -2527,7 +2527,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		Assert(YbVerifyQueryStringIsSameInPlanCacheList(plan->plancache_list));
 		if (first_plansource->query_string)
 			YBCDistTraceSetCurrSpanAttrStr("spi.query.text",
-										   first_plansource->query_string);
+										   YbRedactPasswordInCurrentQueryText(first_plansource->query_string));
 	}
 
 	/*
@@ -3123,7 +3123,9 @@ _SPI_error_callback(void *arg)
 				errcontext("PL/pgSQL assignment \"%s\"", query);
 				break;
 			default:
-				errcontext("SQL statement \"%s\"", query);
+				/* YB */
+				errcontext("SQL statement \"%s\"",
+						   YbRedactPasswordInCurrentQueryText(query));
 				break;
 		}
 	}

@@ -1009,7 +1009,7 @@ HandleYBTableDescStatus(YbcStatus status, YbcPgTableDesc table)
 static const char *
 GetDebugQueryString()
 {
-	return debug_query_string;
+	return YbRedactPasswordInCurrentQueryText(debug_query_string);
 }
 
 /*
