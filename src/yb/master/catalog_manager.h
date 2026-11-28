@@ -682,8 +682,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     const TransactionMetadata& txn, const LeaderEpoch& epoch, int32_t delay_ms);
 
   // Invokes TriggerDdlVerificationIfNeeded for each DDL transaction whose verification state is
-  // kDdlPostProcessingFailed.
+  // kDdlPostProcessingFailed and whose backoff has elapsed. The delay starts at
+  // kMinDdlPostProcessingFailedRetryDelay and doubles up to
+  // ysql_ddl_post_processing_failed_verification_retry_secs.
   void TriggerDdlVerificationForPostProcessingFailedTxns(const LeaderEpoch& epoch);
+  static constexpr std::chrono::seconds kMinDdlPostProcessingFailedRetryDelay{1};
 
   // Test-only: current YsqlDdlVerificationState for txn, or nullopt if not in the verifier map.
   std::optional<YsqlDdlVerificationState> TEST_GetYsqlDdlVerificationState(
@@ -3705,6 +3708,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     std::unordered_set<TableId> nochange_tables;
     // A release of all the txn's object locks was dropped while this entry existed.
     bool release_all_deferred = false;
+    // Backoff for re-triggering from kDdlPostProcessingFailed. A DDL whose session died parks
+    // here and holds its table locks until the next re-trigger, so the first one comes soon; a
+    // DDL that keeps failing is retried less and less often.
+    MonoTime next_retry_time;
+    MonoDelta retry_delay;
   };
 
   struct YsqlDdlSubTransactionRollbackMetadata {

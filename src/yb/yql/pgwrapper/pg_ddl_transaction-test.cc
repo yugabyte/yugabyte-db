@@ -473,6 +473,107 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestRollbackAlterResentAfterRetriesExhau
       MonoDelta::FromSeconds(30), "Tablets to apply the rolled-back schema"));
 }
 
+// #38090: when a table-rewriting ALTER's session is killed, the old table cannot tell whether the
+// DDL committed, so the master parks the DDL in kDdlPostProcessingFailed until a re-trigger tries
+// the new table. Nothing else re-triggers it, and the DDL holds its table locks until then, so the
+// first re-trigger must come within seconds, not after the
+// ysql_ddl_post_processing_failed_verification_retry_secs maximum (300 s).
+TEST_F(PgDdlTransactionMiniClusterTest, TestKilledTableRewriteRetriggeredQuickly) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 300;
+  auto alter_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string kTable = "killed_rewrite";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, c INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 100) i", kTable));
+  // Holds the rewrite at row 50 so the session can be killed partway.
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION sleep_at_50(i INT) RETURNS BIGINT LANGUAGE plpgsql AS $$ "
+      "BEGIN IF i = 50 THEN PERFORM pg_sleep(600); END IF; RETURN i; END $$"));
+  const auto alter_pid = ASSERT_RESULT(alter_conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&alter_conn, &kTable] {
+    const auto s = alter_conn.ExecuteFormat(
+        "ALTER TABLE $0 ALTER COLUMN c TYPE BIGINT USING sleep_at_50(c)", kTable);
+    LOG(INFO) << "Killed ALTER returned: " << s;
+  });
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+            "SELECT count(*) FROM pg_stat_activity WHERE pid = $0 AND wait_event = 'PgSleep'",
+            alter_pid))) == 1;
+      },
+      MonoDelta::FromSeconds(60), "ALTER to reach row 50"));
+  // Leave only the background re-trigger to finish the DDL, as on a cluster where the killed
+  // session's outcome never reaches the master.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ASSERT_OK(conn.FetchFormat("SELECT pg_terminate_backend($0)", alter_pid));
+  thread_holder.JoinAll();
+
+  // A read needs a lock that conflicts with the killed ALTER's, which the master releases only
+  // once the DDL's verification finishes.
+  ASSERT_OK(conn.Execute("SET statement_timeout = '1s'"));
+  ASSERT_OK(WaitFor(
+      [&] { return conn.FetchFormat("SELECT * FROM $0 LIMIT 1", kTable).ok(); },
+      MonoDelta::FromSeconds(10), "Table to become readable"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                "WHERE attrelid = '$0'::regclass AND attname = 'c'",
+                kTable))),
+            "integer");
+}
+
+// A DDL that keeps failing verification is re-triggered with a delay that starts at 1 s and
+// doubles, so the first four re-triggers span at least 1 + 2 + 4 = 7 s rather than one per tick.
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedRetriggerBacksOff) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 300;
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string kTable = "retrigger_backs_off";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY)", kTable));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 1.0;
+
+  std::mutex retry_times_mutex;
+  std::vector<MonoTime> retry_times;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns:Retry", [&](void*) {
+        std::lock_guard lock(retry_times_mutex);
+        retry_times.push_back(MonoTime::Now());
+      });
+  // The callback refers to this frame, so it must be gone before any early return.
+  auto clear_sync_point = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  sync_point->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", kTable));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  constexpr size_t kRetries = 4;
+  ASSERT_OK(WaitFor(
+      [&] {
+        std::lock_guard lock(retry_times_mutex);
+        return retry_times.size() >= kRetries;
+      },
+      MonoDelta::FromSeconds(60), "Four re-triggers"));
+  sync_point->DisableProcessing();
+  sync_point->ClearAllCallBacks();
+
+  std::lock_guard lock(retry_times_mutex);
+  LOG(INFO) << "Re-trigger times: " << AsString(retry_times);
+  // Each re-trigger runs no earlier than the previous one plus its delay; allow for the
+  // microseconds between the tick reading the clock and the callback reading it.
+  ASSERT_GE(retry_times[kRetries - 1] - retry_times[0], MonoDelta::FromMilliseconds(6900));
+}
+
 TEST_F(PgDdlTransactionTest, TestRenameIndexAndTruncateInTxn) {
   auto conn = ASSERT_RESULT(Connect());
 
