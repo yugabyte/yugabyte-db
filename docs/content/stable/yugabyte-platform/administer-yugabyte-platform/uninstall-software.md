@@ -141,6 +141,8 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Remove node agent.
 
+    Use these steps when you are uninstalling YugabyteDB from a node you are taking out of service. To finish a failed `node-agent-provision.sh` run, re-run the script and leave these files in place. See [Run the provisioning script](../../prepare/server-nodes-software/software-on-prem/#run-the-provisioning-script).
+    
     1. Run the following node agent installer (in `node-agent/bin/`) command:
 
         ```sh
@@ -205,4 +207,4 @@ If there is a requirement to remove the `prometheus` user, execute the following
 sudo rm -rf /opt/prometheus
 ```
 
-You may now choose to reverse the system settings that you configured in [Provision nodes manually](../../prepare/server-nodes-software/software-on-prem-manual/).
+You may now choose to reverse the system settings that you configured in [Prepare nodes yourself](../../prepare/server-nodes-software/software-on-prem-manual/).

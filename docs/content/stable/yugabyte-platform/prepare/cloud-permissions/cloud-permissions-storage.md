@@ -62,7 +62,7 @@ When backing up to and/or restoring from NFS storage, the NFS storage system mus
 - The `yugabyte` user (and its UID) on the database cluster nodes needs to have read and write permissions for the NFS volume.
 - The NFS volume must be mounted on the database cluster nodes.
 
-(This guidance is intentionally repeated in [Prepare Servers for On-Premises provider](../../server-nodes-software/software-on-prem-manual/), where it may be more suitable for some readers.)
+(This guidance is intentionally repeated in [Prepare nodes yourself](../../server-nodes-software/software-on-prem-manual/), where it may be more suitable for some readers.)
 
   </div>
 

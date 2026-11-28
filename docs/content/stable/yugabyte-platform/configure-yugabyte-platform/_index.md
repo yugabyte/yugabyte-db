@@ -25,9 +25,9 @@ A provider configuration describes your cloud environment (such as its security 
 Not sure what type of provider to use? Refer to [Provider configurations](../yba-overview/#provider-configurations).
 {{</lead>}}
 
-{{< tip title="Automatic on-premises provisioning" >}}
+{{< tip title="On-premises provisioning" >}}
 
-If you are deploying on premises (private cloud), on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../prepare/server-nodes-software/software-on-prem/).
+For a private cloud, choose privileged or non-privileged access before you create the provider. Refer to [On-premises provisioning](../prepare/server-nodes-software/software-on-prem-legacy/).
 
 {{< /tip >}}
 
@@ -35,6 +35,6 @@ Before you can deploy universes using YugabyteDB Anywhere, you must create a pro
 
 | To&nbsp;Deploy&nbsp;universes&nbsp;to | Create&nbsp;provider | Description |
 | :--- | :--- | :--- |
-| - Private cloud<br>- Bare metal/racks<br>- Cloud provider (limited SSH) | [On-premises](on-premises/) | Deploy universes to your own infrastructure, or to cloud providers where (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs.<br>Provides maximum flexibility.<br>On-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../prepare/server-nodes-software/software-on-prem/). |
+| - Private cloud<br>- Bare metal/racks<br>- Cloud provider (you create the VMs) | [On-premises](on-premises/) | Deploy universes to your own infrastructure, or to cloud providers where you create the VMs yourself.<br>Give YBA SSH access and it provisions the nodes, or prepare the nodes with the provisioning script and leave SSH unset. Refer to [On-premises provisioning](../prepare/server-nodes-software/software-on-prem-legacy/). |
 | Cloud provider<br>(full SSH) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/)<br>[OCI](oci/) | Deploy universes to cloud providers where you can provide YBA with cloud permissions and SSH access to cloud VMs for full automation.<br>Provides maximum automation. |
 | Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) | Deploy universes on Kubernetes. |

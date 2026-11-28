@@ -18,7 +18,7 @@ showRightNav: true
 
 The Linux OS and other software components on each database cluster node must meet the following minimum software requirements.
 
-Depending on the [provider type](../../yba-overview/#provider-configurations) and permissions you grant, you may have to install all of these requirements manually, or YugabyteDB Anywhere will install it all automatically.
+Depending on the [provider type](../../yba-overview/#provider-configurations) and the access you grant, you install these requirements yourself, or YugabyteDB Anywhere installs them. For an on-premises provider, start with [On-premises provisioning](./software-on-prem-legacy/).
 
 {{< warning title="Using disk encryption software with YugabyteDB" >}}
 If you are using third party disk encryption software (such as Vormetric or CipherTrust), the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
@@ -42,7 +42,7 @@ _You must reboot the system for these two settings to take effect._
 
 #### Transparent hugepages
 
-Note: Only perform this step for [legacy provisioning](./software-on-prem-legacy/). This step is performed automatically during [automatic provisioning](./software-on-prem/).
+Note: Perform this step only when you [prepare the node yourself](./software-on-prem-manual/). [Privileged provisioning](./software-on-prem-auto/) and the [non-privileged provisioning script](./software-on-prem/) set transparent hugepages for you.
 
 Transparent hugepages (THP) should be enabled for optimal performance. Download and run the following script as root:
 
@@ -138,14 +138,14 @@ The script performs the following steps:
 
 YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
 
-- OpenSSH Server. Allowing SSH is optional. Using SSH is required in some [legacy on-premises deployment](../server-nodes-software/software-on-prem-legacy/) approaches. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
+- OpenSSH Server. Allowing SSH is optional. YugabyteDB Anywhere uses SSH only for [privileged access](./software-on-prem-auto/). [Non-privileged access](./software-on-prem/) does not give YugabyteDB Anywhere SSH credentials. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
 - tar
 - unzip
 - policycoreutils-python-utils
 
 #### Python for database nodes
 
-Install Python 3.6-3.12 on the database nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+Install Python 3.6-3.12 on the database nodes. (For [privileged access](software-on-prem-auto/), or when you [prepare the node yourself](software-on-prem-manual/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
 Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 

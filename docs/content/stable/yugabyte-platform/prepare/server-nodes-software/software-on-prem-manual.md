@@ -1,56 +1,42 @@
 ---
-title: Legacy manual on-premises node provisioning
-headerTitle: Legacy provisioning
-linkTitle: Legacy provisioning
-description: How to provision on-premises provider nodes using legacy manual method.
-headContent: Prepare a VM for deploying universes on-premises
+title: Prepare on-premises nodes yourself
+headerTitle: Prepare on-premises nodes yourself
+linkTitle: Legacy Manual
+description: Prepare on-premises nodes by hand when you do not give YugabyteDB Anywhere SSH access and do not use the provisioning script.
+headContent: Prepare a VM yourself, without SSH access for YugabyteDB Anywhere and without the provisioning script
 aliases:
     - /stable/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
-  stable_yugabyte-platform:
-    identifier: software-on-prem-4-manual
-    parent: software-on-prem
-    weight: 10
+    stable_yugabyte-platform:
+        identifier: software-on-prem-4-manual
+        parent: software-on-prem
+        weight: 30
 type: docs
 ---
 
-{{< warning title="Legacy provisioning deprecated" >}}
-Fully manual provisioning is deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
-{{< /warning >}}
+{{< note title="For operators using their own automation" >}}
+YugabyteDB Anywhere has no SSH access to these nodes, the same access model as [automatic provisioning without privileged access](../software-on-prem/). On that path, `node-agent-provision.sh` prepares the node. Use the following procedure when you prepare the node with your own automation and will not run that script.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../software-on-prem-legacy/" class="nav-link">
-      How to Choose
-    </a>
-  </li>
+(This provisioning method was formerly called legacy fully manual provisioning.)
 
-  <li>
-    <a href="../software-on-prem-auto/" class="nav-link">
-      <i class="fa-regular fa-wand-magic-sparkles"></i>
-      Automatic
-    </a>
-  </li>
+This provisioning method is deprecated, and automatic provisioning without privileged access is recommended for new on-premises providers where you cannot provide YugabyteDB Anywhere privileged access. For information on migrating existing manually provisioned providers and universes, see [Re-provision nodes of an existing universe](../software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
 
-  <li>
-    <a href="../software-on-prem-manual/" class="nav-link active">
-      <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual
-    </a>
-  </li>
-</ul>
+You can upgrade YugabyteDB Anywhere without changing manually provisioned universes. Refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+{{< /note >}}
 
-In this mode, you manually install each prerequisite software component. Use this mode if you disallow SSH login to a root-privileged user at setup time and instead have a local sudo-privileged user with CLI access to the VM.
+You install each prerequisite on the VM. You need a local user with sudo. YugabyteDB Anywhere never signs in.
 
-Your responsibility now (to meet prerequisites) is to provide a VM with the following pre-installed:
+Provide a VM with the following pre-installed:
 
-- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YugabyteDB Anywhere (YBA) uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
+- [Supported Linux OS](../#linux-os)
 - [Additional software](../#additional-software)
-- [Additional software for airgapped](../#additional-software-for-airgapped-deployment)
+- When the VM has no Internet or Yum connectivity, [additional software for airgapped deployment](../#additional-software-for-airgapped-deployment)
+
+In the provider, leave **SSH Key Pairs** empty and turn **Manually Provision Nodes** on.
 
 | Save for later | To configure |
 | :--- | :--- |
-| VM IP addresses | [On-premises provider](../../../configure-yugabyte-platform/on-premises/) |
+| VM IP addresses | [On-premises provider](../../../configure-yugabyte-platform/on-premises-nodes/) |
 
 ## Manually provision a VM
 
@@ -641,9 +627,9 @@ You must reboot the system for these two settings to take effect.
 
 The YugabyteDB Anywhere node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/stable/faq/yugabyte-platform/#node-agent) FAQ.
 
-(For legacy automatic and legacy assisted manual provisioning, node agents are installed onto instances automatically when adding instances.)
+Privileged provisioning and the non-privileged provisioning script install node agent for you.
 
-Use the following procedure to install node agent for fully manual provisioning.
+Use the following procedure to install node agent when you prepare the node yourself.
 
 To install the node agent manually, as the `yugabyte` user, do the following:
 

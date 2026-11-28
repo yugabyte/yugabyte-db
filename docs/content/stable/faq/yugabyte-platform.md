@@ -125,27 +125,15 @@ Installation depends on the type of [provider configuration](../../yugabyte-plat
 
 #### On-premises provider configuration
 
-For on-premises providers, after creating VMs and installing a supported Linux operating system and additional software (such as Python) (see [Software requirements for nodes](../../yugabyte-platform/prepare/server-nodes-software/)), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
+For on-premises providers, you create the VMs and install a supported Linux operating system and additional software (such as Python). See [Software requirements for nodes](../../yugabyte-platform/prepare/server-nodes-software/).
 
-This process prepares the node for YugabyteDB, including installation of node agent on the node.
+How node agent is installed depends on the access you give YugabyteDB Anywhere. Refer to [On-premises provisioning](/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-legacy/).
 
-If you have already installed YugabyteDB Anywhere and it is running, the script can additionally create (or update) an on-premises provider with the node already added.
+- **Non-privileged.** You do not give YugabyteDB Anywhere SSH credentials. You download the node agent package to the VM and run `node-agent-provision.sh` as root or via sudo. The script prepares the node, installs node agent, and can create the provider with **Manually Provision Nodes** on. If that provider already exists with the option off, the script stops and leaves the provider unchanged. See [Automatic provisioning without privileged access](/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem/).
 
-{{<lead link="/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem/">}}
-Automatically provision on-premises nodes
-{{</lead>}}
+- **Privileged.** You give YugabyteDB Anywhere an SSH user with passwordless sudo (for example, `ec2-user` on an AWS EC2 instance) and leave **Manually Provision Nodes** off. YugabyteDB Anywhere provisions the node, including node agent, when you add the instance. See [Automatic provisioning with privileged access](/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-auto/).
 
-In addition, for on-premises providers, there are three legacy methods (now deprecated) for preparing a node, depending on the level of access provided to YugabyteDB Anywhere, as follows:
-
-- _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YugabyteDB Anywhere (for example, the `ec2-user` for an AWS EC2 instance). YugabyteDB Anywhere then automatically provisions nodes, including installing node agent.
-
-- _Assisted manual provisioning_, where YugabyteDB Anywhere doesn't have access to an SSH user with sudo access, but you can run a script (provision_instance.py) interactively in YugabyteDB Anywhere, providing parameters for credentials for the SSH user with sudo access. The script provisions the node, including installing node agent.
-
-- _Fully manual provisioning_, where neither you nor YugabyteDB Anywhere has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node, including installing node agent.
-
-{{<lead link="/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-legacy">}}
-Legacy provisioning
-{{</lead>}}
+Operators who already automate node preparation, and will not run the script, install each component and node agent by hand. See [Prepare nodes yourself](/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/).
 
 #### Public cloud provider configuration
 
@@ -153,13 +141,11 @@ For [public cloud providers](../../yugabyte-platform/yba-overview/#provider-conf
 
 ### Why does YugabyteDB Anywhere prompt for SSH details if the node agent is installed manually and can replace SSH?
 
-When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during legacy provisioning. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+The SSH fields on an on-premises provider configuration are how you grant privileged access. Fill them in, and leave **Manually Provision Nodes** off, when YugabyteDB Anywhere should sign in and provision the nodes. After node agent is installed, YugabyteDB Anywhere manages the node through node agent.
 
-If you are manually provisioning nodes, these credentials aren't needed to provision nodes.
+For non-privileged access, leave the SSH fields empty and turn **Manually Provision Nodes** on.
 
-However, SSH keys are still required to connect to the node for debugging purposes (by navigating to **universe > Nodes > Actions > Connect** for example).
-
-If you don't want to provide YugabyteDB Anywhere with an SSH key for a manually provisioned on-premises provider (because you can log in to the nodes over SSH for debugging outside of YugabyteDB Anywhere), then you can provide a dummy SSH key in the provider configuration.
+**Actions > Connect** on a universe node uses the SSH key stored in the provider. When the provider has no key, sign in with your own SSH client.
 
 ### What is registration and unregistration of node agent?
 
@@ -172,7 +158,7 @@ No provider-level details are needed for registration.
 
 Unregistration is the process of removing the node agent entry from YugabyteDB Anywhere such that there is no further communication. In effect, unregistration makes YugabyteDB Anywhere and the node forget each other.
 
-### Why does node agent installation ask for provider and other details during legacy on-premises manual node agent setup?
+### Why does node agent installation ask for provider and other details when I install node agent myself?
 
 Node agent is used to run preflight checks on the node during various day-0 and day-2 operations. These checks need information like the non-root user's home directory, expected port number for Prometheus Node Exporter, the NTP servers, and so on. These are attributes configured with a provider. As a result, to run these preflight checks the node agent needs to be configured to a provider in YugabyteDB Anywhere, and these details are needed to make the node agent aware of the YugabyteDB Anywhere provider which the node will become a part of.
 

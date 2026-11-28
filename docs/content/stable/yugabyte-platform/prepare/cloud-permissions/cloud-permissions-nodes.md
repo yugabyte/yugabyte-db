@@ -60,6 +60,6 @@ If you will be deploying on-premises universes in AWS, you can attach a service 
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 
-Provisioning VMs requires root access, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
+Preparing a VM requires root or sudo on that VM. With [privileged access](../../server-nodes-software/software-on-prem-auto/), YugabyteDB Anywhere uses an SSH user with passwordless sudo, and does not need it after node agent is installed. With [non-privileged access](../../server-nodes-software/software-on-prem/), you run the provisioning script as root or via sudo, and YugabyteDB Anywhere is not given SSH access.
 
-For more information, refer to [Automatically provision on-premises nodes](../../server-nodes-software/software-on-prem/).
+For more information, refer to [On-premises provisioning](../../server-nodes-software/software-on-prem-legacy/).

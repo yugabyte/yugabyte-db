@@ -14,19 +14,13 @@ type: docs
 
 Navigate to **Integrations > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
 
-If you are using automatic provisioning, on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must have an on-premises provider configuration. YugabyteDB Anywhere does not create the VMs. You create the provider, create the VMs, and add them to the provider's free pool of nodes.
 
-Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must have an on-premises provider configuration. With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
+With [non-privileged access](../../prepare/server-nodes-software/software-on-prem/), the provisioning script can create the provider when it prepares a node. With [privileged access](../../prepare/server-nodes-software/software-on-prem-auto/), you create the provider and supply SSH credentials so YugabyteDB Anywhere can provision the VMs.
 
 ## Create a provider
 
-{{< tip title="Automatic provisioning" >}}
-
-If you are using automatic provisioning, on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
-
-{{< /tip >}}
-
-You can create an on-premises provider manually as follows:
+Create an on-premises provider as follows:
 
 1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
 
@@ -74,47 +68,52 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 ### SSH Key Pairs
 
-Required for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), to provide sudo access to VMs.
+Set these fields for [privileged access](../../prepare/server-nodes-software/software-on-prem-auto/). YugabyteDB Anywhere uses them to sign in and provision the VMs. Leave them empty for [non-privileged access](../../prepare/server-nodes-software/software-on-prem/).
 
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This SSH user cannot be named `yugabyte`.
+In the **SSH User** field, enter the name of a user with passwordless sudo on your instances. This SSH user cannot be named `yugabyte`. YugabyteDB Anywhere signs in as the user you enter here, then creates a `yugabyte` user to run the database processes.
 
-YugabyteDB Anywhere will use this user for SSH access to the nodes in order to provision them. In addition, deselect the **Manually Provision Nodes** option (under **Advanced**) (the default).
+Leave **Manually Provision Nodes** off (under **Advanced**). (Off is the default.)
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
 In the **SSH Keypair Name** field, provide the name of the key pair.
 
-Use the **SSH Private Key Content** field to upload the private key PEM file available to the SSH user for gaining access via SSH into your instances.
-
-{{< tip title="SSH access" >}}
-sudo privileges are only required for legacy automatic provisioning. Leave these fields empty if you are using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/) to provision your nodes (recommended).
-{{< /tip >}}
+Use the **SSH Private Key Content** field to upload the private key PEM file for that SSH user.
 
 ### Advanced
 
-DB Nodes have public internet access
-: Disable this option if you want the installation to run in an airgapped mode without expecting any internet access.
+#### DB Nodes have public internet access
 
-Manually Provision Nodes
-: Indicates whether you are providing [SSH Key Pairs](#ssh-key-pairs) (sudo privileges) to YugabyteDB Anywhere for it to automatically manage VM provisioning.
-: If you _are not_ providing SSH Key Pairs to YugabyteDB Anywhere, select this option.
-: If you _are_ providing SSH Key Pairs so that YugabyteDB Anywhere can perform [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), _deselect_ this option.
-: This option is automatically selected when you provision nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
-: Select this option if you are using [legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes.
+Disable this option if you want the installation to run in an airgapped mode without expecting any internet access.
 
-YB Nodes Home Directory
-: Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
+#### Manually Provision Nodes
 
-Install Node Exporter
-: Enable this option if you want the Prometheus Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-: The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
-: Use the **Node Exporter Port** field to specify the port number for the Prometheus Node Exporter. The default value is 9300.
+Controls whether YugabyteDB Anywhere provisions the VMs:
 
-NTP Setup
-: You can customize the Network Time Protocol server.
-: Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-: Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+- Leave this _off_ for [privileged access](../../prepare/server-nodes-software/software-on-prem-auto/). You set [SSH Key Pairs](#ssh-key-pairs), and YugabyteDB Anywhere provisions each VM when you add it. This is the default.
+- Turn this _on_ for [non-privileged access](../../prepare/server-nodes-software/software-on-prem/). Leave **SSH Key Pairs** empty. Prepare the node with `node-agent-provision.sh`, or [prepare it yourself](../../prepare/server-nodes-software/software-on-prem-manual/).
+
+A provider created by `node-agent-provision.sh` has this option on. If the provider already exists and this option is off, the script leaves the provider unchanged, and stops.
+
+#### YB Nodes Home Directory
+
+Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
+
+#### Install Node Exporter
+
+Enable this option if you want the Prometheus Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+
+The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+
+Use the **Node Exporter Port** field to specify the port number for the Prometheus Node Exporter. The default value is 9300.
+
+#### NTP Setup
+
+You can customize the Network Time Protocol server:
+
+- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Next step
 
-- Stage 3: [Add nodes to the provider free pool](../on-premises-nodes/)
+- [Add nodes to the provider free pool](../on-premises-nodes/)
