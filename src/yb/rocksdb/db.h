@@ -68,6 +68,7 @@ class EventListener;
 class WriteBatch;
 
 YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
+YB_STRONGLY_TYPED_BOOL(IncludeMemTableWithoutEntries);
 
 using FlushAbility = yb::storage::FlushAbility;
 
@@ -976,8 +977,10 @@ class DB {
 
   // Might return stale frontiers if invoked after records have been written to the memtable, but
   // before frontiers are updated.
+  // A memtable with frontiers but no entries is taken only with include_without_entries.
   virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
-      yb::storage::UpdateUserValueType type) {
+      yb::storage::UpdateUserValueType type,
+      IncludeMemTableWithoutEntries include_without_entries) {
     return nullptr;
   }
 

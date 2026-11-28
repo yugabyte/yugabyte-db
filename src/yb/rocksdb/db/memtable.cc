@@ -935,6 +935,14 @@ const yb::storage::UserFrontiers* MemTable::Frontiers() const {
   return frontiers_.get();
 }
 
+bool MemTable::HasDataToFlush() const {
+  if (!IsEmpty()) {
+    return true;
+  }
+  std::lock_guard l(frontiers_mutex_);
+  return frontiers_ != nullptr;
+}
+
 yb::storage::UserFrontierPtr MemTable::GetFrontier(yb::storage::UpdateUserValueType type) const {
   std::lock_guard l(frontiers_mutex_);
   if (!frontiers_) {

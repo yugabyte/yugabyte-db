@@ -600,12 +600,12 @@ void InitFrontiers(const RemoveIntentsData& data, docdb::ConsensusFrontiers& fro
 }
 
 storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
-    rocksdb::DB* db,
-    storage::UpdateUserValueType type) {
+    rocksdb::DB* db, storage::UpdateUserValueType type,
+    rocksdb::IncludeMemTableWithoutEntries include_without_entries) {
   if (FLAGS_TEST_disable_getting_user_frontier_from_mem_table) {
     return nullptr;
   }
-  return db->GetMutableMemTableFrontier(type);
+  return db->GetMutableMemTableFrontier(type, include_without_entries);
 }
 
 
@@ -5168,10 +5168,12 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
     return;
   }
 
-  auto intents_frontier = intents_db_
-                              ? GetMutableMemTableFrontierFromDb(
-                                    intents_db_.get(), storage::UpdateUserValueType::kLargest)
-                              : nullptr;
+  // Frontiers without entries, e.g. of an intents removal that found nothing, need a flush too.
+  auto intents_frontier =
+      intents_db_ ? GetMutableMemTableFrontierFromDb(
+                        intents_db_.get(), storage::UpdateUserValueType::kLargest,
+                        rocksdb::IncludeMemTableWithoutEntries::kTrue)
+                  : nullptr;
   if (intents_frontier) {
     auto index_delta =
         lastest_log_entry_op_id.index -
@@ -5340,8 +5342,10 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
-      auto mem_frontier =
-          GetMutableMemTableFrontierFromDb(db, storage::UpdateUserValueType::kSmallest);
+      // A memtable without entries holds no memory to free.
+      auto mem_frontier = GetMutableMemTableFrontierFromDb(
+          db, storage::UpdateUserValueType::kSmallest,
+          rocksdb::IncludeMemTableWithoutEntries::kFalse);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();

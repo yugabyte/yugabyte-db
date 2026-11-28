@@ -249,7 +249,8 @@ class DBImpl : public DB {
   FlushAbility GetFlushAbility() override;
 
   yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
-      yb::storage::UpdateUserValueType type) override;
+      yb::storage::UpdateUserValueType type,
+      IncludeMemTableWithoutEntries include_without_entries) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -1045,8 +1046,8 @@ class DBImpl : public DB {
 
   // A flag indicating whether the current rocksdb database has any
   // data that is not yet persisted into either WAL or SST file.
-  // Used when disableWAL is true.
-  bool has_unpersisted_data_;
+  // Used when disableWAL is true. Also set by UpdateFrontiers.
+  std::atomic<bool> has_unpersisted_data_;
 
   static const int KEEP_LOG_FILE_NUM = 1000;
   // MSVC version 1800 still does not have constexpr for ::max()

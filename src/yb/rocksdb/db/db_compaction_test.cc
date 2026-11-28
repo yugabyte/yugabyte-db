@@ -284,6 +284,59 @@ TEST_F(DBCompactionTest, LastFlushedOpIdWithCompaction) {
   TestFlushedOpId(true /* compact */, this);
 }
 
+// Frontiers without entries, from a write or from UpdateFrontiers, must still reach the flushed
+// frontier, both by a flush and by the flush on shutdown.
+TEST_F(DBCompactionTest, FlushFrontiersWithoutEntries) {
+  Options options = CurrentOptions(Options());
+  options.boundary_extractor = test::MakeBoundaryValuesExtractor();
+  DestroyAndReopen(options);
+
+  auto value = [](const yb::storage::UserFrontierPtr& frontier) {
+    return down_cast<yb::storage::TestUserFrontier&>(*frontier).Value();
+  };
+  auto write = [this](uint64_t frontier_value, bool with_entry) {
+    WriteBatch batch;
+    yb::storage::TestUserFrontiers frontiers(frontier_value, frontier_value);
+    batch.SetFrontiers(&frontiers);
+    if (with_entry) {
+      batch.Put("key", std::to_string(frontier_value));
+    }
+    WriteOptions write_options;
+    write_options.disableWAL = true;
+    return dbfull()->Write(write_options, &batch);
+  };
+
+  ASSERT_OK(write(1, /* with_entry= */ true));
+  ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
+  ASSERT_EQ(value(dbfull()->GetFlushedFrontier()), 1U);
+
+  ASSERT_OK(write(2, /* with_entry= */ false));
+  ASSERT_EQ(dbfull()->GetFlushAbility(), FlushAbility::kHasNewData);
+  auto mem_frontier = [this](IncludeMemTableWithoutEntries include_without_entries) {
+    return dbfull()->GetMutableMemTableFrontier(
+        yb::storage::UpdateUserValueType::kLargest, include_without_entries);
+  };
+  ASSERT_FALSE(mem_frontier(IncludeMemTableWithoutEntries::kFalse));
+  auto frontier = mem_frontier(IncludeMemTableWithoutEntries::kTrue);
+  ASSERT_TRUE(frontier);
+  ASSERT_EQ(value(frontier), 2U);
+  ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
+  ASSERT_EQ(value(dbfull()->GetFlushedFrontier()), 2U);
+  ASSERT_EQ(dbfull()->GetFlushAbility(), FlushAbility::kNoNewData);
+
+  // Reopen, so that only UpdateFrontiers leaves data to flush on shutdown.
+  ASSERT_OK(TryReopen(options));
+  ASSERT_OK(dbfull()->UpdateFrontiers(yb::storage::TestUserFrontiers(3, 3)));
+  ASSERT_EQ(dbfull()->GetFlushAbility(), FlushAbility::kHasNewData);
+  ASSERT_OK(TryReopen(options));
+  ASSERT_EQ(value(dbfull()->GetFlushedFrontier()), 3U);
+
+  // Only the flush of the entry wrote a file.
+  std::vector<LiveFileMetaData> files;
+  dbfull()->GetLiveFilesMetaData(&files);
+  ASSERT_EQ(files.size(), 1U);
+}
+
 TEST_F(DBCompactionTest, Checkpoint) {
   std::atomic<int> checkpoints(0);
 
