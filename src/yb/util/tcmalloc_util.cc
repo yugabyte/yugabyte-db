@@ -13,6 +13,7 @@
 #include "yb/util/tcmalloc_util.h"
 
 #include <cstdint>
+#include <mutex>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -22,12 +23,18 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/thread.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
+#endif
+
+#if YB_GOOGLE_TCMALLOC
+#include <tcmalloc/internal/parameter_accessors.h>
 #endif
 
 using yb::operator""_MB;
@@ -305,6 +312,51 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
+#endif
+}
+
+Result<bool> StartTCMallocBackgroundThread() {
+#if YB_GOOGLE_TCMALLOC
+  static std::mutex mutex;
+  static bool started = false;
+  std::lock_guard lock(mutex);
+  if (started) {
+    return true;
+  }
+  if (!tcmalloc::MallocExtension::NeedsProcessBackgroundActions()) {
+    return false;
+  }
+  // Call through a lambda: taking the address of ProcessBackgroundActions would need an eager
+  // relocation, which fails to resolve in binaries that link yb_util without tcmalloc.
+  RETURN_NOT_OK(Thread::Create(
+      "tcmalloc", "tcmalloc_bkgrnd", [] { tcmalloc::MallocExtension::ProcessBackgroundActions(); },
+      nullptr));
+  started = true;
+  return true;
+#else
+  return false;
+#endif
+}
+
+void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
+#if YB_GOOGLE_TCMALLOC
+  tcmalloc::MallocExtension::SetBackgroundReleaseRate(tcmalloc::MallocExtension::BytesPerSecond{
+      static_cast<size_t>(std::max<int64_t>(bytes_per_sec, 0))});
+#endif
+}
+
+void SetTCMallocSkipSubreleaseIntervals(int32_t short_interval_secs, int32_t long_interval_secs) {
+#if YB_GOOGLE_TCMALLOC
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(absl::Seconds(short_interval_secs));
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Seconds(long_interval_secs));
+#endif
+}
+
+void SetTCMallocReleasePartialAllocPages(ReleasePartialAllocPages enabled) {
+#if YB_GOOGLE_TCMALLOC
+  if (&TCMalloc_Internal_SetReleasePartialAllocPagesEnabled != nullptr) {
+    TCMalloc_Internal_SetReleasePartialAllocPagesEnabled(enabled.get());
+  }
 #endif
 }
 
