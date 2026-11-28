@@ -1584,9 +1584,9 @@ TEST_P(VectorLSMTest, NormalizeCosineVectors) {
   {
     FloatVectorLSM lsm;
     const auto old_chunks = ASSERT_RESULT(NumChunks(storage_dir));
+    const auto marked_after_insert = ASSERT_RESULT(insert_part(lsm, false));
     ASSERT_EQ(
-        ASSERT_RESULT(insert_part(lsm, false)),
-        marked_chunks + ASSERT_RESULT(NumChunks(storage_dir)) - old_chunks);
+        marked_after_insert, marked_chunks + ASSERT_RESULT(NumChunks(storage_dir)) - old_chunks);
     ASSERT_OK(lsm.Compact(/* wait = */ true));
     ASSERT_EQ(1, lsm.NumImmutableChunks());
     ASSERT_EQ(ASSERT_RESULT(NumNormalizedChunks(storage_dir)), 1);
