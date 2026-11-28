@@ -19,7 +19,7 @@ struct od_config_listen {
 	int backlog;
 
 	/* YB: Use uint32 as multiple APIs expect timeout value to be uint32_t*/
-	uint32_t client_login_timeout;
+	_Atomic uint32_t client_login_timeout;
 	int compression;
 
 	od_list_t link;
@@ -98,7 +98,7 @@ struct od_config {
 	int TEST_yb_auth_delay_ms;
 	int yb_wait_for_rfq_on_sync;
 	enum yb_od_alter_guc_adoption yb_alter_guc_adoption_strategy;
-	int yb_alter_guc_stale_backend_ttl_ms;
+	_Atomic int yb_alter_guc_stale_backend_ttl_ms;
 	_Atomic int yb_max_prepared_statements;
 	_Atomic int yb_tcmalloc_gc_interval;
 	_Atomic int yb_backend_drain_timeout_ms;

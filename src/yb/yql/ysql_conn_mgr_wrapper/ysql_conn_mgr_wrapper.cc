@@ -95,12 +95,14 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "in this string will be enabled. Omitted settings will remain disabled. 'log_config' is "
     "accepted for backward compatibility but has no effect, as config logging is always on.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, auth_msg_timeout, 15000,
     "Maximum time (in milliseconds) to wait for each startup & auth message from client. "
     "If the client does not send a startup or auth packet/response within this timeout, the "
     "connection is closed. Note that this is a per-message timeout, not a total timeout for the "
     "entire auth process. This timeout applies individually to the TLS handshake, startup packet, "
-    "and each auth packet received from the client.");
+    "and each auth packet received from the client. A runtime change applies to the next message "
+    "a client is waited on for, including clients already logging in; a wait already in progress "
+    "keeps the old timeout.");
 
 DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_max_size, 0,
     "Max ysql connection manager log size(in bytes) after which the log file gets rolled over");

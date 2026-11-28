@@ -368,7 +368,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	} else if (server->yb_expiry_time_us == UINT64_MAX) {
 		/*
 		 * server could already have expiry time due to some previous ALTER's TTL so we
-		 * don't modify that. The backend will expire before our TTL anyway.
+		 * don't modify that.
 		 */
 		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
 		od_debug(
@@ -422,8 +422,10 @@ void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
 		break;
 	}
 
+	int ttl_ms = instance->config.yb_alter_guc_stale_backend_ttl_ms;
+
 	/* Early exit if we are not going to close older backends */
-	if (instance->config.yb_alter_guc_stale_backend_ttl_ms == -1) {
+	if (ttl_ms == -1) {
 		od_debug(&instance->logger, "lcv check", NULL, NULL,
 			 "Skipping stale LCV server expiration, ttl_ms is -1");
 		return;
@@ -432,7 +434,7 @@ void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
 	uint64_t now_us = machine_time_us();
 	void *argv[] = {
 		&now_us,
-		&instance->config.yb_alter_guc_stale_backend_ttl_ms,
+		&ttl_ms,
 		&new_logical_client_version,
 	};
 

@@ -776,6 +776,11 @@ void od_system_config_reload(od_system_t *system)
 				listen_config->tls_opts->tls_mode;
 		}
 
+		/* YB */
+		if (listen_config != NULL)
+			server->config->client_login_timeout =
+				listen_config->client_login_timeout;
+
 		if (server->config->tls_opts->tls_mode !=
 		    OD_CONFIG_TLS_DISABLE) {
 			machine_tls_t *tls = od_tls_frontend(server->config);
