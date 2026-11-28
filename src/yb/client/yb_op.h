@@ -430,6 +430,10 @@ class YBqlReadOp : public YBqlOp {
   const ReadHybridTime& read_time() const { return read_time_; }
   void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
 
+  void SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet);
+  const ReadHybridTime& used_read_time() const { return used_read_time_; }
+  const TabletId& used_tablet() const { return used_tablet_; }
+
  protected:
   Type type() const override { return QL_READ; }
   OpGroup group() const override;
@@ -441,6 +445,9 @@ class YBqlReadOp : public YBqlOp {
   LWQLReadRequestPB* ql_read_request_;
   YBConsistencyLevel yb_consistency_level_;
   ReadHybridTime read_time_;
+  ReadHybridTime used_read_time_;
+  // The tablet that served this operation.
+  TabletId used_tablet_;
 };
 
 std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
