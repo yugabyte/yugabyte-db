@@ -43,6 +43,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "yb/common/constants.h"
@@ -132,7 +133,9 @@ class YBColumnSchema {
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
 class YBColumnSpec {
  public:
-  explicit YBColumnSpec(const std::string& col_name);
+  explicit YBColumnSpec(std::string_view col_name);
+  YBColumnSpec(YBColumnSpec&&);
+  YBColumnSpec& operator=(YBColumnSpec&&);
 
   ~YBColumnSpec();
 
@@ -143,51 +146,47 @@ class YBColumnSpec {
   //
   // Only relevant for a CreateTable operation. Primary keys may not be changed
   // after a table is created.
-  YBColumnSpec* PrimaryKey(SortingType sorting_type = SortingType::kAscending);
+  YBColumnSpec& PrimaryKey(SortingType sorting_type = SortingType::kAscending);
 
   // Set this column to be a hash primary key column of the table. A hash value of all hash columns
   // in the primary key will be used to determine what partition (tablet) a particular row falls in.
-  YBColumnSpec* HashPrimaryKey();
+  YBColumnSpec& HashPrimaryKey();
 
   // Set this column to be static. A static column is a column whose value is shared among rows of
   // the same hash key.
-  YBColumnSpec* StaticColumn();
+  YBColumnSpec& StaticColumn();
 
   // Set this column to be not nullable.
   // Column nullability may not be changed once a table is created.
-  YBColumnSpec* NotNull();
+  YBColumnSpec& NotNull();
 
   // Set this column to be nullable (the default).
   // Column nullability may not be changed once a table is created.
-  YBColumnSpec* Nullable();
+  YBColumnSpec& Nullable();
 
   // Set the type of this column.
   // Column types may not be changed once a table is created.
-  YBColumnSpec* Type(const std::shared_ptr<QLType>& type);
+  YBColumnSpec& Type(const std::shared_ptr<QLType>& type);
 
   // Convenience function for setting a simple (i.e. non-parametric) data type.
-  YBColumnSpec* Type(DataType type);
+  YBColumnSpec& Type(DataType type);
 
   // Specify the user-defined order of the column.
-  YBColumnSpec* Order(int32_t order);
+  YBColumnSpec& Order(int32_t order);
 
   // Identify this column as counter.
-  YBColumnSpec* Counter();
+  YBColumnSpec& Counter();
 
   // PgTypeOid
-  YBColumnSpec* PgTypeOid(int32_t oid);
-
-  // Add JSON operation.
-  YBColumnSpec* JsonOp(JsonOperatorPB op, const std::string& str_value);
-  YBColumnSpec* JsonOp(JsonOperatorPB op, int32_t int_value);
+  YBColumnSpec& PgTypeOid(int32_t oid);
 
   // Operations only relevant for Alter Table
   // ------------------------------------------------------------
 
   // Rename this column.
-  YBColumnSpec* RenameTo(const std::string& new_name);
+  YBColumnSpec& RenameTo(std::string_view new_name);
 
-  YBColumnSpec* SetMissing(const QLValuePB& missing_value);
+  YBColumnSpec& SetMissing(const QLValuePB& missing_value);
 
  private:
   class Data;
@@ -196,10 +195,7 @@ class YBColumnSpec {
 
   Status ToColumnSchema(YBColumnSchema* col) const;
 
-  YBColumnSpec* JsonOp(JsonOperatorPB op, const QLValuePB& value);
-
-  // Owned.
-  Data* data_;
+  std::unique_ptr<Data> data_;
 };
 
 // Builder API for constructing a YBSchema object.
@@ -215,8 +211,8 @@ class YBColumnSpec {
 // is represented as:
 //
 //   YBSchemaBuilder t;
-//   t.AddColumn("my_key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-//   t.AddColumn("a")->Type(YBColumnSchema::FLOAT);
+//   t.AddColumn("my_key").Type(YBColumnSchema::INT32).NotNull().PrimaryKey();
+//   t.AddColumn("a").Type(YBColumnSchema::FLOAT);
 //   YBSchema schema;
 //   t.Build(&schema);
 class YBSchemaBuilder {
@@ -225,10 +221,9 @@ class YBSchemaBuilder {
   ~YBSchemaBuilder();
 
   // Return a YBColumnSpec for a new column within the Schema.
-  // The returned object is owned by the YBSchemaBuilder.
-  YBColumnSpec* AddColumn(const std::string& name);
+  YBColumnSpec& AddColumn(std::string_view name);
 
-  YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
+  YBSchemaBuilder& SetTableProperties(const TableProperties& table_properties);
 
   // Resets 'schema' to the result of this builder.
   //
@@ -238,8 +233,8 @@ class YBSchemaBuilder {
 
  private:
   class Data;
-  // Owned.
-  Data* data_;
+
+  std::unique_ptr<Data> data_;
 };
 
 class YBSchema {

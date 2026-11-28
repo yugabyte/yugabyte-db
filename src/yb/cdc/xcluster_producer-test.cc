@@ -92,8 +92,8 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
   Status CreateTable() {
     client::YBSchema schema;
     client::YBSchemaBuilder b;
-    b.AddColumn(kKeyColumnName)->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn(kValueColumnName)->Type(DataType::INT32)->NotNull();
+    b.AddColumn(kKeyColumnName).Type(DataType::INT32).NotNull().HashPrimaryKey();
+    b.AddColumn(kValueColumnName).Type(DataType::INT32).NotNull();
     RETURN_NOT_OK(b.Build(&schema));
 
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());

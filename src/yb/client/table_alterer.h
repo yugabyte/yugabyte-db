@@ -13,6 +13,11 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
@@ -33,10 +38,10 @@ namespace client {
 // Alters an existing table based on the provided steps.
 //
 // Sample usage:
-//   YBTableAlterer* alterer = client->NewTableAlterer("table-name");
-//   alterer->AddColumn("foo")->Type(DataType::INT32)->NotNull();
-//   Status s = alterer->Alter();
-//   delete alterer;
+//   auto alterer = client->MakeTableAlterer("table-name");
+//   alterer.AddColumn("foo").Type(DataType::INT32).NotNull();
+//   Status s = alterer.Alter();
+
 class YBTableAlterer {
  public:
   ~YBTableAlterer();
@@ -48,48 +53,48 @@ class YBTableAlterer {
   //     (keeping the namespace & the PG schema name unchanged).
   // (3) Provided only the new PG schema name - changing the table schema only
   //     (keeping the namespace & the table name unchanged).
-  YBTableAlterer* RenameTo(const YBTableName& new_name);
+  YBTableAlterer& RenameTo(const YBTableName& new_name);
 
   // Adds a new column to the table.
   //
   // When adding a column, you must specify the default value of the new
   // column using YBColumnSpec::DefaultValue(...).
-  YBColumnSpec* AddColumn(const std::string& name);
+  YBColumnSpec& AddColumn(std::string_view name);
 
   // Alter an existing column.
-  YBColumnSpec* AlterColumn(const std::string& name);
+  YBColumnSpec& AlterColumn(std::string_view name);
 
   // Drops an existing column from the table.
-  YBTableAlterer* DropColumn(const std::string& name);
+  YBTableAlterer& DropColumn(std::string_view name);
 
   // Alter table properties.
-  YBTableAlterer* SetTableProperties(const TableProperties& table_properties);
+  YBTableAlterer& SetTableProperties(const TableProperties& table_properties);
 
-  YBTableAlterer* SetWalRetentionSecs(const uint32_t wal_retention_secs);
+  YBTableAlterer& SetWalRetentionSecs(const uint32_t wal_retention_secs);
 
   // Set the timeout for the operation. This includes any waiting
   // after the alter has been submitted (i.e if the alter is slow
   // to be performed on a large table, it may time out and then
   // later be successful).
-  YBTableAlterer* timeout(const MonoDelta& timeout);
+  YBTableAlterer& timeout(const MonoDelta& timeout);
 
   // Wait for the table to be fully altered before returning.
   //
   // If not provided, defaults to true.
-  YBTableAlterer* wait(bool wait);
+  YBTableAlterer& wait(bool wait);
 
   // Set replication info for the table.
-  YBTableAlterer* replication_info(const ReplicationInfoPB& ri);
+  YBTableAlterer& replication_info(const ReplicationInfoPB& ri);
 
   // The altering of this table is dependent upon the success of this higher-level transaction.
-  YBTableAlterer* part_of_transaction(const TransactionMetadata* txn);
+  YBTableAlterer& part_of_transaction(const TransactionMetadata* txn);
 
   // The altering of this table is happening within this sub-transaction. If the sub-transaction is
   // rolled back, this altering will be rolled back too.
-  YBTableAlterer* part_of_sub_transaction(uint32_t sub_txn_id);
+  YBTableAlterer& part_of_sub_transaction(uint32_t sub_txn_id);
 
   // Set increment_schema_version to true.
-  YBTableAlterer* set_increment_schema_version();
+  YBTableAlterer& set_increment_schema_version();
 
   // Alters the table.
   //
@@ -102,7 +107,7 @@ class YBTableAlterer {
   friend class YBClient;
 
   YBTableAlterer(YBClient* client, const YBTableName& name);
-  YBTableAlterer(YBClient* client, const std::string id);
+  YBTableAlterer(YBClient* client, const std::string& id);
 
   Status ToRequest(master::AlterTableRequestPB* req);
 

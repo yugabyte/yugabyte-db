@@ -116,15 +116,15 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
         .Build());
 
     YBSchemaBuilder b;
-    b.AddColumn("hash_key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn("hash_key_timestamp")->Type(DataType::TIMESTAMP)->NotNull()->HashPrimaryKey();
-    b.AddColumn("hash_key_string")->Type(DataType::STRING)->NotNull()->HashPrimaryKey();
-    b.AddColumn("range_key")->Type(DataType::TIMESTAMP)->NotNull()->PrimaryKey();
-    b.AddColumn("v1")->Type(DataType::STRING)->NotNull();
-    b.AddColumn("v2")->Type(DataType::INT32)->NotNull();
-    b.AddColumn("v3")->Type(DataType::FLOAT)->NotNull();
-    b.AddColumn("v4")->Type(DataType::DOUBLE)->NotNull();
-    b.AddColumn("v5")->Type(DataType::JSONB)->Nullable();
+    b.AddColumn("hash_key").Type(DataType::INT64).NotNull().HashPrimaryKey();
+    b.AddColumn("hash_key_timestamp").Type(DataType::TIMESTAMP).NotNull().HashPrimaryKey();
+    b.AddColumn("hash_key_string").Type(DataType::STRING).NotNull().HashPrimaryKey();
+    b.AddColumn("range_key").Type(DataType::TIMESTAMP).NotNull().PrimaryKey();
+    b.AddColumn("v1").Type(DataType::STRING).NotNull();
+    b.AddColumn("v2").Type(DataType::INT32).NotNull();
+    b.AddColumn("v3").Type(DataType::FLOAT).NotNull();
+    b.AddColumn("v4").Type(DataType::DOUBLE).NotNull();
+    b.AddColumn("v5").Type(DataType::JSONB).Nullable();
     CHECK_OK(b.Build(&schema_));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());

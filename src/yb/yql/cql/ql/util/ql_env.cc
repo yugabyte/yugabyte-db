@@ -79,8 +79,8 @@ unique_ptr<YBTableCreator> QLEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-unique_ptr<YBTableAlterer> QLEnv::NewTableAlterer(const YBTableName& table_name) {
-  return client_->NewTableAlterer(table_name);
+YBTableAlterer QLEnv::MakeTableAlterer(const YBTableName& table_name) {
+  return client_->MakeTableAlterer(table_name);
 }
 
 Status QLEnv::TruncateTable(const string& table_id) {

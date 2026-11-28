@@ -229,7 +229,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
 
   yb::client::YBSchemaBuilder b;
   yb::client::YBSchema schema;
-  b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  b.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
   ASSERT_OK(b.Build(&schema));
 
   // Set placement policy for the new table that is different from the cluster placement policy.
@@ -287,7 +287,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithNondefaultMinNumReplicas)
 
   yb::client::YBSchemaBuilder b;
   yb::client::YBSchema schema;
-  b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  b.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
   ASSERT_OK(b.Build(&schema));
 
   // ModifyTablePlacementInfo defaults to 1 min_num_replica, so test table placement with a
@@ -337,7 +337,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableRespectsMaxNumReplicas) {
       YQL_DATABASE_CQL, this->table_name().namespace_name(), table_name);
   yb::client::YBSchemaBuilder builder;
   yb::client::YBSchema schema;
-  builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  builder.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
   ASSERT_OK(builder.Build(&schema));
   ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
 
@@ -364,7 +364,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, MaxNumReplicasIsAHardCap) {
       YQL_DATABASE_CQL, this->table_name().namespace_name(), table_name);
   yb::client::YBSchemaBuilder builder;
   yb::client::YBSchema schema;
-  builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  builder.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
   ASSERT_OK(builder.Build(&schema));
   // Assert on the distinguishing error text: the raw quorum checks pass here (five live
   // tservers, three of them in z0), so creation must fail specifically in the cap-aware
@@ -418,7 +418,7 @@ class LoadBalancerUnderReplicatedMaxNumReplicasTest : public LoadBalancerPlaceme
 
     yb::client::YBSchemaBuilder builder;
     yb::client::YBSchema schema;
-    builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    builder.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
     ASSERT_OK(builder.Build(&schema));
     ASSERT_OK(NewTableCreator()
                   ->table_name(yb::client::YBTableName(
@@ -516,8 +516,8 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
   yb::client::YBSchemaBuilder b;
   yb::client::YBSchema schema;
-  b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
-  b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+  b.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
+  b.AddColumn("v").Type(DataType::BINARY).NotNull();
   ASSERT_OK(b.Build(&schema));
 
   ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());

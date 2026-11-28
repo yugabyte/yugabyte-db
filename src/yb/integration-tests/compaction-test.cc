@@ -365,11 +365,9 @@ class CompactionTest : public YBTest {
 
   Status ChangeTableTTL(const client::YBTableName& table_name, int ttl_sec) {
     RETURN_NOT_OK(client_->TableExists(table_name));
-    auto alterer = client_->NewTableAlterer(table_name);
     TableProperties table_properties;
     table_properties.SetDefaultTimeToLive(ttl_sec * MonoTime::kMillisecondsPerSecond);
-    alterer->SetTableProperties(table_properties);
-    return alterer->Alter();
+    return client_->MakeTableAlterer(table_name).SetTableProperties(table_properties).Alter();
   }
 
   Status ExecuteManualCompaction() {

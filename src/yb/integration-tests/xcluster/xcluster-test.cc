@@ -2179,9 +2179,9 @@ TEST_F_EX(XClusterTest, TestWalRetentionSet, XClusterTestNoParam) {
   YBTableName table_name(YQL_DATABASE_CQL, namespace_name, "test_table_0");
 
   // Issue an ALTER TABLE request on the producer to verify that it doesn't crash.
-  auto table_alterer = producer_client()->NewTableAlterer(table_name);
-  table_alterer->AddColumn("new_col")->Type(DataType::INT32);
-  ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(kRpcTimeout))->Alter());
+  auto table_alterer = producer_client()->MakeTableAlterer(table_name);
+  table_alterer.AddColumn("new_col").Type(DataType::INT32);
+  ASSERT_OK(table_alterer.timeout(MonoDelta::FromSeconds(kRpcTimeout)).Alter());
 
   // Verify that the table got altered on the producer.
   YBSchema schema;
@@ -2238,10 +2238,9 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   // Alter the CQL Table on the Producer to Add a New Column.
   LOG(INFO) << "Alter the Producer.";
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(
-        producer_client()->NewTableAlterer(producer_table_->name()));
-    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = producer_client()->MakeTableAlterer(producer_table_->name());
+    table_alterer.AddColumn("contact_name").Type(DataType::STRING);
+    ASSERT_OK(table_alterer.Alter());
   }
 
   // Write some data with the New Schema on the Producer.
@@ -2274,10 +2273,9 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   // Alter the CQL Table on the Consumer next to match.
   LOG(INFO) << "Alter the Consumer.";
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(
-        consumer_client()->NewTableAlterer(consumer_table_->name()));
-    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = consumer_client()->MakeTableAlterer(consumer_table_->name());
+    table_alterer.AddColumn("contact_name").Type(DataType::STRING);
+    ASSERT_OK(table_alterer.Alter());
   }
 
   // Verify that the Producer data is now sent over.
@@ -2311,10 +2309,9 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   // Alter the CQL Table on the Producer to Add a New Column.
   LOG(INFO) << "Alter the Producer.";
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(
-        producer_client()->NewTableAlterer(producer_table_->name()));
-    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = producer_client()->MakeTableAlterer(producer_table_->name());
+    table_alterer.AddColumn("contact_name").Type(DataType::STRING);
+    ASSERT_OK(table_alterer.Alter());
   }
 
   // Write some data with the New Schema on the Producer.
@@ -2374,10 +2371,9 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   // Alter the CQL Table on the Consumer next to match.
   LOG(INFO) << "Alter the Consumer.";
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(
-        consumer_client()->NewTableAlterer(consumer_table_->name()));
-    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = consumer_client()->MakeTableAlterer(consumer_table_->name());
+    table_alterer.AddColumn("contact_name").Type(DataType::STRING);
+    ASSERT_OK(table_alterer.Alter());
   }
 
   // Verify that the Producer data is now sent over.

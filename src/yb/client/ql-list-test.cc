@@ -71,13 +71,13 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder b;
-    b.AddColumn("h1")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h2")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h3")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r1")->Type(DataType::INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("l1")->Type(QLType::CreateTypeList(DataType::INT32));
-    b.AddColumn("s1")->Type(QLType::CreateTypeSet(DataType::STRING));
-    b.AddColumn("s2")->Type(QLType::CreateTypeSet(DataType::STRING));
+    b.AddColumn("h1").Type(DataType::INT32).HashPrimaryKey().NotNull();
+    b.AddColumn("h2").Type(DataType::INT32).HashPrimaryKey().NotNull();
+    b.AddColumn("h3").Type(DataType::STRING).HashPrimaryKey().NotNull();
+    b.AddColumn("r1").Type(DataType::INT32).PrimaryKey().NotNull();
+    b.AddColumn("l1").Type(QLType::CreateTypeList(DataType::INT32));
+    b.AddColumn("s1").Type(QLType::CreateTypeSet(DataType::STRING));
+    b.AddColumn("s2").Type(QLType::CreateTypeSet(DataType::STRING));
 
     ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
   }

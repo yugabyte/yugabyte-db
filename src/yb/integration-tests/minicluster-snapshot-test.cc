@@ -368,9 +368,9 @@ class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<client::YBSchema> CreateTestSchema() {
     client::YBSchemaBuilder b;
-    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
-    b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
+    b.AddColumn("key").Type(DataType::INT32).NotNull().HashPrimaryKey();
+    b.AddColumn("v1").Type(DataType::INT64).NotNull();
+    b.AddColumn("v2").Type(DataType::STRING).NotNull();
     client::YBSchema schema;
     RETURN_NOT_OK(b.Build(&schema));
     return schema;

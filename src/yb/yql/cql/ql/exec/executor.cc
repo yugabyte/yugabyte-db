@@ -539,18 +539,16 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     if (column->sorting_type() != SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    b.AddColumn(column->coldef_name().c_str())
-      ->Type(column->ql_type())
-      ->HashPrimaryKey()
-      ->Order(column->order());
+    b.AddColumn(column->coldef_name())
+      .Type(column->ql_type())
+      .HashPrimaryKey()
+      .Order(column->order());
     RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
   for (const auto& column : tnode->primary_columns()) {
-    b.AddColumn(column->coldef_name().c_str())
-      ->Type(column->ql_type())
-      ->PrimaryKey(column->sorting_type())
-      ->Order(column->order());
+    b.AddColumn(column->coldef_name())
+      .Type(column->ql_type()).PrimaryKey(column->sorting_type()).Order(column->order());
     RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
@@ -558,15 +556,13 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     if (column->sorting_type() != SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    YBColumnSpec *column_spec = b.AddColumn(column->coldef_name().c_str())
-                                  ->Type(column->ql_type())
-                                  ->Nullable()
-                                  ->Order(column->order());
+    auto& column_spec = b.AddColumn(column->coldef_name())
+        .Type(column->ql_type()).Nullable().Order(column->order());
     if (column->is_static()) {
-      column_spec->StaticColumn();
+      column_spec.StaticColumn();
     }
     if (column->is_counter()) {
-      column_spec->Counter();
+      column_spec.Counter();
     }
     RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
@@ -662,20 +658,19 @@ Status Executor::AddColumnToIndexInfo(IndexInfoPB *index_info, const PTColumnDef
 Status Executor::ExecPTNode(const PTAlterTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
-  shared_ptr<YBTableAlterer> table_alterer(ql_env_->NewTableAlterer(table_name));
+  auto table_alterer = ql_env_->MakeTableAlterer(table_name);
 
   for (const auto& mod_column : tnode->mod_columns()) {
     switch (mod_column->mod_type()) {
       case ALTER_ADD:
-        table_alterer->AddColumn(mod_column->new_name()->data())
-            ->Type(mod_column->ql_type());
+        table_alterer.AddColumn(*mod_column->new_name()).Type(mod_column->ql_type());
         break;
       case ALTER_DROP:
-        table_alterer->DropColumn(mod_column->old_name()->last_name().data());
+        table_alterer.DropColumn(mod_column->old_name()->last_name());
         break;
       case ALTER_RENAME:
-        table_alterer->AlterColumn(mod_column->old_name()->last_name().data())
-            ->RenameTo(mod_column->new_name()->c_str());
+        table_alterer.AlterColumn(mod_column->old_name()->last_name())
+            .RenameTo(*mod_column->new_name());
         break;
       case ALTER_TYPE:
         // Not yet supported by AlterTableRequestPB.
@@ -690,13 +685,13 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
       return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
     }
 
-    table_alterer->SetTableProperties(table_properties);
+    table_alterer.SetTableProperties(table_properties);
   }
 
   // Clean-up table cache BEFORE op (the cache is used by other processor threads).
   ql_env_->RemoveCachedTableDesc(table_name);
 
-  Status s = table_alterer->Alter();
+  Status s = table_alterer.Alter();
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(tnode, s, ErrorCode::EXEC_ERROR);
   }

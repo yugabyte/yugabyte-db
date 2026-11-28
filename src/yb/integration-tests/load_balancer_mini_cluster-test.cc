@@ -734,8 +734,8 @@ TEST_F(LoadBalancerMiniClusterTest, LeaderMovesWithGeopartitionedTables) {
     client::YBTableName tn(
         YQL_DATABASE_CQL, table_name().namespace_name(), "kv-table-test-" + std::to_string(i));
     client::YBSchemaBuilder b;
-    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+    b.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
+    b.AddColumn("v").Type(DataType::BINARY).NotNull();
     ASSERT_OK(b.Build(&schema_));
 
     ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).Create());

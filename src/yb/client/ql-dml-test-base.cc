@@ -196,8 +196,8 @@ void CreateTable(
                                                table_name.namespace_type()));
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+  builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn(kValueColumn).Type(DataType::INT32);
   if (transactional) {
     TableProperties table_properties;
     table_properties.SetTransactional(true);
@@ -281,18 +281,18 @@ void InitIndex(
 
   // Setup Index table schema.
   builder->AddColumn(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name)
-      ->Type(schema.Column(indexed_column_index).type())
-      ->NotNull()
-      ->HashPrimaryKey();
+      .Type(schema.Column(indexed_column_index).type())
+      .NotNull()
+      .HashPrimaryKey();
 
   size_t num_range_keys = 0;
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != indexed_column_index) {
       const string name = schema.Column(i).name();
       builder->AddColumn(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name)
-          ->Type(schema.Column(i).type())
-          ->NotNull()
-          ->PrimaryKey();
+          .Type(schema.Column(i).type())
+          .NotNull()
+          .PrimaryKey();
 
       column = index_info->add_columns();
       column->set_column_name(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name);

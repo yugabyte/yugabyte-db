@@ -292,7 +292,7 @@ TEST_F(QuiescentTabletTest, Split) {
 
 // A table that asks to keep its WAL for a time stays out of the mode.
 TEST_F(QuiescentTabletTest, TableWalRetention) {
-  ASSERT_OK(client_->NewTableAlterer(table_name())->SetWalRetentionSecs(3600)->Alter());
+  ASSERT_OK(client_->MakeTableAlterer(table_name()).SetWalRetentionSecs(3600).Alter());
   ASSERT_NO_FATALS(WriteRows(0, 10));
   std::this_thread::sleep_for(FLAGS_quiescent_tablet_idle_sec * 3s);
   for (const auto& peer : TablePeers()) {

@@ -192,10 +192,10 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
  public:
   ClientTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
-    b.AddColumn("string_val")->Type(DataType::STRING)->Nullable();
-    b.AddColumn("non_null_with_default")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("key").Type(DataType::INT32).NotNull().HashPrimaryKey();
+    b.AddColumn("int_val").Type(DataType::INT32).NotNull();
+    b.AddColumn("string_val").Type(DataType::STRING).Nullable();
+    b.AddColumn("non_null_with_default").Type(DataType::INT32).NotNull();
     CHECK_OK(b.Build(&schema_));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
@@ -448,8 +448,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
         YBTableName(YQL_DATABASE_PGSQL, kNamespaceId, kPgsqlNamespaceName, kPgsqlTableName);
 
     YBSchemaBuilder schema_builder;
-    schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
-    schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
+    schema_builder.AddColumn("key").PrimaryKey().Type(DataType::STRING).NotNull();
+    schema_builder.AddColumn("value").Type(DataType::INT64).NotNull();
     EXPECT_OK(client_->CreateNamespaceIfNotExists(
         kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         kNamespaceId));
@@ -1598,8 +1598,7 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
 TEST_F(ClientTest, TestWriteWithBadSchema) {
   // Remove the 'int_val' column.
   // Now the schema on the client is "old"
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("int_val")->Alter());
+  ASSERT_OK(client_->MakeTableAlterer(kTableName).DropColumn("int_val").Alter());
 
   // Try to do a write with the bad schema.
   auto session = CreateSession();
@@ -1612,27 +1611,23 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
 TEST_F(ClientTest, TestBasicAlterOperations) {
   // test that having no steps throws an error
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    Status s = table_alterer->Alter();
+    const auto s = client_->MakeTableAlterer(kTableName).Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(), "No alter steps provided");
   }
 
   // test that remove key should throws an error
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    Status s = table_alterer
-      ->DropColumn("key")
-      ->Alter();
+    const auto s = client_->MakeTableAlterer(kTableName).DropColumn("key").Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(), "cannot remove a key column");
   }
 
   // test that renaming to an already-existing name throws an error
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AlterColumn("int_val")->RenameTo("string_val");
-    Status s = table_alterer->Alter();
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    table_alterer.AlterColumn("int_val").RenameTo("string_val");
+    const auto s = table_alterer.Alter();
     ASSERT_TRUE(s.IsAlreadyPresent());
     ASSERT_STR_CONTAINS(s.ToString(), "The column already exists: string_val");
   }
@@ -1650,20 +1645,16 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
 
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->DropColumn("int_val")
-      ->AddColumn("new_col")->Type(DataType::INT32);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    table_alterer.DropColumn("int_val").AddColumn("new_col").Type(DataType::INT32);
+    ASSERT_OK(table_alterer.Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(1, tablet->metadata()->primary_table_schema_version());
   }
 
   {
     const YBTableName kRenamedTableName(YQL_DATABASE_CQL, kKeyspaceName, "RenamedTable");
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    ASSERT_OK(table_alterer
-              ->RenameTo(kRenamedTableName)
-              ->Alter());
+    ASSERT_OK(client_->MakeTableAlterer(kTableName).RenameTo(kRenamedTableName).Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(2, tablet->metadata()->primary_table_schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet->metadata()->table_name());
@@ -1990,9 +1981,9 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
     auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
     auto old_version = tablet->metadata()->primary_table_schema_version();
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
-    table_alterer->AddColumn("new_col")->Type(DataType::INT32);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = client_->MakeTableAlterer(kReplicatedTable);
+    table_alterer.AddColumn("new_col").Type(DataType::INT32);
+    ASSERT_OK(table_alterer.Alter());
     ASSERT_EQ(old_version + 1, tablet->metadata()->primary_table_schema_version());
   }
 }
@@ -2494,8 +2485,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
-  schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
+  schema_builder.AddColumn("key").PrimaryKey().Type(DataType::STRING).NotNull();
+  schema_builder.AddColumn("value").Type(DataType::INT64).NotNull();
   // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
   YBSchema schema;
@@ -3273,8 +3264,8 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       YQLDatabase::YQL_DATABASE_PGSQL, namespace_id, kPgsqlKeyspaceName, "table_name");
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);
-  schema_builder.AddColumn("value")->Type(DataType::INT64);
+  schema_builder.AddColumn("key").PrimaryKey().Type(DataType::INT64);
+  schema_builder.AddColumn("value").Type(DataType::INT64);
   // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
   YBSchema schema;
@@ -3428,9 +3419,9 @@ class ClientTestWithHashAndRangePk : public ClientTest {
  public:
   void SetUp() override {
     YBSchemaBuilder b;
-    b.AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r")->Type(DataType::INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("v")->Type(DataType::INT32);
+    b.AddColumn("h").Type(DataType::INT32).HashPrimaryKey().NotNull();
+    b.AddColumn("r").Type(DataType::INT32).PrimaryKey().NotNull();
+    b.AddColumn("v").Type(DataType::INT32);
 
     CHECK_OK(b.Build(&schema_));
 

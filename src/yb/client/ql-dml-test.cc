@@ -132,12 +132,12 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
     if (!FLAGS_mini_cluster_reuse_data) {
       YBSchemaBuilder b;
-      b.AddColumn("h1")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-      b.AddColumn("h2")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
-      b.AddColumn("r1")->Type(DataType::INT32)->PrimaryKey()->NotNull();
-      b.AddColumn("r2")->Type(DataType::STRING)->PrimaryKey()->NotNull();
-      b.AddColumn("c1")->Type(DataType::INT32);
-      b.AddColumn("c2")->Type(DataType::STRING);
+      b.AddColumn("h1").Type(DataType::INT32).HashPrimaryKey().NotNull();
+      b.AddColumn("h2").Type(DataType::STRING).HashPrimaryKey().NotNull();
+      b.AddColumn("r1").Type(DataType::INT32).PrimaryKey().NotNull();
+      b.AddColumn("r2").Type(DataType::STRING).PrimaryKey().NotNull();
+      b.AddColumn("c1").Type(DataType::INT32);
+      b.AddColumn("c2").Type(DataType::STRING);
 
       ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
     } else {
@@ -340,9 +340,9 @@ TEST_F(QLDmlTest, TestInsertWrongSchema) {
   const YBSessionPtr session(NewSession());
 
   // Move to schema version 1 by altering table
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  table_alterer->AddColumn("c3")->Type(DataType::INT32)->NotNull();
-  EXPECT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60))->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  table_alterer.AddColumn("c3").Type(DataType::INT32).NotNull();
+  EXPECT_OK(table_alterer.timeout(MonoDelta::FromSeconds(60)).Alter());
 
   // The request created has schema version 0 by default
   const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
@@ -1232,8 +1232,8 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
                                    Format("table_$0", i));
     std::thread table_creation_thread([this, table_name] {
       YBSchemaBuilder builder;
-      builder.AddColumn("k")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-      builder.AddColumn("v")->Type(DataType::INT32);
+      builder.AddColumn("k").Type(DataType::INT32).HashPrimaryKey().NotNull();
+      builder.AddColumn("v").Type(DataType::INT32);
       TableHandle table;
       ASSERT_OK(table.Create(table_name, 9, client_.get(), &builder));
     });

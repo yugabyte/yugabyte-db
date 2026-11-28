@@ -201,8 +201,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       const YBTableName& table_name, TableHandle* table, int num_tablets = 0,
       bool transactional = false) {
     YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+    builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+    builder.AddColumn(kValueColumn).Type(DataType::INT32);
 
     if (num_tablets == 0) {
       num_tablets = CalcNumTablets(3);
@@ -675,8 +675,8 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 4;
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+  builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn(kValueColumn).Type(DataType::INT32);
 
   // Create transactional table.
   TableProperties table_properties;
@@ -1066,10 +1066,10 @@ TEST_F(QLTabletTest, LeaderChange) {
 
 void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kRangeKey1Column)->Type(DataType::INT32)->PrimaryKey()->NotNull();
-  builder.AddColumn(kRangeKey2Column)->Type(DataType::INT32)->PrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+  builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn(kRangeKey1Column).Type(DataType::INT32).PrimaryKey().NotNull();
+  builder.AddColumn(kRangeKey2Column).Type(DataType::INT32).PrimaryKey().NotNull();
+  builder.AddColumn(kValueColumn).Type(DataType::INT32);
 
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, 1 /* num_tablets */, client_.get(), &builder));
@@ -1220,8 +1220,8 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   const auto kWaitInterval = 50ms;
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(DataType::STRING);
+  builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn(kValueColumn).Type(DataType::STRING);
 
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, CalcNumTablets(3), client_.get(), &builder));
@@ -1857,9 +1857,9 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
   const std::string kStringColumn = "str_column";
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
-  builder.AddColumn(kStringColumn)->Type(DataType::STRING);
+  builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn(kValueColumn).Type(DataType::INT32);
+  builder.AddColumn(kStringColumn).Type(DataType::STRING);
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, 1, client_.get(), &builder));
   auto session = CreateSession();
@@ -1882,7 +1882,7 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
     files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
-  ASSERT_OK(client_->NewTableAlterer(kTable1Name)->DropColumn(kStringColumn)->Alter());
+  ASSERT_OK(client_->MakeTableAlterer(kTable1Name).DropColumn(kStringColumn).Alter());
 
   ASSERT_OK(cluster_->CompactTablets());
 
@@ -1909,8 +1909,8 @@ TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
   constexpr int kTabletFlushStep = kKeys / kFiles;
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+  builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn(kValueColumn).Type(DataType::INT32);
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, 1, client_.get(), &builder));
   auto session = CreateSession();
@@ -2120,8 +2120,8 @@ class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {
     YBSchemaBuilder builder;
     // TODO(get_table_key_ranges): also test for hash-based sharding as soon as it is properly
     // supported by GetTabletKeyRanges.
-    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->PrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(DataType::STRING);
+    builder.AddColumn(kKeyColumn).Type(DataType::INT32).PrimaryKey().NotNull();
+    builder.AddColumn(kValueColumn).Type(DataType::STRING);
     RETURN_NOT_OK(table.Create(kTable1Name, /* num_tablets = */ 1, client_.get(), &builder));
     return table;
   }

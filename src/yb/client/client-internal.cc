@@ -923,7 +923,7 @@ Status YBClient::Data::CreateTablegroup(
           Format("Unable to check the schema of parent table $0", table_name.ToString()));
 
       YBSchemaBuilder schema_builder;
-      schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
+      schema_builder.AddColumn("parent_column").Type(DataType::BINARY).PrimaryKey();
       YBSchema ybschema;
       CHECK_OK(schema_builder.Build(&ybschema));
 

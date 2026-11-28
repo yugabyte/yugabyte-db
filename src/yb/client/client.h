@@ -42,6 +42,7 @@
 #include "yb/cdc/cdc_types.h"
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/table_alterer.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.fwd.h"
@@ -447,8 +448,8 @@ class YBClient {
   Result<TableCompactionStatus> GetCompactionStatus(
       const YBTableName& table_name, bool show_tablets);
 
-  std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
-  std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
+  [[nodiscard]] YBTableAlterer MakeTableAlterer(const YBTableName& table_name);
+  [[nodiscard]] YBTableAlterer MakeTableAlterer(const std::string& id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   Status IsAlterTableInProgress(

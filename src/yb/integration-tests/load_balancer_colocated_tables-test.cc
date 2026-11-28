@@ -220,8 +220,8 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
           tn.namespace_name(), tn.namespace_id(), ns_id_to_tg_id[tn.namespace_id()],
           "" /* tablespace_id */, nullptr /* txn */));
       client::YBSchemaBuilder b;
-      b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->PrimaryKey();
-      b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+      b.AddColumn("k").Type(DataType::BINARY).NotNull().PrimaryKey();
+      b.AddColumn("v").Type(DataType::BINARY).NotNull();
       ASSERT_OK(b.Build(&schema_));
 
       ASSERT_OK(NewTableCreator()
@@ -275,8 +275,8 @@ class LoadBalancerLegacyColocatedDBColocatedTablesTest : public LoadBalancerColo
                                                     true                /* colocated */));
 
       client::YBSchemaBuilder b;
-      b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->PrimaryKey();
-      b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+      b.AddColumn("k").Type(DataType::BINARY).NotNull().PrimaryKey();
+      b.AddColumn("v").Type(DataType::BINARY).NotNull();
       ASSERT_OK(b.Build(&schema_));
 
       ASSERT_OK(NewTableCreator()

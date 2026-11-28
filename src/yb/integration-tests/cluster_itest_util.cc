@@ -169,7 +169,7 @@ std::string TServerDetails::ToString() const {
 client::YBSchema SimpleIntKeyYBSchema() {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(DataType::INT32)->PrimaryKey();
+  b.AddColumn("key").Type(DataType::INT32).PrimaryKey();
   CHECK_OK(b.Build(&s));
   return s;
 }

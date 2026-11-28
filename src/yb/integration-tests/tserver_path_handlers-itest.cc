@@ -194,7 +194,7 @@ TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
   client::TableHandle table;
   client::YBSchema schema;
   client::YBSchemaBuilder builder;
-  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn("key").Type(DataType::INT32).HashPrimaryKey().NotNull();
   ASSERT_OK(builder.Build(&schema));
 
   const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "my_table");
@@ -223,7 +223,7 @@ TEST_F(TServerPathHandlersItest, TablesPageOnDiskSizeSortKey) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   client::YBSchema schema;
   client::YBSchemaBuilder builder;
-  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn("key").Type(DataType::INT32).HashPrimaryKey().NotNull();
   ASSERT_OK(builder.Build(&schema));
 
   const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "sort_key_table");
@@ -313,8 +313,8 @@ class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
     client::YBSchema schema;
     client::YBSchemaBuilder builder;
-    builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn("value")->Type(DataType::INT32);
+    builder.AddColumn("key").Type(DataType::INT32).HashPrimaryKey().NotNull();
+    builder.AddColumn("value").Type(DataType::INT32);
     RETURN_NOT_OK(builder.Build(&schema));
 
     const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "sst_stats_table");

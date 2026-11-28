@@ -59,11 +59,11 @@ class QLMapTest : public QLDmlTestBase<MiniCluster> {
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder b;
-    b.AddColumn("h1")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h2")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h3")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r1")->Type(DataType::INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("l1")->Type(QLType::CreateTypeMap(DataType::STRING, DataType::STRING));
+    b.AddColumn("h1").Type(DataType::INT32).HashPrimaryKey().NotNull();
+    b.AddColumn("h2").Type(DataType::INT32).HashPrimaryKey().NotNull();
+    b.AddColumn("h3").Type(DataType::STRING).HashPrimaryKey().NotNull();
+    b.AddColumn("r1").Type(DataType::INT32).PrimaryKey().NotNull();
+    b.AddColumn("l1").Type(QLType::CreateTypeMap(DataType::STRING, DataType::STRING));
 
     ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
   }
