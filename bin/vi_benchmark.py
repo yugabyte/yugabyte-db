@@ -19,15 +19,18 @@ base vectors, queries and ground truth. Options of this script go before the dat
 arguments after it go to hnsw_tool, and override the dataset's files or distance kind. With any
 of them overridden, or --num_vectors_to_insert given, hnsw_tool computes the ground truth unless
 --ground_truth_path is given. For a dataset without ground truth, hnsw_tool computes it, and the
-script keeps it in the dataset's cache directory for later runs. The output of hnsw_tool is also
-written to a log file in --run_log_dir, whose header gives the commands, the checkout revision and
-the modification time of hnsw_tool.
+script keeps it in the dataset's cache directory for later runs. --subset runs on the first base
+vectors of a dataset, and the script keeps the ground truth of each subset size the same way. For a
+subset of an .fbin base file that is not in the cache, only those vectors are downloaded. The output
+of hnsw_tool is also written to a log file in --run_log_dir, whose header gives the commands, the
+checkout revision and the modification time of hnsw_tool.
 
 Examples:
   bin/vi_benchmark.py --list_datasets
   bin/vi_benchmark.py siftsmall
   bin/vi_benchmark.py --cache_dir ~/vi_cache sift --ann_method kHnswlib --ef_values 64,128 --k 10
   bin/vi_benchmark.py deep10m --ann_method kHnswlib --k 10,100 --num_validation_queries 1000
+  bin/vi_benchmark.py --subset 100m deep1b --ann_method kHnswlib --num_validation_queries 1000
 """
 
 import argparse
@@ -44,7 +47,7 @@ import sys
 import tarfile
 import zlib
 from dataclasses import dataclass
-from typing import BinaryIO, Dict, Iterable, List, NoReturn, Optional, Set
+from typing import BinaryIO, Dict, Iterable, List, NoReturn, Optional, Set, Tuple
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,8 +55,12 @@ DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, 'build', 'vi_cache')
 # curl's exit codes when the partial file does not fit the remote file (36), or the server does
 # not resume downloads (33).
 CURL_RESUME_ERRORS = (33, 36)
-# The ground truth of the first Q queries, with the K nearest base vectors of each.
-GROUND_TRUTH_CACHE_RE = re.compile(r'gt\.q(\d+)\.k(\d+)\.ivecs')
+# The ground truth of the first Q queries, with the K nearest of the first N base vectors (all
+# without .nN) for each.
+GROUND_TRUTH_CACHE_RE = re.compile(r'gt(?:\.n(\d+))?\.q(\d+)\.k(\d+)\.ivecs')
+# The bytes per item of the files that bin_size describes.
+BIN_ITEM_SIZES = {'.fbin': 4, '.ibin': 8}
+SUBSET_RE = re.compile(r'(\d+)([kmb]?)', re.IGNORECASE)
 # hnsw_tool's default --k.
 DEFAULT_K = '10'
 
@@ -71,6 +78,8 @@ class Dataset:
     # A .tar.gz archive with the files above, or else the URL of their directory.
     archive_url: Optional[str] = None
     files_url: Optional[str] = None
+    # Where the ground truth file is when it is not with the other files.
+    ground_truth_url: Optional[str] = None
 
     def files(self) -> List[str]:
         return [name for name in (self.base_file, self.query_file, self.ground_truth_file) if name]
@@ -88,15 +97,31 @@ def texmex(name: str, num_vectors: int, dimensions: int, num_queries: int) -> Da
         ground_truth_file=f'{name}_groundtruth.ivecs')
 
 
-def big_ann(directory: str, dimensions: int, num_queries: int, distance_kind: str) -> Dataset:
+def parse_subset(value: str) -> int:
+    match = SUBSET_RE.fullmatch(value)
+    if not match or int(match[1]) == 0:
+        raise argparse.ArgumentTypeError(f'expected a positive number with k, m or b, got {value}')
+    return int(match[1]) * {'': 1, 'k': 10**3, 'm': 10**6, 'b': 10**9}[match[2].lower()]
+
+
+def big_ann(directory: str, size: str, dimensions: int, num_queries: int,
+            distance_kind: str) -> Dataset:
+    url = 'https://storage.yandexcloud.net/yandex-research/ann-datasets/'
+    queries = f'public.{num_queries // 1000}K'
+    # Only the 1B datasets come with ground truth. The groundtruth.*.ibin files next to their base
+    # files have no distances, which hnsw_tool needs; big-ann-benchmarks' own files have them.
+    ground_truth = f'{directory.lower()}_new_groundtruth.{queries}' if size == '1B' else None
     return Dataset(
-        files_url=f'https://storage.yandexcloud.net/yandex-research/ann-datasets/{directory}/',
-        base_file='base.10M.fbin',
-        query_file=f'query.public.{num_queries // 1000}K.fbin',
-        num_vectors=10_000_000,
+        files_url=f'{url}{directory}/',
+        base_file=f'base.{size}.fbin',
+        query_file=f'query.{queries}.fbin',
+        num_vectors=parse_subset(size),
         dimensions=dimensions,
         num_queries=num_queries,
         source=f'big-ann-benchmarks {directory} (Yandex)',
+        # hnsw_tool reads ground truth with distances from .ibin files.
+        ground_truth_file=f'{ground_truth}.ibin' if ground_truth else None,
+        ground_truth_url=f'{url}{ground_truth}.bin' if ground_truth else None,
         distance_kind=distance_kind)
 
 
@@ -104,15 +129,22 @@ DATASETS = {
     'siftsmall': texmex('siftsmall', 10_000, 128, 100),
     'sift': texmex('sift', 1_000_000, 128, 10_000),
     'gist': texmex('gist', 1_000_000, 960, 1_000),
-    'deep10m': big_ann('DEEP', 96, 10_000, 'kL2Squared'),
-    't2i10m': big_ann('T2I', 200, 100_000, 'kInnerProduct'),
+    'deep10m': big_ann('DEEP', '10M', 96, 10_000, 'kL2Squared'),
+    't2i10m': big_ann('T2I', '10M', 200, 100_000, 'kInnerProduct'),
+    'deep1b': big_ann('DEEP', '1B', 96, 10_000, 'kL2Squared'),
+    't2i1b': big_ann('T2I', '1B', 200, 100_000, 'kInnerProduct'),
 }
 
 
+def bin_size(rows: int, columns: int, item_size: int) -> int:
+    # After an 8-byte header with the numbers of rows and columns as uint32, .fbin files hold n
+    # vectors of d float32 coordinates, and .ibin ground truth files the ids and distances of k
+    # neighbors of n queries.
+    return 8 + item_size * rows * columns
+
+
 def fbin_size(num_vectors: int, dimensions: int) -> int:
-    # An .fbin file starts with the number of vectors and their dimensions as uint32, followed by
-    # the float32 coordinates.
-    return 8 + 4 * num_vectors * dimensions
+    return bin_size(num_vectors, dimensions, BIN_ITEM_SIZES['.fbin'])
 
 
 def base_file_size(dataset: Dataset) -> int:
@@ -171,7 +203,8 @@ def option_value(option: str, tool_args: List[str]) -> Optional[str]:
     return value if eq else next(iter(tool_args[i + 1:]), None)
 
 
-def cached_ground_truth(dataset: Dataset, dataset_dir: str, tool_args: List[str]) -> List[str]:
+def cached_ground_truth(dataset: Dataset, dataset_dir: str, subset: Optional[int],
+                        tool_args: List[str]) -> List[str]:
     try:
         k_values = (option_value('--k', tool_args) or DEFAULT_K).split(',')
         # hnsw_tool skips empty values.
@@ -187,20 +220,22 @@ def cached_ground_truth(dataset: Dataset, dataset_dir: str, tool_args: List[str]
     if os.path.isdir(dataset_dir):
         for name in os.listdir(dataset_dir):
             match = GROUND_TRUTH_CACHE_RE.fullmatch(name)
-            if match and int(match[1]) >= num_queries and int(match[2]) >= max_k:
-                cached.append((int(match[2]), int(match[1]), name))
+            if (match and (match[1] and int(match[1])) == subset and
+                    int(match[2]) >= num_queries and int(match[3]) >= max_k):
+                cached.append((int(match[3]), int(match[2]), name))
     if cached:
         return ['--ground_truth_path', os.path.join(dataset_dir, min(cached)[2])]
     # hnsw_tool computes the ground truth and saves it, under a temporary name until it is complete.
+    subset_tag = f'.n{subset}' if subset else ''
     return ['--save_ground_truth_path',
-            os.path.join(dataset_dir, f'gt.q{num_queries}.k{max_k}.ivecs')]
+            os.path.join(dataset_dir, f'gt{subset_tag}.q{num_queries}.k{max_k}.ivecs')]
 
 
-def check_fbin_size(path: str, url: str) -> None:
+def check_bin_size(path: str, url: str, item_size: int) -> None:
     with open(path, 'rb') as f:
         header = f.read(8)
     size = os.path.getsize(path)
-    if len(header) < 8 or size != fbin_size(*struct.unpack('<II', header)):
+    if len(header) < 8 or size != bin_size(*struct.unpack('<II', header), item_size):
         os.remove(path)
         sys.exit(f'The size of {url}, {size} bytes, does not fit its header; deleted it, '
                  'rerun to download it again')
@@ -220,9 +255,76 @@ def download(url: str, path: str) -> None:
         sys.exit(f'Failed to download {url}: curl exit code {returncode}')
     # Over HTTP, curl takes a .part file longer than the remote one for a complete download. A
     # resumed download of a file that changed can also end at another size.
-    if path.endswith('.fbin'):
-        check_fbin_size(partial, url)
+    item_size = BIN_ITEM_SIZES.get(os.path.splitext(path)[1])
+    if item_size:
+        check_bin_size(partial, url, item_size)
     os.rename(partial, path)
+
+
+def curl_version() -> Tuple[int, int]:
+    output = subprocess.run(['curl', '--version'], capture_output=True, text=True).stdout
+    match = re.match(r'curl (\d+)\.(\d+)', output)
+    return (int(match[1]), int(match[2])) if match else (0, 0)
+
+
+def download_prefix(url: str, path: str, num_vectors: int, dimensions: int) -> None:
+    print(f'Downloading the first {num_vectors:,} vectors of {url}', flush=True)
+    size = fbin_size(num_vectors, dimensions)
+    partial = path + '.part'
+    start = os.path.getsize(partial) if os.path.exists(partial) else 0
+    if start < size:
+        # --max-filesize stops a server that ignores --range and sends the whole file. Without a
+        # Content-Length, only curl 8.4 and newer stop it.
+        version = curl_version()
+        if version < (8, 4):
+            sys.exit(f'Downloading part of {url} needs curl 8.4 or newer, found '
+                     f'{version[0]}.{version[1]}')
+        # curl drops the end of --range when it resumes with --continue-at, so the rest of the
+        # range is appended here.
+        with open(partial, 'ab') as output:
+            returncode = subprocess.call(
+                ['curl', '--fail', '--location', '--show-error', '--range', f'{start}-{size - 1}',
+                 '--max-filesize', str(size - start), '--output', '-', url], stdout=output)
+        if returncode == 63:
+            # Without a Content-Length, curl stops only after writing the start of the file.
+            os.truncate(partial, start)
+            sys.exit(f'{url} does not support HTTP Range requests; download the whole file')
+        if returncode != 0:
+            sys.exit(f'Failed to download {url}: curl exit code {returncode}')
+    with open(partial, 'r+b') as f:
+        file_dimensions = None
+        if os.path.getsize(partial) == size:
+            _, file_dimensions = struct.unpack('<II', f.read(8))
+        if file_dimensions != dimensions:
+            f.close()
+            os.remove(partial)
+            sys.exit(f'The first {size} bytes of {url} do not hold {num_vectors} vectors of '
+                     f'{dimensions} dimensions; deleted them, rerun to download them again')
+        # The header gives the number of vectors in the whole file.
+        f.seek(0)
+        f.write(struct.pack('<I', num_vectors))
+    os.rename(partial, path)
+
+
+def subset_base_file(dataset: Dataset, dataset_dir: str, subset: int) -> Tuple[str, bool]:
+    """Returns the base file for the first subset vectors, and whether it has more of them."""
+    if os.path.exists(os.path.join(dataset_dir, dataset.base_file)):
+        return dataset.base_file, True
+    stem, extension = os.path.splitext(dataset.base_file)
+    if extension != '.fbin' or dataset.files_url is None:
+        return dataset.base_file, True
+    # The smallest downloaded prefix with enough vectors, or else a new one.
+    prefix_re = re.compile(re.escape(stem) + r'\.n(\d+)\.fbin')
+    prefixes = []
+    if os.path.isdir(dataset_dir):
+        for name in os.listdir(dataset_dir):
+            match = prefix_re.fullmatch(name)
+            if match and int(match[1]) >= subset:
+                prefixes.append((int(match[1]), name))
+    if prefixes:
+        num_vectors, name = min(prefixes)
+        return name, num_vectors > subset
+    return f'{stem}.n{subset}.fbin', False
 
 
 def extract(archive: str, dataset_dir: str, names: List[str]) -> None:
@@ -266,7 +368,10 @@ def prepare(dataset: Dataset, dataset_dir: str, needed: List[str]) -> None:
         for name in needed:
             path = os.path.join(dataset_dir, name)
             if not os.path.exists(path):
-                download(dataset.files_url + name, path)
+                url = dataset.files_url + name
+                if name == dataset.ground_truth_file and dataset.ground_truth_url:
+                    url = dataset.ground_truth_url
+                download(url, path)
         return
     # All missing files are extracted, so a run with other arguments does not download again.
     missing = [name for name in dataset.files()
@@ -361,6 +466,9 @@ def main() -> int:
     parser.add_argument('--run_log_dir',
                         help='Directory for the run logs (default: <cache_dir>/logs).')
     parser.add_argument('--no_run_log', action='store_true', help='Do not write a run log.')
+    parser.add_argument('--subset', type=parse_subset,
+                        help='Number of base vectors to run on, from the start of the dataset, '
+                             'with an optional k, m or b suffix.')
     parser.add_argument('dataset', nargs='?', help=f'One of {", ".join(sorted(DATASETS))}.')
     parser.add_argument('tool_args', nargs=argparse.REMAINDER,
                         help='Arguments for hnsw_tool benchmark.')
@@ -371,7 +479,7 @@ def main() -> int:
     # hnsw_tool has no options with these names.
     for name in [arg.split('=', 1)[0] for arg in args.tool_args]:
         if name in ('--cache_dir', '--tool', '--dry_run', '--list_datasets',
-                    '--run_log_dir', '--no_run_log'):
+                    '--run_log_dir', '--no_run_log', '--subset'):
             parser.error(f'{name}: options of this script go before the dataset name')
     if args.list_datasets:
         list_datasets()
@@ -391,12 +499,27 @@ def main() -> int:
     elif shutil.which(tool) is None:
         sys.exit(f'{tool}: no such executable')
 
+    subset = args.subset
+    if subset is not None:
+        for option in sorted(given_options(['--build_vecs_path', '--num_vectors_to_insert'],
+                                           args.tool_args)):
+            parser.error(f'{option} does not go with --subset')
+        if subset > dataset.num_vectors:
+            parser.error(f'--subset {subset} exceeds the {dataset.num_vectors} vectors of '
+                         f'{args.dataset}')
+        if subset == dataset.num_vectors:
+            subset = None
+
     dataset_dir = os.path.join(args.cache_dir, args.dataset)
+    base_file, insert_subset = dataset.base_file, False
+    if subset:
+        base_file, insert_subset = subset_base_file(dataset, dataset_dir, subset)
     dataset_files = {
-        '--build_vecs_path': dataset.base_file,
+        '--build_vecs_path': base_file,
         '--query_vecs_path': dataset.query_file,
     }
-    if dataset.ground_truth_file:
+    # The dataset's ground truth is for all its base vectors.
+    if dataset.ground_truth_file and not subset:
         dataset_files['--ground_truth_path'] = dataset.ground_truth_file
     dataset_args = {option: os.path.join(dataset_dir, name)
                     for option, name in dataset_files.items()}
@@ -411,9 +534,11 @@ def main() -> int:
         # hnsw_tool rejects an option given twice.
         if option not in overridden:
             cmd += [option, value]
-    if (dataset.ground_truth_file is None and '--ground_truth_path' not in overridden and
+    if insert_subset:
+        cmd += ['--num_vectors_to_insert', str(subset)]
+    if ('--ground_truth_path' not in dataset_files and '--ground_truth_path' not in overridden and
             not given_options(['--save_ground_truth_path'], args.tool_args)):
-        cmd += cached_ground_truth(dataset, dataset_dir, args.tool_args)
+        cmd += cached_ground_truth(dataset, dataset_dir, subset, args.tool_args)
     cmd += args.tool_args
     print('+ ' + shlex.join(cmd), flush=True)
     if args.dry_run:
@@ -424,6 +549,13 @@ def main() -> int:
         # Checked before the download, which can take long.
         make_log_dir(log_dir)
     needed = [name for option, name in dataset_files.items() if option not in overridden]
+    if base_file != dataset.base_file:
+        needed.remove(base_file)
+        path = os.path.join(dataset_dir, base_file)
+        if not os.path.exists(path):
+            os.makedirs(dataset_dir, exist_ok=True)
+            download_prefix(dataset.files_url + dataset.base_file, path, subset,
+                            dataset.dimensions)
     if needed:
         prepare(dataset, dataset_dir, needed)
     if log_dir is None:
