@@ -68,10 +68,11 @@ class TServerSharedData {
 
   Status WaitAllocatorsInitialized();
 
-  void SetHostEndpoint(const Endpoint& value, const std::string& host) {
+  void SetHostEndpoint(const Endpoint& value, const std::string& host, uint16_t port) {
     endpoint_ = value;
     strncpy(host_, host.c_str(), sizeof(host_) - 1);
     host_[sizeof(host_) - 1] = 0;
+    port_ = port;
   }
 
   const Endpoint& endpoint() const {
@@ -80,6 +81,10 @@ class TServerSharedData {
 
   Slice host() const {
     return host_;
+  }
+
+  uint16_t port() const {
+    return port_;
   }
 
   void SetYsqlCatalogVersion(uint64_t version) {
@@ -169,9 +174,12 @@ class TServerSharedData {
   }
 
  private:
-  // Endpoint that should be used by local processes to access this tserver.
+  // First endpoint the RPC server is bound to.
   Endpoint endpoint_;
+  // Host and port that local processes use to access this server: the address that
+  // DesiredHostPort() picks from the server's own registration.
   char host_[255 + 1]; // DNS name max length is 255, but on linux HOST_NAME_MAX is 64.
+  uint16_t port_ = 0;
 
   std::atomic<uint64_t> catalog_version_{0};
   uint64_t postgres_auth_key_;
