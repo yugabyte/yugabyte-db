@@ -1406,6 +1406,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 												  YbGetRelfileNodeId(defaultRel),
 												  &alter_cmd_handle));
 				HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
+				YbTrackAlteredTableId(defaultPartOid);
 				YBCExecAlterTable(alter_cmd_handle, defaultPartOid);
 			}
 
