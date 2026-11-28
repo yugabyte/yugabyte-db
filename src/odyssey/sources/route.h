@@ -43,6 +43,9 @@ struct od_route {
 	od_route_status_t status;
 
 	od_list_t link;
+
+	/* should increase every time servers in the route's pool are changed */
+	atomic_uint_fast64_t version;
 };
 
 static inline void od_route_init(od_route_t *route, bool extra_route_logging)
@@ -72,6 +75,8 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 	od_list_init(&route->link);
 	route->wait_bus = NULL;
 	pthread_mutex_init(&route->lock, NULL);
+
+	atomic_init(&route->version, 0);
 }
 
 static inline void od_route_free(od_route_t *route)
@@ -105,7 +110,7 @@ static inline od_route_t *od_route_allocate()
 	if (route == NULL)
 		return NULL;
 	od_route_init(route, true);
-	route->wait_bus = machine_wait_list_create();
+	route->wait_bus = machine_wait_list_create(&route->version);
 	if (route->wait_bus == NULL) {
 		od_route_free(route);
 		return NULL;
@@ -209,11 +214,19 @@ static inline void od_route_reload_pool(od_route_t *route)
 			       od_route_reload_cb, NULL);
 }
 
-static inline int od_route_wait(od_route_t *route, uint32_t time_ms)
+static inline int od_route_wait(od_route_t *route, uint64_t version,
+				uint32_t time_ms)
 {
 	int rc;
-	rc = machine_wait_list_wait(route->wait_bus, time_ms);
-	if (rc == 0) {
+	rc = machine_wait_list_compare_wait(route->wait_bus, version, time_ms);
+	/*
+	 * YB: Upstream's caller ignores the result and checks its own deadline.
+	 * Here the caller treats -1 as a timeout, so return 0 both when woken
+	 * and when the route changed since version was read (ERR_AGAIN): either
+	 * way the caller retries the attach.
+	 */
+	if (rc == MACHINE_WAIT_LIST_SUCCESS ||
+	    rc == MACHINE_WAIT_LIST_ERR_AGAIN) {
 		return 0;
 	}
 	return -1;
@@ -221,6 +234,7 @@ static inline int od_route_wait(od_route_t *route, uint32_t time_ms)
 
 static inline int od_route_signal(od_route_t *route)
 {
+	atomic_fetch_add(&route->version, 1);
 	machine_wait_list_notify(route->wait_bus);
 	return 0;
 }

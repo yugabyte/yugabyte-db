@@ -5,7 +5,12 @@ static inline void test_wait_without_notify_coroutine(void *arg)
 {
 	(void)arg;
 
-	machine_wait_list_t *wait_list = machine_wait_list_create();
+	/*
+	 * YB: NULL because machine_wait_list_create() now takes the futex word
+	 * (odyssey 00be9a8). odyssey_test is not run in YB CI; this only keeps
+	 * it compiling.
+	 */
+	machine_wait_list_t *wait_list = machine_wait_list_create(NULL);
 
 	uint64_t start, end;
 	start = machine_time_ms();
