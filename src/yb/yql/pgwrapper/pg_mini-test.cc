@@ -112,6 +112,7 @@ DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_colocated_table_tombstone_cache);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_schema_packing_gc);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(enable_wait_queues);
@@ -6264,9 +6265,20 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushSecondaryIndexes) {
   ASSERT_LE(three_idx, 30) << "secondary indexes add writes, not O(rows) flushes";
 }
 
+// Without the lock fast path (off by default on macOS) each trigger firing takes the target's
+// object lock by RPC, which flushes the write buffer.
+class PgMiniTestSingleNodeObjectLockFastpath : public PgMiniTestSingleNode {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
+    PgMiniTestSingleNode::SetUp();
+  }
+};
+
 // With yb_speculatively_execute_pl_statements on, a PL/pgSQL loop of INSERTs batches into one
 // flush, and the trigger must not turn that back into a flush per iteration.
-TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
+TEST_F(PgMiniTestSingleNodeObjectLockFastpath, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
   constexpr int kIters = 50;
   auto conn = ASSERT_RESULT(Connect());
 
