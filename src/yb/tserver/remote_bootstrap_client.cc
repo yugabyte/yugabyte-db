@@ -560,11 +560,11 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   }
 
   auto start = MonoTime::Now();
-  auto timeout = MonoDelta::FromSeconds(FLAGS_committed_config_change_role_timeout_sec);
   int backoff_ms = 1;
   const int kMaxBackoffMs = 256;
   RaftConfigPB committed_config;
 
+  // The flag is read on each iteration, so a runtime change applies to a wait in progress.
   do {
     if (IsCancelled()) {
       return STATUS_FORMAT(
@@ -575,21 +575,17 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
           permanent_uuid());
     }
     committed_config = shared_consensus->CommittedConfig();
-    for (const auto &peer : committed_config.peers()) {
-      if (peer.permanent_uuid() != permanent_uuid()) {
-        continue;
-      }
-
-      if (peer.member_type() == PeerMemberType::VOTER ||
-          peer.member_type() == PeerMemberType::OBSERVER) {
+    for (const auto& peer : committed_config.peers()) {
+      if (peer.permanent_uuid() == permanent_uuid() &&
+          (peer.member_type() == PeerMemberType::VOTER ||
+           peer.member_type() == PeerMemberType::OBSERVER)) {
         return Status::OK();
-      } else {
-        SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
-        backoff_ms = min(backoff_ms << 1, kMaxBackoffMs);
-        break;
       }
     }
-  } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
+    SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
+    backoff_ms = min(backoff_ms << 1, kMaxBackoffMs);
+  } while (MonoTime::Now().GetDeltaSince(start).LessThan(
+      MonoDelta::FromSeconds(FLAGS_committed_config_change_role_timeout_sec)));
 
   return STATUS(TimedOut,
                 Format("Timed out waiting member type of peer $0 to change in the committed "
