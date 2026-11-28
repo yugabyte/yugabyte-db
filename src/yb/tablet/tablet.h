@@ -769,6 +769,10 @@ class Tablet : public AbstractTablet,
   // data is present in corresponding db.
   Result<DocDbPersistentState> GetPersistentState(bool invalid_if_no_new_data = false) const;
 
+  // Returns the txn_apply_op_index recorded in the flushed frontier of the given RocksDB (see
+  // ConsensusFrontierPB). Zero when there is none.
+  Result<int64_t> FlushedTxnApplyOpIndex(docdb::StorageDbType db_type) const;
+
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;
 
@@ -1059,6 +1063,11 @@ class Tablet : public AbstractTablet,
 
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
+
+  // Records the participant's intents txn_apply_op_index in the intents RocksDB flushed frontier
+  // when the intents RocksDB has nothing to flush, so that it does not wait for the next intents
+  // removal write. Returns the resulting flushed value; flushed_index is the current one.
+  int64_t RecordIntentsTxnApplyOpIndexIfIdle(int64_t flushed_index);
 
   // The vector index part of EarliestNeededLogIndex: the lowest Raft index some vector index holds
   // only in memory. Along the way flushes every index whose oldest such operation is more than

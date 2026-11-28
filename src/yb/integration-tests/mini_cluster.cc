@@ -1947,6 +1947,20 @@ Status WaitForAllIntentsApplied(MiniCluster* cluster, MonoDelta timeout) {
   return WaitForTableIntentsApplied(cluster, /* table_id = */ "", timeout);
 }
 
+Status WaitForNoRunningTransactions(MiniCluster* cluster, const std::string& table_name) {
+  for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(
+           cluster, table_name, ListPeersFilter::kAll))) {
+    auto* participant = VERIFY_RESULT(peer->shared_tablet())->transaction_participant();
+    if (!participant) {
+      continue;
+    }
+    RETURN_NOT_OK(WaitFor(
+        [participant] { return participant->MinRunningHybridTime() == HybridTime::kMax; },
+        30s * kTimeMultiplier, Format("No running transactions on $0", peer->tablet_id())));
+  }
+  return Status::OK();
+}
+
 void ActivateCompactionTimeLogging(MiniCluster* cluster) {
   class CompactionListener : public rocksdb::EventListener {
    public:

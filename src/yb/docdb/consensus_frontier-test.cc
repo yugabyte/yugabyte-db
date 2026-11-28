@@ -234,4 +234,59 @@ TEST_F(ConsensusFrontierTest, SplitGenerationAndMinChunkSerialNo) {
   ASSERT_EQ(restored.split_min_chunk_serial_no(), 20);
 }
 
+// The transaction APPLYING index watermark and the retention rule built on it.
+TEST_F(ConsensusFrontierTest, TxnApplyOpIndex) {
+  ConsensusFrontier none{{1, 1}, 1000_usec_ht, { 500_usec_ht, 500_usec_ht }};
+  ASSERT_EQ(none.txn_apply_op_index(), 0);
+
+  ConsensusFrontier low{{1, 2}, 1000_usec_ht, { 500_usec_ht, 500_usec_ht }};
+  low.set_txn_apply_op_index(10);
+  ConsensusFrontier high{{1, 3}, 1000_usec_ht, { 500_usec_ht, 500_usec_ht }};
+  high.set_txn_apply_op_index(20);
+
+  // The largest frontier keeps the maximum.
+  auto clone = low.Clone();
+  clone->Update(none, UpdateUserValueType::kLargest);
+  ASSERT_EQ(down_cast<ConsensusFrontier&>(*clone).txn_apply_op_index(), 10);
+  clone->Update(high, UpdateUserValueType::kLargest);
+  ASSERT_EQ(down_cast<ConsensusFrontier&>(*clone).txn_apply_op_index(), 20);
+  clone->Update(low, UpdateUserValueType::kLargest);
+  ASSERT_EQ(down_cast<ConsensusFrontier&>(*clone).txn_apply_op_index(), 20);
+
+  // The field is not tracked on the smallest frontier.
+  auto smallest_clone = none.Clone();
+  smallest_clone->Update(low, UpdateUserValueType::kSmallest);
+  ASSERT_EQ(down_cast<ConsensusFrontier&>(*smallest_clone).txn_apply_op_index(), 0);
+
+  // PB roundtrip preserves the field; absence decodes as zero (data from older versions).
+  for (const auto* frontier : {&high, &none}) {
+    google::protobuf::Any any;
+    frontier->ToPB(&any);
+    ConsensusFrontier from_pb;
+    ASSERT_OK(from_pb.FromPB(any));
+    ASSERT_EQ(from_pb.txn_apply_op_index(), frontier->txn_apply_op_index());
+  }
+
+  // A frontier written by a version without the field decodes as zero, and zero is written back
+  // without the field.
+  ConsensusFrontierPB legacy_pb;
+  google::protobuf::Any legacy_any;
+  legacy_any.PackFrom(legacy_pb);
+  ConsensusFrontier legacy;
+  ASSERT_OK(legacy.FromPB(legacy_any));
+  ASSERT_EQ(legacy.txn_apply_op_index(), 0);
+  legacy.ToPB(&legacy_any);
+  ASSERT_TRUE(legacy_any.UnpackTo(&legacy_pb));
+  ASSERT_FALSE(legacy_pb.has_txn_apply_op_index());
+
+  // Nothing to retain while every regular apply has its intents removal flushed.
+  ASSERT_EQ(UnremovedIntentsRetainIndex(0, 0), std::nullopt);
+  ASSERT_EQ(UnremovedIntentsRetainIndex(0, 10), std::nullopt);
+  ASSERT_EQ(UnremovedIntentsRetainIndex(10, 10), std::nullopt);
+  ASSERT_EQ(UnremovedIntentsRetainIndex(10, 20), std::nullopt);
+  // Otherwise retain from the intents watermark, or from the start when there is none.
+  ASSERT_EQ(UnremovedIntentsRetainIndex(20, 10), 10);
+  ASSERT_EQ(UnremovedIntentsRetainIndex(20, 0), 0);
+}
+
 }  // namespace yb::docdb

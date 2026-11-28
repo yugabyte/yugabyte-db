@@ -592,6 +592,9 @@ Status WaitForTableIntentsApplied(
 Status WaitForAllIntentsApplied(
     MiniCluster* cluster, MonoDelta timeout = MonoDelta::FromSeconds(30));
 
+// Waits until no transaction is running on any tablet of the table.
+Status WaitForNoRunningTransactions(MiniCluster* cluster, const std::string& table_name);
+
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.
 void ActivateCompactionTimeLogging(MiniCluster* cluster);
