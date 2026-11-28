@@ -56,6 +56,7 @@ DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_int32(bytes_durable_wal_write_mb);
+DECLARE_int32(db_block_cache_num_shard_bits);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(interval_durable_wal_write_ms);
 DECLARE_int32(max_nexts_to_avoid_seek);
@@ -1294,6 +1295,9 @@ class PgVectorIndexSmallBlockCacheTest
     // db_block_cache_size_bytes is read once when the shared block cache is built during cluster
     // startup, so unlike the other flags this test tweaks it cannot be set from the test body.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = kBlockCacheBytes;
+    // On a machine with many CPUs the cache has hundreds of shards; each holds only a few blocks
+    // and does not fill.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_num_shard_bits) = 4;
     Base::SetUp();
   }
 };
