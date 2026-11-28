@@ -58,6 +58,9 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
+    if (checksUniverseKeyOnThisTry(universe)) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
   }
 

@@ -44,6 +44,9 @@ public class ResumeKubernetesUniverse extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    if (checksUniverseKeyOnThisTry(universe)) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)

@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -478,5 +479,47 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         "Expected at least one WaitForServer(YSQLSERVER) task when YSQL is enabled and nodes have "
             + "K8s names and isYsqlServer=true",
         ysqlWaitCount >= 1);
+  }
+
+  // A tserver-only change still runs the master pass, which pushes the key, so it checks.
+  @Test
+  public void testTserverOnlyGFlagsRunsKmsCheck() {
+    setupUniverseSingleAZ(true /* setMasters */, false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+  }
+
+  @Test
+  public void testMasterGFlagsChangeRunsKmsCheck() {
+    setupUniverseSingleAZ(true /* setMasters */, false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+  }
+
+  // A non-rolling upgrade deletes every pod, masters included, so it checks even for tserver flags.
+  @Test
+  public void testNonRollingTserverOnlyGFlagsRunsKmsCheck() {
+    setupUniverseSingleAZ(true /* setMasters */, false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
   }
 }

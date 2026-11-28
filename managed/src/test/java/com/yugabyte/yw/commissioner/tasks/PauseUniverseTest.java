@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -239,5 +240,43 @@ public class PauseUniverseTest extends CommissionerBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.PauseUniverse,
         taskParams);
+  }
+
+  // Pause must fail before it stops any process when KMS cannot return the universe key.
+  @Test
+  public void testPauseUniverseFailsWhenKmsKeyUnavailable() {
+    setupUniverse(false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl));
+  }
+
+  // A pause that fails in the KMS check never froze the universe, so YBA refuses a retry. A new
+  // pause runs the check again.
+  @Test
+  public void testPauseFailedInKmsCheckIsNotRetryable() {
+    setupUniverse(false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertKmsCheckFailed(taskInfo);
+    CustomerTask customerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            defaultUniverse.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Pause,
+            defaultUniverse.getName());
+    assertFalse(customerTaskManager.isTaskRetryable(customerTask, taskInfo));
   }
 }

@@ -135,6 +135,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
@@ -176,6 +177,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -1195,6 +1197,50 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Adds a precheck that fails the task if YBA cannot get the active universe key from KMS. Use it
+   * in tasks that stop, start or restart masters, so they do not leave masters without the key.
+   */
+  protected void createCheckUniverseKeyInKmsTask(Universe universe) {
+    // Not EncryptionAtRestUtil.getNumUniverseKeys: it turns a DB error into 0, which would skip
+    // the check.
+    if (KmsHistory.countUniverseKeysWithActiveMasterKey(universe.getUniverseUUID()) == 0
+        || !confGetter.getConfForScope(universe, UniverseConfKeys.kmsUniverseKeyPrecheckEnabled)) {
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckUniverseKeyInKms",
+        subTaskGroup -> {
+          CheckUniverseKeyInKms.Params params = new CheckUniverseKeyInKms.Params();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          CheckUniverseKeyInKms task = createTask(CheckUniverseKeyInKms.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
+  }
+
+  /** Whether the YBA cache holds the active universe key, so a key push needs no KMS call. */
+  protected boolean isActiveUniverseKeyCached(Universe universe) {
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
+    return activeKey != null
+        && EncryptionAtRestUtil.getUniverseKeyCacheEntry(
+                universe.getUniverseUUID(), Base64.getDecoder().decode(activeKey.getUuid().keyRef))
+            != null;
+  }
+
+  /** Whether this run finishes a task that already started changing the universe. */
+  protected boolean finishesStartedTask() {
+    return !isFirstTry();
+  }
+
+  /**
+   * Whether this run does the KMS key check. A run that finishes a started task skips it if the key
+   * push can use the YBA cache, which a YBA restart empties.
+   */
+  protected boolean checksUniverseKeyOnThisTry(Universe universe) {
+    return !finishesStartedTask() || !isActiveUniverseKeyCached(universe);
   }
 
   public SubTaskGroup createDestroyEncryptionAtRestTask() {

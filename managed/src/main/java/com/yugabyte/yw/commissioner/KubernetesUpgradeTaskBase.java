@@ -77,10 +77,28 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     return taskParams().skipNodeChecks;
   }
 
+  /**
+   * True if the task needs the KMS universe key precheck. The default node list has every master,
+   * so a task that never restarts a master pod overrides this to return false.
+   */
+  protected boolean needsUniverseKeyCheck() {
+    return UpgradeTaskBase.restartsMasters(taskParams().upgradeOption, getNodesToBeRestarted());
+  }
+
+  // The operator sets skipNodeChecks on a rerun of a failed upgrade, a new task. Any run with it
+  // skips the KMS check when the key is cached.
+  @Override
+  protected boolean finishesStartedTask() {
+    return super.finishesStartedTask() || Boolean.TRUE.equals(taskParams().skipNodeChecks);
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
+    if (checksUniverseKeyOnThisTry(universe) && needsUniverseKeyCheck()) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()
