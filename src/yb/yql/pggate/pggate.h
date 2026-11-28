@@ -582,6 +582,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
+  SetupPerformOptionsAccessorTag ClearSessionState();
   Status FlushBufferedOperations(const YbcFlushDebugContext& debug_context);
   Status AdjustOperationsBuffering(int multiple = 1);
 
@@ -954,8 +955,6 @@ class PgApiImpl {
   struct SignedPgSharedData;
 
  private:
-  SetupPerformOptionsAccessorTag ClearSessionState();
-
   class Interrupter;
 
   class TupleIdBuilder {
