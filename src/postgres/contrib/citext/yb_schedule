@@ -1,0 +1,4 @@
+# contrib/citext/yb_schedule
+
+test: yb.port.citext
+test: yb.port.citext_utf8
