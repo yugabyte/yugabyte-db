@@ -24,6 +24,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <optional>
 #include <string>
 #include "yb/util/slice.h"
 #include "yb/rocksdb/status_fwd.h"
@@ -101,6 +102,27 @@ class BlockHandle {
   uint64_t size_ = 0;
 
   static const BlockHandle kNullBlockHandle;
+};
+
+// Value of an index block entry. Like upstream RocksDB's IndexValue, this keeps fields that only
+// index entries have out of BlockHandle, which the footer and metaindex also use.
+struct IndexValue {
+  BlockHandle handle;
+  // Upper-level entries of a multi-level index only, when write_cumulative_index_entry_counts is
+  // on: number of data blocks in the file up to the end of the block `handle` points to.
+  std::optional<uint64_t> cumulative_entry_count;
+
+  IndexValue() = default;
+  explicit IndexValue(const BlockHandle& handle_) : handle(handle_) {}
+  IndexValue(const BlockHandle& handle_, uint64_t cumulative_entry_count_)
+      : handle(handle_), cumulative_entry_count(cumulative_entry_count_) {}
+
+  // Writes the handle, then the count's tag and varint if cumulative_entry_count is set.
+  // BlockHandle::DecodeFrom ignores trailing bytes, so older binaries can still read these values.
+  void EncodeTo(std::string* dst) const;
+  // Leaves bytes that don't start with the count's tag unread, so later formats can add other
+  // tags.
+  Status DecodeFrom(Slice* input);
 };
 
 inline uint32_t GetCompressFormatForVersion(CompressionType compression_type,

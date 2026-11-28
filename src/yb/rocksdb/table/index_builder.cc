@@ -163,13 +163,18 @@ void MultiLevelIndexBuilder::EnsureCurrentLevelIndexBuilderCreated() {
 
 void MultiLevelIndexBuilder::AddIndexEntry(
     std::string* last_key_in_current_block, const Slice* first_key_in_next_block,
-    const BlockHandle& block_handle, const ShortenKeys shorten_keys) {
+    const IndexValue& index_value, const ShortenKeys shorten_keys) {
   DCHECK(!current_level_block_.is_ready)
       << "Expected to first flush already complete index block";
   EnsureCurrentLevelIndexBuilderCreated();
 
   block_handle_encoding_.clear();
-  block_handle.AppendEncodedTo(&block_handle_encoding_);
+  index_value.EncodeTo(&block_handle_encoding_);
+
+  // Values pointing to index blocks carry a count when write_cumulative_index_entry_counts is on;
+  // values pointing to data blocks don't, and each is one bottom-level entry.
+  const auto& count = index_value.cumulative_entry_count;
+  cumulative_entry_count_ = count ? *count : cumulative_entry_count_ + 1;
 
   current_level_index_block_builder_->AddIndexEntry(
       last_key_in_current_block, first_key_in_next_block, block_handle_encoding_, shorten_keys);
@@ -182,6 +187,7 @@ void MultiLevelIndexBuilder::AddIndexEntry(
     if (current_level_block_.has_next_block) {
       first_key_in_next_block->CopyToBuffer(&current_level_block_.next_block_first_key);
     }
+    current_level_block_.cumulative_entry_count = cumulative_entry_count_;
   }
 }
 
@@ -204,15 +210,19 @@ void MultiLevelIndexBuilder::AddToNextLevelIfReady(
   DCHECK_ONLY_NOTNULL(block_info);
   if (block_info->is_ready) {
     DCHECK_ONLY_NOTNULL(next_level_index_builder_.get());
+    IndexValue index_value(block_handle);
+    if (table_opt_.write_cumulative_index_entry_counts) {
+      index_value.cumulative_entry_count = block_info->cumulative_entry_count;
+    }
     // We don't need to shorten keys in next level index builder, since we already did that when
     // added this entry at previous levels.
     if (block_info->has_next_block) {
       Slice key_slice(block_info->next_block_first_key);
       next_level_index_builder_->AddIndexEntry(
-          &block_info->last_key, &key_slice, block_handle, ShortenKeys::kFalse);
+          &block_info->last_key, &key_slice, index_value, ShortenKeys::kFalse);
     } else {
       next_level_index_builder_->AddIndexEntry(
-          &block_info->last_key, nullptr, block_handle, ShortenKeys::kFalse);
+          &block_info->last_key, nullptr, index_value, ShortenKeys::kFalse);
       DCHECK(next_level_index_builder_->ShouldFlush())
           << "Expected to request flushing of last block at next index level";
     }

@@ -140,6 +140,8 @@ class DBImpl : public DB {
   std::unique_ptr<DataBlockAwareIndexIterator> NewDataBlockAwareIndexIterator(
       const ReadOptions& options, SkipLastEntry skip_last_index_entry,
       ColumnFamilyHandle* column_family) override;
+  yb::Result<std::unique_ptr<SstFileIndexIterators>> NewSstFileIndexIterators(
+      const ReadOptions& options) override;
   virtual Status NewIterators(
       const ReadOptions& options,
       const std::vector<ColumnFamilyHandle*>& column_families,

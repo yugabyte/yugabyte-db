@@ -35,6 +35,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <random>
+#include <unordered_set>
 
 #include "yb/util/random.h"
 
@@ -127,6 +128,27 @@ std::mt19937_64& ThreadLocalRandom() {
 
 bool RandomUniformBool(std::mt19937_64* rng) {
   return RandomUniformInt(0, 1, rng) != 0;
+}
+
+std::vector<uint64_t> FloydSample(uint64_t n, uint64_t k, std::mt19937_64* rng) {
+  k = std::min(k, n);
+  // For j = n - k, ..., n - 1, add a uniform pick from [0, j], or j if the pick is already taken.
+  // By induction, after step j the set is a uniform subset of [0, j].
+  std::unordered_set<uint64_t> chosen;
+  chosen.reserve(k);
+  std::vector<uint64_t> result;
+  result.reserve(k);
+  for (auto j = n - k; j < n; ++j) {
+    auto value = RandomUniformInt<uint64_t>(0, j, rng);
+    if (!chosen.insert(value).second) {
+      // j is not in the set yet: earlier steps only added values below j.
+      value = j;
+      chosen.insert(value);
+    }
+    result.push_back(value);
+  }
+  std::sort(result.begin(), result.end());
+  return result;
 }
 
 bool IsRandomInitializingInThisThread() {

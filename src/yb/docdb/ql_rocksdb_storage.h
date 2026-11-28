@@ -20,6 +20,8 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/ql_storage_interface.h"
 
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -99,6 +101,12 @@ class QLRocksDBStorage : public YQLStorageIf {
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
+
+  // GetSampleBlocks() by walking every index entry within the bounds.
+  Result<SampleBlocksReservoir> WalkSampleBlocks(
+      const rocksdb::ReadOptions& read_options, DocDbBlocksSamplingMethod blocks_sampling_method,
+      Slice lower_bound_key, Slice upper_bound_key, size_t num_blocks_for_sample,
+      BlocksSamplingState* state) const;
 
   const std::string log_prefix_;
   const DocDB doc_db_;

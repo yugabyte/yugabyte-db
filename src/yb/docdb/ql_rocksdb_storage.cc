@@ -13,6 +13,7 @@
 
 #include "yb/docdb/ql_rocksdb_storage.h"
 
+#include <cmath>
 #include <utility>
 
 #include "yb/common/ql_protocol.messages.h"
@@ -26,13 +27,19 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/sample_block_resolver.h"
 
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/statistics.h"
 
 #include "yb/qlexpr/ql_expr_util.h"
 
+#include "yb/util/flags.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
+DECLARE_bool(db_write_cumulative_index_entry_counts);
 
 namespace yb::docdb {
 
@@ -297,17 +304,6 @@ Result<Slice> ExtractDocKey(Slice encoded_key) {
   const auto doc_key_size = VERIFY_RESULT(
       dockv::DocKey::EncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey));
   return Slice(encoded_key.data(), doc_key_size);
-}
-
-// If encoded_key_prefix contains full encoded doc key - extract encoded doc key and return it.
-// Otherwise, return encoded_key itself.
-Slice TryExtractDocKey(Slice encoded_key) {
-  const auto doc_key_size =
-      dockv::DocKey::TryGetEncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey);
-  if (doc_key_size) {
-    return Slice(encoded_key.data(), *doc_key_size);
-  }
-  return encoded_key;
 }
 
 class SampleBlocksIterator {
@@ -640,6 +636,70 @@ void PutSampleBlockToReservoir(const std::pair<Slice, Slice> sample_block, size_
   (*reservoir)[index] = std::move(adjusted_sample_block_bounds);
 }
 
+// This tablet's picks in a uniform sample over earlier tablets' blocks and this tablet's items.
+std::vector<uint64_t> PickPositions(
+    uint64_t num_blocks_processed, uint64_t num_items, size_t num_blocks_for_sample) {
+  auto picks = FloydSample(
+      num_blocks_processed + num_items, num_blocks_for_sample, /* rng = */ nullptr);
+  const auto first_in_tablet = std::lower_bound(picks.begin(), picks.end(), num_blocks_processed);
+  std::vector<uint64_t> positions;
+  positions.reserve(picks.end() - first_in_tablet);
+  for (auto it = first_in_tablet; it != picks.end(); ++it) {
+    positions.push_back(*it - num_blocks_processed);
+  }
+  return positions;
+}
+
+// Together with PickPositions(), keeps the reservoir a uniform sample of every block so far, as
+// long as no pick is dropped.
+YQLStorageIf::SampleBlocksReservoir PlaceInReservoir(
+    std::vector<SampleBlock> blocks, size_t num_blocks_for_sample,
+    YQLStorageIf::BlocksSamplingState* state) {
+  YQLStorageIf::SampleBlocksReservoir reservoir(num_blocks_for_sample);
+  const auto num_collected = state->num_blocks_collected;
+  const auto num_free = num_blocks_for_sample - std::min(num_collected, num_blocks_for_sample);
+  const auto num_filled = std::min(blocks.size(), num_free);
+  auto next_block = blocks.begin();
+  for (size_t slot = num_collected; slot != num_collected + num_filled; ++slot) {
+    reservoir[slot] = std::move(*next_block++);
+  }
+  const auto num_evicted = static_cast<uint64_t>(blocks.end() - next_block);
+  for (const auto slot : FloydSample(num_collected, num_evicted, /* rng = */ nullptr)) {
+    reservoir[slot] = std::move(*next_block++);
+  }
+  state->num_blocks_collected += num_filled;
+  return reservoir;
+}
+
+// Picks sample blocks by position. A dropped pick isn't replaced. Leaves `state` alone on error, so
+// the caller can fall back to the walk.
+Result<YQLStorageIf::SampleBlocksReservoir> GetSampleBlocksByPosition(
+    rocksdb::DB* db, const rocksdb::ReadOptions& read_options, const KeyBounds& bounds,
+    size_t num_blocks_for_sample, YQLStorageIf::BlocksSamplingState* state) {
+  auto sst_files = VERIFY_RESULT(db->NewSstFileIndexIterators(read_options));
+  SampleBlockResolver resolver(sst_files.get(), bounds);
+  RETURN_NOT_OK(resolver.Init());
+  const auto positions =
+      PickPositions(state->num_blocks_processed, resolver.num_items(), num_blocks_for_sample);
+  std::vector<SampleBlock> blocks;
+  blocks.reserve(positions.size());
+  for (const auto position : positions) {
+    auto block = VERIFY_RESULT(resolver.Resolve(position));
+    if (block) {
+      blocks.push_back(std::move(*block));
+    }
+  }
+  // pggate scales its row estimate by num_blocks_processed / num_blocks_collected, so count the
+  // blocks the walk would have seen: the items less the share of picks dropped.
+  const auto num_blocks = positions.empty()
+      ? resolver.num_items()
+      : static_cast<uint64_t>(
+            std::llround(1.0 * resolver.num_items() * blocks.size() / positions.size()));
+  auto reservoir = PlaceInReservoir(std::move(blocks), num_blocks_for_sample, state);
+  state->num_blocks_processed += num_blocks;
+  return reservoir;
+}
+
 } // namespace
 
 Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
@@ -707,6 +767,39 @@ Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
     read_options.statistics = scoped_stats->docdb_stats.RegularDBStatistics();
   }
 
+  // The counts that db_write_cumulative_index_entry_counts writes let ANALYZE pick blocks by
+  // position instead of walking the whole index.
+  if (FLAGS_db_write_cumulative_index_entry_counts &&
+      blocks_sampling_method == DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3) {
+    auto blocks = GetSampleBlocksByPosition(
+        doc_db_.regular, read_options,
+        KeyBounds(partition_lower_bound_key, partition_upper_bound_key), num_blocks_for_sample,
+        state);
+    if (blocks.ok()) {
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << "Picked sample blocks by position, state: "
+                                     << state->ToString();
+      return blocks;
+    }
+    // NotSupported is expected, for example for an SST file written without counts. Other errors,
+    // such as Corruption in an SST index, still fall back but are worth a warning.
+    if (blocks.status().IsNotSupported()) {
+      LOG_WITH_PREFIX_AND_FUNC(INFO)
+          << "Walking the index, can't pick sample blocks by position: " << blocks.status();
+    } else {
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Walking the index, failed to pick sample blocks by position: " << blocks.status();
+    }
+  }
+
+  return WalkSampleBlocks(
+      read_options, blocks_sampling_method, partition_lower_bound_key, partition_upper_bound_key,
+      num_blocks_for_sample, state);
+}
+
+Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::WalkSampleBlocks(
+    const rocksdb::ReadOptions& read_options, DocDbBlocksSamplingMethod blocks_sampling_method,
+    Slice partition_lower_bound_key, Slice partition_upper_bound_key,
+    size_t num_blocks_for_sample, BlocksSamplingState* state) const {
   // An index block contains one entry per data block, where the key is a string >= last key in that
   // data block and < the first key in the successive data block. The value is the BlockHandle
   // (file offset and length) for the data block.
@@ -715,9 +808,7 @@ Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
   auto index_iter =
       doc_db_.regular->NewDataBlockAwareIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
 
-  Slice table_rows_start = partition_lower_bound_key.empty()
-                               ? Slice(&dockv::kMinRegularDbTableRowFirstByte, 1)
-                               : partition_lower_bound_key;
+  const auto table_rows_start = TableRowsStart(partition_lower_bound_key);
   index_iter->Seek(table_rows_start);
   if (index_iter->Valid() && index_iter->key() == table_rows_start) {
     // Index iterator points to data block with keys <= table_rows_start, skip it.

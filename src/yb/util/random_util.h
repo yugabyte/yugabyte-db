@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <random>
+#include <vector>
 
 #include "yb/util/logging.h"  // For CHECK
 
@@ -88,6 +89,11 @@ Int RandomUniformInt(Int min, Int max, std::mt19937_64* rng = nullptr) {
 }
 
 bool RandomUniformBool(std::mt19937_64* rng = nullptr);
+
+// Returns min(k, n) distinct values drawn uniformly from [0, n), sorted. Floyd's algorithm
+// takes k random numbers and O(k) memory, however large n is. Pass nullptr to use
+// ThreadLocalRandom().
+std::vector<uint64_t> FloydSample(uint64_t n, uint64_t k, std::mt19937_64* rng);
 
 template <class Int>
 std::vector<Int> RandomUniformVector(Int min, Int max, uint32_t size,

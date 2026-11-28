@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -62,6 +63,7 @@
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
+#include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
@@ -73,6 +75,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 
 using std::unique_ptr;
@@ -3197,6 +3200,57 @@ TEST_F(HarnessTest, SimpleSpecialKey) {
   }
 }
 
+TEST_F(HarnessTest, IndexValueEncoding) {
+  constexpr uint64_t kOffset = 1234;
+  constexpr uint64_t kSize = 5678;
+  // Fits in one varint byte, so dropping the value's last byte leaves the tag without its varint.
+  constexpr uint64_t kCumulativeEntryCount = 42;
+  // A tag IndexValue::DecodeFrom doesn't know.
+  constexpr char kUnknownTag = 2;
+
+  const BlockHandle handle(kOffset, kSize);
+  std::string handle_encoded;
+  handle.AppendEncodedTo(&handle_encoded);
+
+  const IndexValue plain(handle);
+  std::string plain_value;
+  plain.EncodeTo(&plain_value);
+  ASSERT_EQ(plain_value, handle_encoded);
+
+  const IndexValue with_count(handle, kCumulativeEntryCount);
+  std::string with_count_value;
+  with_count.EncodeTo(&with_count_value);
+
+  IndexValue decoded;
+  Slice input(with_count_value);
+  ASSERT_OK(decoded.DecodeFrom(&input));
+  ASSERT_TRUE(input.empty());
+  ASSERT_TRUE(decoded.handle == handle);
+  ASSERT_EQ(decoded.cumulative_entry_count, kCumulativeEntryCount);
+
+  // Older binaries read index values with BlockHandle::DecodeFrom, which leaves the count unread.
+  BlockHandle old_decoded;
+  input = Slice(with_count_value);
+  ASSERT_OK(old_decoded.DecodeFrom(&input));
+  ASSERT_TRUE(old_decoded == handle);
+
+  input = Slice(plain_value);
+  ASSERT_OK(decoded.DecodeFrom(&input));
+  ASSERT_TRUE(decoded.handle == handle);
+  ASSERT_FALSE(decoded.cumulative_entry_count);
+
+  const auto unknown_tag_value = plain_value + kUnknownTag;
+  input = Slice(unknown_tag_value);
+  ASSERT_OK(decoded.DecodeFrom(&input));
+  ASSERT_TRUE(decoded.handle == handle);
+  ASSERT_FALSE(decoded.cumulative_entry_count);
+  ASSERT_EQ(input.size(), 1U);
+
+  // Tag without its varint.
+  input = Slice(with_count_value.data(), with_count_value.size() - 1);
+  ASSERT_TRUE(decoded.DecodeFrom(&input).IsCorruption());
+}
+
 TEST_F(HarnessTest, FooterTests) {
   {
     // upconvert legacy block based
@@ -3983,6 +4037,616 @@ TEST_F(BlockBasedTableTest, SplitKeyTwoLevelIndex) {
   // 66% when 3 out of 8 entries qualify in the top-level block.
   // 50% when 4 out of 8 entries qualify in the top-level block.
   // 60% when 5 out of 8 entries qualify in the top-level block.
+}
+
+namespace {
+
+YB_STRONGLY_TYPED_BOOL(SplitDataFile);
+YB_STRONGLY_TYPED_BOOL(WriteCounts);
+
+// Returns the base file, which holds the index. With `split`, data blocks go to a separate data
+// file, as DocDB writes them; TableConstructor only builds single-file SSTs.
+yb::Result<std::string> BuildTestTable(
+    const ImmutableCFOptions& ioptions, const InternalKeyComparatorPtr& icmp,
+    const stl_wrappers::KVMap& kvs, SplitDataFile split) {
+  std::unique_ptr<WritableFileWriter> writer(test::GetWritableFileWriter(new test::StringSink()));
+  std::unique_ptr<WritableFileWriter> data_writer;
+  if (split) {
+    data_writer.reset(test::GetWritableFileWriter(new test::StringSink()));
+  }
+  IntTblPropCollectorFactories factories;
+  auto builder = ioptions.table_factory->NewTableBuilder(
+      TableBuilderOptions(ioptions, icmp, factories, kNoCompression, CompressionOptions(),
+                          /* skip_filters */ false),
+      TablePropertiesCollectorFactory::Context::kUnknownColumnFamily, writer.get(),
+      data_writer.get());
+  for (const auto& kv : kvs) {
+    builder->Add(kv.first, kv.second);
+  }
+  RETURN_NOT_OK(builder->Finish());
+  RETURN_NOT_OK(writer->Flush());
+  if (data_writer) {
+    RETURN_NOT_OK(data_writer->Flush());
+  }
+  return static_cast<test::StringSink*>(writer->writable_file())->contents();
+}
+
+// Returns the number of bottom-level entries under `handle`, checking the count in every
+// upper-level entry, or its absence when `expect_counts` is false.
+yb::Result<uint64_t> CheckCumulativeEntryCounts(
+    RandomAccessFileReader* file, const Footer& footer, const BlockHandle& handle,
+    int levels_below, uint64_t entries_before, WriteCounts expect_counts, const Comparator* cmp) {
+  BlockContents block_contents;
+  RETURN_NOT_OK(ReadBlockContents(file, footer, ReadOptions(), handle, &block_contents,
+                                  Env::Default(), yb::MemTrackerPtr(), /* do_uncompress */ true));
+  Block block(std::move(block_contents));
+  std::unique_ptr<BlockIter> it(block.NewIndexBlockIterator(cmp));
+  uint64_t total = 0;
+  for (it->SeekToFirst(); it->Valid(); it->Next()) {
+    Slice value = it->value();
+    IndexValue child;
+    RETURN_NOT_OK(child.DecodeFrom(&value));
+    EXPECT_TRUE(value.empty());
+    if (levels_below == 0) {
+      EXPECT_FALSE(child.cumulative_entry_count);
+      ++total;
+      continue;
+    }
+    total += VERIFY_RESULT(CheckCumulativeEntryCounts(
+        file, footer, child.handle, levels_below - 1, entries_before + total, expect_counts, cmp));
+    if (expect_counts) {
+      EXPECT_EQ(child.cumulative_entry_count, entries_before + total);
+    } else {
+      EXPECT_FALSE(child.cumulative_entry_count);
+    }
+  }
+  RETURN_NOT_OK(it->status());
+  return total;
+}
+
+// A few keys give a single-level index, which has no upper-level entries.
+constexpr int kSingleLevelNumKeys = 2;
+// With the block sizes in BuildAndOpenTestTable, enough keys for at least kMinMultiLevelNumLevels
+// index levels.
+constexpr int kMultiLevelNumKeys = 3000;
+constexpr int kMinMultiLevelNumLevels = 3;
+
+struct TestTable {
+  stl_wrappers::KVMap kvs;
+  Options options;
+  std::unique_ptr<ImmutableCFOptions> ioptions;
+  InternalKeyComparatorPtr icmp = std::make_shared<InternalKeyComparator>(BytewiseComparator());
+  std::string contents;
+  std::unique_ptr<TableReader> reader;
+};
+
+// Opens a reader on `table->contents`, the base file.
+void OpenTestTable(TestTable* table) {
+  table->reader.reset();
+  ASSERT_OK(table->ioptions->table_factory->NewTableReader(
+      TableReaderOptions(*table->ioptions, EnvOptions(), table->icmp),
+      std::unique_ptr<RandomAccessFileReader>(
+          test::GetRandomAccessFileReader(new test::StringSource(table->contents))),
+      table->contents.size(), &table->reader));
+}
+
+// Builds an SST from `num_keys` keys, with blocks small enough for a multi-level index, and opens
+// a reader on its base file.
+void BuildAndOpenTestTable(
+    int num_keys, WriteCounts write_counts, SplitDataFile split, int index_block_restart_interval,
+    TestTable* table) {
+  // Added to the key index so every key has the same number of digits and sorts numerically.
+  constexpr int kFirstKeySuffix = 100000;
+  constexpr int kValueSize = 20;
+  constexpr int kNumValueChars = 26;
+  // Tiny blocks, so a few thousand keys give many data blocks and several index levels.
+  constexpr size_t kBlockSize = 64;
+  constexpr int kMinKeysPerIndexBlock = 2;
+  for (int i = 0; i < num_keys; ++i) {
+    std::string key;
+    AppendInternalKey(
+        &key, ParsedInternalKey(yb::Format("key$0", kFirstKeySuffix + i), 1, kTypeValue));
+    table->kvs[key] = std::string(kValueSize, 'a' + i % kNumValueChars);
+  }
+  BlockBasedTableOptions table_options;
+  table_options.index_type = IndexType::kMultiLevelBinarySearch;
+  table_options.block_size = kBlockSize;
+  table_options.index_block_size = kBlockSize;
+  table_options.min_keys_per_index_block = kMinKeysPerIndexBlock;
+  table_options.index_block_restart_interval = index_block_restart_interval;
+  table_options.write_cumulative_index_entry_counts = write_counts;
+  table->options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+  table->options.compression = kNoCompression;
+  table->ioptions = std::make_unique<ImmutableCFOptions>(table->options);
+  table->contents = ASSERT_RESULT(BuildTestTable(*table->ioptions, table->icmp, table->kvs, split));
+  ASSERT_NO_FATALS(OpenTestTable(table));
+}
+
+// Returns the values of the entries in the index block at `handle`.
+yb::Result<std::vector<std::string>> ReadIndexBlockValues(
+    RandomAccessFileReader* file, const Footer& footer, const BlockHandle& handle,
+    const Comparator* cmp) {
+  BlockContents block_contents;
+  RETURN_NOT_OK(ReadBlockContents(file, footer, ReadOptions(), handle, &block_contents,
+                                  Env::Default(), yb::MemTrackerPtr(), /* do_uncompress */ true));
+  Block block(std::move(block_contents));
+  std::unique_ptr<BlockIter> it(block.NewIndexBlockIterator(cmp));
+  std::vector<std::string> values;
+  for (it->SeekToFirst(); it->Valid(); it->Next()) {
+    values.push_back(it->value().ToBuffer());
+  }
+  RETURN_NOT_OK(it->status());
+  return values;
+}
+
+// In the first index block whose entries point to bottom-level index blocks, sets the cumulative
+// entry count of entry `entry_index` to `new_count(entries_before, count)`, where entries_before
+// is the previous entry's count, fixes the block's checksum and reopens the reader. The new count
+// must take as many bytes as the old one, so that the block keeps its layout. Call it before
+// reading through the reader: the reopened reader shares the table factory's block cache and the
+// file's cache key prefix, so it would get blocks cached from before the change.
+void SetLeafParentCount(
+    TestTable* table, size_t entry_index,
+    const std::function<uint64_t(uint64_t, uint64_t)>& new_count,
+    uint64_t* entries_before) {
+  auto& contents = table->contents;
+  std::unique_ptr<RandomAccessFileReader> file(
+      test::GetRandomAccessFileReader(new test::StringSource(contents)));
+  Footer footer;
+  ASSERT_OK(ReadFooterFromFile(file.get(), contents.size(), &footer));
+  ASSERT_EQ(footer.checksum(), kCRC32c);
+
+  // Bottom-level entries, which point to data blocks, have no counts.
+  auto handle = footer.index_handle();
+  std::vector<std::string> values;
+  for (;;) {
+    values = ASSERT_RESULT(ReadIndexBlockValues(file.get(), footer, handle, table->icmp.get()));
+    ASSERT_GT(values.size(), entry_index);
+    IndexValue first_child;
+    Slice input(values[0]);
+    ASSERT_OK(first_child.DecodeFrom(&input));
+    ASSERT_TRUE(first_child.cumulative_entry_count);
+    const auto grandchild_values = ASSERT_RESULT(
+        ReadIndexBlockValues(file.get(), footer, first_child.handle, table->icmp.get()));
+    ASSERT_FALSE(grandchild_values.empty());
+    IndexValue grandchild;
+    input = Slice(grandchild_values[0]);
+    ASSERT_OK(grandchild.DecodeFrom(&input));
+    if (!grandchild.cumulative_entry_count) {
+      break;
+    }
+    handle = first_child.handle;
+  }
+
+  uint64_t before = 0;
+  if (entry_index > 0) {
+    IndexValue previous;
+    Slice input(values[entry_index - 1]);
+    ASSERT_OK(previous.DecodeFrom(&input));
+    before = *previous.cumulative_entry_count;
+  }
+  if (entries_before) {
+    *entries_before = before;
+  }
+  const auto& old_value = values[entry_index];
+  IndexValue index_value;
+  Slice input(old_value);
+  ASSERT_OK(index_value.DecodeFrom(&input));
+  index_value.cumulative_entry_count =
+      new_count(before, *index_value.cumulative_entry_count);
+  std::string new_value;
+  index_value.EncodeTo(&new_value);
+  ASSERT_EQ(new_value.size(), old_value.size());
+
+  const auto block_end = handle.offset() + handle.size();
+  const auto pos = contents.find(old_value, handle.offset());
+  ASSERT_NE(pos, std::string::npos);
+  ASSERT_LE(pos + old_value.size(), block_end);
+  contents.replace(pos, old_value.size(), new_value);
+  // The trailer is the block type, then the masked CRC32C of the block and its type.
+  auto crc = crc32c::Value(contents.data() + handle.offset(), handle.size());
+  crc = crc32c::Extend(crc, contents.data() + block_end, 1);
+  EncodeFixed32(contents.data() + block_end + 1, crc32c::Mask(crc));
+  ASSERT_NO_FATALS(OpenTestTable(table));
+  file.reset(test::GetRandomAccessFileReader(new test::StringSource(contents)));
+  const auto new_values =
+      ASSERT_RESULT(ReadIndexBlockValues(file.get(), footer, handle, table->icmp.get()));
+  ASSERT_GT(new_values.size(), entry_index);
+  ASSERT_EQ(new_values[entry_index], new_value);
+}
+
+void TestCumulativeEntryCounts(int num_keys, WriteCounts write_counts, SplitDataFile split) {
+  TestTable table;
+  ASSERT_NO_FATALS(BuildAndOpenTestTable(
+      num_keys, write_counts, split, /* index_block_restart_interval */ 1, &table));
+  const auto& contents = table.contents;
+
+  std::unique_ptr<RandomAccessFileReader> file(
+      test::GetRandomAccessFileReader(new test::StringSource(contents)));
+  TableProperties* props_ptr = nullptr;
+  ASSERT_OK(ReadTableProperties(file.get(), contents.size(), kBlockBasedTableMagicNumber,
+                                Env::Default(), nullptr, &props_ptr));
+  std::unique_ptr<TableProperties> props(props_ptr);
+  const auto& user_props = props->user_collected_properties;
+  const auto levels_pos = user_props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
+  ASSERT_NE(levels_pos, user_props.end());
+  const int num_levels = DecodeFixed32(levels_pos->second.c_str());
+  if (num_keys == kSingleLevelNumKeys) {
+    ASSERT_EQ(num_levels, 1);
+  } else {
+    ASSERT_GE(num_levels, kMinMultiLevelNumLevels);
+  }
+
+  Footer footer;
+  ASSERT_OK(ReadFooterFromFile(file.get(), contents.size(), &footer));
+  const auto num_entries = ASSERT_RESULT(CheckCumulativeEntryCounts(
+      file.get(), footer, footer.index_handle(), num_levels - 1, /* entries_before */ 0,
+      write_counts, table.icmp.get()));
+  ASSERT_EQ(num_entries, props->num_data_blocks);
+
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+      table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+  // Without counts, only a multi-level index can't be read by position: in a single-level index, a
+  // position is a restart index of its only block.
+  if (num_levels > 1 && !write_counts) {
+    const auto result = iter->SeekToPosition(0);
+    ASSERT_TRUE(!result.ok() && result.status().IsNotSupported());
+    const auto position = iter->PositionOf(table.kvs.begin()->first);
+    ASSERT_TRUE(!position.ok() && position.status().IsNotSupported()) << position.status();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_OK(iter->status());
+    return;
+  }
+
+  std::vector<std::pair<std::string, std::string>> entries;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    entries.emplace_back(iter->key().ToBuffer(), iter->value().ToBuffer());
+  }
+  ASSERT_OK(iter->status());
+  ASSERT_EQ(entries.size(), props->num_data_blocks);
+
+  // Backwards, so most seeks move to an earlier bottom-level block; Next() and Prev() check the
+  // upper levels followed.
+  const KeyValueEntry& past_end = ASSERT_RESULT(iter->SeekToPosition(entries.size()));
+  ASSERT_FALSE(past_end.Valid());
+  for (auto position = entries.size(); position-- > 0;) {
+    const KeyValueEntry& entry = ASSERT_RESULT(iter->SeekToPosition(position));
+    ASSERT_TRUE(entry.Valid());
+    ASSERT_EQ(entry.key.ToBuffer(), entries[position].first) << "position " << position;
+    ASSERT_EQ(entry.value.ToBuffer(), entries[position].second) << "position " << position;
+    iter->Next();
+    ASSERT_OK(iter->status());
+    if (position + 1 < entries.size()) {
+      ASSERT_EQ(iter->key().ToBuffer(), entries[position + 1].first) << "position " << position;
+    } else {
+      ASSERT_FALSE(iter->Valid());
+    }
+    const KeyValueEntry& entry_again = ASSERT_RESULT(iter->SeekToPosition(position));
+    ASSERT_EQ(entry_again.key.ToBuffer(), entries[position].first) << "position " << position;
+    iter->Prev();
+    ASSERT_OK(iter->status());
+    if (position > 0) {
+      ASSERT_EQ(iter->key().ToBuffer(), entries[position - 1].first) << "position " << position;
+    } else {
+      ASSERT_FALSE(iter->Valid());
+    }
+  }
+
+  const auto make_key = [](const char* user_key) {
+    std::string key;
+    AppendInternalKey(&key, ParsedInternalKey(user_key, 1, kTypeValue));
+    return key;
+  };
+  // The past-the-end key goes first, so every later call starts from the state the past-the-end
+  // path leaves behind. Data keys mostly fall between index keys.
+  std::vector<std::string> targets = {make_key("kez")};
+  for (const auto& entry : entries) {
+    targets.push_back(entry.first);
+  }
+  for (const auto& kv : table.kvs) {
+    targets.push_back(kv.first);
+  }
+  targets.push_back(make_key("a"));
+  const auto& icmp = *table.icmp;
+  for (const auto& target : targets) {
+    SCOPED_TRACE("target " + Slice(target).ToDebugHexString());
+    const auto expected = static_cast<uint64_t>(
+        std::lower_bound(
+            entries.begin(), entries.end(), target,
+            [&icmp](const auto& entry, const std::string& key) {
+              return icmp.Compare(entry.first, key) < 0;
+            }) -
+        entries.begin());
+    const auto position = ASSERT_RESULT(iter->PositionOf(target));
+    ASSERT_EQ(position, expected);
+    if (expected == entries.size()) {
+      ASSERT_FALSE(iter->Valid());
+      continue;
+    }
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToBuffer(), entries[expected].first);
+    // PositionOf steps upper levels back and forward again; Next() and Prev() go wrong if one was
+    // left elsewhere.
+    iter->Next();
+    ASSERT_OK(iter->status());
+    if (expected + 1 < entries.size()) {
+      ASSERT_EQ(iter->key().ToBuffer(), entries[expected + 1].first);
+    } else {
+      ASSERT_FALSE(iter->Valid());
+    }
+    const auto position_again = ASSERT_RESULT(iter->PositionOf(target));
+    ASSERT_EQ(position_again, expected);
+    iter->Prev();
+    ASSERT_OK(iter->status());
+    if (expected > 0) {
+      ASSERT_EQ(iter->key().ToBuffer(), entries[expected - 1].first);
+    } else {
+      ASSERT_FALSE(iter->Valid());
+    }
+  }
+}
+
+}  // namespace
+
+TEST_F(GeneralTableTest, SeekToPositionRestartInterval) {
+  constexpr int kRestartInterval = 2;
+  // Any position inside the file.
+  constexpr uint64_t kPosition = 1;
+  TestTable table;
+  ASSERT_NO_FATALS(BuildAndOpenTestTable(
+      kMultiLevelNumKeys, WriteCounts::kTrue, SplitDataFile::kTrue, kRestartInterval, &table));
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+      table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+  const auto result = iter->SeekToPosition(kPosition);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsNotSupported()) << result.status();
+  ASSERT_STR_CONTAINS(result.status().ToString(), "index_block_restart_interval");
+  ASSERT_FALSE(iter->Valid());
+  ASSERT_OK(iter->status());
+
+  // The iterator still works for Seek after NotSupported.
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> expected(
+      table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+  expected->SeekToFirst();
+  ASSERT_TRUE(expected->Valid());
+  iter->Seek(table.kvs.begin()->first);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ(iter->key().ToBuffer(), expected->key().ToBuffer());
+}
+
+// Bottom-level blocks whose entries share restart points must give NotSupported, never Corruption,
+// whatever the interval and block size.
+TEST_F(GeneralTableTest, SeekToPositionRestartIntervalShapes) {
+  // Even and odd intervals, and one larger than most bottom-level blocks, so some blocks have a
+  // short last interval and some have a single restart point.
+  constexpr int kRestartIntervals[] = {2, 3, 4, 7, 16};
+  for (int restart_interval : kRestartIntervals) {
+    SCOPED_TRACE(yb::Format("restart_interval: $0", restart_interval));
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        kMultiLevelNumKeys, WriteCounts::kTrue, SplitDataFile::kTrue, restart_interval, &table));
+    std::vector<std::string> keys;
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      keys.push_back(iter->key().ToBuffer());
+    }
+    ASSERT_OK(iter->status());
+
+    bool saw_not_supported = false;
+    bool saw_position_of_not_supported = false;
+    for (size_t position = 0; position < keys.size(); ++position) {
+      const auto result = iter->SeekToPosition(position);
+      if (result.ok()) {
+        ASSERT_TRUE(result->Valid());
+        ASSERT_EQ(result->key.ToBuffer(), keys[position]) << "position " << position;
+      } else {
+        ASSERT_TRUE(result.status().IsNotSupported())
+            << result.status() << ", position " << position;
+        ASSERT_FALSE(iter->Valid());
+        saw_not_supported = true;
+      }
+
+      const auto position_of = iter->PositionOf(keys[position]);
+      if (position_of.ok()) {
+        ASSERT_EQ(*position_of, position);
+      } else {
+        ASSERT_TRUE(position_of.status().IsNotSupported())
+            << position_of.status() << ", position " << position;
+        saw_position_of_not_supported = true;
+      }
+      ASSERT_OK(iter->status());
+      ASSERT_TRUE(iter->Valid());
+      ASSERT_EQ(iter->key().ToBuffer(), keys[position]) << "position " << position;
+    }
+    ASSERT_TRUE(saw_not_supported);
+    ASSERT_TRUE(saw_position_of_not_supported);
+  }
+}
+
+// An upper-level count that doesn't match the bottom-level block under it is Corruption from both
+// SeekToPosition and PositionOf, and status() keeps reporting it.
+TEST_F(GeneralTableTest, CumulativeEntryCountMismatch) {
+  {
+    SCOPED_TRACE("Count below the number of entries in the block");
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        kMultiLevelNumKeys, WriteCounts::kTrue, SplitDataFile::kFalse,
+        /* index_block_restart_interval */ 1, &table));
+    ASSERT_NO_FATALS(SetLeafParentCount(
+        &table, /* entry_index */ 0,
+        [](uint64_t /* entries_before */, uint64_t count) { return count - 1; },
+        /* entries_before = */ nullptr));
+
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const auto result = iter->SeekToPosition(0);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+
+    iter.reset(table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const auto position = iter->PositionOf(table.kvs.begin()->first);
+    ASSERT_NOK(position);
+    ASSERT_TRUE(position.status().IsCorruption()) << position.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+  }
+  {
+    // Fewer restart points than entries would also come from a restart interval above 1, which is
+    // NotSupported, but here every entry is a restart point.
+    SCOPED_TRACE("Count above the number of entries in the block");
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        kMultiLevelNumKeys, WriteCounts::kTrue, SplitDataFile::kFalse,
+        /* index_block_restart_interval */ 1, &table));
+    ASSERT_NO_FATALS(SetLeafParentCount(
+        &table, /* entry_index */ 0,
+        [](uint64_t /* entries_before */, uint64_t count) { return count + 1; },
+        /* entries_before = */ nullptr));
+
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const auto result = iter->SeekToPosition(0);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+
+    iter.reset(table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const auto position = iter->PositionOf(table.kvs.begin()->first);
+    ASSERT_NOK(position);
+    ASSERT_TRUE(position.status().IsCorruption()) << position.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+  }
+  {
+    SCOPED_TRACE("Count below the count before the block");
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        kMultiLevelNumKeys, WriteCounts::kTrue, SplitDataFile::kFalse,
+        /* index_block_restart_interval */ 1, &table));
+    uint64_t entries_before = 0;
+    ASSERT_NO_FATALS(SetLeafParentCount(
+        &table, /* entry_index */ 1,
+        [](uint64_t before, uint64_t /* count */) { return before - 1; },
+        &entries_before));
+
+    // Walking the index doesn't read the counts.
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    std::vector<std::string> keys;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      keys.push_back(iter->key().ToBuffer());
+    }
+    ASSERT_OK(iter->status());
+    ASSERT_LT(entries_before, keys.size());
+    const auto position = iter->PositionOf(keys[entries_before]);
+    ASSERT_NOK(position);
+    ASSERT_TRUE(position.status().IsCorruption()) << position.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+  }
+}
+
+TEST_F(GeneralTableTest, CumulativeEntryCounts) {
+  for (int num_keys : {kSingleLevelNumKeys, kMultiLevelNumKeys}) {
+    for (auto write_counts : WriteCounts::kValues) {
+      for (auto split : SplitDataFile::kValues) {
+        SCOPED_TRACE(yb::Format(
+            "num_keys: $0, write_counts: $1, split: $2", num_keys, write_counts.get(),
+            split.get()));
+        ASSERT_NO_FATALS(TestCumulativeEntryCounts(num_keys, write_counts, split));
+      }
+    }
+  }
+}
+
+// A single-level index supports positions without counts, as long as every entry is a restart
+// point.
+TEST_F(GeneralTableTest, SingleLevelIndexPositions) {
+  // Few enough keys for a single-level index, with more than one data block for most of them.
+  constexpr int kMaxNumKeys = 12;
+  constexpr int kRestartIntervals[] = {1, 2};
+  // Keyed by restart interval.
+  std::map<int, int> num_checked_tables;
+  for (int num_keys = 1; num_keys <= kMaxNumKeys; ++num_keys) {
+    for (int restart_interval : kRestartIntervals) {
+      SCOPED_TRACE(yb::Format("num_keys: $0, restart_interval: $1", num_keys, restart_interval));
+      TestTable table;
+      ASSERT_NO_FATALS(BuildAndOpenTestTable(
+          num_keys, WriteCounts::kFalse, SplitDataFile::kTrue, restart_interval, &table));
+      const auto props = table.reader->GetTableProperties();
+      const auto& user_props = props->user_collected_properties;
+      const auto levels_pos = user_props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
+      ASSERT_NE(levels_pos, user_props.end());
+      // A single entry can't show whether entries share restart points.
+      if (DecodeFixed32(levels_pos->second.c_str()) != 1 ||
+          (restart_interval > 1 && props->num_data_blocks < 2)) {
+        continue;
+      }
+      ++num_checked_tables[restart_interval];
+
+      std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+          table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+      std::vector<std::string> keys;
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        keys.push_back(iter->key().ToBuffer());
+      }
+      ASSERT_OK(iter->status());
+      ASSERT_EQ(keys.size(), props->num_data_blocks);
+
+      if (restart_interval > 1) {
+        const auto result = iter->SeekToPosition(1);
+        ASSERT_TRUE(!result.ok() && result.status().IsNotSupported()) << result.status();
+        const auto position = iter->PositionOf(keys.back());
+        ASSERT_TRUE(!position.ok() && position.status().IsNotSupported()) << position.status();
+        // PositionOf leaves the iterator where Seek puts it.
+        ASSERT_TRUE(iter->Valid());
+        ASSERT_EQ(iter->key().ToBuffer(), keys.back());
+        ASSERT_OK(iter->status());
+        continue;
+      }
+
+      const KeyValueEntry& past_end = ASSERT_RESULT(iter->SeekToPosition(keys.size()));
+      ASSERT_FALSE(past_end.Valid());
+      for (size_t position = 0; position < keys.size(); ++position) {
+        const KeyValueEntry& entry = ASSERT_RESULT(iter->SeekToPosition(position));
+        ASSERT_TRUE(entry.Valid());
+        ASSERT_EQ(entry.key.ToBuffer(), keys[position]);
+        ASSERT_EQ(ASSERT_RESULT(iter->PositionOf(keys[position])), position);
+        ASSERT_EQ(iter->key().ToBuffer(), keys[position]);
+      }
+      // Past the last index key, which is a short successor of the last data key (e.g. "l" for
+      // "key100002"), so a key past the last data key alone may still be in the last block.
+      std::string past_last_key;
+      AppendInternalKey(
+          &past_last_key,
+          ParsedInternalKey(ExtractUserKey(keys.back()).ToBuffer() + "z", 1, kTypeValue));
+      ASSERT_EQ(ASSERT_RESULT(iter->PositionOf(past_last_key)), keys.size());
+      ASSERT_FALSE(iter->Valid());
+    }
+  }
+  // Key counts that don't give a single-level index with enough blocks are skipped, so a change to
+  // the block sizes could otherwise skip every table of an interval unnoticed.
+  for (int restart_interval : kRestartIntervals) {
+    ASSERT_GE(num_checked_tables[restart_interval], 1) << "restart_interval: " << restart_interval;
+  }
+
+  // An empty index block still has one restart point, which is not an entry.
+  for (int restart_interval : kRestartIntervals) {
+    SCOPED_TRACE(yb::Format("empty table, restart_interval: $0", restart_interval));
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        /* num_keys */ 0, WriteCounts::kFalse, SplitDataFile::kTrue, restart_interval, &table));
+    ASSERT_EQ(table.reader->GetTableProperties()->num_data_blocks, 0);
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const KeyValueEntry& past_end = ASSERT_RESULT(iter->SeekToPosition(0));
+    ASSERT_FALSE(past_end.Valid());
+    ASSERT_OK(iter->status());
+    std::string key;
+    AppendInternalKey(&key, ParsedInternalKey("key", 1, kTypeValue));
+    ASSERT_EQ(ASSERT_RESULT(iter->PositionOf(key)), 0);
+    ASSERT_FALSE(iter->Valid());
+  }
 }
 
 }  // namespace rocksdb

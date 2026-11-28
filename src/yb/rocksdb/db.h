@@ -62,14 +62,35 @@ struct CompactRangeOptions;
 struct TableProperties;
 struct ExternalSstFileInfo;
 
+class DataBlockAwareIndexInternalIterator;
 class DataBlockAwareIndexIterator;
 class Env;
 class EventListener;
+class InternalKeyComparator;
 class WriteBatch;
 
 YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
 
 using FlushAbility = yb::storage::FlushAbility;
+
+// One index iterator per SST file of a DB version, in the order the merged index iterator adds
+// them. Keeps the version, and so its files, until destroyed.
+class SstFileIndexIterators : public Cleanable {
+ public:
+  struct File {
+    // Unlike NewDataBlockAwareIndexIterator(), doesn't skip the file's last entry.
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> index_iter;
+    // From the table properties. The index has one bottom-level entry per data block.
+    uint64_t num_data_blocks = 0;
+  };
+
+  SstFileIndexIterators();
+  ~SstFileIndexIterators();
+
+  std::vector<File> files;
+  // For the iterators' internal keys.
+  InternalKeyComparatorPtr comparator;
+};
 
 extern const char kDefaultColumnFamilyName[];
 
@@ -378,6 +399,14 @@ class DB {
   std::unique_ptr<DataBlockAwareIndexIterator> NewDataBlockAwareIndexIterator(
       const ReadOptions& options, SkipLastEntry skip_last_index_entry) {
     return NewDataBlockAwareIndexIterator(options, skip_last_index_entry, DefaultColumnFamily());
+  }
+
+  // For the default column family. NotSupported where the DB can't provide them, and for read
+  // options that would make them differ from NewDataBlockAwareIndexIterator(): a read tier other
+  // than kReadAllTier, a managed or tailing iterator, or a file or iterator filter.
+  virtual yb::Result<std::unique_ptr<SstFileIndexIterators>> NewSstFileIndexIterators(
+      const ReadOptions& options) {
+    return STATUS(NotSupported, "NewSstFileIndexIterators() not supported for this DB");
   }
 
   // Returns iterators from a consistent database state across multiple

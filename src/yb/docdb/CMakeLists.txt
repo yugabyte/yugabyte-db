@@ -100,6 +100,7 @@ set(DOCDB_SRCS
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
         rocksdb_writer.cc
+        sample_block_resolver.cc
         scan_choices.cc
         shared_lock_manager.cc
         transaction_dump.cc
@@ -178,6 +179,7 @@ ADD_YB_TEST(pgsql_operation_grouped_aggregate-test)
 ADD_YB_TEST(pgsql_read_request_ybctid_provider-test)
 ADD_YB_TEST(pgsql_read_result-test)
 ADD_YB_TEST(randomized_docdb-test)
+ADD_YB_TEST(sample_block_resolver-test)
 ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)

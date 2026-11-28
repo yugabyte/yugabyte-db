@@ -448,6 +448,11 @@ class Version {
       const ReadOptions& read_options, const EnvOptions& soptions,
       MergeIteratorBuilderType* merge_iter_builder);
 
+  // In AddIndexIterators()'s order. NotSupported for more than one non-empty level, where
+  // AddIndexIterators() fails fatally, so there is nothing to fall back to.
+  yb::Result<std::vector<SstFileIndexIterators::File>> NewSstFileIndexIterators(
+      const ReadOptions& read_options, const EnvOptions& soptions);
+
   // Lookup the value for key.  If found, store it in *val and
   // return OK.  Else return a non-OK status.
   // Uses *operands to store merge_operator operations to apply later.
