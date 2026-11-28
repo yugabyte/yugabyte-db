@@ -1463,6 +1463,17 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	if (server->io.io != NULL)
 		od_io_detach(&server->io);
 
+	/*
+	 * YB: Mark the role's routes inactive if the role was dropped, as
+	 * od_router_close does. A server that went offline before
+	 * ReadyForQuery (for example, the client disconnected while the
+	 * server's IOV still had pending data) is closed below without
+	 * reaching od_backend_ready. This must run before od_route_lock:
+	 * yb_mark_routes_inactive takes the router lock and then every
+	 * route's lock, this route's included.
+	 */
+	yb_apply_dropped_object(server);
+
 	od_route_lock(route);
 
 	client->server = NULL;
