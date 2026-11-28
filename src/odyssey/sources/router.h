@@ -37,6 +37,10 @@ struct od_router {
 
 	/* YB: Atomic counter of claimed backend slots across all routes */
 	od_atomic_u32_t yb_backends_in_use;
+
+	/* YB: Closed backends that still hold a slot until they exit */
+	pthread_mutex_t yb_exiting_backends_lock;
+	od_list_t yb_exiting_backends;
 };
 
 #define CONTROL_CONN_USER "control_connection_user"

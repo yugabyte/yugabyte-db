@@ -10,6 +10,16 @@
 int od_backend_connect(od_server_t *, char *, kiwi_params_t *, od_client_t *);
 int od_backend_connect_cancel(od_server_t *, od_rule_storage_t *, kiwi_key_t *);
 
+typedef struct {
+	int fd;
+	od_list_t link;
+} yb_exiting_backend_t;
+
+void yb_od_backend_close_connection(od_server_t *, bool);
+void yb_hold_backend_slot(od_server_t *);
+int yb_backend_release_slots_of_exited(od_router_t *);
+void yb_backend_free_exiting(od_router_t *);
+
 void od_backend_close_connection(od_server_t *);
 void od_backend_close(od_server_t *);
 void yb_evict_prep_stmt_by_keyhash(od_server_t *, char *, yb_od_hash_64_t);

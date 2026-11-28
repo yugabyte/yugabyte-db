@@ -39,6 +39,8 @@ void od_router_init(od_router_t *router, od_global_t *global)
 	router->router_err_logger = od_err_logger_create_default();
 	router->yb_max_logical_client_version = 0;
 	router->yb_backends_in_use = 0;
+	pthread_mutex_init(&router->yb_exiting_backends_lock, NULL);
+	od_list_init(&router->yb_exiting_backends);
 }
 
 static inline int od_router_immed_close_server_cb(od_server_t *server,
@@ -83,6 +85,8 @@ void od_router_free(od_router_t *router)
 	od_route_pool_free(&router->route_pool);
 	od_rules_free(&router->rules);
 	pthread_mutex_destroy(&router->lock);
+	/* YB */
+	yb_backend_free_exiting(router);
 	od_err_logger_free(router->router_err_logger);
 }
 
@@ -1058,6 +1062,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
 	bool yb_slot_claimed = false;
+	bool yb_eviction_pending = false;
 
 	const char *is_warmup_needed_flag = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE");
 	bool is_warmup_needed = false;
@@ -1256,41 +1261,51 @@ od_router_status_t od_router_attach(od_router_t *router,
 					(uint32_t)instance->config.yb_ysql_max_connections /
 						num_active_routes;
 				od_server_t *idle_server =
-					yb_get_idle_server_to_close(
-						router, route, per_route_quota,
-						connections_in_pool);
+					yb_eviction_pending ?
+						NULL :
+						yb_get_idle_server_to_close(
+							router, route,
+							per_route_quota,
+							connections_in_pool);
 				if (idle_server) {
 					// Close the server and make space for ourselves.
 					od_route_t *idle_route = idle_server->route;
-					/*
-					 * YB: Transfer slot from idle server to new server. To do
-					 * this, we set `yb_slot_claimed` of the idle server to true
-					 * so it doesn't decrement the global counter on exit and this
-					 * slot is then taken to be transferred to the new server
-					 */
-					idle_server->yb_slot_claimed = false;
-					yb_slot_claimed = true;
 
 					/*
 					 * Close the connection first so that we attempt to make a
 					 * new connection only when PGPROC slot has been released
 					 */
-					od_backend_close_connection(idle_server);
+					yb_od_backend_close_connection(idle_server, false);
 					od_pg_server_pool_set(&idle_route->server_pool,
 							      idle_server,
 							      OD_SERVER_UNDEF);
 					idle_server->route = NULL;
+
+					/*
+					 * YB: Transfer slot from idle server to new server if its
+					 * backend has exited. Otherwise the slot stays held until
+					 * it does, and we wait like any client at the limit.
+					 */
+					assert(idle_server->yb_slot_claimed);
+					if (idle_server->yb_backend_exited) {
+						idle_server->yb_slot_claimed = false;
+						yb_slot_claimed = true;
+					} else {
+						yb_hold_backend_slot(idle_server);
+						yb_eviction_pending = true;
+					}
 					od_backend_close(idle_server);
 					od_route_unlock(idle_route);
 
+					od_route_lock(route);
 					// We are allowed to spun new server connection now that we
 					// have made space for ourselves.
+					if (yb_slot_claimed)
+						break;
+				} else {
+					// No available idle servers. We have to wait.
 					od_route_lock(route);
-					break;
 				}
-
-				// No available idle servers. We have to wait.
-				od_route_lock(route);
 			}
 		}
 

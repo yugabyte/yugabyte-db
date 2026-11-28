@@ -84,6 +84,10 @@ struct od_server {
 	bool yb_replication_connection;
 	/* YB: true if this server has claimed a backend slot in yb_backends_in_use */
 	bool yb_slot_claimed;
+	/* YB: set on close, false if the backend hadn't closed its socket yet */
+	bool yb_backend_exited;
+	/* YB: dup of the socket of a claimed server whose backend hasn't exited */
+	int yb_exiting_fd;
 	bool reset_timeout;
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
@@ -160,6 +164,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->yb_sticky_connection = false;
 	server->yb_replication_connection = false;
 	server->yb_slot_claimed = false;
+	server->yb_backend_exited = false;
+	server->yb_exiting_fd = -1;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
 	server->yb_logical_client_version = UINT64_MAX;

@@ -379,6 +379,22 @@ static void od_cron(void *arg)
 		/* mark and sweep expired idle server connections */
 		od_cron_expire(cron);
 
+		/*
+		 * YB: Release the slots of held backends that have exited, and signal
+		 * once per released slot, since each signal wakes one waiter per
+		 * route. Only multi-route pooling claims slots, so only it holds any.
+		 *
+		 * TODO(#28097): Each call walks every route, so this is O(released *
+		 * routes) per tick.
+		 */
+		int yb_released =
+			yb_backend_release_slots_of_exited(cron->global->router);
+		assert(yb_released == 0 ||
+		       instance->config.yb_enable_multi_route_pool);
+		for (int i = 0; i < yb_released; i++)
+			yb_signal_all_routes(cron->global->router, NULL,
+					     instance->config.yb_enable_multi_route_pool);
+
 		/* update statistics */
 		if (++stats_tick >= instance->config.stats_interval) {
 			od_cron_stat(cron);
