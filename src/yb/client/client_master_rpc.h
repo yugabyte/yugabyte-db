@@ -133,6 +133,10 @@ class ClientMasterRpcBase : public rpc::Rpc {
 
   virtual Status ResponseStatus() = 0;
 
+  // ASH wait state code reported while the request is in flight to the master, or waiting to be
+  // retried. Defaults to YBClient_WaitingOnMaster.
+  virtual ash::WaitStateCode WaitingOnMasterCode() const;
+
   void ResetMasterLeader(Retry retry);
 
   void NewLeaderMasterDeterminedCb(const Status& status);
