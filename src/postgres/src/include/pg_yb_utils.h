@@ -826,6 +826,7 @@ extern int yb_test_sleep_before_executor_start_ms;
  */
 extern int yb_test_fail_next_ddl;
 extern bool yb_test_fail_stale_catalog_message_check;
+extern bool yb_test_fail_notify_catalog_version_read;
 extern bool yb_enable_stale_catalog_prefetch;
 
 /* Test fault injection: fail drop after heap_drop_with_catalog. */
@@ -1812,6 +1813,7 @@ extern bool yb_is_calling_internal_sql_for_ddl;
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
 extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
+extern void YbWaitForSharedCatalogVersionToCatchupUnlessInterrupted(uint64_t version);
 
 /* Whether this backend is authenticating on connection manager's behalf. */
 extern bool YbIsPerformingConnMgrAuth();

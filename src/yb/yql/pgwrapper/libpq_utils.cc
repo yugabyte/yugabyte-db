@@ -830,6 +830,12 @@ Status PGConn::TestFailDdl(const std::string& ddl_to_fail) {
   return s;
 }
 
+Result<bool> PGConn::HasNotification() {
+  SCHECK(PQconsumeInput(impl_.get()), NetworkError, GetPQErrorMessage(impl_.get()));
+  std::unique_ptr<PGnotify, decltype(&PQfreemem)> notify(PQnotifies(impl_.get()), &PQfreemem);
+  return notify != nullptr;
+}
+
 Result<bool> PGConn::HasIndexScan(const std::string& query) {
   return VERIFY_RESULT(HasScanType(query, "Index")) ||
          VERIFY_RESULT(HasScanType(query, "Index Only"));

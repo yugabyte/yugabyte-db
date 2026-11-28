@@ -111,7 +111,6 @@ extern PGDLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
-extern bool YBHasProcessableAbortInterrupt(void);
 
 /* Test whether an interrupt is pending */
 #ifndef WIN32
@@ -563,5 +562,9 @@ extern PGDLLIMPORT Oid YbDatabaseIdForNewObjectId;
 extern PGDLLIMPORT bool MyColocatedDatabaseLegacy;
 extern PGDLLIMPORT bool YbTablegroupCatalogExists;
 extern PGDLLIMPORT bool YbLoginProfileCatalogsExist;
+
+/* YB: in tcop/postgres.c */
+extern bool YBHasProcessableAbortInterrupt(void);
+extern bool YBHasPendingAbortInterrupt(void);
 
 #endif							/* MISCADMIN_H */

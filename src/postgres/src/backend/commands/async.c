@@ -156,6 +156,7 @@
 
 /* YB includes */
 #include "catalog/pg_namespace_d.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/yb_cmds.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
@@ -166,6 +167,7 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/jsonb.h"
 #include "utils/numeric.h"
+#include "utils/resowner.h"
 #include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
@@ -184,6 +186,9 @@
  * replicated transaction (see ybFillBeginAsyncQueueEntry).
  */
 #define YB_ASYNC_QUEUE_BEGIN_MARKER "__yb_begin__"
+
+/* BEGIN marker of a transaction that changed the catalog. */
+#define YB_ASYNC_QUEUE_BEGIN_CATALOG_MARKER "__yb_begin_catalog__"
 
 /*
  * Struct representing an entry in the global notify queue
@@ -592,6 +597,12 @@ static FormData_pg_attribute *YbNotificationsAtts[] = {
  */
 #define YB_NOTIF_SEQ_KEY "seq"
 
+/*
+ * Key in extra_options set when the sending transaction ran DDL in its own
+ * block (transactional DDL). See ybWaitForNotifyingTxnCatalogVersion.
+ */
+#define YB_NOTIF_CATALOG_CHANGED_KEY "catalog_changed"
+
 static Relation pg_yb_notifications_relation = NULL;
 static Oid	pg_yb_notifications_reloid = InvalidOid;
 static Oid	pg_yb_notifications_relfilenode = InvalidOid;
@@ -603,6 +614,13 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
  */
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
+
+/*
+ * Whether the buffered transaction has a YB_NOTIF_CATALOG_CHANGED_KEY row.
+ * Transactions that commit at the same hybrid time stream as one, so they are
+ * marked together.
+ */
+static bool ybNotifsPollerPendingCatalogChanged = false;
 
 /*
  * Element of ybNotifsPollerPendingEntries.
@@ -655,6 +673,9 @@ static bool ybNotifsPollerPermanentError = false;
  * (YbNotifsPollerShmemData.poller_id), and a backend only scans entries from
  * the poller it registered under, so this state is reset when the backend
  * registers under a different poller (see Exec_ListenPreCommit).
+ *
+ * catalog_changed and catalog_wait_done track the catalog version wait for the
+ * current transaction, see ybWaitForNotifyingTxnCatalogVersion.
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
@@ -662,6 +683,8 @@ typedef struct YbListenerQueueScanCurrentXactState
 	int			scanned_notifs;
 	int			notifs_to_skip;
 	TimestampTz poller_id;		/* poller whose entries this state describes */
+	bool		catalog_changed;
+	bool		catalog_wait_done;
 } YbListenerQueueScanCurrentXactState;
 
 static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
@@ -669,7 +692,9 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 	.begin_xid = InvalidTransactionId,
 	.scanned_notifs = 0,
 	.notifs_to_skip = 0,
-	.poller_id = 0
+	.poller_id = 0,
+	.catalog_changed = false,
+	.catalog_wait_done = false
 };
 
 /*
@@ -759,7 +784,7 @@ static void ClearPendingActionsAndNotifies(void);
 
 /* YB: helper functions for NOTIFY */
 static void ybInsertPendingNotifiesToTable(void);
-static Datum ybNotificationExtraOptions(int32 seq);
+static Datum ybNotificationExtraOptions(int32 seq, bool catalog_changed);
 
 /* YB: helper functions for LISTEN/UNLISTEN */
 static void ybCreateNotifsReplicationSlot(void);
@@ -780,17 +805,21 @@ static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
 static void ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record);
+static void ybNotifsPollerMarkPendingCatalogChanged(void);
 static int32 ybTerminateSlowestListener(void);
 static int32 ybEvictSlowestListener(TimestampTz *sigtermTime);
 static bool ybIsListenerPid(int32 pid);
 static bool ybPollEviction(int32 sigtermPid, TimestampTz sigtermTime);
 static void ybNotifsPollerAddPendingEntriesToQueue(void);
 static int	ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b);
-static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
+static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid,
+									   bool catalog_changed);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
+static void ybWaitForNotifyingTxnCatalogVersion(void);
 static bool ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-									  AsyncQueueEntry *qe, int32 *seq);
+									  AsyncQueueEntry *qe, int32 *seq,
+									  bool *catalog_changed);
 static void ybSignalAllListeners(void);
 
 /* YB: common helper functions */
@@ -1542,6 +1571,8 @@ Exec_ListenPreCommit(void)
 			ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
 			ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
 			ybListenerQueueScanCurrentXactState.poller_id = poller_id;
+			ybListenerQueueScanCurrentXactState.catalog_changed = false;
+			ybListenerQueueScanCurrentXactState.catalog_wait_done = false;
 		}
 	}
 
@@ -2790,6 +2821,9 @@ asyncQueueProcessPageEntries(volatile QueuePosition *current,
 					/* payload follows channel name */
 					char	   *payload = qe->data + strlen(channel) + 1;
 
+					if (IsYugaByteEnabled())
+						ybWaitForNotifyingTxnCatalogVersion();
+
 					NotifyMyFrontEnd(channel, payload, qe->srcPid);
 				}
 			}
@@ -3161,6 +3195,7 @@ ybInsertPendingNotifiesToTable(void)
 	int			i = 0;
 	ListCell   *nextNotify;
 	MemoryContext oldcontext;
+	const bool	catalog_changed = YBGetDdlUseRegularTransactionBlock();
 
 	YBBeginOperationsBuffering();
 
@@ -3205,7 +3240,7 @@ ybInsertPendingNotifiesToTable(void)
 		 */
 		oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		slot->tts_values[yb_extra_options_att.attnum - 1] =
-			ybNotificationExtraOptions(i);
+			ybNotificationExtraOptions(i, catalog_changed);
 		MemoryContextSwitchTo(oldcontext);
 		ExecStoreVirtualTuple(slot);
 
@@ -3846,6 +3881,8 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+			if (ybNotifsPollerPendingCatalogChanged)
+				ybNotifsPollerMarkPendingCatalogChanged();
 			list_sort(ybNotifsPollerPendingEntries,
 					  ybNotifsPollerPendingEntryCmp);
 			ybNotifsPollerAddPendingEntriesToQueue();
@@ -3857,6 +3894,7 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 			YBCCalculatePersistAndGetRestartLSN(record->lsn);
 			ybNotifsPollerRecordProgress();
 			ybNotifsPollerPendingEntries = NIL;
+			ybNotifsPollerPendingCatalogChanged = false;
 			ybNotifsPollerProcessingXid = InvalidTransactionId;
 			AbortCurrentTransaction();
 			break;
@@ -3877,11 +3915,13 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 {
 	AsyncQueueEntry qe;
 	int32		seq;
+	bool		catalog_changed;
 	MemoryContext oldcontext;
 	YbNotifsPollerPendingEntry *entry;
 
-	if (!ybRecordToAsyncQueueEntry(record, &qe, &seq))
+	if (!ybRecordToAsyncQueueEntry(record, &qe, &seq, &catalog_changed))
 		return;
+	ybNotifsPollerPendingCatalogChanged |= catalog_changed;
 
 	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
 	entry = palloc0(offsetof(YbNotifsPollerPendingEntry, qe) + qe.length);
@@ -3896,6 +3936,27 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 		entry->seq = list_length(ybNotifsPollerPendingEntries);
 	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, entry);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+/* Make the pending transaction's BEGIN entry (the first) a catalog one. */
+static void
+ybNotifsPollerMarkPendingCatalogChanged(void)
+{
+	YbNotifsPollerPendingEntry *begin = linitial(ybNotifsPollerPendingEntries);
+	AsyncQueueEntry qe;
+	MemoryContext oldcontext;
+	YbNotifsPollerPendingEntry *entry;
+
+	Assert(ybIsAsyncQueueBeginEntry(&begin->qe));
+	ybFillBeginAsyncQueueEntry(&qe, begin->qe.xid, true /* catalog_changed */ );
+
+	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+	entry = palloc0(offsetof(YbNotifsPollerPendingEntry, qe) + qe.length);
+	memcpy(&entry->qe, &qe, qe.length);
+	entry->seq = begin->seq;
+	linitial(ybNotifsPollerPendingEntries) = entry;
+	MemoryContextSwitchTo(oldcontext);
+	pfree(begin);
 }
 
 /*
@@ -3932,9 +3993,13 @@ ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
 }
 
 static void
-ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid)
+ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid,
+						   bool catalog_changed)
 {
-	int			payloadlen = strlen(YB_ASYNC_QUEUE_BEGIN_MARKER);
+	const char *marker = (catalog_changed ?
+						  YB_ASYNC_QUEUE_BEGIN_CATALOG_MARKER :
+						  YB_ASYNC_QUEUE_BEGIN_MARKER);
+	int			payloadlen = strlen(marker);
 
 	Assert(payloadlen < NOTIFY_PAYLOAD_MAX_LENGTH);
 
@@ -3943,7 +4008,7 @@ ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid)
 	qe->srcPid = MyProcPid;
 	/* Empty channel, then marker as payload. */
 	qe->data[0] = '\0';
-	memcpy(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_MARKER, payloadlen + 1);
+	memcpy(qe->data + 1, marker, payloadlen + 1);
 	int			entryLength = AsyncQueueEntryEmptySize + payloadlen;
 
 	entryLength = QUEUEALIGN(entryLength);
@@ -3958,7 +4023,8 @@ ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe)
 		return false;
 	if (qe->data[0] != '\0')
 		return false;
-	return (strcmp(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_MARKER) == 0);
+	return (strcmp(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_MARKER) == 0 ||
+			strcmp(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_CATALOG_MARKER) == 0);
 }
 
 static void
@@ -3982,6 +4048,78 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
 	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
 	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
+	ybListenerQueueScanCurrentXactState.catalog_changed =
+		(strcmp(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_CATALOG_MARKER) == 0);
+	ybListenerQueueScanCurrentXactState.catalog_wait_done = false;
+}
+
+/*
+ * PG sends a transaction's invalidations before signaling listeners, but this
+ * tserver learns a notifying DDL transaction's catalog version only later, from
+ * the lock release or a heartbeat. So before delivering such a transaction's
+ * first notification, wait until this tserver has master's current catalog
+ * version.
+ *
+ * The wait is best effort: on a timeout, a failed read or a pending abort
+ * interrupt, the notification is delivered anyway. Errors are caught because
+ * the queue position is already past this entry. Interrupts are held because
+ * a terminate taken inside this transaction makes Async_UnlistenOnExit fail.
+ */
+static void
+ybWaitForNotifyingTxnCatalogVersion(void)
+{
+	YbListenerQueueScanCurrentXactState *state =
+		&ybListenerQueueScanCurrentXactState;
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+	uint32		save_interrupt_holdoff = InterruptHoldoffCount;
+	uint32		save_cancel_holdoff = QueryCancelHoldoffCount;
+
+	if (!state->catalog_changed || state->catalog_wait_done)
+		return;
+	state->catalog_wait_done = true;
+
+	/* Don't start a read that the pending interrupt would abort. */
+	if (YBHasPendingAbortInterrupt())
+		return;
+
+	HOLD_INTERRUPTS();
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldcontext);
+	PG_TRY();
+	{
+		uint64_t	version;
+
+		if (yb_test_fail_notify_catalog_version_read)
+			ereport(ERROR,
+					(errmsg("TEST: failed to read the catalog version")));
+		version = YbGetMasterCatalogVersion();
+		YbWaitForSharedCatalogVersionToCatchupUnlessInterrupted(version);
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+		RESUME_INTERRUPTS();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		/* errfinish zeroed the holdoff counts. */
+		InterruptHoldoffCount = save_interrupt_holdoff + 1;
+		QueryCancelHoldoffCount = save_cancel_holdoff;
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+		ereport(LOG,
+				(errmsg("delivering notification without waiting for the "
+						"catalog version: %s", edata->message)));
+		FreeErrorData(edata);
+		RESUME_INTERRUPTS();
+	}
+	PG_END_TRY();
 }
 
 /*
@@ -4157,13 +4295,16 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
  */
 static bool
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-						  AsyncQueueEntry *qe, int32 *seq)
+						  AsyncQueueEntry *qe, int32 *seq,
+						  bool *catalog_changed)
 {
 	*seq = -1;
+	*catalog_changed = false;
 
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
 	{
-		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid);
+		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid,
+								   false /* catalog_changed */ );
 		return true;
 	}
 
@@ -4244,6 +4385,13 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 			if (!error && val >= 0)
 				*seq = val;
 		}
+		if (JsonContainerIsObject(&jb->root) &&
+			getKeyJsonValueFromContainer(&jb->root,
+										 YB_NOTIF_CATALOG_CHANGED_KEY,
+										 strlen(YB_NOTIF_CATALOG_CHANGED_KEY),
+										 &v) &&
+			v.type == jbvBool)
+			*catalog_changed = v.val.boolean;
 	}
 
 	pfree(desc);
@@ -4253,7 +4401,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 /* Build the extra_options value of a pg_yb_notifications row. */
 static Datum
-ybNotificationExtraOptions(int32 seq)
+ybNotificationExtraOptions(int32 seq, bool catalog_changed)
 {
 	JsonbParseState *state = NULL;
 	JsonbValue	key;
@@ -4269,6 +4417,15 @@ ybNotificationExtraOptions(int32 seq)
 	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	pushJsonbValue(&state, WJB_KEY, &key);
 	pushJsonbValue(&state, WJB_VALUE, &val);
+	if (catalog_changed)
+	{
+		key.val.string.val = (char *) YB_NOTIF_CATALOG_CHANGED_KEY;
+		key.val.string.len = strlen(YB_NOTIF_CATALOG_CHANGED_KEY);
+		val.type = jbvBool;
+		val.val.boolean = true;
+		pushJsonbValue(&state, WJB_KEY, &key);
+		pushJsonbValue(&state, WJB_VALUE, &val);
+	}
 	res = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
 	return JsonbPGetDatum(JsonbValueToJsonb(res));
