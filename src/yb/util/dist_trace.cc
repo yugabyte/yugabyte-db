@@ -13,6 +13,13 @@
 
 #include "yb/util/dist_trace.h"
 
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <optional>
+#include <string_view>
+#include <unordered_map>
+
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
@@ -25,9 +32,11 @@
 #include "opentelemetry/trace/provider.h"
 
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
 #include "yb/util/signal_util.h"
 
 DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
@@ -64,11 +73,18 @@ DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
     "values are debug, info, warning, error, and none.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_otel_log_throttle_interval_secs, 10,
+    "Minimum interval in seconds between two logs of the same kind of OpenTelemetry SDK "
+    "dropped-span or export-failure message from one process. The next logged line of that kind "
+    "reports how many were suppressed. 0 disables throttling.");
+
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
 
 DEFINE_validator(otel_ysql_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
+DEFINE_validator(ysql_yb_otel_log_throttle_interval_secs, FLAG_GE_VALUE_VALIDATOR(0));
 
 DEFINE_validator(otel_internal_log_level,
     FLAG_IN_SET_VALIDATOR("debug", "info", "warning", "error", "none"));
@@ -157,6 +173,87 @@ internal_log::LogLevel GetOtelInternalLogLevel() {
   return internal_log::LogLevel::Info;
 }
 
+// Postgres backends read gflags only at startup, so they get the interval from the GUC of the same
+// name instead. -1 means no GUC has set it, as in yb-tserver and yb-master.
+std::atomic<int32_t> log_throttle_interval_secs_from_guc{-1};
+
+int32_t OtelLogThrottleIntervalSecs() {
+  auto from_guc = log_throttle_interval_secs_from_guc.load(std::memory_order_relaxed);
+  return from_guc >= 0 ? from_guc : FLAGS_ysql_yb_otel_log_throttle_interval_secs;
+}
+
+// The SDK logs these once per dropped span (on the query path) or once per failed export batch, so
+// a full queue or a failing collector would otherwise flood the logs. The throttle key is the
+// message up to key_end: it names what failed, and the rest (curl detail, response headers) varies
+// per call. Each key gets its own window, so a suppressed count covers only one kind of failure.
+struct ThrottledOtelMessage {
+  std::string_view prefix;
+  std::string_view key_end;
+  // Export failures carry a per-batch span count right after the prefix.
+  bool skip_count_after_prefix;
+};
+
+constexpr ThrottledOtelMessage kThrottledOtelMessages[] = {
+    {.prefix = "BatchSpanProcessor queue is full", .key_end = "",
+     .skip_count_after_prefix = false},
+    {.prefix = "[OTLP HTTP Client] Session state: ", .key_end = ".",
+     .skip_count_after_prefix = false},
+    {.prefix = "[OTLP HTTP Client] Export failed, ", .key_end = ", Header:",
+     .skip_count_after_prefix = false},
+    {.prefix = "[OTLP TRACE HTTP Exporter] ERROR: Export ", .key_end = "",
+     .skip_count_after_prefix = true},
+};
+
+std::optional<std::string> OtelLogThrottleKey(std::string_view msg) {
+  for (const auto& throttled : kThrottledOtelMessages) {
+    if (!msg.starts_with(throttled.prefix)) {
+      continue;
+    }
+    auto rest = msg.substr(throttled.prefix.size());
+    if (throttled.skip_count_after_prefix) {
+      rest.remove_prefix(std::min(rest.find_first_not_of("0123456789"), rest.size()));
+    }
+    if (throttled.prefix.ends_with("full")) {
+      return std::string(throttled.prefix);
+    }
+    if (!throttled.key_end.empty()) {
+      rest = rest.substr(0, rest.find(throttled.key_end));
+    }
+    return std::string(throttled.prefix).append(rest);
+  }
+  return std::nullopt;
+}
+
+class OtelLogThrottler {
+ public:
+  // Returns the number of messages suppressed since the last logged one, or nullopt to suppress
+  // this one. The first message of a key always logs.
+  std::optional<int64_t> ShouldLog(std::string&& key) EXCLUDES(mutex_) {
+    const auto interval = std::chrono::seconds(OtelLogThrottleIntervalSecs());
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard lock(mutex_);
+    auto [it, inserted] = windows_.try_emplace(std::move(key));
+    auto& window = it->second;
+    if (!inserted && now - window.last_logged < interval) {
+      ++window.suppressed;
+      return std::nullopt;
+    }
+    window.last_logged = now;
+    return std::exchange(window.suppressed, 0);
+  }
+
+ private:
+  struct Window {
+    std::chrono::steady_clock::time_point last_logged;
+    int64_t suppressed = 0;
+  };
+
+  std::mutex mutex_;
+  // Bounded by kThrottledOtelMessages: the keys hold only SDK constants, HTTP status codes and
+  // export result codes.
+  std::unordered_map<std::string, Window> windows_ GUARDED_BY(mutex_);
+};
+
 class YbOtelLogHandler : public internal_log::LogHandler {
  public:
   void Handle(
@@ -167,12 +264,23 @@ class YbOtelLogHandler : public internal_log::LogHandler {
     const char* safe_file = file ? file : "unknown";
     const char* safe_msg = msg ? msg : "";
 
+    std::string suppressed_suffix;
+    if (auto key = OtelLogThrottleKey(safe_msg)) {
+      auto suppressed = throttler_.ShouldLog(std::move(*key));
+      if (!suppressed) {
+        return;
+      }
+      if (*suppressed > 0) {
+        suppressed_suffix = Format(" [suppressed $0 similar messages]", *suppressed);
+      }
+    }
+
     switch (level) {
       case internal_log::LogLevel::Error:
-        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg << suppressed_suffix;
         break;
       case internal_log::LogLevel::Warning:
-        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg << suppressed_suffix;
         break;
       case internal_log::LogLevel::Info:
         LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg;
@@ -184,6 +292,9 @@ class YbOtelLogHandler : public internal_log::LogHandler {
         break;
     }
   }
+
+ private:
+  OtelLogThrottler throttler_;
 };
 
 resource_sdk::Resource CreateResource(
@@ -281,6 +392,10 @@ class TraceparentCarrier : public context::propagation::TextMapCarrier {
 };
 
 }  // namespace
+
+void SetOtelLogThrottleIntervalSecsFromGuc(int32_t secs) {
+  log_throttle_interval_secs_from_guc.store(secs, std::memory_order_relaxed);
+}
 
 void TEST_SetOtelCollectorEndpoint(const std::string& endpoint) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = endpoint;

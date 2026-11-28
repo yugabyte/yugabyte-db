@@ -86,6 +86,8 @@ void YBCDistTraceNodeSpanPopScope(YbcOtelNodeSpan node_span);
 void YBCDistTraceEndNodeSpan(YbcOtelNodeSpan node_span);
 void YBCDistTraceEndNodeSpanOnError(YbcOtelNodeSpan node_span);
 
+void YBCSetOtelLogThrottleIntervalSecs(int secs);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

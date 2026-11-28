@@ -46,6 +46,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -60,6 +61,7 @@
 
 DECLARE_string(otel_collector_traces_endpoint);
 DECLARE_string(otel_internal_log_level);
+DECLARE_int32(ysql_yb_otel_log_throttle_interval_secs);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
@@ -474,6 +476,32 @@ class OtlpHttpCollector {
     return false;
   }
 
+  // Records the spans of each request, and answers HTTP 503 to requests from this service only.
+  // Webserver sends no other error code.
+  void FailExportsFrom(std::string service_name) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    failing_service_ = std::move(service_name);
+  }
+
+  size_t CountSpansFromService(std::string_view service_name) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    size_t count = 0;
+    for (const auto& [_, trace] : traces_) {
+      count += std::count_if(trace.spans.begin(), trace.spans.end(),
+          [service_name](const Span& span) { return span.service_name == service_name; });
+    }
+    return count;
+  }
+
+  bool HasSpanFromService(const std::string& trace_id, std::string_view service_name) const
+      EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    return it != traces_.end() &&
+           std::any_of(it->second.spans.begin(), it->second.spans.end(),
+               [service_name](const Span& span) { return span.service_name == service_name; });
+  }
+
   bool HasSpanWithNamePrefix(const std::string& trace_id, std::string_view prefix) const
       EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
@@ -886,15 +914,17 @@ class OtlpHttpCollector {
       return;
     }
 
-    RecordSpans(request);
-    resp->code = 200;
+    resp->code = RecordSpans(request) ? 503 : 200;
   }
 
-  void RecordSpans(const otlp::ExportTraceServiceRequest& request) {
+  // Returns whether the request comes from failing_service_.
+  bool RecordSpans(const otlp::ExportTraceServiceRequest& request) {
     std::lock_guard lock(mutex_);
+    bool fail = false;
     for (const auto& resource_spans : request.resource_spans()) {
       const auto service_name =
           FindStringAttribute(resource_spans.resource().attributes(), "service.name");
+      fail = fail || (!failing_service_.empty() && service_name == failing_service_);
       for (const auto& traces : resource_spans.scope_spans()) {
         for (const auto& span : traces.spans()) {
           const auto trace_id = b2a_hex(span.trace_id());
@@ -940,6 +970,7 @@ class OtlpHttpCollector {
         }
       }
     }
+    return fail;
   }
 
   mutable std::mutex mutex_;
@@ -947,6 +978,7 @@ class OtlpHttpCollector {
   TraceMap traces_ GUARDED_BY(mutex_);
   std::string endpoint_;
   std::unique_ptr<Webserver> server_;
+  std::string failing_service_ GUARDED_BY(mutex_);
 };
 
 class DistTraceTest : public LibPqTestBase {
@@ -1333,6 +1365,222 @@ class DistTraceTxnHeartbeatTest : public DistTraceTest {
     // heartbeats are the only UpdateTransaction the transaction could produce.
     options->extra_tserver_flags.push_back("--TEST_disable_proactive_txn_cleanup_on_abort=true");
   }
+};
+
+// Counts the lines matching a pattern in the output of one daemon, including its postgres logs.
+class DaemonLogCounter : public ExternalDaemon::StringListener {
+ public:
+  DaemonLogCounter(ExternalDaemon* daemon, std::string pattern)
+      : daemon_(daemon), pattern_(std::move(pattern)) {
+    daemon_->SetLogListener(this);
+  }
+
+  ~DaemonLogCounter() {
+    daemon_->RemoveLogListener(this);
+  }
+
+  void Handle(const GStringPiece& s) override {
+    if (s.find(pattern_) != GStringPiece::npos) {
+      ++count_;
+    }
+  }
+
+  int Count() const { return count_; }
+
+  Status WaitForCount(int count) {
+    return WaitFor(
+        [this, count] { return count_ >= count; }, 30s * kTimeMultiplier,
+        Format("$0 lines with '$1'", count, pattern_));
+  }
+
+ private:
+  ExternalDaemon* const daemon_;
+  const std::string pattern_;
+  std::atomic<int> count_{0};
+};
+
+// Runs traced statements against a collector that cannot take one process's spans, and checks that
+// a runtime change of ysql_yb_otel_log_throttle_interval_secs reaches that process.
+class DistTraceOtelLogThrottleTest : public DistTraceTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    auto endpoint = ASSERT_RESULT(StartCollector());
+    for (auto* flags : {&options->extra_tserver_flags, &options->extra_master_flags}) {
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "otel_collector_traces_endpoint");
+      flags->push_back(Format("--otel_collector_traces_endpoint=$0", endpoint));
+      flags->push_back("--otel_batch_max_export_batch_size=1");
+      flags->push_back("--ysql_yb_otel_log_throttle_interval_secs=3600");
+    }
+  }
+
+  // Returns the collector URL.
+  virtual Result<std::string> StartCollector() = 0;
+
+  // Returns once every throttled message the traced statements caused has been logged or
+  // suppressed.
+  virtual Status WaitForSpansProcessed(const std::vector<std::string>& trace_ids) = 0;
+
+  // Returns how many throttled messages the process under test has produced so far, logged or
+  // suppressed. No other process in LoggingDaemon() produces them, so its matching lines are the
+  // throttler's output alone.
+  virtual size_t Messages() = 0;
+
+  virtual ExternalDaemon* LoggingDaemon() { return cluster_->tablet_server(0); }
+
+  virtual Status RunTracedStatement(PGConn* conn, const TraceparentInfo& traceparent) {
+    return ResultToStatus(conn->FetchFormat("/*traceparent='$0'*/ SELECT 1", traceparent.full));
+  }
+
+  // Postgres backends get the new value through the GUC, after yb-tserver rewrites the PG conf.
+  virtual Status SetInterval(PGConn* conn, const std::string& secs) {
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_otel_log_throttle_interval_secs", secs));
+    return WaitFor(
+        [conn, &secs]() -> Result<bool> {
+          return VERIFY_RESULT(conn->FetchRow<std::string>(
+              "SHOW yb_otel_log_throttle_interval_secs")) == secs;
+        },
+        30s * kTimeMultiplier, Format("yb_otel_log_throttle_interval_secs = $0", secs));
+  }
+
+  Status RunTracedStatements(PGConn* conn) {
+    std::vector<std::string> trace_ids;
+    for (int i = 0; i < kStatements; ++i) {
+      auto traceparent = GenerateTraceparent();
+      RETURN_NOT_OK(RunTracedStatement(conn, traceparent));
+      trace_ids.push_back(std::move(traceparent.trace_id));
+    }
+    ++batches_;
+    return WaitForSpansProcessed(trace_ids);
+  }
+
+  // Each phase reads the line count before the message count. A message counted after that read
+  // is logged after it too, so the expected count is a lower bound on the lines that follow.
+  void TestIntervalChange(const std::string& pattern) {
+    DaemonLogCounter counter(LoggingDaemon(), pattern);
+
+    // The process logs the first message of its 3600s window and suppresses the rest.
+    auto conn1 = ASSERT_RESULT(Connect());
+    ASSERT_OK(RunTracedStatements(&conn1));
+    ASSERT_OK(counter.WaitForCount(1));
+    ASSERT_EQ(counter.Count(), 1);
+
+    ASSERT_OK(SetInterval(&conn1, "0"));
+    ASSERT_NO_FATALS(RunAndExpectEveryMessageLogged(&counter, &conn1));
+
+    // A new backend's spawn env still holds 3600, so this checks that it reads the GUC.
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(RunAndExpectEveryMessageLogged(&counter, &conn2));
+  }
+
+  void RunAndExpectEveryMessageLogged(DaemonLogCounter* counter, PGConn* conn) {
+    auto lines_before = counter->Count();
+    auto messages_before = Messages();
+    ASSERT_OK(RunTracedStatements(conn));
+    // A throttled process logs at most one line, which cannot cover kStatements messages.
+    ASSERT_OK(counter->WaitForCount(
+        narrow_cast<int>(lines_before + Messages() - messages_before)));
+  }
+
+  size_t batches_ = 0;
+  static constexpr int kStatements = 10;
+};
+
+// Accepts connections and never replies. The backend export thread blocks on its first span, so
+// with a one-span queue the backend drops every later span. yb-tserver keeps the default
+// otel_batch_max_queue_size, which these queries cannot fill, so every drop is the backend's.
+class DistTraceStalledCollectorTest : public DistTraceOtelLogThrottleTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceOtelLogThrottleTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--otel_ysql_batch_max_queue_size=1");
+  }
+
+  Result<std::string> StartCollector() override {
+    RETURN_NOT_OK(stalled_collector_.Init(0));
+    RETURN_NOT_OK(stalled_collector_.BindAndListen(
+        VERIFY_RESULT(ParseEndpoint("127.0.0.1:0", 0)), 128 /* listen_queue_size */));
+    Endpoint endpoint;
+    RETURN_NOT_OK(stalled_collector_.GetSocketAddress(&endpoint));
+    return Format("http://$0/v1/traces", endpoint);
+  }
+
+  // The backend drops a span inside the call that ends it, so the query has dropped its spans by
+  // the time it returns.
+  Status WaitForSpansProcessed(const std::vector<std::string>&) override {
+    return Status::OK();
+  }
+
+  // Each query drops at least one span.
+  size_t Messages() override { return batches_ * kStatements; }
+
+  void DoBeforeTearDown() override {
+    // Blocked exports would hold up daemon shutdown until they time out. Closing the listener
+    // resets the connections it never accepted.
+    WARN_NOT_OK(stalled_collector_.Close(), "Failed to close the stalled collector");
+    DistTraceOtelLogThrottleTest::DoBeforeTearDown();
+  }
+
+ private:
+  Socket stalled_collector_;
+};
+
+// Records every span and fails only the postgres backends' exports. yb-tserver exports the same
+// traces without failures, so every failure line in its output is a backend's. The exporter
+// retries only when built with WITH_OTLP_RETRY_PREVIEW, which thirdparty leaves off.
+class DistTraceFailingCollectorTest : public DistTraceOtelLogThrottleTest {
+ protected:
+  Result<std::string> StartCollector() override {
+    collector_.FailExportsFrom(std::string(FailingService()));
+    return collector_.Url();
+  }
+
+  virtual std::string_view FailingService() const { return "ysql"; }
+
+  // The root span ends last, and the export thread sends one span per batch in order.
+  Status WaitForSpansProcessed(const std::vector<std::string>& trace_ids) override {
+    return WaitFor(
+        [this, &trace_ids] {
+          return std::all_of(trace_ids.begin(), trace_ids.end(), [this](const auto& trace_id) {
+            return collector_.HasSpanWithName(trace_id, "query");
+          });
+        },
+        30s * kTimeMultiplier, "Root spans of all queries at the collector");
+  }
+
+  // With one span per batch, each span is one failed export.
+  size_t Messages() override { return collector_.CountSpansFromService(FailingService()); }
+};
+
+// Fails only yb-master's exports. Traced DDLs reach yb-master, which reads the runtime flag
+// directly.
+class DistTraceFailingMasterCollectorTest : public DistTraceFailingCollectorTest {
+ protected:
+  std::string_view FailingService() const override { return "Master"; }
+
+  ExternalDaemon* LoggingDaemon() override { return cluster_->master(); }
+
+  Status RunTracedStatement(PGConn* conn, const TraceparentInfo& traceparent) override {
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "SET yb_dist_tracecontext = 'traceparent=''$0'''", traceparent.full));
+    return conn->ExecuteFormat("CREATE TABLE throttle_$0 (k int PRIMARY KEY)", next_table_++);
+  }
+
+  Status WaitForSpansProcessed(const std::vector<std::string>& trace_ids) override {
+    return WaitFor(
+        [this, &trace_ids] {
+          return std::all_of(trace_ids.begin(), trace_ids.end(), [this](const auto& trace_id) {
+            return collector_.HasSpanFromService(trace_id, FailingService());
+          });
+        },
+        30s * kTimeMultiplier, "yb-master spans of all DDLs at the collector");
+  }
+
+  Status SetInterval(PGConn*, const std::string& secs) override {
+    return cluster_->SetFlagOnMasters("ysql_yb_otel_log_throttle_interval_secs", secs);
+  }
+
+ private:
+  int next_table_ = 0;
 };
 
 class DistTraceConnMgrTest : public LibPqTestBase {
@@ -3041,6 +3289,126 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   ASSERT_EQ(warning_waiter.GetEventCount(), 0);
   ASSERT_EQ(info_waiter.GetEventCount(), 0);
   ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+// Each kind of dropped-span or export-failure message logs at most once per
+// ysql_yb_otel_log_throttle_interval_secs, with a suppressed count. Messages that differ only in
+// per-call detail share a window, and different failures get their own. Other SDK messages are not
+// throttled.
+TEST_F(DistTraceRpcTest, TestOtelLogThrottle) {
+  google::FlagSaver flag_saver;
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
+
+  struct ThrottledKind {
+    std::string regex;
+    // Each message of a kind is the same failure with different per-call detail.
+    std::vector<std::string> messages;
+  };
+  const std::vector<ThrottledKind> kinds = {
+      {"W.*queue is full - dropping span.*",
+       {"BatchSpanProcessor queue is full - dropping span."}},
+      {"E.*Session state: connection failed.*",
+       {"[OTLP HTTP Client] Session state: connection failed.Failed to connect after 0 ms",
+        "[OTLP HTTP Client] Session state: connection failed.Failed to connect after 1 ms"}},
+      {"E.*Session state: SSL handshake failed.*",
+       {"[OTLP HTTP Client] Session state: SSL handshake failed.certificate expired"}},
+      {"E.*Export failed, Status:500.*",
+       {"[OTLP HTTP Client] Export failed, Status:500, Header:\tdate: 1,Body:",
+        "[OTLP HTTP Client] Export failed, Status:500, Header:\tdate: 2,Body:"}},
+      {"E.*Export failed, Status:400.*",
+       {"[OTLP HTTP Client] Export failed, Status:400, Header:\tdate: 1,Body:"}},
+      {"E.*ERROR: Export .* trace span\\(s\\) error: 1.*",
+       {"[OTLP TRACE HTTP Exporter] ERROR: Export 5 trace span(s) error: 1",
+        "[OTLP TRACE HTTP Exporter] ERROR: Export 7 trace span(s) error: 1"}},
+      {"E.*ERROR: Export .* trace span\\(s\\) error: 2.*",
+       {"[OTLP TRACE HTTP Exporter] ERROR: Export 5 trace span(s) error: 2"}},
+  };
+  static constexpr auto kOtherWarning = "otel unthrottled internal warning";
+  static constexpr auto kOtherError = "otel unthrottled internal error";
+  static constexpr int kCount = 100;
+
+  std::vector<std::unique_ptr<RegexWaiterLogSink>> kind_waiters;
+  std::vector<std::unique_ptr<RegexWaiterLogSink>> suppressed_waiters;
+  for (const auto& kind : kinds) {
+    kind_waiters.push_back(std::make_unique<RegexWaiterLogSink>(kind.regex));
+    suppressed_waiters.push_back(std::make_unique<RegexWaiterLogSink>(Format(
+        "$0\\[suppressed $1 similar messages\\].*", kind.regex,
+        kCount * kind.messages.size())));
+  }
+  RegexWaiterLogSink other_warning_waiter(Format("W.*$0.*", kOtherWarning));
+  RegexWaiterLogSink other_error_waiter(Format("E.*$0.*", kOtherError));
+
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-log-throttle-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::ShutdownDistTrace();
+  });
+
+  // The SDK logs the dropped-span message as a warning and the export failures as errors.
+  auto log_sdk_message = [](const std::string& message) {
+    if (message.starts_with("BatchSpanProcessor")) {
+      OTEL_INTERNAL_LOG_WARN(message);
+    } else {
+      OTEL_INTERNAL_LOG_ERROR(message);
+    }
+  };
+  auto log_throttled = [&] {
+    for (const auto& kind : kinds) {
+      for (const auto& message : kind.messages) {
+        log_sdk_message(message);
+      }
+    }
+  };
+  auto assert_counts = [&](int logged, int suppressed) {
+    for (size_t i = 0; i < kinds.size(); ++i) {
+      SCOPED_TRACE(kinds[i].regex);
+      ASSERT_EQ(kind_waiters[i]->GetEventCount(), logged);
+      ASSERT_EQ(suppressed_waiters[i]->GetEventCount(), suppressed);
+    }
+  };
+
+  // Each window is static per process, so earlier tests can leave one open. Logging at interval 0
+  // starts every window now. A kind with two messages logs both.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_otel_log_throttle_interval_secs) = 0;
+  log_throttled();
+  for (size_t i = 0; i < kinds.size(); ++i) {
+    ASSERT_EQ(kind_waiters[i]->GetEventCount(), std::ssize(kinds[i].messages));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_otel_log_throttle_interval_secs) = 3600;
+  for (size_t i = 0; i < kinds.size(); ++i) {
+    kind_waiters[i] = std::make_unique<RegexWaiterLogSink>(kinds[i].regex);
+  }
+  for (int i = 0; i < kCount; ++i) {
+    log_throttled();
+    OTEL_INTERNAL_LOG_WARN(kOtherWarning);
+    OTEL_INTERNAL_LOG_ERROR(kOtherError);
+  }
+  ASSERT_EQ(other_warning_waiter.GetEventCount(), kCount);
+  ASSERT_EQ(other_error_waiter.GetEventCount(), kCount);
+  ASSERT_NO_FATALS(assert_counts(0 /* logged */, 0 /* suppressed */));
+
+  // The next message of each kind reports what its own window suppressed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_otel_log_throttle_interval_secs) = 0;
+  for (const auto& kind : kinds) {
+    log_sdk_message(kind.messages.front());
+  }
+  ASSERT_NO_FATALS(assert_counts(1 /* logged */, 1 /* suppressed */));
+}
+
+TEST_F(DistTraceStalledCollectorTest, TestDroppedSpanLogIntervalChange) {
+  TestIntervalChange("queue is full - dropping span");
+}
+
+TEST_F(DistTraceFailingCollectorTest, TestExportFailureLogIntervalChange) {
+  TestIntervalChange("[OTLP TRACE HTTP Exporter] ERROR: Export");
+}
+
+TEST_F(DistTraceFailingCollectorTest, TestHttpClientFailureLogIntervalChange) {
+  TestIntervalChange("[OTLP HTTP Client] Export failed, Status:503");
+}
+
+TEST_F(DistTraceFailingMasterCollectorTest, TestMasterExportFailureLogIntervalChange) {
+  TestIntervalChange("[OTLP HTTP Client] Export failed, Status:503");
 }
 
 // A multi-row scan must emit exactly one executor-node span (not one per

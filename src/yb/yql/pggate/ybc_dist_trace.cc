@@ -304,5 +304,9 @@ void YBCDistTraceEndNodeSpanOnError(YbcOtelNodeSpan node_span) {
   PgMemctx::Destroy(node_span);
 }
 
+void YBCSetOtelLogThrottleIntervalSecs(int secs) {
+  dist_trace::SetOtelLogThrottleIntervalSecsFromGuc(secs);
+}
+
 } // extern "C"
 } // namespace yb::pggate
