@@ -142,6 +142,24 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
     public static boolean hasDuplicatePorts(CommunicationPorts ports) {
       Set<Integer> portSet = new HashSet<>();
+      for (int value : portValues(ports)) {
+        // If value already exists, we found a duplicate
+        if (!portSet.add(value)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // True when another port in the set uses the otel collector metrics port.
+    public static boolean otelPortClashes(CommunicationPorts ports) {
+      int otelPort = ports.otelCollectorMetricsPort;
+      return otelPort != 0 && portValues(ports).stream().filter(v -> v == otelPort).count() > 1;
+    }
+
+    // The non-zero int port fields of the set.
+    private static List<Integer> portValues(CommunicationPorts ports) {
+      List<Integer> values = new ArrayList<>();
       Field[] fields = CommunicationPorts.class.getDeclaredFields();
       for (Field field : fields) {
         field.setAccessible(true); // Access private fields if needed
@@ -153,13 +171,12 @@ public class UniverseTaskParams extends AbstractTaskParams {
           } catch (Exception e) {
             // Do nothing and continue.
           }
-          // If value already exists, we found a duplicate
-          if (value != 0 && !portSet.add(value)) {
-            return true;
+          if (value != 0) {
+            values.add(value);
           }
         }
       }
-      return false;
+      return values;
     }
 
     @Override

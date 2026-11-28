@@ -17,9 +17,11 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -30,14 +32,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
+import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -46,6 +51,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Http;
@@ -432,6 +438,86 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertNotNull("taskUUID expected when runOnlyPrechecks is true", resultJson.get("taskUUID"));
     verify(mockCommissioner, times(1)).submit(any(), any());
+  }
+
+  // configure/ysql applies the YSQL ports it sends and keeps the universe's value for the rest.
+  @Test
+  public void testConfigureYSQLKeepsPortsTheRequestLeavesOut() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.communicationPorts.ysqlServerHttpPort = 13100;
+    details.communicationPorts.internalYsqlServerRpcPort = 6440;
+    universe.setUniverseDetails(details);
+    universe.save();
+    ObjectNode bodyJson = Json.newObject().put("enableYSQL", true);
+    bodyJson.set("communicationPorts", Json.newObject().put("ysqlServerRpcPort", 5434));
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    ArgumentCaptor<ConfigureDBApiParams> captor =
+        ArgumentCaptor.forClass(ConfigureDBApiParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ConfigureDBApis), captor.capture());
+    CommunicationPorts ports = captor.getValue().communicationPorts;
+    assertEquals(5434, ports.ysqlServerRpcPort);
+    assertEquals(13100, ports.ysqlServerHttpPort);
+    assertEquals(6440, ports.internalYsqlServerRpcPort);
+  }
+
+  // The port checks compare the requested ports with the universe's ports, not with themselves.
+  @Test
+  public void testConfigureDBApisPortChecks() {
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Universe k8s = createUniverse("k8s-universe", customer.getId(), CloudType.kubernetes);
+    updateUniverseAPIDetails(k8s, true, false, true, false);
+    Result result =
+        assertPlatformException(
+            () -> sendConfigurePortsRequest(k8s, "ysql", "ysqlServerHttpPort", 13001));
+    assertBadRequest(result, "Cannot change YSQL ports on k8s universe.");
+
+    Universe vm = createUniverse(customer.getId());
+    updateUniverseAPIDetails(vm, true, false, true, false);
+    // 7000 is the master HTTP port.
+    result =
+        assertPlatformException(
+            () -> sendConfigurePortsRequest(vm, "ysql", "ysqlServerRpcPort", 7000));
+    assertBadRequest(result, "All ports must be different.");
+
+    assertOk(sendConfigurePortsRequest(vm, "ycql", "yqlServerRpcPort", 9043));
+    ArgumentCaptor<ConfigureDBApiParams> captor =
+        ArgumentCaptor.forClass(ConfigureDBApiParams.class);
+    verify(mockCommissioner, times(1)).submit(any(), captor.capture());
+    assertEquals(9043, captor.getValue().communicationPorts.yqlServerRpcPort);
+    // The request does not change the universe's ports; the task does.
+    assertEquals(
+        9042,
+        Universe.getOrBadRequest(vm.getUniverseUUID())
+            .getUniverseDetails()
+            .communicationPorts
+            .yqlServerRpcPort);
+  }
+
+  private Result sendConfigurePortsRequest(
+      Universe universe, String api, String portName, int port) {
+    ObjectNode bodyJson = Json.newObject().put("enableYSQL", true).put("enableYCQL", true);
+    bodyJson.set("communicationPorts", Json.newObject().put(portName, port));
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/"
+            + api;
+    return doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
   }
 
   @Test

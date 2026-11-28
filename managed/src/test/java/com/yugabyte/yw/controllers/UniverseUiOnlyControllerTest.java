@@ -84,6 +84,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -327,6 +328,46 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         "Couldn't find 12 node(s) of type type.small in PlacementAZ 1 zone (1 free and 5 currently"
             + " occupied)");
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  // configure (EDIT) keeps the universe's port for every port that the request leaves out.
+  @Test
+  public void testConfigureEditKeepsPortsTheRequestLeavesOut() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Universe u = createUniverse(customer.getId());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.setUniverseUUID(u.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent ui = getTestUserIntent(r, p, i, 3);
+    ui.universeName = u.getName();
+    ui.ybSoftwareVersion = "1.0";
+    utd.upsertPrimaryCluster(ui, null, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        utd,
+        customer.getId(),
+        utd.getPrimaryCluster().uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
+    utd.communicationPorts.otelCollectorMetricsPort = 8899;
+    utd.communicationPorts.masterHttpPort = 7011;
+    Universe.saveDetails(u.getUniverseUUID(), universe -> universe.setUniverseDetails(utd));
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
+
+    ObjectNode editJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
+    editJson.set("communicationPorts", Json.newObject().put("masterHttpPort", 7012));
+    Result result = sendPrimaryEditConfigureRequest(editJson);
+    assertOk(result);
+    JsonNode ports = Json.parse(contentAsString(result)).get("communicationPorts");
+    assertEquals(7012, ports.get("masterHttpPort").asInt());
+    assertEquals(8899, ports.get("otelCollectorMetricsPort").asInt());
+
+    // Ports that are not a JSON object give 400, not the universe's ports.
+    editJson.put("communicationPorts", "abc");
+    result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(editJson));
+    assertBadRequest(result, "communicationPorts must be a JSON object.");
   }
 
   @Test
@@ -1999,6 +2040,31 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     testGetAvailableOptions(x -> {}, EDIT);
   }
 
+  // A port change blocks smart resize. On a universe with custom ports, a resize body that leaves
+  // out the ports changes no port, so smart resize stays possible.
+  @Test
+  public void testGetUpdateOptionsEditKeepsPortsTheBodyLeavesOut() throws IOException {
+    testGetAvailableOptions(
+        CloudType.aws,
+        x ->
+            TestUtils.updateDeviceInfo(
+                x.getPrimaryCluster().userIntent,
+                UniverseTaskBase.ServerType.TSERVER,
+                deviceInfo -> deviceInfo.volumeSize += 50),
+        (universe, body) -> {
+          Universe.saveDetails(
+              universe.getUniverseUUID(),
+              univ -> {
+                UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+                details.communicationPorts.otelCollectorMetricsPort = 8899;
+                univ.setUniverseDetails(details);
+              });
+          body.remove("communicationPorts");
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+  }
+
   @Test
   public void testGetUpdateOptionsEditModifyTags() throws IOException {
     testGetAvailableOptions(
@@ -2581,6 +2647,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
       UniverseConfigureTaskParams.ClusterOperationType operationType,
       UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
       throws IOException {
+    testGetAvailableOptions(
+        providerType, mutator, (universe, body) -> {}, operationType, expectedOptions);
+  }
+
+  private void testGetAvailableOptions(
+      CloudType providerType,
+      Consumer<UniverseDefinitionTaskParams> mutator,
+      BiConsumer<Universe, ObjectNode> bodyMutator,
+      UniverseConfigureTaskParams.ClusterOperationType operationType,
+      UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
+      throws IOException {
     Universe u = createUniverse(customer.getId());
     Provider provider = Provider.create(customer.getUuid(), providerType, "Provider");
     Region region = Region.create(provider, "test-region", "Region 1", "yb-image-1");
@@ -2627,6 +2704,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         new InstanceType.InstanceTypeDetails());
     bodyJson.put("currentClusterType", "PRIMARY");
     bodyJson.put("clusterOperation", operationType.name());
+    bodyMutator.accept(u, bodyJson);
 
     Result result =
         doRequestWithAuthTokenAndBody(

@@ -920,6 +920,14 @@ public class UniverseCRUDHandler {
     }
     boolean isK8s = false;
     Util.TaskParamsUpdater updater = new Util.TaskParamsUpdater(taskParams);
+    // A sent otel port wins. 0 or the default port means unset, so the provider config fills it.
+    int sentOtelPort = taskParams.communicationPorts.otelCollectorMetricsPort;
+    boolean otelPortSent =
+        sentOtelPort != 0 && sentOtelPort != NodeDetails.DEFAULT_OTEL_COLLECTOR_METRICS_PORT;
+    if (otelPortSent && (sentOtelPort < 0 || sentOtelPort > 65535)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "otelCollectorMetricsPort must be between 1 and 65535.");
+    }
 
     for (Cluster c : taskParams.clusters) {
       if (!c.userIntent.isMulticloudSupport()) {
@@ -995,9 +1003,10 @@ public class UniverseCRUDHandler {
           updater.setOtelCollectorEnabled(
               provider,
               confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled));
-          // update otel port
           int otelPort =
-              confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorMetricsPort);
+              otelPortSent
+                  ? sentOtelPort
+                  : confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorMetricsPort);
           updater.setOtelPort(provider, otelPort);
         }
       }
@@ -1037,6 +1046,12 @@ public class UniverseCRUDHandler {
             taskParams.getPrimaryCluster().userIntent.universeOverrides,
             taskParams.getPrimaryCluster().userIntent.azOverrides);
       }
+    }
+    // Checked after the provider config sets the other ports, such as the node exporter port.
+    if (otelPortSent
+        && UniverseTaskParams.CommunicationPorts.otelPortClashes(taskParams.communicationPorts)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "otelCollectorMetricsPort must differ from the other ports.");
     }
 
     if (taskParams.getPrimaryCluster() != null) {

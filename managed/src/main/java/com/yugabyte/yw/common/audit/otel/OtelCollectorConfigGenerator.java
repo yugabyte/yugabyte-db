@@ -135,9 +135,6 @@ public class OtelCollectorConfigGenerator {
   private static final String K8S_OTEL_DIR = "/mnt/disk0/otel-collector";
   // The otel sidecar shares the pod network namespace, so all scrape targets are pod-local.
   private static final String K8S_POD_LOCAL_ADDRESS = "127.0.0.1";
-  // Fallback only, for universes created before the port was tracked in communicationPorts.
-  private static final int K8S_OTEL_METRICS_PORT_DEFAULT = 8889;
-
   // Bind address for the collector's own internal-telemetry metrics endpoint.
   private static final String ALL_INTERFACES_ADDRESS = "0.0.0.0";
 
@@ -890,13 +887,14 @@ public class OtelCollectorConfigGenerator {
 
   /**
    * Port the collector sidecar serves its own metrics on inside a K8s pod. Read from the universe's
-   * communication ports (seeded from the provider conf key otelCollectorMetricsPort at create time)
-   * rather than hardcoded, so that the port the sidecar listens on is the same one SwamperHelper
-   * writes into the Prometheus target file for that pod.
+   * communication ports (set at create time from the request or the provider conf key
+   * otelCollectorMetricsPort) rather than hardcoded, so that the port the sidecar listens on is the
+   * same one SwamperHelper writes into the Prometheus target file for that pod. The default is a
+   * fallback for universes created before the port was tracked in communicationPorts.
    */
   private static int getK8sOtelMetricsPort(Universe universe) {
     int port = universe.getUniverseDetails().communicationPorts.otelCollectorMetricsPort;
-    return port > 0 ? port : K8S_OTEL_METRICS_PORT_DEFAULT;
+    return port > 0 ? port : NodeDetails.DEFAULT_OTEL_COLLECTOR_METRICS_PORT;
   }
 
   /**
