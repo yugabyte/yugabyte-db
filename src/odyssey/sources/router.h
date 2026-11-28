@@ -65,6 +65,9 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client);
 void od_router_unroute(od_router_t *, od_client_t *);
 
 od_router_status_t od_router_attach(od_router_t *, od_client_t *, bool, od_client_t *);
+od_router_status_t od_router_attach_until(od_router_t *, od_client_t *, bool,
+					  od_client_t *, uint64_t);
+uint64_t od_router_wait_end_time_ms(od_router_t *);
 void yb_signal_all_routes(od_router_t *router, od_route_t *detached_route,
 	bool enable_multi_route_pool);
 void od_router_detach(od_router_t *, od_client_t *);
