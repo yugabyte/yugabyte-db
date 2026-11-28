@@ -70,6 +70,7 @@ DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_yb_enable_cbo);
+DECLARE_bool(tcmalloc_enable_background_actions);
 
 #ifdef __linux__
 // Defined in linux/prctl.h since Linux 6.17, which the build headers may predate. Values are from
@@ -292,6 +293,14 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
             << FLAGS_ysql_enable_auto_analyze;
 }
 
+// Enables the Google TCMalloc background actions on tserver by default. A flag set explicitly by
+// the user is respected as-is.
+void AdjustTCMallocFlagsIfNeeded() {
+  if (google::GetCommandLineFlagInfoOrDie("tcmalloc_enable_background_actions").is_default) {
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(tcmalloc_enable_background_actions, true));
+  }
+}
+
 }  // anonymous namespace
 
 Status MasterTServerParseFlagsAndInit(
@@ -347,8 +356,10 @@ Status MasterTServerParseFlagsAndInit(
 
   AdjustMemoryLimitsIfNeeded(is_master);
 
-  if (!is_master)
+  if (!is_master) {
     AdjustAutoAnalyzeFlagIfNeeded();
+    AdjustTCMallocFlagsIfNeeded();
+  }
 
   MemTracker::ConfigureTCMalloc();
   MemTracker::PrintTCMallocConfigs();
