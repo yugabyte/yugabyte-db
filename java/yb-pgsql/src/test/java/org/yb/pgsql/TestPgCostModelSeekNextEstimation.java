@@ -910,42 +910,42 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         String.format(query, T4_NAME, "k1 IN (4, 8, 12) OR k2 IN (4, 8, 12)"),
         T4_NAME, 44430, 44387, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 26, 24000, 1),
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 86, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 IN (4, 8, 12) OR k3 IN (4, 8, 12)"),
         T4_NAME, 44353, 44310, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 26, 24000, 1),
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 1600, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 IN (4, 8, 12) OR k4 IN (4, 8, 12)"),
         T4_NAME, 44185, 44142, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 26, 24000, 1),
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 32000, 88250, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k2 < 4"),
         T4_NAME, 30906, 30876, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000, 1),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 20, 24000, 1)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8, 8000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 43, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k3 < 4"),
         T4_NAME, 31078, 31048, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8, 8000, 1),
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 400, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k4 < 4"),
         T4_NAME, 30382, 30353, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8, 8000, 1),
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8000, 40000, 1)).build());
 
       // Secondary index on both colocated and non-colocated table.

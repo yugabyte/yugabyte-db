@@ -115,7 +115,17 @@ insert into queries values
         select pk from rd where k = 5 and s = 0$$),
 
     (DEFAULT, $$/*+ BitmapScan(rd) */
-        select pk from rd where k = 5 and s = 0$$)
+        select pk from rd where k = 5 and s = 0$$),
+
+    -- In each query both inputs of the BitmapOr are scans of one index, and
+    -- the OR clause uses only the key column of that index.  Each Bitmap Index
+    -- Scan should estimate the rows of its index condition, 500 and 2346
+    -- (#39584).
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where pk <= 500 or pk > 9999$$),
+
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where b <= 500 or b > 9999$$)
 ;
 
 drop type if exists index_plan_rows cascade;

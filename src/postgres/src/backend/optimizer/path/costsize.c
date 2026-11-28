@@ -8350,6 +8350,57 @@ yb_get_non_pushable_attnums(IndexOptInfo *index)
 	return non_pushable_attnums;
 }
 
+/*
+ * yb_remove_or_quals_implied_by_indexclauses
+ *	  Remove from an index path's non-index conditions the OR clauses that
+ *	  the path's index conditions imply.
+ *
+ * create_indexscan_plan() removes each non-index condition that
+ * predicate_implied_by() proves from the index conditions, so the plan has
+ * no filter for that condition.  extract_nonindex_conditions() leaves the
+ * proof out as not worth its planning time, because upstream uses the result
+ * only to estimate the cost of evaluating the quals.  yb_cost_index() also
+ * estimates from the result the rows that the scan's filters keep.  A
+ * BitmapOr comes from an OR clause.  Each input of the BitmapOr takes its
+ * index conditions from one arm of the clause and has the whole clause among
+ * its non-index conditions.  When the index conditions are the whole arm,
+ * they imply the clause, and counting the clause as a filter underestimates
+ * the rows of the scan.
+ *
+ * Unlike create_indexscan_plan(), this function tries the proof for OR
+ * clauses only, so that an index path without an OR clause pays no planning
+ * time for the proof.
+ *
+ * qual_clauses is a list of RestrictInfos and is modified in place.
+ * indexclauses is a list of IndexClauses.
+ */
+static List *
+yb_remove_or_quals_implied_by_indexclauses(List *qual_clauses,
+										   List *indexclauses)
+{
+	List	   *indexquals = NIL;	/* not computed till needed */
+	ListCell   *lc;
+
+	foreach(lc, qual_clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+
+		/* predicate_implied_by() assumes its first input is immutable */
+		if (!restriction_is_or_clause(rinfo) ||
+			contain_mutable_functions((Node *) rinfo->clause))
+			continue;
+
+		if (indexquals == NIL)
+			indexquals =
+				get_actual_clauses(get_quals_from_indexclauses(indexclauses));
+
+		if (predicate_implied_by(list_make1(rinfo->clause), indexquals, false))
+			qual_clauses = foreach_delete_current(qual_clauses, lc);
+	}
+
+	return qual_clauses;
+}
+
 static Selectivity
 yb_bitmap_index_selectivity(IndexPath *path,
 							PlannerInfo *root,
@@ -9767,6 +9818,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		qpquals = extract_nonindex_conditions(path->indexinfo->indrestrictinfo,
 											  path->indexclauses);
 	}
+	qpquals = yb_remove_or_quals_implied_by_indexclauses(qpquals,
+														 path->indexclauses);
 
 	/*
 	 * Sort the filters into `local_clauses`, `base_table_pushed_down_clauses`
