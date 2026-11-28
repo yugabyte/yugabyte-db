@@ -8995,6 +8995,7 @@ static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **
 
 /* YB declarations */
 
+static void yb_conn_mgr_sticky_for_placeholder_value(struct config_string *pHolder);
 static const char *YbFormatConfigValue(struct config_generic *record,
 									   const union config_var_val *val,
 									   char *buffer, size_t bufsize);
@@ -14142,6 +14143,9 @@ define_custom_variable(struct config_generic *variable)
 		set_config_sourcefile(name, pHolder->gen.sourcefile,
 							  pHolder->gen.sourceline);
 
+	/* YB: Keep the logical client on this backend if it set the placeholder */
+	yb_conn_mgr_sticky_for_placeholder_value(pHolder);
+
 	/*
 	 * Free up as much as we conveniently can of the placeholder structure.
 	 * (This neglects any stack items, so it's possible for some memory to be
@@ -14456,6 +14460,10 @@ MarkGUCPrefixReserved(const char *className)
 							var->name),
 					 errdetail("\"%s\" is now a reserved prefix.",
 							   className)));
+
+			/* YB: Keep the logical client on this backend if it set the placeholder */
+			yb_conn_mgr_sticky_for_placeholder_value((struct config_string *) var);
+
 			num_guc_variables--;
 			memmove(&guc_variables[i], &guc_variables[i + 1],
 					(num_guc_variables - i) * sizeof(struct config_generic *));
@@ -19046,6 +19054,64 @@ YbIsValidConfigFileName(const char *name)
 {
 	return find_option(name, false, true, LOG) != NULL ||
 		valid_custom_variable_name(name);
+}
+
+/*
+ * YB: Make the connection sticky when an extension that loads on first use
+ * takes over a value the logical client gave a custom placeholder under the
+ * extension's prefix.
+ *
+ * define_custom_variable() applies such a value to the real variable, or drops
+ * it with a WARNING when the variable rejects it; MarkGUCPrefixReserved() drops
+ * a placeholder whose name the extension doesn't define.  Either way the
+ * backend now holds state of this client that Connection Manager can neither
+ * undo for the next client nor recreate on another backend: a startup option
+ * becomes the real variable's reset value, while the default that 'G' saved
+ * for 'g' to restore is freed with the placeholder; and a dropped value is
+ * still replayed on other backends.  Kept on this backend, the client sees
+ * what PostgreSQL shows, and the backend is closed when the client leaves.
+ *
+ * Only values that outlive the transaction count: the ones applied with
+ * GUC_ACTION_SET, walking the stack as reapply_stacked_values() does.  Values
+ * from postgresql.conf or ALTER ROLE/DATABASE ... SET are the same on every
+ * backend of the pool, and a load with no client value leaves nothing specific
+ * to this client, so neither makes the connection sticky.
+ */
+static void
+yb_conn_mgr_sticky_for_placeholder_value(struct config_string *pHolder)
+{
+	GucSource	source = pHolder->gen.source;
+	bool		has_client_value;
+
+	if (!YbIsClientYsqlConnMgr())
+		return;
+
+	/* Only a startup option, applied by 'G', gives a reset value this source */
+	has_client_value = (pHolder->reset_val &&
+						pHolder->gen.reset_source == PGC_S_CLIENT);
+
+	for (GucStack *stack = pHolder->gen.stack;
+		 stack && !has_client_value;
+		 stack = stack->prev)
+	{
+		/* A GUC_SET_LOCAL entry's masked SET value is always PGC_S_SESSION */
+		if ((stack->state == GUC_SET &&
+			 (source == PGC_S_SESSION || source == PGC_S_CLIENT)) ||
+			stack->state == GUC_SET_LOCAL)
+			has_client_value = true;
+		source = stack->source;
+	}
+
+	/* The value below the stack is the committed session value */
+	if (source == PGC_S_SESSION || source == PGC_S_CLIENT)
+		has_client_value = true;
+
+	if (has_client_value)
+	{
+		elog(LOG, "Making connection sticky for loading the extension that defines %s, which the client set before the extension was loaded",
+			 pHolder->gen.name);
+		yb_ysql_conn_mgr_sticky_nontxn_object = true;
+	}
 }
 
 #include "guc-file.c"
