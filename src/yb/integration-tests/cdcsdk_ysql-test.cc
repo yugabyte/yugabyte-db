@@ -209,9 +209,11 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
   auto metrics =
       ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
-  // Until the first GetChanges the lag is measured from the time SetCDCCheckpoint stored, and the
-  // tablet's last replicated time is past it: the stream's retention barrier op is MVCC-tracked.
-  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // Until a GetChanges without records the lag is measured from the time SetCDCCheckpoint stored,
+  // and the tablet's last replicated time is past it: the stream's retention barrier op is
+  // MVCC-tracked. The first GetChanges can return the DDL record of that op.
+  auto initial_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &initial_resp.cdc_sdk_checkpoint()));
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return metrics->cdcsdk_sent_lag_micros->value() == 0; },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
