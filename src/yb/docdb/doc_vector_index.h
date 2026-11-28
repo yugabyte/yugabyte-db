@@ -84,7 +84,7 @@ using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResult
 struct DocVectorIndexEntry {
   vector_index::VectorId vector_id;
 
-  // The vector in the YSQL encoding, the same as EncodedDocVectorValue::data of the row.
+  // The vector in the YSQL encoding, as stored by the index, see DocVectorIndex::VectorMatches.
   Slice vector;
 
   // Empty when the index stores no payloads, see DocVectorIndex::StoresPayload.
@@ -222,6 +222,11 @@ class DocVectorIndex {
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
+
+  // Whether index_vector, from DocVectorIndexEntry::vector, is what the index stores for
+  // row_vector, EncodedDocVectorValue::data of the row. A cosine index stores normalized vectors,
+  // except in chunks written before it normalized them.
+  virtual Result<bool> VectorMatches(Slice row_vector, Slice index_vector) const = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
   virtual Status WaitForCompaction() = 0;

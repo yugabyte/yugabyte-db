@@ -260,6 +260,14 @@ class VectorLSM {
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
+  // Whether vectors are normalized, see Options::unnormalized_vector_index_traits.
+  bool NormalizesVectors() const {
+    return options_.unnormalized_vector_index_traits != nullptr;
+  }
+
+  // Normalizes the vector when NormalizesVectors(), as Insert does before storing it.
+  void PrepareVector(Vector& vector) const;
+
   // Utility method to correctly prepare Status instance in case of shutting down.
   Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
@@ -304,14 +312,6 @@ class VectorLSM {
 
   // StartDestroy cancels the registries. A destroyed LSM saves no chunks.
   bool IsDestroyed() const;
-
-  // Whether vectors are normalized, see Options::unnormalized_vector_index_traits.
-  bool NormalizesVectors() const {
-    return options_.unnormalized_vector_index_traits != nullptr;
-  }
-
-  // Normalizes the vector when NormalizesVectors().
-  void PrepareVector(Vector& vector) const;
 
   // NormalizeVector for float vectors. VectorLSM is also instantiated for uint8 vectors, which Open
   // does not let normalize.

@@ -667,6 +667,20 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
   }
 
+  Result<bool> VectorMatches(Slice row_vector, Slice index_vector) const override {
+    if (row_vector == index_vector) {
+      return true;
+    }
+    if (!lsm_.NormalizesVectors()) {
+      return false;
+    }
+    auto vector = VERIFY_RESULT(VectorFromYSQL<Vector>(row_vector));
+    lsm_.PrepareVector(vector);
+    ValueBuffer buffer;
+    VectorToYSQL(vector, &buffer);
+    return buffer.AsSlice() == index_vector;
+  }
+
   void EnableAutoCompactions() override {
     lsm_.EnableAutoCompactions();
   }

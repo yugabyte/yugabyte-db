@@ -1512,7 +1512,8 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionCosine) {
 }
 
 // Chunks written before cosine vectors were normalized keep cosine distance, while the new ones
-// use inner product. Search and compaction should handle both, see #37160.
+// use inner product. Search and compaction should handle both, see #37160. Older versions, which
+// open every chunk with cosine, should handle the new chunks too.
 TEST_P(VectorLSMTest, NormalizeCosineVectors) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kBlockSize = kDefaultChunkSize / 4;
@@ -1523,18 +1524,8 @@ TEST_P(VectorLSMTest, NormalizeCosineVectors) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   inserted_entries_ = CubeInsertEntries(kDimensions, store_vector_payload());
-  const auto half = inserted_entries_.size() / 2;
+  const auto third = inserted_entries_.size() / 3;
   std::string storage_dir;
-  {
-    FloatVectorLSM lsm;
-    ASSERT_OK(OpenVectorLSM(
-        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine));
-    storage_dir = lsm.StorageDir();
-    ASSERT_OK(InsertEntryRange(lsm, 0, half, kBlockSize));
-    ASSERT_OK(lsm.Flush(/* wait = */ true));
-  }
-
-  normalize_vectors_ = true;
   auto check_normalized_chunks = [&storage_dir](size_t expected) {
     auto chunks = ASSERT_RESULT(LoadAliveManifestChunks(Env::Default(), storage_dir));
     size_t normalized = 0;
@@ -1544,26 +1535,57 @@ TEST_P(VectorLSMTest, NormalizeCosineVectors) {
     ASSERT_EQ(normalized, expected);
     ASSERT_GT(chunks.size(), 0);
   };
-  ASSERT_NO_FATALS(check_normalized_chunks(0));
+  auto open = [this, &storage_dir](FloatVectorLSM& lsm, bool normalize) {
+    normalize_vectors_ = normalize;
+    return OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {},
+        storage_dir);
+  };
+
+  // Chunks of a version that did not normalize vectors.
   {
     FloatVectorLSM lsm;
-    ASSERT_OK(OpenVectorLSM(
-        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {}, storage_dir));
-    const auto old_chunks = lsm.NumImmutableChunks();
-    ASSERT_OK(InsertEntryRange(lsm, half, inserted_entries_.size(), kBlockSize));
+    ASSERT_OK(open(lsm, /* normalize= */ false));
+    storage_dir = lsm.StorageDir();
+    ASSERT_OK(InsertEntryRange(lsm, 0, third, kBlockSize));
     ASSERT_OK(lsm.Flush(/* wait = */ true));
-    ASSERT_NO_FATALS(check_normalized_chunks(lsm.NumImmutableChunks() - old_chunks));
+  }
+  ASSERT_NO_FATALS(check_normalized_chunks(0));
+
+  // Chunks of this version.
+  size_t normalized_chunks;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(open(lsm, /* normalize= */ true));
+    const auto old_chunks = lsm.NumImmutableChunks();
+    ASSERT_OK(InsertEntryRange(lsm, third, 2 * third, kBlockSize));
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    normalized_chunks = lsm.NumImmutableChunks() - old_chunks;
+    ASSERT_NO_FATALS(check_normalized_chunks(normalized_chunks));
+  }
+
+  // Rollback: chunks of all versions are opened with cosine.
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(open(lsm, /* normalize= */ false));
+    ASSERT_OK(InsertEntryRange(lsm, 2 * third, inserted_entries_.size(), kBlockSize));
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_NO_FATALS(check_normalized_chunks(normalized_chunks));
     VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
 
     ASSERT_OK(lsm.Compact(/* wait = */ true));
     ASSERT_EQ(1, lsm.NumImmutableChunks());
-    ASSERT_NO_FATALS(check_normalized_chunks(1));
+    ASSERT_NO_FATALS(check_normalized_chunks(0));
     VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
   }
 
+  // Upgrade again: the chunk written on rollback mixes normalized and other vectors.
   FloatVectorLSM lsm;
-  ASSERT_OK(OpenVectorLSM(
-      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kCosine, {}, storage_dir));
+  ASSERT_OK(open(lsm, /* normalize= */ true));
+  VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_NO_FATALS(check_normalized_chunks(1));
   VerifyVectorLSM(lsm, kDimensions, kDistanceTolerance);
 }
 

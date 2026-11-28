@@ -1038,8 +1038,8 @@ void PgVectorIndexTest::TestCosineExtremeVector(double scale) {
   constexpr size_t kNumQueries = 20;
   constexpr size_t kLimit = 10;
   constexpr auto kGaussian = "sqrt(-2 * ln(1 - random())) * cos(2 * pi() * random())";
-  // Backfill inserts the vectors in key order, so the extreme one goes first and every later
-  // insert could reach it.
+  // In colocated tables backfill inserts the vectors in key order, so the extreme one goes first
+  // and every later insert could reach it. Distributed tables backfill in hash order.
   constexpr size_t kExtremeId = 0;
 
   // The index search goes through the graph, the exact one scans the table.
