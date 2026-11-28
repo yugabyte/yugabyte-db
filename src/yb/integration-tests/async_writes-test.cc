@@ -1676,12 +1676,26 @@ class AsyncWritesPausedLeaderTest : public AsyncWritesSingleTabletTest {
   // leader catches up with it without crashing.
   void ResumeLeaderAndCheck(uint64_t expected_rows) {
     ASSERT_OK(leader_->Resume());
-    ASSERT_OK(cluster_->SetFlag(leader_, delay_flag_, "0"));
-    ASSERT_OK(cluster_->SetFlag(leader_, "vmodule", ""));
+    // The client connection to the old leader read nothing during the pause, so the first RPC on it
+    // can fail with a connection timeout.
+    ASSERT_OK(LoggedWaitFor(
+        [this]() -> Result<bool> {
+          return cluster_->SetFlag(leader_, delay_flag_, "0").ok() &&
+                 cluster_->SetFlag(leader_, "vmodule", "").ok();
+        },
+        30s * kTimeMultiplier, "Reset flags on old leader"));
 
     auto new_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
-    auto healthy_dump = ASSERT_RESULT(DumpTabletData(new_leader_idx, tablet_id_));
-    ASSERT_EQ(healthy_dump.row_count(), expected_rows);
+    // COMMIT applies the intents asynchronously, and the dump reads at the tablet's safe time, so
+    // the committed rows can show up on the new leader shortly after COMMIT returns.
+    tserver::DumpTabletDataResponsePB healthy_dump;
+    auto status = LoggedWaitFor(
+        [this, new_leader_idx, expected_rows, &healthy_dump]() -> Result<bool> {
+          healthy_dump = VERIFY_RESULT(DumpTabletData(new_leader_idx, tablet_id_));
+          return healthy_dump.row_count() == expected_rows;
+        },
+        10s * kTimeMultiplier, "Wait for new leader to have expected rows");
+    ASSERT_EQ(healthy_dump.row_count(), expected_rows) << status;
 
     ASSERT_OK(LoggedWaitFor(
         [this, &healthy_dump]() -> Result<bool> {
