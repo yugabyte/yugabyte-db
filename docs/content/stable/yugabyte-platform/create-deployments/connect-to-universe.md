@@ -125,7 +125,9 @@ By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB
 
 [Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling.
 
-YugabyteDB Anywhere does not include the Tectia SSH client. To use Tectia, install a licensed Tectia SSH client on the YugabyteDB Anywhere host, so that `sshg3` and `scpg3` are available in `/usr/bin`. If the client is not found, YugabyteDB Anywhere uses OpenSSH. Tectia SSH is not available when YugabyteDB Anywhere is installed on Kubernetes.
+YugabyteDB Anywhere does not include the Tectia SSH client. To use Tectia, install a licensed Tectia SSH client on the YugabyteDB Anywhere host, so that `sshg3` and `scpg3` are available in `/usr/bin`. Tectia SSH is not available when YugabyteDB Anywhere is installed on Kubernetes.
+
+Do not set the flag on a host without the Tectia client. File copies to nodes and backups then fail, and the flag cannot be turned off.
 
 After the client is installed, set the global runtime flag `yb.security.ssh2_enabled` to `true`. The API token must belong to a Super Admin. This flag can be set only once.
 
