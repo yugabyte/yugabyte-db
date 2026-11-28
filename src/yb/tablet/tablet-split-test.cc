@@ -202,6 +202,13 @@ TEST_F(TabletSplitTest, SplitTablet) {
     key_bounds.lower = key_bounds.upper;
   }
 
+  // Children hold hard links to the source files, so compacting the source does not affect them.
+  // Compare child size against compacted source to not depend on flush vs compaction encoding.
+  const auto source_flushed_size = tablet()->regular_db()->GetCurrentVersionDataSstFilesSize();
+  ASSERT_OK(tablet()->ForceManualRocksDBCompact());
+  const auto source_size = tablet()->regular_db()->GetCurrentVersionDataSstFilesSize();
+  LOG(INFO) << "Source size flushed: " << source_flushed_size << ", compacted: " << source_size;
+
   for (auto split_tablet : split_tablets) {
     {
       RaftGroupReplicaSuperBlockPB super_block;
@@ -218,7 +225,9 @@ TEST_F(TabletSplitTest, SplitTablet) {
     const auto start_hash = PartitionKeyToHash(split_partition->partition_key_start());
     const auto end_hash = PartitionKeyToHash(split_partition->partition_key_end());
 
+    size_t split_rows = 0;
     for (const auto& row : ASSERT_RESULT(SelectAll(split_tablet.get()))) {
+      ++split_rows;
       const auto hash_code = GetRowHashCode(row);
       if (start_hash) {
         ASSERT_GE(hash_code, *start_hash);
@@ -247,11 +256,13 @@ TEST_F(TabletSplitTest, SplitTablet) {
       ASSERT_EQ(source_rows2.erase(row.ToString()), 1);
     }
 
-    // Each split tablet data size should be less than original data size divided by number
-    // of split points.
-    ASSERT_LT(
-        split_tablet->regular_db()->GetCurrentVersionDataSstFilesSize(),
-        tablet()->regular_db()->GetCurrentVersionDataSstFilesSize() / kNumSplits);
+    // Compacted split tablet should hold only its share of rows, which is not exactly
+    // 1/kNumSplits. 10% covers per-child variance in compacted output size, 4KB covers data
+    // block rounding.
+    const auto split_size = split_tablet->regular_db()->GetCurrentVersionDataSstFilesSize();
+    LOG(INFO) << split_tablet->tablet_id() << " compacted size: " << split_size
+              << ", rows: " << split_rows;
+    ASSERT_LT(split_size, source_size * split_rows * 11 / (10 * kNumRows) + 4_KB);
   }
 
   // Split tablets should have all data from the source tablet.
