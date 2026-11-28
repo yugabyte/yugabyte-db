@@ -76,7 +76,15 @@ insert into queries values
     (DEFAULT, $$/*+ IndexScan(rd) */
         select pk from rd where k = 5 and s = 0$$),
     (DEFAULT, $$/*+ BitmapScan(rd) */
-        select pk from rd where k = 5 and s = 0$$)
+        select pk from rd where k = 5 and s = 0$$),
+    -- In each query both inputs of the BitmapOr are scans of one index, and
+    -- the OR clause uses only the key column of that index.  Each Bitmap Index
+    -- Scan should estimate the rows of its index condition, 500 and 2346
+    -- (#39584).
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where pk <= 500 or pk > 9999$$),
+    (DEFAULT, $$/*+ BitmapScan(r) */
+        select pk from r where b <= 500 or b > 9999$$)
 ;
 drop type if exists index_plan_rows cascade;
 create type index_plan_rows as (
@@ -134,7 +142,11 @@ select * from queries order by qid;
      |         select pk from rd where k = 5 and s = 0
   29 | /*+ BitmapScan(rd) */                                                                  +
      |         select pk from rd where k = 5 and s = 0
-(29 rows)
+  30 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where pk <= 500 or pk > 9999
+  31 | /*+ BitmapScan(r) */                                                                   +
+     |         select pk from r where b <= 500 or b > 9999
+(31 rows)
 
 -- Index Scan node estimates from each query's plan under the current
 -- settings.  workers = Gather's "Workers Planned", or 0 in a serial plan.
@@ -229,17 +241,21 @@ order by
  (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan        | i_r_b      |  12 |   2
  (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |        12 | Bitmap Index Scan        | r_pkey     |  12 |   1
  (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        13 | Index Scan               | i_r_b      |   5 |   1
- (pk <= 500) |                    |                                     |       500 |         1 | Bitmap Index Scan        | r_pkey     |  10 |   1
- (b <= 500)  |                    |                                     |       500 |         2 | Index Only Scan          | i_r_b      |   7 |   1
- (pk <= 500) |                    |                                     |       500 |         3 | Index Scan               | r_pkey     |   1 |   1
- (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  10 |   2
- (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  16 |   1
- (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  19 |   1
+ (b <= 500)  |                    |                                     |       500 |         1 | Index Only Scan          | i_r_b      |   7 |   1
+ (pk <= 500) |                    |                                     |       500 |         2 | Index Scan               | r_pkey     |   1 |   1
+ (b <= 500)  |                    |                                     |       500 |         3 | Bitmap Index Scan        | i_r_b      |  10 |   2
+ (b <= 500)  |                    |                                     |       500 |         3 | Bitmap Index Scan        | i_r_b      |  16 |   1
+ (b <= 500)  |                    |                                     |       500 |         3 | Bitmap Index Scan        | i_r_b      |  19 |   1
+ (b <= 500)  |                    |                                     |       500 |         3 | Bitmap Index Scan        | i_r_b      |  31 |   1
+ (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan        | r_pkey     |  10 |   1
  (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan        | r_pkey     |  13 |   1
- (b <= 500)  |                    |                                     |       500 |         8 | Index Scan               | i_r_b      |   4 |   1
+ (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan        | r_pkey     |  30 |   1
+ (b <= 500)  |                    |                                     |       500 |        10 | Index Scan               | i_r_b      |   4 |   1
+ (pk > 9999) |                    |                                     |      2346 |         1 | Bitmap Index Scan        | r_pkey     |  30 |   2
+ (b > 9999)  |                    |                                     |      2346 |         2 | Bitmap Index Scan        | i_r_b      |  31 |   2
  (k = 5)     | (s = 0)            |                                     |      1235 |         1 | Bitmap Index Scan        | i_rd_k     |  29 |   1
  (k = 5)     | (s = 0)            |                                     |      1235 |         2 | Index Scan               | i_rd_k     |  28 |   1
-(32 rows)
+(36 rows)
 
 -- Parallel scan shapes; also guards the comparison below from passing
 -- vacuously.

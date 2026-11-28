@@ -2633,31 +2633,21 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE (r1, r2) IN ((1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r3, r4, r5, n, r1, r2
    ->  Sort (actual rows=5 loops=1)
          Output: r3, r4, r5, n, r1, r2
          Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
          Sort Method: top-N heapsort
-         ->  YB Bitmap Table Scan on public.r5n (actual rows=83 loops=1)
+         ->  Seq Scan on public.r5n (actual rows=83 loops=1)
                Output: r3, r4, r5, n, r1, r2
-               Storage Table Read Requests: 6
-               Storage Table Read Ops: 10
-               Storage Table Rows Scanned: 83
-               ->  BitmapOr (actual rows=83 loops=1)
-                     ->  Bitmap Index Scan on r5n_pkey (actual rows=44 loops=1)
-                           Index Cond: ((r5n.r1 = 1) AND (r5n.r2 = 2))
-                           Storage Table Read Requests: 3
-                           Storage Table Read Ops: 3
-                           Storage Table Rows Scanned: 44
-                     ->  Bitmap Index Scan on r5n_pkey (actual rows=39 loops=1)
-                           Index Cond: ((r5n.r1 = 3) AND (r5n.r2 = 4))
-                           Storage Table Read Requests: 3
-                           Storage Table Read Ops: 3
-                           Storage Table Rows Scanned: 39
-(22 rows)
+               Storage Filter: (((r5n.r1 = 1) AND (r5n.r2 = 2)) OR ((r5n.r1 = 3) AND (r5n.r2 = 4)))
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 5048
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE (r1, r2) IN ((1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5;
 (output identical to previous)
