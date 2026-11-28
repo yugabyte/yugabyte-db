@@ -89,9 +89,17 @@ TEST_F(CDCSDKYsqlTest, InsertSingleRowSnapshot) {
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2}};
 
-  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
-  GetChangesResponsePB change_resp_updated =
-      ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+  // The load balancer may move the tablet leader during the snapshot. GetChangesFromCDC retries
+  // the resulting "Not leader", and cdc_proxy_'s tserver forwards it to the new leader.
+  GetChangesRequestPB change_req;
+  PrepareChangeRequest(&change_req, stream_id, tablets, 0, 0, 0, "", -1);
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(change_req));
+  const auto& cp = change_resp.cdc_sdk_checkpoint();
+  change_req.Clear();
+  PrepareChangeRequest(
+      &change_req, stream_id, tablets, 0, cp.index(), cp.term(), cp.key(), cp.write_id(),
+      cp.snapshot_time());
+  GetChangesResponsePB change_resp_updated = ASSERT_RESULT(GetChangesFromCDC(change_req));
 
   uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
   for (uint32_t i = 0; i < record_size; ++i) {
