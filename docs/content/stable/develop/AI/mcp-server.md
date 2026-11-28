@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The YugabyteDB MCP Server is a lightweight, Python-based server that enables LLMs such as Anthropic's Claude to securely connect to and query YugabyteDB. It supports the Model Context Protocol (MCP), an industry standard that allows AI tools to discover and use structured services like databases, file systems, or APIs.
+The YugabyteDB MCP Server is a lightweight, Python-based server that lets an AI client connect to and query YugabyteDB or PostgreSQL.
 
 With the YugabyteDB MCP Server, developers can:
 
@@ -21,6 +21,11 @@ With the YugabyteDB MCP Server, developers can:
 - Enable LLMs to safely issue read-only SQL queries (and optionally guarded writes)
 - Map authenticated users to database roles via OIDC identity mapping
 - Integrate instantly with AI coding agents such as Claude Desktop, Cursor, and Windsurf
+
+To manage Serverless Postgres clusters in YugabyteDB Aeon, use the [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/). The AMP MCP Server lists, creates, and deletes clusters, branches, and endpoints, and updates endpoints.
+To use the YugabyteDB MCP Server with a database on a Serverless Postgres cluster, see [Query a Serverless Postgres endpoint](/stable/reference/mcp/#query-a-serverless-postgres-endpoint).
+
+For information on MCP servers and skills published by YugabyteDB, see [MCP servers](../../../reference/mcp/).
 
 <!--Learn more about the YugabyteDB MCP Server:
 
@@ -32,7 +37,7 @@ With the YugabyteDB MCP Server, developers can:
 
 ## YugabyteDB Agent Skills
 
-Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows. The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository lists the skills and what each one covers.
+Complement the YugabyteDB MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows. The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository lists the skills and what each one covers.
 
 Install all skills at once:
 
@@ -58,7 +63,7 @@ The server exposes three tools that MCP clients can call:
 
 All three tools accept an optional `requested_role` parameter. When [OIDC is enabled](#oidc-and-per-user-database-roles) and the caller's identity claim resolves to multiple mapped database roles (for example, Cognito groups or Keycloak realm roles), the agent can pass `requested_role` to pick one. The server clamps the choice to the JWT's mapped candidates; the agent cannot SET ROLE to a role that is not in the token.
 
-Claude Desktop surfaces read-only badges on the read tools and a confirmation prompt before each `run_write_query` call (`destructiveHint: true`).
+Claude Desktop can show read-only badges on the read tools and a confirmation prompt before each `run_write_query` call, because the tool is marked `destructiveHint: true`. That mark is a hint. The client skips the prompt when the tool is set to always allow, or when the client auto-approves tool calls.
 
 ## Set up YugabyteDB MCP Server
 
@@ -290,6 +295,8 @@ over the ~2-year period covered by the dataset.
 
 ## Read more
 
+- [MCP servers](/stable/reference/mcp/), for how clients connect and how to handle credentials
+- [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) for Serverless Postgres clusters in YugabyteDB Aeon
 - [YugabyteDB MCP Server repository](https://github.com/yugabyte/yugabytedb-mcp-server)
 - [OIDC authentication and identity mapping](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md)
 - [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server on AWS Marketplace](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/)

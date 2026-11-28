@@ -12,10 +12,11 @@ menu:
     identifier: explore-change-data-capture-logical-replication
     parent: explore-change-data-capture
     weight: 240
-type: indexpage
+showRightNav: true
 rightNav:
   hideH3: true
   hideH4: true
+type: indexpage
 ---
 
 ## Overview
@@ -130,7 +131,7 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
 - Currently, to use [replication origins](./advanced-topic/#replication-origins), you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.
 
-- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
+- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
 
     When the flag is set to `true`, the virtual WAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed by this slot.
 
