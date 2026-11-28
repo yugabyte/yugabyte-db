@@ -48,6 +48,10 @@ import {
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundleModal } from '../UniverseSupportBundle/UniverseSupportBundleModal';
+import {
+  isSupportBundleRedesignEnabled,
+  SupportBundleReadyWatcher
+} from '../../../redesign/features/universe/universe-actions/support-bundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EnablePerfAdvisorModal } from '../../../redesign/features/universe/universe-actions/enable-perf-advisor/EnablePerfAdvisorModal';
 import { PaRegistrationMode } from '../../../redesign/features/PerfAdvisor/api';
@@ -2417,6 +2421,12 @@ class UniverseDetail extends Component {
           <UniverseSupportBundleModal
             currentUniverse={currentUniverse.data}
             closeModal={closeModal}
+          />
+        )}
+        {isSupportBundleRedesignEnabled(runtimeConfigs?.data?.configEntries) && (
+          <SupportBundleReadyWatcher
+            universeUuid={currentUniverse.data.universeUUID}
+            universeNodeCount={currentUniverse.data.universeDetails?.nodeDetailsSet?.length ?? 0}
           />
         )}
 
