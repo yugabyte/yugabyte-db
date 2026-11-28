@@ -642,6 +642,8 @@ The following flags control the retention of data required by CDC:
 - `cdc_wal_retention_time_secs` (default: 28800s)
 - `cdc_intent_retention_ms` (default: 28800000ms)
 
+`cdc_intent_retention_ms` must be no larger than `cdc_wal_retention_time_secs` * 1000. Equal values are valid, and the defaults (8 hours) are equal. Change the two flags together so intent retention never exceeds WAL retention. YB-Master and YB-TServer don't start when their flags violate this constraint, and the log reports `Must be no larger than cdc_wal_retention_time_secs * 1000` or `Must be at least cdc_intent_retention_ms (in seconds)`, depending on which flag is out of range.
+
 Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
 
 {{< warning title="Important" >}}

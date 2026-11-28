@@ -36,6 +36,8 @@ Retaining resources has an impact on the system. Clients are expected to consume
 
 Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) and [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) flags to control the duration for which resources are retained.
 
+`cdc_intent_retention_ms` must be no larger than `cdc_wal_retention_time_secs` * 1000. Equal values are valid, and the defaults (8 hours) are equal. Change the two flags together so intent retention never exceeds WAL retention. YB-Master and YB-TServer don't start when their flags violate this constraint, and the log reports `Must be no larger than cdc_wal_retention_time_secs * 1000` or `Must be at least cdc_intent_retention_ms (in seconds)`, depending on which flag is out of range.
+
 Resources are retained for each tablet of a table that is part of a database whose changes are being consumed using a replication slot. This includes those tables that may not be currently part of the publication specification.
 
 Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.

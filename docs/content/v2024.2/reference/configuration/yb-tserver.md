@@ -1325,13 +1325,13 @@ Default: `102400`
 
 ##### --cdc_intent_retention_ms
 
-The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records. The value must be no larger than `cdc_wal_retention_time_secs` * 1000. Equal values are valid, and the defaults are equal. If the value is larger, YB-Master and YB-TServer don't start and log `Must be less than cdc_wal_retention_time_secs * 1000`. An equal value is accepted.
 
 Default: `28800000` (8 hours)
 
 ##### --cdc_wal_retention_time_secs
 
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK. `cdc_wal_retention_time_secs` * 1000 must be at least `cdc_intent_retention_ms`. Equal values are valid, and the defaults are equal. If WAL retention is shorter, YB-Master and YB-TServer don't start and log `Must be greater than cdc_intent_retention_ms (in seconds)`. An equal value is accepted.
 
 Default: `28800` (8 hours)
 
