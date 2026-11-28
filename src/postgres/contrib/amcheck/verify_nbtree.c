@@ -46,6 +46,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"			/* TODO: is needed? */
 
+
 PG_MODULE_MAGIC;
 
 /*

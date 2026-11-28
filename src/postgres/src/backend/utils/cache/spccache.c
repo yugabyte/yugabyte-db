@@ -41,6 +41,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include <float.h>
 
+
 /* Hash table for information about each tablespace */
 static HTAB *TableSpaceCacheHash = NULL;
 
