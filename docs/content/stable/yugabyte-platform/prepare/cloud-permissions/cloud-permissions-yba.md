@@ -72,6 +72,8 @@ When installing YugabyteDB Anywhere on an AWS VM, no cloud permissions are requi
 
 If you attach an IAM role with the appropriate permissions to the EC2 VM instance where YugabyteDB Anywhere will be running, you can use the YugabyteDB Anywhere instance's IAM role when setting up node servers and S3 backup. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-aws/) and [Permissions to back up and restore](../cloud-permissions-storage/).
 
+That role is also the principal YugabyteDB Anywhere uses to delete backups and validate a storage configuration. When the bucket is on Google Cloud Storage, add this role to the federated trust. It is separate from the role on the database nodes. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
+
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 
   </div>
@@ -81,6 +83,8 @@ Linux OS root permissions are required for the server, see [Servers for YBA](../
 When installing YugabyteDB Anywhere on a GCP VM, no cloud permissions are required.
 
 If you attach a service account with appropriate permissions to the GCP VM where YugabyteDB Anywhere will be running, you can use the YugabyteDB Anywhere instance's role when setting up node servers and S3 backup. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-gcp/) and [Permissions to back up and restore](../cloud-permissions-storage/).
+
+That service account is also the principal YugabyteDB Anywhere uses to delete backups and validate a storage configuration. When the bucket is on Amazon S3, add this service account's numeric ID to the federated trust policy. It is separate from the service account on the database nodes. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
 
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 
