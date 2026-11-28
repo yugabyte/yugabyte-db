@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
+import api.v2.models.ClusterPartitionSpec;
 import api.v2.models.ClusterPlacementSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
@@ -24,6 +25,7 @@ import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.Named;
 import org.mapstruct.NullValueCheckStrategy;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
@@ -155,6 +157,37 @@ public interface ClusterMapper {
   PlacementAZ toV2PlacementAZ(PlacementInfo.PlacementAZ placementAZ);
 
   PlacementInfo toV1PlacementInfo(ClusterPlacementSpec clusterPlacementSpec);
+
+  ClusterPlacementSpec toV2PlacementSpec(PlacementInfo placementInfo);
+
+  // Partition mappings. The default region of a placement cloud is deprecated and replaced by the
+  // default partition, so it is meaningless inside a partition placement: clear it both ways so v2
+  // clients can neither set nor see it. Writers outside the mapper (initPartitions,
+  // PlacementInfoUtil) alias the cluster placementInfo as the partition placement, so the stored
+  // partition may still carry it. Cluster-level placementSpec keeps it (old-style universes).
+  @Mapping(target = "placement", qualifiedByName = "toV1PartitionPlacement")
+  UniverseDefinitionTaskParams.PartitionInfo toV1PartitionInfo(ClusterPartitionSpec partitionSpec);
+
+  @Mapping(target = "placement", qualifiedByName = "toV2PartitionPlacement")
+  ClusterPartitionSpec toV2PartitionSpec(UniverseDefinitionTaskParams.PartitionInfo partitionInfo);
+
+  @Named("toV1PartitionPlacement")
+  default PlacementInfo toV1PartitionPlacement(ClusterPlacementSpec placementSpec) {
+    PlacementInfo placementInfo = toV1PlacementInfo(placementSpec);
+    if (placementInfo != null && placementInfo.cloudList != null) {
+      placementInfo.cloudList.forEach(cloud -> cloud.defaultRegion = null);
+    }
+    return placementInfo;
+  }
+
+  @Named("toV2PartitionPlacement")
+  default ClusterPlacementSpec toV2PartitionPlacement(PlacementInfo placementInfo) {
+    ClusterPlacementSpec placementSpec = toV2PlacementSpec(placementInfo);
+    if (placementSpec != null && placementSpec.getCloudList() != null) {
+      placementSpec.getCloudList().forEach(cloud -> cloud.setDefaultRegion(null));
+    }
+    return placementSpec;
+  }
 
   @ValueMappings(@ValueMapping(target = "ASYNC", source = "READ_REPLICA"))
   UniverseDefinitionTaskParams.ClusterType toV1ClusterType(

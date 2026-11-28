@@ -215,7 +215,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     // When new UI is turned on, initializing single partition if needed.
     if (isNewUI()) {
+      boolean oldGeoPartitioned = isOldGeoPartitioned(universe.getUniverseDetails());
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        // Converting an old geo-partitioned primary to a single partition needs the runtime
+        // config, so it is never done implicitly. Read replicas can always be converted.
+        if (oldGeoPartitioned && cluster.clusterType == ClusterType.PRIMARY) {
+          log.debug(
+              "Universe {} is old geo-partitioned, cannot convert primary cluster automatically",
+              universe.getUniverseUUID());
+          continue;
+        }
         initPartitions(cluster);
       }
     }
@@ -341,6 +350,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // persisted placement with the requested one. Anything read from dbUniverse after that point
     // reflects the request, not what is deployed.
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
+    boolean oldGeoPartitioned = isOldGeoPartitioned(dbUniverse.getUniverseDetails());
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     UniverseSpec v2Universe =
@@ -381,6 +391,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       clearNonDedicatedFields(cluster.userIntent);
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
+    if (oldGeoPartitioned) {
+      checkOldGeoPartitionedConversionAllowed(dbUniverse, v1Params);
+    }
 
     // edit universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
@@ -627,6 +640,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {
@@ -635,8 +649,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       }
       initPartitions(newReadReplica);
     }
-
     universeCRUDHandler.configure(customer, v1Params);
+
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
@@ -1780,6 +1794,33 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   private boolean isNewUI() {
     return confGetter.getGlobalConf(GlobalConfKeys.editUniverseV2UiEnabled);
+  }
+
+  private boolean isOldGeoPartitioned(UniverseDefinitionTaskParams universe) {
+    Cluster primaryCluster = universe.getPrimaryCluster();
+    return CollectionUtils.isEmpty(primaryCluster.getPartitions())
+        && PlacementInfoUtil.getDefaultRegion(primaryCluster) != null;
+  }
+
+  // Rejects converting the primary to a single partition (a plain universe) unless allowed by
+  // runtime config.
+  // Converting to new geo-partitioned is allowed.
+  private void checkOldGeoPartitionedConversionAllowed(
+      Universe universe, UniverseDefinitionTaskParams v1Params) {
+    Cluster primary = v1Params.getPrimaryCluster();
+    if (primary == null
+        || primary.getPartitions() == null
+        || primary.getPartitions().size() != 1) {
+      return;
+    }
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.allowOldGeoPartitionedConversion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Universe is geo-partitioned using a default region and cannot be converted to"
+              + " plain universe. To allow the conversion, enable the runtime config "
+              + UniverseConfKeys.allowOldGeoPartitionedConversion.getKey()
+              + " and retry this operation.");
+    }
   }
 
   private void initPartitions(Cluster cluster) {
