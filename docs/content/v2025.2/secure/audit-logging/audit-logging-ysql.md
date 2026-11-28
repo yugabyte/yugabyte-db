@@ -209,6 +209,10 @@ cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:52.317 SESSION,8,
 cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,1,MISC,COMMIT,,,commit;,<none>
 ```
 
+## YSQL Connection Manager
+
+With [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) enabled, configure pgaudit with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or `ysql_pg_conf_csv`. `ALTER ROLE ... SET` and `ALTER DATABASE ... SET` changes to pgaudit parameters can take effect in existing sessions. STATEMENT_ID is numbered per backend process, so it isn't sequential within a session; it identifies a statement only together with `%c`. The `%p` and `%c` escapes of `log_line_prefix` also identify the backend process, not the client session, so grouping by session identifier as in [Advanced audit logging](#advanced-audit-logging) can merge transactions from different clients and split one client's transactions into several groups. Instead, have each client set a distinct `application_name` and group by `%a`. See [Audit logging with pgaudit](../../../additional-features/connection-manager-ysql/ycm-setup/#audit-logging-with-pgaudit).
+
 ## Learn more
 
 - [Audit logging in YugabyteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
