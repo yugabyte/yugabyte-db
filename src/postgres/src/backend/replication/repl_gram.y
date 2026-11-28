@@ -100,6 +100,9 @@ Node *replication_parse_result;
 %type <list>	create_slot_options create_slot_legacy_opt_list
 %type <defelt>	create_slot_legacy_opt
 
+/* YB types */
+%type <str>		yb_keyword
+
 %%
 
 firstcmd: command opt_semicolon
@@ -418,6 +421,12 @@ generic_option:
 				{
 					$$ = makeDefElem($1, (Node *) makeInteger($2), -1);
 				}
+
+			/* YB: allow a YB keyword as an option value. */
+			| ident_or_keyword yb_keyword
+				{
+					$$ = makeDefElem($1, (Node *) makeString($2), -1);
+				}
 			;
 
 ident_or_keyword:
@@ -440,7 +449,12 @@ ident_or_keyword:
 			| K_EXPORT_SNAPSHOT				{ $$ = "export_snapshot"; }
 			| K_NOEXPORT_SNAPSHOT			{ $$ = "noexport_snapshot"; }
 			| K_USE_SNAPSHOT				{ $$ = "use_snapshot"; }
-			| K_YB_SEQUENCE					{ $$ = "sequence"; }
+			| yb_keyword					{ $$ = $1; }
+		;
+
+/* YB: lower case, as the scanner returns an unquoted IDENT. */
+yb_keyword:
+			K_YB_SEQUENCE					{ $$ = "sequence"; }
 			| K_YB_HYBRID_TIME				{ $$ = "hybrid_time"; }
 			| K_YB_ROW						{ $$ = "row"; }
 			| K_YB_TRANSACTION				{ $$ = "transaction"; }

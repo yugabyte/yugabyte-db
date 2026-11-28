@@ -9026,6 +9026,60 @@ TEST_F(CDCSDKYsqlTest, TestCreateReplicationSlotWithOrderingModeTransaction) {
   TestCreateReplicationSlotWithOrderingMode("TRANSACTION");
 }
 
+// lsn_type and ordering_mode in the option list form of CREATE_REPLICATION_SLOT. As in PG, an
+// unquoted value is accepted in any case. A quoted value is accepted in any case as well, since
+// the quoted upper case form is the one that was accepted before the others.
+TEST_F(CDCSDKYsqlTest, TestCreateReplicationSlotWithOptionList) {
+  ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_lsn_types, true));
+  ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_ordering_modes, true));
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
+
+  struct TestCase {
+    std::string options;
+    ReplicationSlotLsnType lsn_type;
+    ReplicationSlotOrderingMode ordering_mode;
+  };
+  const std::vector<TestCase> test_cases = {
+      {"lsn_type HYBRID_TIME, ordering_mode ROW",
+       ReplicationSlotLsnType_HYBRID_TIME, ReplicationSlotOrderingMode_ROW},
+      {"lsn_type hybrid_time, ordering_mode row",
+       ReplicationSlotLsnType_HYBRID_TIME, ReplicationSlotOrderingMode_ROW},
+      {"lsn_type 'HYBRID_TIME', ordering_mode 'ROW'",
+       ReplicationSlotLsnType_HYBRID_TIME, ReplicationSlotOrderingMode_ROW},
+      {"lsn_type 'hybrid_time', ordering_mode 'row'",
+       ReplicationSlotLsnType_HYBRID_TIME, ReplicationSlotOrderingMode_ROW},
+      {"lsn_type SEQUENCE, ordering_mode TRANSACTION",
+       ReplicationSlotLsnType_SEQUENCE, ReplicationSlotOrderingMode_TRANSACTION},
+      {"lsn_type sequence, ordering_mode transaction",
+       ReplicationSlotLsnType_SEQUENCE, ReplicationSlotOrderingMode_TRANSACTION},
+  };
+
+  for (size_t i = 0; i < test_cases.size(); ++i) {
+    const auto& test_case = test_cases[i];
+    SCOPED_TRACE(test_case.options);
+    const auto slot_name = Format("rs_$0", i);
+    ASSERT_RESULT(conn.Fetch(Format(
+        "CREATE_REPLICATION_SLOT $0 LOGICAL yboutput ($1)", slot_name, test_case.options)));
+
+    const auto resp = ASSERT_RESULT(ListDBStreams());
+    const auto stream = std::ranges::find(
+        resp.streams(), slot_name, &master::CDCStreamInfoPB::cdcsdk_ysql_replication_slot_name);
+    ASSERT_TRUE(stream != resp.streams().end());
+    const auto& options = stream->cdc_stream_info_options();
+    ASSERT_EQ(test_case.lsn_type, options.cdcsdk_ysql_replication_slot_lsn_type());
+    ASSERT_EQ(test_case.ordering_mode, options.cdcsdk_ysql_replication_slot_ordering_mode());
+  }
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("CREATE_REPLICATION_SLOT rs_invalid LOGICAL yboutput (lsn_type invalid)"),
+      "unrecognized lsn_type value");
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("CREATE_REPLICATION_SLOT rs_invalid LOGICAL yboutput (ordering_mode invalid)"),
+      "unrecognized value for CREATE_REPLICATION_SLOT option");
+}
+
 TEST_F(CDCSDKYsqlTest, TestReplicationSlotOrderingModePresentAfterRestart) {
   ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_ordering_modes, true));
   ASSERT_OK(
