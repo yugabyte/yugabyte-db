@@ -30,9 +30,12 @@
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
 #include "utils/lsyscache.h"
-
 /* YB includes */
+#include "access/nbtree.h"
+#include "catalog/pg_am.h"
 #include "catalog/pg_opfamily.h"
+#include "commands/defrem.h"
+#include "parser/parse_coerce.h"
 
 
 static EquivalenceMember *add_eq_member(EquivalenceClass *ec,
@@ -3278,6 +3281,54 @@ get_common_eclass_indexes(PlannerInfo *root, Relids relids1, Relids relids2)
 }
 
 /*
+ * yb_safe_to_substitute_for_var
+ *	  True if a clause "var = expr" lets expr stand in for var inside an index
+ *	  generation expression.
+ *
+ * expr must have var's type, or the generation expression reads its datum as
+ * the wrong type (a float8 const where a float4 var sat).  It must also be
+ * indistinguishable from every stored value it equals, or the generation
+ * expression can observe what the equality ignores: numeric display scale,
+ * float -0, a nondeterministic collation.  The btree equalimage support
+ * function certifies that for a type and collation.  bpchar is excluded even
+ * though its equalimage returns true: for example, 'a' and 'a  ' compare
+ * equal, but octet_length() returns 1 for one and 3 for the other.
+ */
+bool
+yb_safe_to_substitute_for_var(Expr *expr, Var *var, Oid collation)
+{
+	Oid			opclass;
+	Oid			opcintype;
+	Oid			equalimageproc;
+
+	if (!IsBinaryCoercible(exprType((Node *) expr), var->vartype))
+		return false;
+
+	if (var->vartype == BPCHAROID)
+		return false;
+
+	/*
+	 * Same check as upstream eager aggregation (create_grouping_expr_infos),
+	 * but resolved through the default btree opclass instead of the typcache:
+	 * under YB the typcache (and the EC's opfamilies) give lsm families, which
+	 * have no equalimage.
+	 */
+	opclass = GetDefaultOpClass(var->vartype, BTREE_AM_OID);
+	if (!OidIsValid(opclass))
+		return false;
+
+	opcintype = get_opclass_input_type(opclass);
+	equalimageproc = get_opfamily_proc(get_opclass_family(opclass),
+									   opcintype, opcintype,
+									   BTEQUALIMAGE_PROC);
+	if (!OidIsValid(equalimageproc))
+		return false;
+
+	return DatumGetBool(OidFunctionCall1Coll(equalimageproc, collation,
+											 ObjectIdGetDatum(opcintype)));
+}
+
+/*
  * yb_find_ec_member_for_var
  *   Find an EC member that can substitute for the given Var.
  *   When target_rti == 0: looks for a constant in the same EC as var
@@ -3320,7 +3371,9 @@ yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index rti, Index target_r
 			if (target_rti != 0)
 			{
 				if (IsA(em->em_expr, Var) &&
-					((Var *) em->em_expr)->varno == target_rti)
+					((Var *) em->em_expr)->varno == target_rti &&
+					yb_safe_to_substitute_for_var(em->em_expr, var,
+												  ec->ec_collation))
 				{
 					if (var_member)
 						return em;
@@ -3329,7 +3382,9 @@ yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index rti, Index target_r
 			}
 			else
 			{
-				if (em->em_is_const)
+				if (em->em_is_const &&
+					yb_safe_to_substitute_for_var(em->em_expr, var,
+												  ec->ec_collation))
 				{
 					if (var_member)
 						return em;

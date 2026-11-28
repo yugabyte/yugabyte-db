@@ -194,6 +194,8 @@ extern bool is_redundant_derived_clause(RestrictInfo *rinfo, List *clauselist);
 extern bool is_redundant_with_indexclauses(RestrictInfo *rinfo,
 										   List *indexclauses);
 extern EquivalenceMember *yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index relid, Index target_relid);
+extern bool yb_safe_to_substitute_for_var(Expr *expr, Var *var,
+										 Oid collation);
 extern EquivalenceClass *yb_get_eclass_for_hash_code(PlannerInfo *root, IndexOptInfo *index);
 
 /*

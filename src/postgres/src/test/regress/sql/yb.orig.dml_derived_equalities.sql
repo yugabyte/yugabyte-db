@@ -490,3 +490,51 @@ ANALYZE demo_or;
 DROP TABLE demo_or;
 RESET yb_enable_bitmapscan;
 RESET enable_bitmapscan;
+
+-- Substitution requires the const to be the same datum as the column, not
+-- merely equal to it.  Differing width, display scale or blank padding each
+-- derive an index condition the stored row fails.  (see GH#33908)
+CREATE TABLE t_xtype (id int PRIMARY KEY, v real, n numeric, c char(3));
+CREATE INDEX t_xtype_v ON t_xtype ((v::double precision));
+CREATE INDEX t_xtype_n ON t_xtype ((n::text));
+CREATE INDEX t_xtype_c ON t_xtype ((octet_length(c)));
+INSERT INTO t_xtype VALUES (1, 81, 1.0, 'a');
+ANALYZE t_xtype;
+SET enable_seqscan = off;
+
+-- real column vs double precision const
+\set query ':P SELECT v FROM t_xtype WHERE v = 81.0;'
+\i :run_query
+
+-- numeric 1.0 vs 1.00
+\set query ':P SELECT n FROM t_xtype WHERE n = 1.00;'
+\i :run_query
+
+-- char(3) vs char(1)
+\set query ':P SELECT c FROM t_xtype WHERE c = ''a''::char(1);'
+\i :run_query
+
+-- bpchar without a length: same type and typmod, but different padding
+CREATE TABLE t_bpchar (id int PRIMARY KEY, b bpchar);
+CREATE INDEX t_bpchar_b ON t_bpchar ((octet_length(b)));
+INSERT INTO t_bpchar VALUES (1, 'a  ');
+ANALYZE t_bpchar;
+\set query ':P SELECT id FROM t_bpchar WHERE b = ''a'';'
+\i :run_query
+
+-- Positive control: varchar(n) stores what it compares, so a const with a
+-- different typmod still derives.
+CREATE TABLE t_varchar (s varchar(3));
+CREATE INDEX t_varchar_idx ON t_varchar ((yb_hash_code(s) % 5) ASC, s ASC);
+INSERT INTO t_varchar VALUES ('a'), ('b'), ('c');
+ANALYZE t_varchar;
+SET yb_enable_bitmapscan = true;
+SET enable_bitmapscan = true;
+\set hint '/*+ BitmapScan(t_varchar) */'
+\set query ':P :hint SELECT s FROM t_varchar WHERE s = ''a'' OR s = ''b'' ORDER BY s;'
+\i :run_query
+RESET yb_enable_bitmapscan;
+RESET enable_bitmapscan;
+
+RESET enable_seqscan;
+DROP TABLE t_xtype, t_bpchar, t_varchar;
