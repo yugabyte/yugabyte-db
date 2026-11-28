@@ -2965,6 +2965,15 @@ YbTrackAlteredTableId(Oid relid)
  *   catalog and increments the catalog version of every database, takes the
  *   lock only in the database it runs in, so it does not wait for the DDLs in
  *   other databases.
+ * - CREATE DATABASE. It changes no object in the database it runs in.
+ *   CREATE DATABASE ... TEMPLATE <db> waits for the master to clone, and the
+ *   clone replays the source schema, then allows connections to the new
+ *   database, through ysqlsh sessions connected to the default database
+ *   (yugabyte), each running a DDL there. Had the outer statement held the
+ *   lock, a clone issued from that database would wait for itself until it
+ *   timed out.
+ * - A DDL in a yb_binary_restore session, which replays a ysql_dump or
+ *   ysql_dumpall script, as a clone or a backup restore does.
  */
 void
 YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode)
@@ -2972,7 +2981,9 @@ YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode)
 	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl &&
 		YBCUsingObjectLocksGloballyForCurrentTxn() &&
 		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
-		!(yb_use_internal_auto_analyze_service_conn && CheckIsAnalyzeDDL()))
+		!(yb_use_internal_auto_analyze_service_conn && CheckIsAnalyzeDDL()) &&
+		ddl_transaction_state.current_stmt_node_tag != T_CreatedbStmt &&
+		!yb_binary_restore)
 		LockDatabaseObject(YbDdlConcurrencyLockOid, InvalidOid, 0,
 						   ExclusiveLock);
 }
