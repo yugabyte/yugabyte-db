@@ -5324,6 +5324,26 @@ YbLockHeldOnObjectBySession(const LOCKTAG *locktag)
 	return false;
 }
 
+/*
+ * Whether the current transaction holds a lock in any mode on the relation
+ * whose invalidation messages it already absorbed, that is, a lock taken
+ * before the invalidation processing in progress. Always false with object
+ * locking disabled, where MarkLockClear sets nothing.
+ */
+bool
+YbRelationLockClearedByMe(Oid relid)
+{
+	LOCALLOCKTAG localtag = {0};	/* no padding to clear */
+	LOCALLOCK  *locallock;
+
+	SET_LOCKTAG_RELATION(localtag.lock, MyDatabaseId, relid);
+	for (localtag.mode = 1; localtag.mode <= MaxLockMode; localtag.mode++)
+		if ((locallock = hash_search(LockMethodLocalHash, &localtag, HASH_FIND, NULL)) &&
+			locallock->nLocks > 0 && locallock->lockCleared)
+			return true;
+	return false;
+}
+
 #ifdef USE_ASSERT_CHECKING
 int
 YbGetNumTxnLocks()

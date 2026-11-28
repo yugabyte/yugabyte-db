@@ -5372,6 +5372,22 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_isvalid = true;
 }
 
+/*
+ * YB: A transaction without global object locks refreshes its catalog cache
+ * mid-transaction, but a DDL that took no object locks (an autonomous DDL) did
+ * not wait for its locks. If such a DDL rewrote a table the transaction holds
+ * locked, the new table is empty at the transaction snapshot, where PG would
+ * have blocked the DDL. So when a refresh drops or rebuilds the entry of a
+ * table locked before the refresh, remember its relfilenode, and fail a later
+ * scan of a different one (YbCheckRelfilenodeUnchanged). A table first locked
+ * after the rewrite is not checked: as in PG, a rewrite is not MVCC-safe, and
+ * the table appears empty to an older snapshot. Only covers clusters with
+ * enable_object_locking_for_table_locks on (e.g. during promotion to global
+ * object locks): with it off, MarkLockClear never sets lockCleared. Distinct
+ * pairs of relid and relfilenode in TopTransactionContext.
+ */
+static List *yb_check_rels = NIL;
+
 
 /* ----------------------------------------------------------------
  *				 Relation Descriptor Lookup Interface
@@ -5891,6 +5907,34 @@ RelationClearRelation(Relation relation, bool rebuild)
 	/* See RelationForgetRelation(). */
 	if (relation->rd_droppedSubid != InvalidSubTransactionId)
 		return;
+
+	/*
+	 * YB: see yb_check_rels. Covers inval-message and full refreshes. Only a
+	 * transaction-wide snapshot is checked: that includes READ COMMITTED run as
+	 * REPEATABLE READ, but not YSQL SERIALIZABLE, which reads the latest data. A
+	 * lock not yet cleared is the one that triggered this refresh. Catalogs are
+	 * skipped: a cold-started entry may show a different relfilenode once
+	 * rebuilt, and no DDL rewrites them.
+	 */
+	if (yb_refresh_cache_in_progress && FirstSnapshotSet && !IsCatalogRelation(relation) &&
+		YBGetEffectivePggateIsolationLevel() == XACT_REPEATABLE_READ &&
+		!YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		YbRelationLockClearedByMe(RelationGetRelid(relation)))
+	{
+		bool		found = false;
+
+		for (int i = 0; !found && i < list_length(yb_check_rels); i += 2)
+			found = (list_nth_oid(yb_check_rels, i) == RelationGetRelid(relation) &&
+					 list_nth_oid(yb_check_rels, i + 1) == relation->rd_rel->relfilenode);
+		if (!found)
+		{
+			MemoryContext oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+
+			yb_check_rels = lappend_oid(lappend_oid(yb_check_rels, RelationGetRelid(relation)),
+										relation->rd_rel->relfilenode);
+			MemoryContextSwitchTo(oldcxt);
+		}
+	}
 
 	/*
 	 * Even non-system indexes should not be blown away if they are open and
@@ -6632,6 +6676,9 @@ AtEOXact_RelationCache(bool isCommit)
 	 */
 	Assert(in_progress_list_len == 0 || !isCommit);
 	in_progress_list_len = 0;
+
+	/* YB: these were in TopTransactionContext */
+	yb_check_rels = NIL;
 
 	/*
 	 * Unless the eoxact_list[] overflowed, we only need to examine the rels
@@ -11143,4 +11190,36 @@ YbRelationGetUnConstifiedIndexPredicate(Relation relation)
 	pfree(predString);
 
 	return result;
+}
+
+/*
+ * YB: see yb_check_rels. Called at scan start rather than on pin: an earlier
+ * pin (an open cursor or executor) may still be held when a later statement
+ * scans the table, while a pin that scans nothing, such as the EXPLAIN query
+ * plan management runs in ExecutorEnd, must not fail. Skips a relfilenode
+ * this transaction assigned itself.
+ */
+void
+YbCheckRelfilenodeUnchanged(Relation rel)
+{
+	if (yb_refresh_cache_in_progress ||
+		rel->rd_firstRelfilenodeSubid != InvalidSubTransactionId)
+		return;
+	for (int i = 0; i < list_length(yb_check_rels); i += 2)
+		if (list_nth_oid(yb_check_rels, i) == RelationGetRelid(rel) &&
+			list_nth_oid(yb_check_rels, i + 1) != rel->rd_rel->relfilenode)
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+					 errmsg("could not serialize access due to concurrent table rewrite")));
+}
+
+/*
+ * YB: A transaction restart reads at a new read point, after any rewrite seen
+ * so far. Rolling back to a savepoint keeps the snapshot and the entries.
+ */
+void
+YbResetRelfilenodeChecks(void)
+{
+	list_free(yb_check_rels);
+	yb_check_rels = NIL;
 }

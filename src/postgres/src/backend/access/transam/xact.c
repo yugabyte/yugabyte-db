@@ -2402,6 +2402,8 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */ );
 	AfterTriggerBeginXact();
+
+	YbResetRelfilenodeChecks();
 }
 
 /*
