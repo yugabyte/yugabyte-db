@@ -1494,6 +1494,10 @@ typedef struct ModifyTableState
 	 * value.
 	 */
 	int			yb_ioc_batch_size;
+
+	/* YB: see ybRowModification.c */
+	bool		yb_track_row_modifications;
+	bool		yb_modifying_rows;
 } ModifyTableState;
 
 /* ----------------

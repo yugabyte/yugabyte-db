@@ -74,9 +74,9 @@ ABORT;
 -- of the batch read from the table, so it is believed that 2 exists in the
 -- table, even though by the time we actually flush this 2 (which is during
 -- ExecPostprocessPlan), the existing 2 was ON CONFLICT DO UPDATEd by the main
--- statement.  The misinformation causes this 2 to take the ON CONFLICT DO
--- UPDATE path, so the output shows both 2s as taking the ON CONFLICT DO UPDATE
--- path.
+-- statement, which moved it to another key.  Like the arbiter check of a heap
+-- table, the batch treats a row that the statement deleted or moved as absent,
+-- so this 2 is inserted.
 -- batch size >=4: the odd value is reached, which causes the parttrigtrig_odd
 -- table to get loaded with knowledge that a trigger named parttrigtrig_odd
 -- exists.  But by the time we get around to executing the insertion of this
@@ -124,9 +124,10 @@ DROP TRIGGER parttrigtrig_odd ON parttrigtab_odd;
 -- batch size 3: one extra value, 2, is consumed.  This causes the 2 to be part
 -- of the batch read from the table, so it is believed that 2 exists in the
 -- table, even though by the time we actually flush this 2 (which is during g=6
--- input), the existing 2 was ON CONFLICT DO UPDATEd by the main statement.
--- The misinformation causes this 2 to take the ON CONFLICT DO UPDATE path, so
--- the output shows both 2s as taking the ON CONFLICT DO UPDATE path.
+-- input), the existing 2 was ON CONFLICT DO UPDATEd by the main statement,
+-- which moved it to another key.  Like the arbiter check of a heap table, the
+-- batch treats a row that the statement deleted or moved as absent, so this 2
+-- is inserted.
 -- batch size >=4: g=6 value is reached, which causes the WITH statement's 2 to
 -- take the ON CONFLICT DO UPDATE path and the main statement's 2 to get
 -- inserted normally.
@@ -222,7 +223,7 @@ WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=12
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=11
 SELECT * FROM parttrigtab_parent ORDER BY i;
   i   | p 
 ------+---
@@ -236,9 +237,8 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
    88 | f
   108 | f
  1001 | t
- 1002 | f
  1111 | t
-(12 rows)
+(11 rows)
 
 ABORT;
 -- Once an odd value is encountered, batching should pause at that point and
@@ -258,8 +258,8 @@ BEGIN;
 WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 44 FROM (SELECT i FROM w LIMIT 2) l) + 1000;
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=11
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=10
 SELECT * FROM parttrigtab_parent ORDER BY i;
   i   | p 
 ------+---
@@ -273,9 +273,8 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
    88 | f
   108 | f
  1001 | t
- 1002 | f
  1111 | t
-(12 rows)
+(11 rows)
 
 ABORT;
 -- Once an odd value is encountered, batching should pause at that point and
@@ -334,24 +333,10 @@ WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 8, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 1, 4, 6, 2}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p 
-------+---
-    0 | f
-    2 | f
-    3 | t
-    4 | f
-    6 | f
-    8 | f
-   12 | f
-   18 | f
-   44 | f
-   66 | f
- 1001 | t
- 1111 | t
-(12 rows)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ABORT;
 -- Value that has both BEFORE ROW trigger and triggers WITH statement through
 -- ON CONFLICT DO UPDATE.  If not for global tracking of inserted keys, this
@@ -435,7 +420,7 @@ WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=12
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=11
 ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
 HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"
@@ -460,8 +445,8 @@ BEGIN;
 WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 44 FROM (SELECT i FROM w LIMIT 2) l) + 1000;
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=11
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=10
 ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
 HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"

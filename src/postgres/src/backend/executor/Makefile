@@ -21,6 +21,7 @@ OBJS = \
 	ybFunction.o \
 	ybModifyTable.o \
 	ybOptimizeModifyTable.o \
+	ybRowModification.o \
 	\
 	execAmi.o \
 	execAsync.o \
