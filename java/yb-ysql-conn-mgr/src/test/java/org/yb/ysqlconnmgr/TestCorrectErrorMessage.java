@@ -13,6 +13,7 @@
 
 package org.yb.ysqlconnmgr;
 
+import com.yugabyte.util.PSQLException;
 import java.sql.Connection;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -21,6 +22,7 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -106,9 +108,11 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
                               .withDatabase("wrong_db")
                               .connect()) {
       fail("Did not expected to login with a wrong db");
-    } catch (Exception e) {
-      // Match error message
-      assertTrue("Wrong error message", e.getMessage().contains(WRONG_DB_ERR_STRING));
+    } catch (PSQLException e) {
+      // The whole message, so an internal error that merely mentions the database fails.
+      assertEquals("Wrong error message",
+                   WRONG_DB_ERR_STRING, e.getServerErrorMessage().getMessage());
+      assertEquals("Wrong SQLSTATE", "3D000" /* undefined_database */, e.getSQLState());
     }
 
     checkBrokenControlConnection();

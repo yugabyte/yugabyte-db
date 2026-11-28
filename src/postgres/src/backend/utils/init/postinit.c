@@ -460,13 +460,24 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 	 */
 	CatalogCacheFlushCatalog(DatabaseRelationId);
 
+	/*
+	 * The caller resolves the name with missing_ok, so an unknown database
+	 * arrives here as InvalidOid.  Report it as InitPostgres does.
+	 */
+	if (!OidIsValid(db_oid))
+	{
+		ereport(YbHandleAuthPassthroughFailureAndGetElevel(),
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" does not exist", name)));
+		return;
+	}
+
 	/* Fetch our pg_database row normally, via syscache */
 	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_oid));
 	if (!HeapTupleIsValid(tup))
 	{
 		elog(YbHandleAuthPassthroughFailureAndGetElevel(),
-			 "cache lookup failed for database %u or "
-			 "database \"%s\" does not exist", db_oid, name);
+			 "cache lookup failed for database %u", db_oid);
 		return;
 	}
 	dbform = (Form_pg_database) GETSTRUCT(tup);
