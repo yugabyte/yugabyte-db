@@ -45,6 +45,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.EnableNodeToNodeClientCertsParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -1047,6 +1048,9 @@ public class CustomerTaskManager {
         break;
       case KubernetesToggleImmutableYbc:
         taskParams = Json.fromJson(oldTaskParams, KubernetesToggleImmutableYbcParams.class);
+        break;
+      case EnableNodeToNodeClientCerts:
+        taskParams = Json.fromJson(oldTaskParams, EnableNodeToNodeClientCertsParams.class);
         break;
       case UpdateK8sYbcThrottleFlags:
       case UpdateYbcThrottleFlags:

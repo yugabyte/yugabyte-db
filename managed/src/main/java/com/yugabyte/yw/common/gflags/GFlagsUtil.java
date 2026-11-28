@@ -1458,8 +1458,9 @@ public class GFlagsUtil {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts, chosen at"
-                  + " universe creation. Remove it with a gflags upgrade.",
+              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts, set at"
+                  + " universe creation or by the enable node-to-node client certificates upgrade."
+                  + " Remove it with a gflags upgrade.",
               USE_CLIENT_CERTIFICATES));
     }
     if (useClientCerts

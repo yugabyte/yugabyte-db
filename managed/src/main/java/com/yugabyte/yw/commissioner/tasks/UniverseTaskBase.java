@@ -3607,15 +3607,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void createWaitForRpcClientCertTask(Universe universe) {
-    if (!RpcClientCert.isClientCertRequired(universe)) {
-      return;
+    if (RpcClientCert.isClientCertRequired(universe)) {
+      createWaitForRpcClientCertTask(universe.getUniverseUUID());
     }
+  }
+
+  /** Waits for the client cert whether or not the universe requires one yet. */
+  public void createWaitForRpcClientCertTask(UUID universeUUID) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(
             WaitForRpcClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
     WaitForRpcClientCert task = createTask(WaitForRpcClientCert.class);
     WaitForRpcClientCert.Params params = new WaitForRpcClientCert.Params();
-    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setUniverseUUID(universeUUID);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

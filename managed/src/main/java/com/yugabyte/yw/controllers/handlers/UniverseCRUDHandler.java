@@ -3044,7 +3044,8 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
-      // Fixed at creation. Clients that predate the field send false, so keep the current value.
+      // Changed only by EnableNodeToNodeClientCerts. Clients that predate the field send false, so
+      // keep the current value.
       newCluster.userIntent.useNodeToNodeClientCerts =
           curCluster.userIntent.useNodeToNodeClientCerts;
       UserIntent newIntent = newCluster.userIntent;

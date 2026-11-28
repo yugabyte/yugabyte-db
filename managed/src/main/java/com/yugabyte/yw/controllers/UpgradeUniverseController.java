@@ -15,6 +15,7 @@ import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.EnableNodeToNodeClientCertsParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -451,6 +452,40 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::kubernetesToggleImmutableYbc,
         KubernetesToggleImmutableYbcParams.class,
         Audit.ActionType.KubernetesToggleImmutableYbc,
+        customerUuid,
+        universeUuid);
+  }
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.33.0.0")
+  @ApiOperation(
+      value = "Enable node-to-node client certificates on a Kubernetes universe",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a non-rolling upgrade that"
+              + " makes the universe's servers require client certificates on node-to-node RPCs."
+              + " It can't be turned off.",
+      nickname = "enableNodeToNodeClientCerts",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "enable_node_to_node_client_certs",
+          value = "Enable Node-to-Node Client Certs Params",
+          dataType = "com.yugabyte.yw.forms.EnableNodeToNodeClientCertsParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result enableNodeToNodeClientCerts(
+      UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::enableNodeToNodeClientCerts,
+        EnableNodeToNodeClientCertsParams.class,
+        Audit.ActionType.EnableNodeToNodeClientCerts,
         customerUuid,
         universeUuid);
   }

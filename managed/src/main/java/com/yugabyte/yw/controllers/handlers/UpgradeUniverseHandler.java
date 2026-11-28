@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.EnableNodeToNodeClientCertsParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -1330,6 +1331,17 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.KubernetesToggleImmutableYbc,
         CustomerTask.TaskType.KubernetesToggleImmutableYbc,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID enableNodeToNodeClientCerts(
+      EnableNodeToNodeClientCertsParams requestParams, Customer customer, Universe universe) {
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.EnableNodeToNodeClientCerts,
+        CustomerTask.TaskType.EnableNodeToNodeClientCerts,
         requestParams,
         customer,
         universe);

@@ -651,6 +651,9 @@ public class Audit extends Model {
     @EnumValue("Set Immutable Ybc on Kubernetes Universe")
     KubernetesToggleImmutableYbc,
 
+    @EnumValue("Enable Node-to-Node Client Certificates")
+    EnableNodeToNodeClientCerts,
+
     @EnumValue("Import Universe to the Kubernetes Operator")
     OperatorImportUniverse,
 

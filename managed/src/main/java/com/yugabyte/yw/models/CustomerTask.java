@@ -463,6 +463,9 @@ public class CustomerTask extends Model {
     @EnumValue("KubernetesToggleImmutableYbc")
     KubernetesToggleImmutableYbc,
 
+    @EnumValue("EnableNodeToNodeClientCerts")
+    EnableNodeToNodeClientCerts,
+
     @EnumValue("OperatorImport")
     OperatorImport,
 
@@ -707,6 +710,10 @@ public class CustomerTask extends Model {
           return completed ? "Migrated universe" : "Migrating universe";
         case KubernetesToggleImmutableYbc:
           return completed ? "Set Immutable Ybc on K8s" : "Setting Immutable Ybc on K8s";
+        case EnableNodeToNodeClientCerts:
+          return completed
+              ? "Enabled node-to-node client certificates on"
+              : "Enabling node-to-node client certificates on";
         case OperatorImport:
           return completed ? "Imported universe to Operator" : "Importing universe to Operator";
         case RegisterWithPACollector:
