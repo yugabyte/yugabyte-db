@@ -467,6 +467,21 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
 
+// Find the **index** of ddl_state in pb.ysql_ddl_txn_verifier_state with
+// smallest sub-transaction id >= sub_txn_id.
+// Entries of ysql_ddl_txn_verifier_state are sorted in increasing order of sub-transaction id.
+// See comment in catalog_entity_info.proto for more details.
+// Returns length of ysql_ddl_txn_verifier_state if no such state is found.
+inline int YsqlFirstDdlStateAtOrAfterSubTxn(const SysTablesEntryPB& pb, SubTransactionId sub_txn) {
+  const auto& ddl_states = pb.ysql_ddl_txn_verifier_state();
+  auto it = std::lower_bound(
+      ddl_states.begin(), ddl_states.end(), sub_txn, [](const auto& ddl_state, uint32_t value) {
+        return ddl_state.sub_transaction_id() < value;
+      });
+
+  return static_cast<int>(std::distance(ddl_states.begin(), it));
+}
+
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
@@ -576,19 +591,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.ysql_ddl_txn_verifier_state(pb.ysql_ddl_txn_verifier_state_size() - 1);
   }
 
-  // Find the **index** of ddl_state in ysql_ddl_txn_verifier_state with
-  // smallest sub-transaction id >= sub_txn_id.
-  // Entries of ysql_ddl_txn_verifier_state are sorted in increasing order of sub-transaction id.
-  // See comment in catalog_entity_info.proto for more details.
-  // Returns length of ysql_ddl_txn_verifier_state if no such state is found.
+  // See YsqlFirstDdlStateAtOrAfterSubTxn.
   int ysql_first_ddl_state_at_or_after_sub_txn(SubTransactionId sub_txn) const {
-    const auto& ddl_states = ysql_ddl_txn_verifier_state();
-    auto it = std::lower_bound(
-        ddl_states.begin(), ddl_states.end(), sub_txn, [](const auto& ddl_state, uint32_t value) {
-          return ddl_state.sub_transaction_id() < value;
-        });
-
-    return static_cast<int>(std::distance(ddl_states.begin(), it));
+    return YsqlFirstDdlStateAtOrAfterSubTxn(pb, sub_txn);
   }
 
   bool is_being_deleted_by_ysql_ddl_txn() const {

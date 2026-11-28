@@ -42,6 +42,7 @@ DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
 DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
@@ -54,6 +55,7 @@ const auto kTableName2 = "test2";
 
 YB_STRONGLY_TYPED_BOOL(MarkedForDeletion);
 YB_STRONGLY_TYPED_BOOL(TestCommit);
+YB_STRONGLY_TYPED_BOOL(TableExistedBefore);
 
 enum class DdlOp : uint8_t {
   kNone = 0,
@@ -780,9 +782,10 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepoints) {
 
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT c"));
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
-  // Column 'b' won't exist as it has been dropped before the savepoint 'c'.
+  // Column 'b' stays, marked for deletion, until commit: ROLLBACK TO SAVEPOINT b brings it back.
   ValidateTabletSchema(
       table_id, {{.name = "a", .data_type = DataType::INT32},
+                 {.name = "b", .data_type = DataType::STRING},
                  {.name = "c", .data_type = DataType::STRING},
                  {.name = "d", .data_type = DataType::STRING},
                  {.name = "e", .data_type = DataType::STRING},
@@ -1134,6 +1137,282 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointAfterStaleVerificat
   ASSERT_OK(conn.Execute(GetParam() ? "COMMIT" : "ROLLBACK"));
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName2))), 3);
+}
+
+// Test that a column dropped in a later savepoint than the one that created its table or added the
+// column is only marked for deletion, so that ROLLBACK TO the earlier savepoint brings it back.
+// 1. Create a table and insert rows.
+// 2. In savepoint a, drop v (the table was created before a), then add w and fill it.
+// 3. In savepoint b, drop w (w was added before b).
+// 4. Check that the master marks both columns for deletion instead of removing them.
+// 5. Roll back to b and check w's values, then to a and check v's values.
+TEST_P(PgDdlSavepointMiniClusterTest, TestDropColumnInLaterSavepointIsTwoPhase) {
+  constexpr int kNumRows = 10;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  const auto count_v_intact = Format("SELECT COUNT(*) FROM $0 WHERE v = k", kTableName);
+  const auto count_w_intact = Format("SELECT COUNT(*) FROM $0 WHERE w = k", kTableName);
+
+  // Step 1
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+
+  // Step 2
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN w INT", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET w = k", kTableName));
+
+  // Step 3
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN w", kTableName));
+
+  // Step 4
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  auto table = catalog_mgr.GetTableInfo(table_id);
+  ValidateSchemaColumns(
+      table->LockForRead()->schema(),
+      {{.name = "k",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "v",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kTrue},
+       {.name = "w",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kTrue}});
+
+  // Step 5
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(count_w_intact)), kNumRows);
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(count_v_intact)), kNumRows);
+  ASSERT_OK(conn.Execute(GetParam() ? "COMMIT" : "ROLLBACK"));
+  if (GetParam()) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(count_v_intact)), kNumRows);
+  }
+}
+
+// Tests for #39490: a column dropped in a savepoint and brought back by a rollback to that
+// savepoint keeps its values even when a compaction runs in between. The new-relation fast path
+// writes the transaction's rows of a created or rewritten table straight to the regular DB, where a
+// compaction discards the values of every column the tablets have recorded as deleted.
+// Parameters: whether READ COMMITTED is enabled (it opens an internal savepoint per statement), and
+// whether the transaction commits or rolls back at the end.
+class PgDdlSavepointDropColumnDataTest
+    : public PgMiniTestBase,
+      public ::testing::WithParamInterface<std::tuple<bool, TestCommit>> {
+ protected:
+  static constexpr int kNumRows = 100;
+
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ false);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = ReadCommitted();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+
+  static bool ReadCommitted() { return std::get<0>(GetParam()); }
+  static bool Commit() { return std::get<1>(GetParam()) ? true : false; }
+
+  // The fast path is fixed on first use in a transaction, so it is set before BEGIN.
+  Result<PGConn> ConnectWithFastPath() {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write = true"));
+    RETURN_NOT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = true"));
+    return conn;
+  }
+
+  // Creates the table with rows committed before the test's transaction.
+  Status CreateAndFillTable(PGConn& conn) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY, x INT, v INT NOT NULL)", kTableName));
+    return conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT g, g, g FROM generate_series(1, $1) g", kTableName, kNumRows);
+  }
+
+  Status CheckColumnIntact(PGConn& conn) {
+    auto [total, intact] = VERIFY_RESULT((conn.FetchRow<int64_t, int64_t>(Format(
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE v = k) FROM $0", kTableName))));
+    SCHECK_EQ(total, kNumRows, IllegalState, "Unexpected number of rows");
+    SCHECK_EQ(intact, kNumRows, IllegalState, "Values of column v were lost");
+    return Status::OK();
+  }
+
+  // Ends the transaction as the test parameter says, then checks v again if the table still exists.
+  void EndTransactionAndCheck(PGConn& conn, TableExistedBefore table_existed_before) {
+    ASSERT_OK(conn.Execute(Commit() ? "COMMIT" : "ROLLBACK"));
+    if (Commit() || table_existed_before) {
+      ASSERT_OK(CheckColumnIntact(conn));
+    }
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    , PgDdlSavepointDropColumnDataTest,
+    ::testing::Combine(::testing::Bool(), ::testing::Values(TestCommit::kFalse, TestCommit::kTrue)),
+    [](const ::testing::TestParamInfo<std::tuple<bool, TestCommit>>& info) {
+      return std::string(std::get<0>(info.param) ? "ReadCommitted" : "Snapshot") +
+             (std::get<1>(info.param) ? "Commit" : "Rollback");
+    });
+
+// The table is created in the transaction.
+// 1. Create a table and insert rows in a transaction. The fast path writes them to the regular DB.
+// 2. Drop a column in a savepoint.
+// 3. Compact with no history retention.
+// 4. Roll back to the savepoint and check the column's values.
+TEST_P(PgDdlSavepointDropColumnDataTest, CreatedTable) {
+  auto conn = ASSERT_RESULT(ConnectWithFastPath());
+
+  // Step 1
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT NOT NULL)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+
+  // Step 2
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v", kTableName));
+
+  // Step 3
+  FlushAndCompactTablets();
+
+  // Step 4
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ASSERT_OK(CheckColumnIntact(conn));
+  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kFalse));
+}
+
+// The table is rewritten in the transaction: ALTER COLUMN ... TYPE builds a new DocDB table and
+// copies the rows committed before the transaction into it.
+// 1. Create a table and insert rows, outside the transaction.
+// 2. In a transaction, rewrite the table.
+// 3. Drop a column in a savepoint.
+// 4. Compact with no history retention.
+// 5. Roll back to the savepoint and check the column's values.
+TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTable) {
+  auto conn = ASSERT_RESULT(ConnectWithFastPath());
+
+  // Step 1
+  ASSERT_OK(CreateAndFillTable(conn));
+
+  // Step 2
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN x TYPE BIGINT", kTableName));
+
+  // Step 3
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v", kTableName));
+
+  // Step 4
+  FlushAndCompactTablets();
+
+  // Step 5
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ASSERT_OK(CheckColumnIntact(conn));
+  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kTrue));
+}
+
+// As RewrittenTable, but a PL/pgSQL EXCEPTION block undoes the DROP by rolling back its internal
+// savepoint.
+// 1. Create a table and insert rows, outside the transaction. Take an advisory lock on another
+//    connection. The gate is an advisory lock, not a row lock: a row read that waits through the
+//    compaction would fail with "Snapshot too old".
+// 2. In a transaction, rewrite the table.
+// 3. On another thread, run a block that drops a column, waits for the advisory lock, then raises
+//    an error it catches.
+// 4. Once the block waits for the lock, compact with no history retention, then release the lock.
+// 5. After the block ends, check the column's values.
+TEST_P(PgDdlSavepointDropColumnDataTest, RewrittenTableExceptionBlock) {
+  static constexpr int kGateLockKey = 39490;
+  auto conn = ASSERT_RESULT(ConnectWithFastPath());
+  auto gate_conn = ASSERT_RESULT(Connect());
+
+  // Step 1
+  ASSERT_OK(CreateAndFillTable(conn));
+  ASSERT_OK(gate_conn.Execute("BEGIN"));
+  ASSERT_OK(gate_conn.FetchFormat("SELECT pg_advisory_xact_lock($0)", kGateLockKey));
+
+  // Step 2
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN x TYPE BIGINT", kTableName));
+
+  // Step 3
+  std::atomic<bool> block_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn, &block_done] {
+    ASSERT_OK(conn.ExecuteFormat(
+        "DO $$$$ BEGIN "
+        "  ALTER TABLE $0 DROP COLUMN v; "
+        "  PERFORM pg_advisory_xact_lock($1); "
+        "  RAISE EXCEPTION 'undo the drop'; "
+        "EXCEPTION WHEN raise_exception THEN NULL; "
+        "END $$$$",
+        kTableName, kGateLockKey));
+    block_done = true;
+  });
+
+  // Step 4
+  // pg_locks asks every transaction status tablet, which fails while one has no ready leader, as
+  // on slow builds such as ASAN. Retry then, on a connection of its own: an error in gate_conn's
+  // transaction would abort the transaction that holds the lock.
+  auto poll_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(WaitFor(
+      [&poll_conn]() -> Result<bool> {
+        auto num_waiting =
+            poll_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE NOT granted");
+        if (!num_waiting.ok()) {
+          LOG(INFO) << "Querying pg_locks failed, will retry: " << num_waiting.status();
+          return false;
+        }
+        return *num_waiting > 0;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Wait for the block to wait for the advisory lock after the DROP"));
+  FlushAndCompactTablets();
+  ASSERT_FALSE(block_done.load());
+  ASSERT_OK(gate_conn.Execute("COMMIT"));
+
+  // Step 5
+  thread_holder.JoinAll();
+  ASSERT_TRUE(block_done.load());
+  ASSERT_OK(CheckColumnIntact(conn));
+  ASSERT_NO_FATALS(EndTransactionAndCheck(conn, TableExistedBefore::kTrue));
+}
+
+// With no savepoint since the table was created, nothing can bring a dropped column back, so it is
+// dropped at once and a column with the same name can be added again. Under READ COMMITTED, each
+// statement runs in its own internal savepoint, released when the statement succeeds; those do not
+// count.
+// 1. Create a table and insert rows in a transaction, then add column c.
+// 2. Drop b and c and add them again with another type.
+// 3. Check the new columns after the transaction ends.
+TEST_P(PgDdlSavepointDropColumnDataTest, ReAddColumnDroppedFromCreatedTable) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Step 1
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, b INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", kTableName));
+
+  // Step 2
+  for (const auto* column : {"b", "c"}) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", kTableName, column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", kTableName, column));
+  }
+
+  // Step 3
+  ASSERT_OK(conn.Execute(Commit() ? "COMMIT" : "ROLLBACK"));
+  if (Commit()) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM $0 WHERE b IS NULL AND c IS NULL", kTableName))), kNumRows);
+  }
 }
 
 // Probe for #29139 / D51840: without the fix, when sys.catalog raft replication on yb-master is

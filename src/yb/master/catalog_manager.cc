@@ -8690,27 +8690,43 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 }
 
 namespace {
-// Given the SysTablesEntryPB for a table and 'col_name', return whether the column can be directly
-// dropped or if it should be marked for deletion first and dropped later.
-Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const string& col_name) {
+// Given the SysTablesEntryPB for a table, the AlterTableRequestPB dropping 'col_name' and the
+// column's name, return whether the column can be directly dropped or if it should be marked for
+// deletion first and dropped later.
+Result<bool> NeedTwoPhaseDeleteForColumn(
+    const SysTablesEntryPB& pb, const AlterTableRequestPB& req, const string& col_name) {
   // Applicable only for YSQL tables.
   if (pb.table_type() != PGSQL_TABLE_TYPE) {
     return false;
   }
 
-  // In general, mark the column for deletion first and drop it only after the transaction commits
-  // to prevent data loss. However, if the table was created in the same transaction or if the
-  // column was added in this transaction, then we can safely skip 2-phase deletion because the
-  // column being dropped will not exist whether the transaction is a success or not, and no other
-  // clients can see this column.
-  if (pb.ysql_ddl_txn_verifier_state_size() == 0) {
+  // Mark the column for deletion and drop it only after the transaction commits, unless no
+  // rollback, of the transaction or to a savepoint, can bring the column back.
+  // ROLLBACK TO a sub-transaction undoes the DDL states at or after it, so the column comes back
+  // only if it, or its table, was created before a savepoint that is still live. The innermost
+  // live savepoint is the latest such target, so the column can be dropped at once only if the
+  // table was created, or the column added, in a state at or after that savepoint. Without
+  // savepoints, that is the first state.
+  // PG does not count the DROP statement's own READ COMMITTED sub-transaction. Rolling it back
+  // cannot leave the column restored without its values; see
+  // YbGetInnermostSavepointSubTransactionId.
+  const auto& states = pb.ysql_ddl_txn_verifier_state();
+  if (states.empty()) {
     return true;
   }
 
-  // ysql_ddl_txn_verifier_state is a repeated field with as many entries as number of savepoints
-  // in the transaction so far. Since we don't support savepoints for DDL transactions today,
-  // default to picking the first entry.
-  const auto& state = pb.ysql_ddl_txn_verifier_state(0);
+  int index = 0;
+  if (req.has_sub_transaction_id()) {
+    const SubTransactionId savepoint_sub_txn = req.has_innermost_savepoint_sub_transaction_id()
+        ? req.innermost_savepoint_sub_transaction_id()
+        : req.sub_transaction_id();
+    // The same lookup as ROLLBACK TO's, which undoes the states from this index on.
+    index = YsqlFirstDdlStateAtOrAfterSubTxn(pb, savepoint_sub_txn);
+    if (index == states.size()) {
+      return true;
+    }
+  }
+  const auto& state = states[index];
   if (state.contains_create_table_op()) {
     return false;
   }
@@ -8718,7 +8734,7 @@ Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const strin
     return true;
   }
 
-  // Find whether this column was added in this transaction. This should be done by comparing the
+  // Find whether this column was added in 'state' or later. This should be done by comparing the
   // 'order' field which corresponds to postgres' attnum field. Comparing the name can result in
   // erroneous conditions if the column was renamed in this transaction.
   int order = -1;
@@ -8736,13 +8752,14 @@ Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const strin
   // Find column with same order in previous schema.
   for (const auto& col : state.previous_schema().columns()) {
     if (col.order() == order) {
-      // This column already existed before the current transaction. Therefore it is not being
-      // added as part of this transaction and needs to be deleted using 2 phase deletion.
+      // This column existed before 'state': before the transaction, or before a savepoint that a
+      // rollback can still target. Either can bring it back, so it needs 2 phase deletion.
       return true;
     }
   }
-  // This column was added as part of this transaction and need not be visible to any other
-  // transactions. It is safe to drop right away.
+  // This column was added in 'state' or later, so no rollback to a savepoint or of the transaction
+  // can bring it back (for the DROP statement's own sub-transaction, see above), and no other
+  // transaction can see it. Drop it right away.
   return false;
 }
 
@@ -8800,7 +8817,7 @@ Status ApplyAlterSteps(server::Clock* clock,
         }
 
         if (req->ysql_yb_ddl_rollback_enabled() &&
-            VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
+            VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, *req, col_name))) {
           RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
           ddl_log_entries->emplace_back(
               time, table_id, current_pb,

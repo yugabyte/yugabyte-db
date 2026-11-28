@@ -2100,6 +2100,9 @@ class PgClientSession::Impl {
       alterer->part_of_transaction(txn);
     }
     alterer->part_of_sub_transaction(req.options().active_sub_transaction_id());
+    if (req.innermost_savepoint_sub_transaction_id()) {
+      alterer->innermost_savepoint_sub_transaction(req.innermost_savepoint_sub_transaction_id());
+    }
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }

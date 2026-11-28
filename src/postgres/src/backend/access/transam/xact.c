@@ -5268,6 +5268,42 @@ YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_
 }
 
 /*
+ * YbGetInnermostSavepointSubTransactionId
+ *		Return the id of the innermost subtransaction that a rollback can still
+ *		target, other than the internal ones created for READ COMMITTED
+ *		isolation level: a user savepoint or an anonymous internal
+ *		subtransaction such as a PL/pgSQL EXCEPTION block.  Return the top
+ *		level's id when there is none.
+ *
+ * READ COMMITTED's internal subtransaction is skipped because it is released
+ * when its statement succeeds.  The master uses this id to decide whether a
+ * dropped column can come back and must be kept until commit.
+ *
+ * The current statement's own READ COMMITTED subtransaction is skipped too.
+ * Rolling it back cannot leave a column dropped by the statement restored
+ * without its values.  A retry (yb_restart_current_stmt) re-runs the DROP, and
+ * is refused once the transaction has written past the intents db, the only
+ * way such a column's values reach the regular db, where a compaction can
+ * remove them, before commit.  An error aborts the transaction block, which
+ * then ends only with ROLLBACK or ROLLBACK TO a savepoint taken before the
+ * statement, which this function counts.  Counting the statement's own
+ * subtransaction would keep every column dropped in a later statement until
+ * commit, so that re-adding a column with the same name fails.
+ */
+SubTransactionId
+YbGetInnermostSavepointSubTransactionId(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	while (s->parent != NULL &&
+		   s->name != NULL &&
+		   strcmp(s->name, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0)
+		s = s->parent;
+
+	return s->subTransactionId;
+}
+
+/*
  * ReleaseCurrentSubTransaction
  *
  * RELEASE (ie, commit) the innermost subtransaction, regardless of its

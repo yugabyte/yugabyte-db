@@ -559,6 +559,7 @@ extern void YbBeginInternalSubTransactionForReadCommittedStatement();
  * skip_backward_compat_escape_hatch = true to opt out of it.
  */
 extern bool YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch);
+extern SubTransactionId YbGetInnermostSavepointSubTransactionId(void);
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YbCommitTransactionCommandIntermediate(void);
 extern void YbCommitTransactionCommandIntermediateExtended(bool block_ddl_concurrency_in_db);
