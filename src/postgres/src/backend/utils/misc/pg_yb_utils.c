@@ -11166,10 +11166,11 @@ YbIsIndexedTableNewInTxn(Relation index)
  * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
  * read_at_in_txn_limit and hold for the whole transaction, while the transaction-state checks
  * after them gate skip_intents alone and may disable the optimization for the rest of the
- * transaction.
+ * transaction. A dry run makes the same decision without disabling the optimization or recording
+ * a skipped write.
  */
 static YbcPgSkipIntentsOptimizationInfo
-YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
+YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write, bool dry_run)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
@@ -11247,9 +11248,12 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	{
 		if (!is_top_level)
 		{
-			elog(DEBUG1, "Disable skip intents due to non-toplevel ddl, "
-						 "relation %u", rel->rd_id);
-			skip_intents_txn_state.disabled = true;
+			if (!dry_run)
+			{
+				elog(DEBUG1, "Disable skip intents due to non-toplevel ddl, "
+							 "relation %u", rel->rd_id);
+				skip_intents_txn_state.disabled = true;
+			}
 			return info;
 		}
 		/*
@@ -11285,23 +11289,28 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	if (GetCurrentSubTransactionId() > TopSubTransactionId &&
 		YBTransactionContainsNonReadCommittedSavepoint(true /* skip_backward_compat_escape_hatch */ ))
 	{
-		elog(DEBUG1, "Disable skip intents due to savepoint on relation %u write", rel->rd_id);
-		skip_intents_txn_state.disabled = true;
+		if (!dry_run)
+		{
+			elog(DEBUG1, "Disable skip intents due to savepoint on relation %u write", rel->rd_id);
+			skip_intents_txn_state.disabled = true;
+		}
 		return info;
 	}
 
+	info.skip_intents = true;
+	if (dry_run)
+		return info;
 	if (is_write)
 		skip_intents_txn_state.has_skipped_write = true;
 	elog(DEBUG2, "Skipping intents db %s for relation %u",
 		 is_write ? "write" : "read", rel->rd_id);
-	info.skip_intents = true;
 	return info;
 }
 
 YbcPgSkipIntentsOptimizationInfo
 YbGetSkipIntentsOptimizationInfoWrite(Relation rel)
 {
-	return YbGetSkipIntentsOptimizationInfo(rel, true /* is_write */ );
+	return YbGetSkipIntentsOptimizationInfo(rel, true /* is_write */ , false /* dry_run */ );
 }
 
 /*
@@ -11336,7 +11345,7 @@ YbValidateFunctionSetItem(const VariableSetStmt *sstmt)
 static YbcPgSkipIntentsOptimizationInfo
 YbGetSkipIntentsOptimizationInfoRead(Relation rel)
 {
-	return YbGetSkipIntentsOptimizationInfo(rel, false /* is_write */ );
+	return YbGetSkipIntentsOptimizationInfo(rel, false /* is_write */ , false /* dry_run */ );
 }
 
 /* Session-level cache for YbDatabaseHasPublications(). */
@@ -11446,6 +11455,75 @@ YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid)
 			 "CDCSDK stream", database_oid);
 		skip_intents_txn_state.disabled = true;
 	}
+}
+
+/*
+ * Opens the subtransaction that a table rewrite's copy into new_rel runs in.
+ * The copied rows are not changes to the table, so logical decoding must not
+ * emit them.  PG's decoder recognizes them because they go to the transient
+ * heap (relrewrite), but in YB they go to the new DocDB table under the
+ * table's own id.  So the copy runs in a subtransaction that CDC skips; apply
+ * still writes the rows.
+ *
+ * Without intents, CDC has nothing to skip, so a copy that takes the skip
+ * intents optimization needs no subtransaction.  It must not get one either:
+ * the optimization is limited to top-level statements, and a subtransaction
+ * would turn it off.
+ *
+ * Wrap the copy in PG_TRY, calling YbEndRewriteCopySubtxn last inside it and
+ * YbAbortRewriteCopySubtxn in PG_CATCH.  The end call belongs inside because
+ * releasing the subtransaction flushes the copy's buffered writes, which can
+ * fail.  Otherwise an error in the copy or in that flush leaves the
+ * subtransaction aborted but open, and even a single-statement transaction
+ * then waits for a ROLLBACK.
+ */
+YbRewriteCopySubtxn
+YbBeginRewriteCopySubtxn(Relation new_rel)
+{
+	YbRewriteCopySubtxn subtxn = {
+		.opened = false,
+		.oldcontext = CurrentMemoryContext,
+		.oldowner = CurrentResourceOwner,
+	};
+
+	if (!yb_enable_cdc_skip_table_rewrite_copy || !IsYBRelation(new_rel) ||
+		YbGetSkipIntentsOptimizationInfo(new_rel, true /* is_write */ ,
+										 true /* dry_run */ ).skip_intents)
+		return subtxn;
+
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(subtxn.oldcontext);
+	YBCPgSkipSubTransactionInCdc(GetCurrentSubTransactionId());
+	subtxn.opened = true;
+	return subtxn;
+}
+
+void
+YbEndRewriteCopySubtxn(const YbRewriteCopySubtxn *subtxn)
+{
+	if (!subtxn->opened)
+		return;
+	ReleaseCurrentSubTransaction();
+	MemoryContextSwitchTo(subtxn->oldcontext);
+	CurrentResourceOwner = subtxn->oldowner;
+}
+
+/* Rolls back the copy's subtransaction, if any, and rethrows the error. */
+void
+YbAbortRewriteCopySubtxn(const YbRewriteCopySubtxn *subtxn)
+{
+	ErrorData  *edata;
+
+	if (!subtxn->opened)
+		PG_RE_THROW();
+
+	MemoryContextSwitchTo(subtxn->oldcontext);
+	edata = CopyErrorData();
+	FlushErrorState();
+	RollbackAndReleaseCurrentSubTransaction();
+	MemoryContextSwitchTo(subtxn->oldcontext);
+	CurrentResourceOwner = subtxn->oldowner;
+	ReThrowError(edata);
 }
 
 void

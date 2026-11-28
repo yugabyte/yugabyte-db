@@ -2926,6 +2926,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_cdc_skip_table_rewrite_copy", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Autoflag to skip the rows a table rewrite copies when "
+						 "streaming changes. Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_cdc_skip_table_rewrite_copy,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "

@@ -86,6 +86,12 @@ message TransactionStatePB {
   // tablet's leader clears it once the persistence gate has passed the commit, so it never reaches
   // the WAL or any follower.
   optional OriginationInfoPB origination_info = 17;
+
+  // Relevant only in COMMITTED, SEALED and APPLYING states. Subtransactions whose writes CDC does
+  // not stream, although they are applied: the rows a YSQL table rewrite copies into the new
+  // table. PG's logical decoding skips such rows (they go to the transient heap), so CDC skips
+  // them too.
+  optional SubtxnSetPB cdc_skipped_subtxns = 18;
 }
 
 message TruncatePB {

@@ -2355,6 +2355,10 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
   return Status::OK();
 }
 
+void PgApiImpl::SkipSubTransactionInCdc(SubTransactionId id) {
+  pg_txn_manager_->SkipSubTransactionInCdc(id);
+}
+
 Status PgApiImpl::RollbackToSubTransaction(SubTransactionId id) {
   const auto status = pg_txn_manager_->RollbackToSubTransaction(ClearSessionState(), id);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;

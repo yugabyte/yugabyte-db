@@ -639,6 +639,11 @@ void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
   active_sub_transaction_id_ = id;
 }
 
+void PgTxnManager::SkipSubTransactionInCdc(SubTransactionId id) {
+  VLOG_WITH_FUNC(2) << "id: " << id;
+  cdc_skipped_sub_transaction_ids_.push_back(id);
+}
+
 Status PgTxnManager::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   return FinishPlainTransaction(Commit::kTrue, ddl_commit_info);
 }
@@ -1044,6 +1049,10 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_trace_requested(enable_tracing_);
   options.set_txn_serial_no(serial_no_.txn());
   options.set_active_sub_transaction_id(active_sub_transaction_id_);
+  if (std::ranges::find(cdc_skipped_sub_transaction_ids_, active_sub_transaction_id_) !=
+          cdc_skipped_sub_transaction_ids_.end()) {
+    options.set_cdc_skip_active_sub_transaction(true);
+  }
   options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options.set_pg_txn_start_us(pg_txn_start_us_);
   options.set_connected_database_oid(connected_database_oid_);
@@ -1102,6 +1111,7 @@ void PgTxnManager::IncTxnSerialNo() {
       pg_callbacks_.GetCatalogSnapshotReadPoint(
           0 /* table_oid*/, false /* create_if_not_exists */));
   active_sub_transaction_id_ = kMinSubTransactionId;
+  cdc_skipped_sub_transaction_ids_.clear();
   crosstxn_explicit_snapshot_read_time_.clear();
 }
 

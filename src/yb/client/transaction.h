@@ -198,6 +198,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
+  // The subtransaction's writes are applied, but CDC does not stream them.
+  Status SkipSubTransactionInCdc(SubTransactionId id);
+
   std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
 
   SubTransactionId IncrementAndGetSubTransactionId();
@@ -276,11 +279,15 @@ class YBSubTransaction {
 
   Status RollbackToSubTransaction(SubTransactionId id);
 
+  Status SkipInCdc(SubTransactionId id);
+
   void SetAborted(SubtxnSet aborted);
 
   bool HasSubTransaction(SubTransactionId id) const;
 
   const SubTransactionMetadata& get() const;
+
+  const SubtxnSet& cdc_skipped() const { return cdc_skipped_; }
 
   std::string ToString() const;
 
@@ -288,6 +295,9 @@ class YBSubTransaction {
 
  private:
   SubTransactionMetadata sub_txn_;
+
+  // Subtransactions that CDC skips. Sent only with the commit, since only APPLYING reaches CDC.
+  SubtxnSet cdc_skipped_;
 
   // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
   // the highest live subtransaction_id.

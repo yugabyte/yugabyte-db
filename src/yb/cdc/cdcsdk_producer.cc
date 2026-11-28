@@ -2061,7 +2061,8 @@ void FillCommitRecord(
 
 Status ProcessIntents(
     const OpId& op_id, const TransactionId& transaction_id, uint32_t xrepl_origin_id,
-    const SubtxnSet& aborted, const StreamMetadata& metadata,
+    const SubtxnSet& aborted, const SubtxnSet& cdc_skipped_subtxns,
+    const StreamMetadata& metadata,
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     CDCSDKRequestSource request_source, GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption, CDCSDKCheckpointPB* checkpoint,
@@ -2079,8 +2080,8 @@ Status ProcessIntents(
     TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
-  RETURN_NOT_OK(tablet->GetIntentsForCDC(transaction_id, aborted, keyValueIntents,
-    stream_state));
+  RETURN_NOT_OK(tablet->GetIntentsForCDC(
+      transaction_id, aborted, cdc_skipped_subtxns, keyValueIntents, stream_state));
   VLOG(1) << "The size of intentKeyValues for transaction id: " << transaction_id
           << ", with apply record op_id : " << op_id << ", is: " << (*keyValueIntents).size();
 
@@ -2152,7 +2153,8 @@ Status ProcessIntents(
 
 Status ProcessIntentsWithInvalidSchemaRetry(
     const OpId& op_id, const TransactionId& transaction_id, uint32_t xrepl_origin_id,
-    const SubtxnSet& aborted, const StreamMetadata& metadata,
+    const SubtxnSet& aborted, const SubtxnSet& cdc_skipped_subtxns,
+    const StreamMetadata& metadata,
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     CDCSDKRequestSource request_source, GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption, CDCSDKCheckpointPB* checkpoint,
@@ -2164,10 +2166,10 @@ Status ProcessIntentsWithInvalidSchemaRetry(
   const auto& records_size_before = resp->cdc_sdk_proto_records_size();
 
   auto status = ProcessIntents(
-      op_id, transaction_id, xrepl_origin_id, aborted, metadata, enum_oid_label_map,
-      composite_atts_map, request_source, resp, consumption, checkpoint, tablet_peer,
-      keyValueIntents, stream_state, client, cached_schema_details, schema_packing_storages,
-      commit_time, throughput_metrics);
+      op_id, transaction_id, xrepl_origin_id, aborted, cdc_skipped_subtxns, metadata,
+      enum_oid_label_map, composite_atts_map, request_source, resp, consumption, checkpoint,
+      tablet_peer, keyValueIntents, stream_state, client, cached_schema_details,
+      schema_packing_storages, commit_time, throughput_metrics);
 
   if (!status.ok()) {
     VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
@@ -2189,10 +2191,10 @@ Status ProcessIntentsWithInvalidSchemaRetry(
     }
 
     status = ProcessIntents(
-        op_id, transaction_id, xrepl_origin_id, aborted, metadata, enum_oid_label_map,
-        composite_atts_map, request_source, resp, consumption, checkpoint, tablet_peer,
-        keyValueIntents, stream_state, client, cached_schema_details, schema_packing_storages,
-        commit_time, throughput_metrics);
+        op_id, transaction_id, xrepl_origin_id, aborted, cdc_skipped_subtxns, metadata,
+        enum_oid_label_map, composite_atts_map, request_source, resp, consumption, checkpoint,
+        tablet_peer, keyValueIntents, stream_state, client, cached_schema_details,
+        schema_packing_storages, commit_time, throughput_metrics);
   }
 
   return status;
@@ -3063,9 +3065,12 @@ Status GetChangesForCDCSDK(
               ? VERIFY_RESULT(SubtxnSet::FromPB(
                     wal_records[wal_segment_index]->transaction_state().aborted().set()))
               : SubtxnSet();
+      auto cdc_skipped_subtxns = VERIFY_RESULT(SubtxnSet::FromPB(
+          wal_records[wal_segment_index]->transaction_state().cdc_skipped_subtxns().set()));
 
       RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
-          op_id, transaction_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
+          op_id, transaction_id, xrepl_origin_id, aborted_subtxns, cdc_skipped_subtxns,
+          stream_metadata,
           enum_oid_label_map, composite_atts_map, request_source, resp, &consumption, &checkpoint,
           tablet_peer, &keyValueIntents, &stream_state, client, cached_schema_details,
           schema_packing_storages, commit_timestamp, throughput_metrics));
@@ -3260,6 +3265,8 @@ Status GetChangesForCDCSDK(
                   FLAGS_cdc_enable_savepoint_rollback_filtering
                       ? VERIFY_RESULT(SubtxnSet::FromPB(msg->transaction_state().aborted().set()))
                       : SubtxnSet();
+              auto cdc_skipped_subtxns = VERIFY_RESULT(
+                  SubtxnSet::FromPB(msg->transaction_state().cdc_skipped_subtxns().set()));
 
               // It is possible for a transaction to have two APPLYs in WAL. This check
               // prevents us from streaming the same transaction twice in the same GetChanges
@@ -3289,7 +3296,8 @@ Status GetChangesForCDCSDK(
                       << ", transaction_id: " << txn_id << ", commit_time: " << *commit_timestamp;
 
               RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
-                  op_id, txn_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
+                  op_id, txn_id, xrepl_origin_id, aborted_subtxns, cdc_skipped_subtxns,
+                  stream_metadata,
                   enum_oid_label_map, composite_atts_map, request_source, resp, &consumption,
                   &checkpoint, tablet_peer, &intents, &new_stream_state, client,
                   cached_schema_details, schema_packing_storages, *commit_timestamp,

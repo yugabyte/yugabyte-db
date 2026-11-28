@@ -92,6 +92,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void ResetRetryReadLimitCaps();
   bool IsReadRestartRetryInProgress() const { return read_restart_retry_in_progress_; }
   void SetActiveSubTransactionId(SubTransactionId id);
+  void SkipSubTransactionInCdc(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();
   Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
   Status AbortPlainTransaction();
@@ -304,6 +305,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
+  // Subtransactions of the current transaction that CDC skips. Each Perform reports whether the
+  // active one is among them, and the tserver records that on the transaction.
+  std::vector<SubTransactionId> cdc_skipped_sub_transaction_ids_;
   // Each read restart of the statement being retried reports the global and per-tablet local limits
   // of the read point that faced it; these keep the lowest of each across those restarts, and read
   // points picked for the retry are capped at them.

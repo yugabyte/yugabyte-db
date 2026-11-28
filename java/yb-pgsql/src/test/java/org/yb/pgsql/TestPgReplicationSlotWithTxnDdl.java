@@ -1204,6 +1204,56 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
+  // With ysql_session_max_batch_size 1, each row a rewrite copies goes to DocDB in a write of its
+  // own. Every one of those writes must carry the copy's subtransaction, so that none of the copies
+  // stream while the rewritten table still gets all of them.
+  @Test
+  public void rewriteCopyNotStreamedWithOneRowWriteBatches() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t1 SELECT i, 'row' || i FROM generate_series(1, 10) i");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      assertEquals("on",
+          getSingleRow(stmt, "SHOW yb_enable_cdc_skip_table_rewrite_copy").getString(0));
+      stmt.execute("SET ysql_session_max_batch_size = 1");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (11, 'before')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int DEFAULT (random() * 1000)::int");
+      stmt.execute("INSERT INTO t1 VALUES (12, 'after', 12)");
+      stmt.execute("COMMIT");
+
+      long rowsWithC = getSingleRow(stmt, "SELECT count(c) FROM t1").getLong(0);
+      assertEquals(12, rowsWithC);
+    }
+
+    // Read up to the COMMIT rather than a fixed count, so that an unexpected number of messages
+    // fails with a diff instead of blocking on a message that never comes.
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = new ArrayList<>();
+    do {
+      result.addAll(receiveMessage(stream, 1));
+    } while (!(result.get(result.size() - 1) instanceof PgOutputCommitMessage));
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("11", "before"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("12", "after", "12"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
   // An autocommit table rewrite: the DDL txn's first records are catalog changes, and its rewrite
   // INSERTs land on the new tablets, which are polled only after the publication refresh the
   // rewrite triggers (#35242).
