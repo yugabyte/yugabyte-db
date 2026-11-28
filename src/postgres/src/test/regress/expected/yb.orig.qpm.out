@@ -363,3 +363,81 @@ SELECT * FROM yb_pg_stat_plans /* __YB_STAT_PLANS_SKIP */;
     1 |      2 |       3 |      4 | Wed Jan 01 06:00:00 2025 PST | Thu Jan 02 06:00:00 2025 PST | Valid hint text |     1 |             1 |             1 |                      |            1 | Valid plan text
 (1 row)
 
+--
+-- Statements in a SQL function that cannot be inlined run in the function's
+-- memory context, which lives until the outer statement ends.  QPM must not
+-- grow that context on every call, whether or not it can hint the statement.
+--
+SET yb_pg_stat_plans_track = 'all';
+SET pg_stat_statements.track = 'all';
+DO $$ BEGIN PERFORM yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL); END $$;
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
+CREATE TABLE qpm_fn_t (k INT PRIMARY KEY, v INT);
+INSERT INTO qpm_fn_t SELECT i, i FROM generate_series(1, 10) AS i;
+-- Multi-statement bodies keep the planner from inlining these functions.
+CREATE FUNCTION qpm_unhintable_fn(i INT) RETURNS INT LANGUAGE sql AS $$
+    SELECT 1;
+    SELECT $1 + 1;
+$$;
+CREATE FUNCTION qpm_hintable_fn(i INT) RETURNS BIGINT LANGUAGE sql AS $$
+    SELECT 1;
+    SELECT count(*) FROM qpm_fn_t WHERE v = $1;
+$$;
+CREATE FUNCTION qpm_sql_function_bytes(fname TEXT) RETURNS BIGINT
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN (SELECT sum(total_bytes) FROM pg_backend_memory_contexts
+            WHERE name = 'SQL function' AND ident = fname);
+END;
+$$;
+-- Sample the function's context size after 500 and 5000 calls in one
+-- statement.  OFFSET 0 keeps the subquery's target list, and so the order
+-- in which its columns are evaluated, intact.
+SELECT count(r) AS calls,
+       max(b) FILTER (WHERE i = 5000) - max(b) FILTER (WHERE i = 500)
+           < 1024 * 1024 AS memory_bounded
+FROM (SELECT i, qpm_unhintable_fn(i) AS r,
+             CASE WHEN i IN (500, 5000)
+                  THEN qpm_sql_function_bytes('qpm_unhintable_fn') END AS b
+      FROM generate_series(1, 5000) AS i OFFSET 0) s;
+ calls | memory_bounded 
+-------+----------------
+  5000 | t
+(1 row)
+
+SELECT count(r) AS calls,
+       max(b) FILTER (WHERE i = 5000) - max(b) FILTER (WHERE i = 500)
+           < 1024 * 1024 AS memory_bounded
+FROM (SELECT i, qpm_hintable_fn(i) AS r,
+             CASE WHEN i IN (500, 5000)
+                  THEN qpm_sql_function_bytes('qpm_hintable_fn') END AS b
+      FROM generate_series(1, 5000) AS i OFFSET 0) s;
+ calls | memory_bounded 
+-------+----------------
+  5000 | t
+(1 row)
+
+-- QPM tracks the hintable statement once per call and never tracks the
+-- unhintable one.
+SELECT pgss.query, pgss.calls AS pgss_calls, qpm.calls AS qpm_calls
+FROM pg_stat_statements pgss
+LEFT JOIN yb_pg_stat_plans qpm USING (queryid)
+WHERE pgss.query LIKE 'SELECT count(*) FROM qpm_fn_t WHERE v = %'
+   OR pgss.query LIKE 'SELECT $1 + %'
+ORDER BY pgss.query
+/* __YB_STAT_PLANS_SKIP */;
+                   query                    | pgss_calls | qpm_calls 
+--------------------------------------------+------------+-----------
+ SELECT $1 + $2                             |       5000 |          
+ SELECT count(*) FROM qpm_fn_t WHERE v = $1 |       5000 |      5000
+(2 rows)
+
+DROP FUNCTION qpm_sql_function_bytes(TEXT);
+DROP FUNCTION qpm_hintable_fn(INT);
+DROP FUNCTION qpm_unhintable_fn(INT);
+DROP TABLE qpm_fn_t;
