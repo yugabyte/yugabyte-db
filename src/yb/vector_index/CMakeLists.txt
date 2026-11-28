@@ -29,6 +29,7 @@ ADD_YB_LIBRARY(vector_index_proto
 set(VECTOR_INDEX_SRCS
   ann_validation.cc
   benchmark_data.cc
+  distance_metric.cc
   hnsw_options.cc
   hnsw_util.cc
   index_wrapper_base.cc
@@ -59,5 +60,6 @@ add_dependencies(
 set(YB_TEST_LINK_LIBS
     vector_index yb_common_test_util ${YB_MIN_TEST_LIBS})
 
+ADD_YB_TEST(distance_metric-test)
 ADD_YB_TEST(hnsw_util-test)
 ADD_YB_TEST(vector_lsm_deletions-test)

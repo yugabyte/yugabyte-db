@@ -2634,8 +2634,8 @@ TEST_P(VectorLSMTest, ChunkFootprintFollowsContent) {
   }
 
   // Generous enough for the per-slot bookkeeping that is still sized by capacity (link locks,
-  // element levels, the visited list), and for usearch's own rounding, while nowhere near the
-  // capacity-sized footprint that the eager allocation produced.
+  // element levels, the visited list), while nowhere near the capacity-sized footprint that the
+  // eager allocation produced.
   ASSERT_LT(consumption, static_cast<int64_t>(capacity_bytes / 4));
   // heap_before is 0 when tcmalloc is not in use, and then there is nothing to measure.
   if (heap_before != 0) {

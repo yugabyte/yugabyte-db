@@ -1172,7 +1172,7 @@ class PgsqlVectorFilter {
     }
     // TODO(vector_index) Actually we already have all necessary info to generate response,
     // but we don't know whether this row will be in top or not.
-    // So need to extend usearch interface to also provide us ability to store fetched row.
+    // So need to extend the vector index interface to also provide us ability to store fetched row.
 
     need_refresh_ = *fetch_result == FetchResult::NotFound;
     if (*fetch_result != FetchResult::Found) {

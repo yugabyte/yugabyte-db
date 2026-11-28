@@ -352,17 +352,8 @@ FloatVector PgVectorIndexTestBase::RandomVector() {
   return result;
 }
 
-unum::usearch::metric_kind_t PgVectorIndexTestBase::UsearchMetricKind() const {
-  using vector_index::DistanceKind;
-  switch (distance_kind_) {
-    case DistanceKind::kL2Squared:
-      return unum::usearch::metric_kind_t::l2sq_k;
-    case DistanceKind::kInnerProduct:
-      return unum::usearch::metric_kind_t::ip_k;
-    case DistanceKind::kCosine:
-      return unum::usearch::metric_kind_t::cos_k;
-  }
-  FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
+vector_index::DistanceMetric PgVectorIndexTestBase::MakeDistanceMetric() const {
+  return vector_index::DistanceMetric::Create<FloatVector>(dimensions_, distance_kind_);
 }
 
 Status PgVectorIndexTestBase::RunSstDump(

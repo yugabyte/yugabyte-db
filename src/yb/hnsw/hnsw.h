@@ -17,6 +17,7 @@
 #include <queue>
 
 #include <boost/range/iterator_range.hpp>
+#include <boost/unordered/unordered_flat_set.hpp>
 
 #include "yb/hnsw/types.h"
 
@@ -27,9 +28,9 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/distance_metric.h"
 #include "yb/vector_index/hnsw_util.h"
 #include "yb/vector_index/hnswlib_include.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 
 namespace yb {
 
@@ -107,7 +108,7 @@ struct YbHnswSearchContext {
     }
   };
 
-  using VisitedSet = unum::usearch::growing_hash_set_gt<VectorNo>;
+  using VisitedSet = boost::unordered_flat_set<VectorNo>;
   using NextQueue = rocksdb::BinaryHeap<HeapEntry, HeapEntryCmp>;
   using Top = rocksdb::BinaryHeap<HeapEntry>;
   using ExtraTop = rocksdb::BinaryHeap<HnswDistanceType>;
@@ -119,45 +120,19 @@ struct YbHnswSearchContext {
   SearchCache search_cache;
 };
 
-class YbHnswMetric {
- public:
-  virtual ~YbHnswMetric() = default;
-  virtual HnswDistanceType Distance(const std::byte* lhs, const std::byte* rhs) = 0;
-};
-
-class UsearchMetric : public YbHnswMetric {
- public:
-  using Impl = unum::usearch::metric_punned_t;
-
-  explicit UsearchMetric(const Impl& metric) : impl_(metric) {}
-
-  HnswDistanceType Distance(const std::byte* lhs, const std::byte* rhs) override;
-
- private:
-  unum::usearch::metric_punned_t impl_;
-};
-
 class YbHnsw {
  public:
   using CoordinateType = float;
   using DistanceType = HnswDistanceType;
-  using Metric = YbHnswMetric;
-  using MetricPtr = std::unique_ptr<Metric>;
+  using Metric = vector_index::DistanceMetric;
   using SearchResult = std::vector<vector_index::VectorWithDistance<DistanceType>>;
 
-  YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
-      : YbHnsw(std::make_unique<UsearchMetric>(metric), block_cache) {
-  }
-
-  YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache);
+  YbHnsw(const Metric& metric, BlockCachePtr block_cache);
   ~YbHnsw();
 
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
   // payloads provides payloads attached to vectors, stored in the aux data.
   // It is null when the chunk does not store payloads.
-  Status Import(
-    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    const vector_index::VectorPayloadMap* payloads);
   Status Import(
     const HnswlibIndex<DistanceType>& index, const std::string& path,
     const vector_index::VectorPayloadMap* payloads);
@@ -203,7 +178,7 @@ class YbHnsw {
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
 
-  MetricPtr metric_;
+  const Metric metric_;
   const BlockCachePtr block_cache_;
 
   Header header_;

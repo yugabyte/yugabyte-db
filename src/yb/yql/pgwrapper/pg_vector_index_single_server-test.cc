@@ -1231,7 +1231,7 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
 // PgVectorIndexSmallBlockCacheTest
 ////////////////////////////////////////////////////////
 
-// Reproduces #32357: a vector index backed by usearch/hnswlib allocates its graph state on the
+// Reproduces #32357: a vector index backed by hnswlib allocates its graph state on the
 // heap, accounted under the per-tablet "vector_indexes" MemTracker. This consumption is additive
 // on top of whatever the RocksDB block cache already holds, so a server whose block cache is full
 // can be pushed over the soft/hard memory limit purely by building a vector index.
@@ -1244,7 +1244,7 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
 //
 // Parameterized by vector index engine; colocation and packing are fixed since they do not affect
 // the heap footprint or its block cache reservation. All engines build their mutable chunk with
-// usearch/hnswlib on the heap (the yb_hnsw block-cache format is only the saved/loaded form, which
+// hnswlib on the heap (the yb_hnsw block-cache format is only the saved/loaded form, which
 // this test never reaches because it keeps the index mutable), so the reservation applies to all.
 
 // Varies only the vector index engine; colocation and packing are pinned.

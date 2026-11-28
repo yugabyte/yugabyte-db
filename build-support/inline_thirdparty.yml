@@ -14,18 +14,6 @@
 # See the README.md file in src/inline-thirdparty for more information.
 
 dependencies:
-  - name: usearch
-    git_url: https://github.com/yugabyte/usearch
-    tag: v2.15.3-yb-2
-    src_dir: include
-    dest_dir: usearch
-
-  - name: fp16
-    git_url: https://github.com/Maratyszcza/FP16/
-    commit: 98b0a46bce017382a6351a19577ec43a715b6835
-    src_dir: include
-    dest_dir: fp16
-
   - name: hnswlib
     git_url: https://github.com/yugabyte/hnswlib
     # c1b9b79a is the commit in the upstream repo that we branched off of. We apply our patches to

@@ -28,12 +28,10 @@
 
 namespace yb::vector_index {
 
-// The usearch counterpart of this is scalar_kind_t in index_plugins.hpp.
 // Columns:
 // 1. This goes into enum element naming, e.g. kFloat64 or kFloat32.
 // 2. The corresponding standard C/C++ data type or a ..._t type from stdint.h.
-// 3. The prefix of what usearch calls this type (e.g. f64_k for the scalar_kind_t enum element and
-//    f64_t for the typedef). This is also a convenient short identifer.
+// 3. A short identifier of the type, e.g. f64.
 #define YB_COORDINATE_TYPE_INFO   \
     /* Floating-point types */    \
     ((Float32, float,    f32))    \

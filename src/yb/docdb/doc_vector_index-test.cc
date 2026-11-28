@@ -79,8 +79,10 @@ class DocVectorIndexTest : public YBTest {
 
 TEST_F(DocVectorIndexTest, DeprecatedBackendNotSupported) {
   // Unset backend reads as DEPRECATED_USEARCH: such indexes predate block-based backends.
+  // YB_HNSW_USEARCH lost its builder when usearch was removed.
   for (auto backend : {std::optional<HnswBackend>(),
                        std::optional(HnswBackend::DEPRECATED_USEARCH),
+                       std::optional(HnswBackend::YB_HNSW_USEARCH),
                        std::optional(HnswBackend::DEPRECATED_HNSWLIB)}) {
     auto result = CreateIndex(backend);
     ASSERT_NOK(result);

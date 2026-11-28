@@ -14,10 +14,8 @@ and each dependency's directory is added separately to the list of include
 directories in the top-level CMakeLists.txt. To add a new directory there, look
 for lines similar to the following:
 
-include_directories("src/inline-thirdparty/fp16")
 include_directories("src/inline-thirdparty/hnswlib")
 include_directories("src/inline-thirdparty/simsimd")
-include_directories("src/inline-thirdparty/usearch")
 
 ## Configuring the inline third-party dependencies
 
@@ -45,8 +43,8 @@ multiple components.
 
 The advantage of this setup is that we can modify the code of these "inline"
 ("header-only") third-party libraries in place during development. For example,
-editing index_dense.hpp (part of Usearch) or hnswalg.h (part of Hnswlib) and
-immediately getting results from testing.
+editing hnswalg.h (part of Hnswlib) and immediately getting results from
+testing.
 
 Once the changes have been made, they should be submitted as PRs into
 YugabyteDB forks of the respective libraries, reviewed and merged into the
@@ -54,43 +52,6 @@ appropriate YugabyteDB branches, which would be branched off of upstream
 branches. Also PRs should be submitted to upstream repositories.
 
 Some examples of how this workflow has unfolded in practice are below.
-
-### Usearch
-
-The upstream repository is at https://github.com/unum-cloud/usearch.
-The YugabyteDB fork is at https://github.com/yugabyte/usearch.
-
-Recently, as of the time of this writing, we created a branch 2.15.3-yb off of
-the upstream commit 8fa309043a19d93473a12f4243126945c3b40373
-( https://github.com/unum-cloud/usearch/commits/8fa309043a19d93473a12f4243126945c3b40373 )
-which is actually a few commits ahead of what the Usearch tag v2.15.3 points to
-( 9bc9936f6b3dc9c9bd5d70bfd887fb18e20795eb ), but there are no changes to the
-include/usearch directory between those commits:
-
-git diff 9bc9936f6b3dc9c9bd5d70bfd887fb18e20795eb 8fa309043a19d93473a12f4243126945c3b40373 -- ./include/usearch
-
-On top of that, we added two additional commits to the 2.15.3-yb branch:
-
-https://github.com/yugabyte/usearch/commit/3d37c7eb3eef8517ec4597b244d7edcf91c53170
-https://github.com/yugabyte/usearch/commit/d7f8ad9d24af1962f110393bcef859f0efa71561
-
-These commits were submitted to the upstream Usearch repository:
-
-https://github.com/unum-cloud/usearch/pull/508
-
-As of the time of this writing, the above PR has already been merged into the
-upstream usearch repo, but we will describe the workflow that was followed
-before the PR was merged. We created the tag v2.15.3-yb-2 on the 2.15.3-yb
-branch of https://github.com/yugabyte/usearch and updated the entry in
-inline_thirdparty.yml to the following:
-
-```yaml
-  - name: usearch
-    git_url: https://github.com/yugabyte/usearch
-    tag: v2.15.3-yb-2
-    src_dir: include
-    dest_dir: usearch
-```
 
 ### Hnswlib
 

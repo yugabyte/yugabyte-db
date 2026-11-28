@@ -14,7 +14,6 @@
 #pragma once
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
@@ -26,25 +25,11 @@
 namespace yb::ann_methods {
 
 YB_DEFINE_ENUM(ANNMethodKind,
-    (kUsearch)
     (kHnswlib));
 
 template<ANNMethodKind method_kind>
 struct ANNMethodTraits {
   static constexpr ANNMethodKind kKind = method_kind;
-};
-
-// TODO: use preprocessing to reduce duplication below.
-
-template<>
-struct ANNMethodTraits<ANNMethodKind::kUsearch> {
-  template<vector_index::IndexableVectorType Vector,
-           vector_index::ValidDistanceResultType DistanceResult>
-  static Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateIndexTraits(
-      const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
-    return CreateUsearchIndexTraits<Vector, DistanceResult>(
-        block_cache, options, /* mem_tracker= */ nullptr);
-  }
 };
 
 template<>

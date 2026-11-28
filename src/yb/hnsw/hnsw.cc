@@ -17,8 +17,6 @@
 #include <numeric>
 #include <ranges>
 
-#include "usearch/index.hpp"
-
 #include "yb/hnsw/block_writer.h"
 #include "yb/hnsw/hnsw_block_cache.h"
 
@@ -573,92 +571,15 @@ void InitVectorDataAmountPerBlock(Header& header, size_t size) {
 
 } // namespace
 
-class YbHnswUsearchIndexAdapter : public YbHnswIndexAdapter {
- public:
-  YbHnswUsearchIndexAdapter(
-      std::reference_wrapper<const unum::usearch::index_dense_gt<vector_index::VectorId>> index,
-      const vector_index::VectorPayloadMap* payloads)
-      : YbHnswIndexAdapter(payloads), index_(index) {}
-
-  size_t Size() override {
-    return index_.size();
-  }
-
-  size_t Entry() override {
-    return index_.impl().entry_slot();
-  }
-
-  Header MakeHeader() override {
-    Header result;
-    result.max_block_size = FLAGS_yb_hnsw_max_block_size;
-    result.dimensions = index_.dimensions();
-    result.vector_data_size = index_.bytes_per_vector() + sizeof(VectorData);
-    result.entry = narrow_cast<VectorNo>(index_.impl().entry_slot());
-    InitVectorDataAmountPerBlock(result, index_.size());
-    result.max_level = index_.impl().max_level();
-    const auto& index_config = index_.config();
-    result.config.connectivity_base = index_config.connectivity_base;
-    result.config.connectivity = index_config.connectivity;
-
-    result.max_vectors_per_non_base_block = CalcMaxVectorsPerLayerBlock(
-        result.max_block_size, result.config.connectivity);
-
-    return result;
-  }
-
-  int16_t NodeLevel(size_t index) override {
-    return index_.impl().node_at_(index).level();
-  }
-
-  vector_index::VectorId NodeKey(size_t index) override {
-    return index_.impl().node_at_(index).key();
-  }
-
-  void NodeCoordinates(size_t index, void* out) override {
-    index_.get(NodeKey(index), pointer_cast<float*>(out));
-  }
-
-  NeighborsType Neighbors(size_t index, size_t level) override {
-    auto neighbors = index_.impl().neighbors_(index_.impl().node_at_(index), level);
-    return NeighborsType(NodePtr(neighbors.cbegin()), NodePtr(neighbors.cend()));
-  }
-
-  NeighborsType NeighborsBase(size_t index) override {
-    auto neighbors = index_.impl().neighbors_base_(index_.impl().node_at_(index));
-    return NeighborsType(NodePtr(neighbors.cbegin()), NodePtr(neighbors.cend()));
-  }
-
-  std::vector<std::pair<Slice, size_t>> TenantEntries() override {
-    return {};
-  }
-
- private:
-  static VectorNoPtr NodePtr(
-      unum::usearch::misaligned_ptr_gt<const unum::usearch::default_slot_t> ptr) {
-    return VectorNoPtr(pointer_cast<const std::byte*>((*ptr).ptr()));
-  }
-
-  const unum::usearch::index_dense_gt<vector_index::VectorId>& index_;
-};
-
 SearchCacheScope::SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw) : cache_(cache) {
   cache.Bind(hnsw.header_, *hnsw.file_block_cache_);
 }
 
-YbHnsw::YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache)
-    : metric_(std::move(metric)), block_cache_(std::move(block_cache)) {
+YbHnsw::YbHnsw(const Metric& metric, BlockCachePtr block_cache)
+    : metric_(metric), block_cache_(std::move(block_cache)) {
 }
 
 YbHnsw::~YbHnsw() = default;
-
-Status YbHnsw::Import(
-    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    const vector_index::VectorPayloadMap* payloads) {
-  YbHnswUsearchIndexAdapter inspector(index, payloads);
-  YbHnswBuilder builder(inspector, *block_cache_, path);
-  std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
-  return Status::OK();
-}
 
 class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
  public:
@@ -877,7 +798,7 @@ void YbHnsw::SearchInBaseLayer(
   if (accepted(best_vector)) {
     top.push({best_dist, best_vector});
   }
-  visited.set(best_vector);
+  visited.insert(best_vector);
 
   while (!next.empty()) {
     if (!cache.status().ok()) {
@@ -890,10 +811,9 @@ void YbHnsw::SearchInBaseLayer(
     }
     next.pop();
     auto neighbors = cache.GetNeighborsInBaseLayer(vector);
-    visited.reserve(visited.size() + std::ranges::size(neighbors));
 
     for (auto neighbor : neighbors) {
-      if (visited.set(neighbor)) {
+      if (!visited.insert(neighbor).second) {
         continue;
       }
       auto neighbor_dist = Distance(query_vector, neighbor, cache);
@@ -925,7 +845,7 @@ void YbHnsw::SearchInBaseLayer(
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
-  return metric_->Distance(lhs, rhs);
+  return metric_(lhs, rhs);
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(
@@ -1063,11 +983,6 @@ std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   auto header = VectorHeader(vector).raw();
   return header ? header + offsetof(VectorData, coordinates) : nullptr;
-}
-
-HnswDistanceType UsearchMetric::Distance(
-    const std::byte* lhs, const std::byte* rhs) {
-  return vector_index::MetricDistance(impl_, lhs, rhs);
 }
 
 
