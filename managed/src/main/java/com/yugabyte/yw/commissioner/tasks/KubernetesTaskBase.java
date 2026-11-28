@@ -75,6 +75,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected int leaderBacklistWaitTimeMs;
   protected boolean reconcilePgDataOwnershipToRoot = false;
+  // Set when upgradePodsTask queues a tserver roll that adds tservers to the leader blacklist.
+  private boolean leaderBlacklistQueued = false;
   public static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
   protected final KubernetesManagerFactory kubernetesManagerFactory;
 
@@ -94,6 +96,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   @Override
   protected boolean isBlacklistLeaders() {
     return false; // TODO: Modify blacklist is disabled by default for k8s now for some reason.
+  }
+
+  protected boolean isLeaderBlacklistQueued() {
+    return leaderBlacklistQueued;
   }
 
   protected boolean isSkipPrechecks() {
@@ -1426,7 +1432,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));
     }
 
-    if (serverType == ServerType.TSERVER && !edit) {
+    if (serverType == ServerType.TSERVER) {
       // clear blacklist
       clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse);
     }
@@ -1518,8 +1524,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               softwareVersion,
               false);
         }
-        if (serverType == ServerType.TSERVER && !edit) {
-          addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
+        if (serverType == ServerType.TSERVER) {
+          leaderBlacklistQueued |=
+              addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
         if (commandType == CommandType.POD_DELETE) {
           addParallelTasks(
@@ -1650,7 +1657,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
-        if (serverType == ServerType.TSERVER && !edit) {
+        if (serverType == ServerType.TSERVER) {
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
         // Create post upgrade subtasks

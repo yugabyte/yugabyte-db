@@ -126,6 +126,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     this.ybcManager = ybcManager;
   }
 
+  // The edit restarts tservers in place (upgradePodsTask) on an instance type change or a full pod
+  // roll, so move their leaders off first, as the K8s upgrade tasks and the VM edit do.
+  @Override
+  protected boolean isBlacklistLeaders() {
+    return getOrCreateExecutionContext().isBlacklistLeaders();
+  }
+
   @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
@@ -388,6 +395,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
+      if (th != null && isLeaderBlacklistQueued()) {
+        // A tserver roll that fails between blacklisting a tserver's leaders and removing it from
+        // the blacklist leaves it there until a retry reaches the roll again. Clear it, as the K8s
+        // upgrade tasks do. A failed clear is attached to the edit's error rather than replacing
+        // it, so the task still reports why the edit failed.
+        try {
+          setTaskQueueAndRun(
+              () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
+        } catch (Exception e) {
+          log.error("Failed to clear the leader blacklist after {} failed", getName(), e);
+          th.addSuppressed(e);
+        }
+      }
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),

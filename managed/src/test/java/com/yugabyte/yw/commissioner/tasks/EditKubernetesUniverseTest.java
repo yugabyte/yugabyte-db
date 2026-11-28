@@ -102,6 +102,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -3539,6 +3540,171 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
       assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
     }
+  }
+
+  @Test
+  public void testTserverResourceChangeBlacklistsLeadersAroundEachRestart() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    List<String> steps =
+        leaderBlacklistSteps(
+            planEdit(
+                tserverCpuChange(),
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo));
+
+    List<String> added =
+        steps.stream()
+            .filter(s -> s.startsWith("add "))
+            .map(s -> s.substring("add ".length()))
+            .collect(Collectors.toList());
+    assertEquals(
+        ImmutableSet.of("[yb-tserver-0_az-1]", "[yb-tserver-0_az-2]", "[yb-tserver-0_az-3]"),
+        new HashSet<>(added));
+    List<String> expected = new ArrayList<>();
+    expected.add("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]");
+    for (String node : added) {
+      expected.addAll(ImmutableList.of("add " + node, "wait", "restart", "remove " + node));
+    }
+    // The edit fails at its first helm upgrade (setupMasterMoveUniverse), so it then clears the
+    // leader blacklist.
+    expected.add("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]");
+    assertEquals(expected, steps);
+  }
+
+  @Test
+  public void testFailedTserverRestartClearsLeaderBlacklist() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    // Get past the precheck to the first restart, which setupMasterMoveUniverse fails.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.nodes_safe_to_take_down.enabled", "false");
+    TaskInfo edit =
+        submitEdit(
+            tserverCpuChange(),
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo,
+            null);
+    List<TaskInfo> plan = plan(edit);
+
+    // The first tserver restart fails after the roll put that tserver on the leader blacklist.
+    TaskInfo failedRestart =
+        helmUpgrades(plan).stream()
+            .filter(t -> t.getTaskState() == Failure)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(describeFailure(edit)));
+    List<TaskInfo> leaderBlacklistChanges =
+        subtasks(plan, TaskType.ModifyBlackList, p -> p.path("isLeaderBlacklist").asBoolean());
+    TaskInfo blacklisted =
+        leaderBlacklistChanges.stream()
+            .filter(t -> t.getTaskParams().path("addNodes").size() > 0)
+            .findFirst()
+            .get();
+    assertEquals(Success, blacklisted.getTaskState());
+    assertTrue(blacklisted.getPosition() < failedRestart.getPosition());
+
+    TaskInfo cleanup = leaderBlacklistChanges.get(leaderBlacklistChanges.size() - 1);
+    assertTrue(cleanup.getPosition() > failedRestart.getPosition());
+    assertEquals(Success, cleanup.getTaskState());
+    assertEquals(
+        ImmutableList.of("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]"),
+        leaderBlacklistSteps(ImmutableList.of(cleanup)));
+  }
+
+  @Test
+  public void testFailedLeaderBlacklistClearKeepsTheEditError() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.nodes_safe_to_take_down.enabled", "false");
+    // Every blacklist change after the failed restart, which is only the cleanup, fails.
+    AtomicBoolean restartFailed = new AtomicBoolean();
+    doAnswer(
+            inv -> {
+              restartFailed.set(true);
+              throw new RuntimeException("stop after planning");
+            })
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    when(mockClient.changeMasterClusterConfig(any()))
+        .thenAnswer(
+            inv -> {
+              if (restartFailed.get()) {
+                throw new RuntimeException("cannot reach the master leader");
+              }
+              return new ChangeMasterClusterConfigResponse(1111, "", null);
+            });
+    TaskInfo edit =
+        submitEdit(
+            tserverCpuChange(),
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo,
+            null);
+
+    List<TaskInfo> leaderBlacklistChanges =
+        subtasks(
+            plan(edit), TaskType.ModifyBlackList, p -> p.path("isLeaderBlacklist").asBoolean());
+    TaskInfo cleanup = leaderBlacklistChanges.get(leaderBlacklistChanges.size() - 1);
+    assertEquals(
+        ImmutableList.of("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]"),
+        leaderBlacklistSteps(ImmutableList.of(cleanup)));
+    assertEquals(Failure, cleanup.getTaskState());
+    assertThat(edit.getErrorMessage(), containsString("SubTaskGroup HelmUpgrade"));
+    assertFalse(edit.getErrorMessage(), edit.getErrorMessage().contains("ModifyBlackList"));
+    assertFalse(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .updateInProgress);
+  }
+
+  @Test
+  public void testTserverResourceChangeWithLeaderBlacklistOffOnlyRestarts() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybUpgradeBlacklistLeaders.getKey(), "false");
+    List<String> steps =
+        leaderBlacklistSteps(
+            planEdit(
+                tserverCpuChange(),
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo));
+    assertEquals(ImmutableList.of("restart", "restart", "restart"), steps);
+  }
+
+  private UniverseDefinitionTaskParams.UserIntent tserverCpuChange() {
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+    spec.cpuCoreCount = newIntent.tserverK8SNodeResourceSpec.cpuCoreCount + 1;
+    spec.memoryGib = newIntent.tserverK8SNodeResourceSpec.memoryGib;
+    newIntent.tserverK8SNodeResourceSpec = spec;
+    return newIntent;
+  }
+
+  /**
+   * The plan's leader blacklist changes ("add"/"remove" with the sorted node names), leader drain
+   * waits ("wait") and tserver pod restarts ("restart"), in plan order.
+   */
+  private static List<String> leaderBlacklistSteps(List<TaskInfo> plan) {
+    List<String> steps = new ArrayList<>();
+    for (TaskInfo t : plan) {
+      JsonNode p = t.getTaskParams();
+      if (t.getTaskType() == TaskType.ModifyBlackList && p.path("isLeaderBlacklist").asBoolean()) {
+        boolean add = p.path("addNodes").size() > 0;
+        List<String> names = new ArrayList<>();
+        p.path(add ? "addNodes" : "removeNodes")
+            .forEach(n -> names.add(n.path("nodeName").asText()));
+        Collections.sort(names);
+        steps.add((add ? "add " : "remove ") + names);
+      } else if (t.getTaskType() == TaskType.WaitForLeaderBlacklistCompletion) {
+        steps.add("wait");
+      } else if (t.getTaskType() == TaskType.KubernetesWaitForPod
+          && p.path("podName").asText().contains("yb-tserver")) {
+        steps.add("restart");
+      }
+    }
+    return steps;
   }
 
   @Test
