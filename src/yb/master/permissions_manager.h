@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_mutex.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_fwd.h"
 
@@ -145,7 +146,7 @@ class PermissionsManager final {
   void SetSecurityConfigOnLoadUnlocked(SysConfigInfo* security_config)
       REQUIRES(mutex_);
 
-  using MutexType = rw_spinlock;
+  using MutexType = CatalogManagerMutex;
   MutexType& mutex() RETURN_CAPABILITY(mutex_) {
     return mutex_;
   }
