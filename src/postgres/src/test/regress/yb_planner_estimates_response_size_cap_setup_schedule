@@ -1,0 +1,7 @@
+# src/test/regress/yb_planner_estimates_response_size_cap_setup_schedule
+#
+####################################################################################################
+# Dependency for yb_planner_estimates_response_size_cap_schedule.
+# TestPgRegressPlannerEstimatesResponseSizeCap runs it before lowering the RPC response size cap.
+####################################################################################################
+test: yb.orig.roundtrip_estimate_setup

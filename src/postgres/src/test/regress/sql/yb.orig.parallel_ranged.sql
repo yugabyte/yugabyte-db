@@ -73,10 +73,10 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
 /*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
 
-/*+ Parallel(pctest1 2 hard) */
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k DESC;
-/*+ Parallel(pctest1 2 hard) */
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k DESC;
 
 --secondary index

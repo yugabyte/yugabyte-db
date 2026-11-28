@@ -381,6 +381,12 @@ select
         when actual_loops > 1
                 and act_table = 0 and act_index = 0
                 and est_table = 0 and est_index = 0 then 'passed'
+        -- The same on the index side alone of a non-colocated non-PK Index
+        -- Scan, whose table requests can outnumber the executors while its
+        -- index requests do not.
+        when actual_loops > 1 and scan_kind = 'idx' and not is_colocated
+                and act_index = 0 and est_index = 0
+                and (act_table > 0 or est_table > 0) then 'passed'
         when scan_kind = 'seq' and act_index = 0
                 and (act_table > 0
                      or (actual_loops > 1 and est_table > 0)) then 'passed'

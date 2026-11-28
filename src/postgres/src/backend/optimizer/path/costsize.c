@@ -7502,32 +7502,59 @@ yb_num_executors(Path *path)
 }
 
 /*
- * Per-executor (= per-loop) page count for a parallel-range index walk.  The
+ * Responses a parallel request takes to return result_tuples rows of
+ * result_width bytes.  A parallel range (yb_scan_apply_next_parallel_range)
+ * and the base-table batch for one of its responses are fetched with the
+ * session's fetch limits lifted, which leaves the RPC response size cap:
+ * DocDB ends a response there and the request continues in the next one.
+ * At least one: a range with no matching rows still answers.
+ */
+static Cardinality
+yb_parallel_response_pages(Cardinality result_tuples, int32 result_width)
+{
+	/* A response holds at least one row, however wide. */
+	double		rows_per_page = fmax(floor((double) YBCGetMaxRpcResponseSize() /
+										   result_width),
+									 1.0);
+
+	return fmax(ceil(result_tuples / rows_per_page), 1.0);
+}
+
+/*
+ * Per-executor (= per-loop) page count for a parallel-range scan.  The
  * swept on-disk volume is split into ceil(volume / yb_parallel_range_size)
  * parallel ranges (at least one range exists overall), which the executors
- * pull from a shared queue, so the average work per executor is
- * total_ranges / num_executors.  This mirrors PG's own parallel costing,
- * which divides the work by the parallel divisor rather than charging each
- * worker a whole unit: when there are fewer ranges than executors the share
- * is legitimately fractional (e.g. 1 range across 5 executors -> 0.2), which
- * is exactly what the EXPLAIN metric (total Storage Read Requests / nloops)
- * averages to.  Flooring the per-executor share at 1 would wrongly assert
- * every executor issues an RPC even when most sit idle, so the only floor is
- * on the total range count.  The optional SAOP floor still applies per
- * executor for IN-list probes that re-issue the scan on every executor.
+ * pull from a shared queue, and each range is answered in the responses its
+ * share of the result_tuples rows takes (yb_parallel_response_pages), so
+ * the average work per executor is total_pages / num_executors.  This
+ * mirrors PG's own parallel costing, which divides the work by the parallel
+ * divisor rather than charging each worker a whole unit: when there are
+ * fewer ranges than executors the share is legitimately fractional (e.g. 1
+ * range across 5 executors -> 0.2), which is exactly what the EXPLAIN metric
+ * (total Storage Read Requests / nloops) averages to.  Flooring the
+ * per-executor share at 1 would wrongly assert every executor issues an RPC
+ * even when most sit idle, so the only floor is on the total range count.
+ * The optional SAOP floor still applies per executor for IN-list probes that
+ * re-issue the scan on every executor.
+ *
+ * The result_tuples rows are taken as spread evenly over the ranges.
  */
 static Cardinality
 yb_parallel_partition_pages(Cardinality range_tuples, int32 row_width,
+							Cardinality result_tuples, int32 result_width,
 							double num_executors,
 							Cardinality saop_floor)
 {
-	Cardinality	total_pages = ceil(range_tuples * row_width /
-									   yb_parallel_range_size);
+	Cardinality	total_ranges = ceil(range_tuples * row_width /
+										yb_parallel_range_size);
 
 	/* At least one parallel range exists overall. */
-	if (total_pages < 1.0)
-		total_pages = 1.0;
+	if (total_ranges < 1.0)
+		total_ranges = 1.0;
 
+	Cardinality	total_pages =
+		total_ranges * yb_parallel_response_pages(result_tuples / total_ranges,
+												  result_width);
 	Cardinality	pages = total_pages / num_executors;
 
 	if (saop_floor > pages)
@@ -7700,10 +7727,12 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	{
 		double		parallel_divisor = get_parallel_divisor(path);
 
-		/* See yb_num_executors for divisor choice. */
-		num_result_pages = ceil(baserel->tuples * tuple_width /
-								(double) yb_parallel_range_size /
-								yb_num_executors(path));
+		num_result_pages =
+			yb_parallel_partition_pages(baserel->tuples, tuple_width,
+										remote_filtered_rows,
+										docdb_result_width,
+										yb_num_executors(path),
+										0.0 /* saop_floor */ );
 
 		remote_filtered_rows = clamp_row_est(remote_filtered_rows /
 											 parallel_divisor);
@@ -8412,53 +8441,36 @@ yb_bitmap_index_selectivity(IndexPath *path,
  * yb_base_table_result_pages
  *	  Number of read responses (pages) the base-table fetch of a scan takes.
  *
- * Three sources:
- *   - precomputed_result_pages > 0: caller already sized the page count
- *     (e.g. colocated parallel, where DocDB bundles index+table into a
- *     single RPC per parallel index range).  Used as-is; the floor/cap
- *     blocks below still apply.
- *   - parallel without precomputed: byte-cap by the RPC layer's
- *     max-response size (parallel scans lift yb_fetch_*_limit; see
- *     yb_scan.c).
- *   - serial without precomputed: yb_get_pagination_metrics().
+ * A parallel scan's caller sizes the page count itself
+ * (precomputed_result_pages > 0): its ranges and ybctid batches are fetched
+ * with the session's fetch limits lifted (yb_parallel_response_pages).  A
+ * serial fetch is paginated by the session's fetch limits.
  */
 static Cardinality
-yb_base_table_result_pages(Path *path,
-						   Cardinality tuples,
+yb_base_table_result_pages(Cardinality tuples,
 						   Cardinality result_tuples,
 						   int32 docdb_result_width,
 						   Cardinality precomputed_result_pages,
-						   Cardinality max_result_pages,
 						   Cardinality ybctid_batches_floor,
 						   bool fetch_via_ybctid_batches)
 {
 	Cardinality	result_pages;
 
 	if (precomputed_result_pages > 0.0)
-		result_pages = precomputed_result_pages;
-	else if (path->parallel_workers > 0)
-	{
-		Cardinality	page_cap = (Cardinality) YBCGetMaxRpcResponseSize();
+		return precomputed_result_pages;
 
-		result_pages = ceil(result_tuples * docdb_result_width / page_cap);
-		if (result_pages < 1.0)
-			result_pages = 1.0;
-	}
-	else
-	{
-		yb_get_pagination_metrics(result_tuples, docdb_result_width,
-								  &result_pages, NULL);
-	}
+	yb_get_pagination_metrics(result_tuples, docdb_result_width,
+							  &result_pages, NULL);
 
 	/*
 	 * For ybctid-batched fetches (non-colocated index scan, bitmap heap
 	 * scan), the table-fetch RPC count cannot fall below the number of
 	 * ybctid batches the executor sends.  Two independent lower bounds
 	 * apply: the row-based batch count (yb_fetch_row_limit; 0 means no
-	 * floor) and the per-worker fan-out from the index side
-	 * (ybctid_batches_floor), since byte-size pagination can split one
-	 * row-batch into multiple ybctid pages.  Colocated scans bundle the
-	 * index walk and table fetch into a single RPC and bypass both.
+	 * floor) and the fan-out from the index side (ybctid_batches_floor),
+	 * since byte-size pagination can split one row-batch into multiple
+	 * ybctid pages.  Colocated scans bundle the index walk and table fetch
+	 * into a single RPC and bypass both.
 	 */
 	if (fetch_via_ybctid_batches)
 	{
@@ -8472,9 +8484,6 @@ yb_base_table_result_pages(Path *path,
 		if (result_pages < ybctid_batches_floor)
 			result_pages = ybctid_batches_floor;
 	}
-
-	if (max_result_pages > 0.0 && result_pages > max_result_pages)
-		result_pages = max_result_pages;
 
 	return result_pages;
 }
@@ -10080,12 +10089,14 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	/*
 	 * Index tuples covered by the index conditions alone (the swept
-	 * range, before storage/local filters).  Parallel RPC sites
-	 * partition this total across num_executors, so they use the
-	 * undivided total directly.
+	 * range, before storage/local filters), and the ones the index side
+	 * hands on.  Parallel RPC sites partition these totals across
+	 * num_executors, so they use the undivided totals directly.
 	 */
 	Cardinality	num_index_tuples_in_range_total =
 		clamp_row_est(index_conditions_selectivity * index->tuples);
+	Cardinality	num_index_tuples_matched_total =
+		clamp_row_est(index_selectivity * index->tuples);
 
 	/*
 	 * IN-list / SAOP probe model: each ScalarArrayOpExpr element becomes
@@ -10172,6 +10183,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * we may not prefer the partial index anymore.
 	 */
 	Cardinality	num_baserel_result_rows;
+	Cardinality	num_baserel_result_rows_total =
+		clamp_row_est(index->tuples *
+					  all_conditions_and_remote_filters_selectivity);
 
 	num_baserel_result_rows =
 		clamp_row_est(adjusted_index_tuples *
@@ -10277,37 +10291,34 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 (index_tuple_width - HIDDEN_COLUMNS_SIZE + ybctid_width));
 
 	/*
-	 * Compute the cost of transfering ybctids from DocDB.
+	 * Compute the cost of transfering ybctids from DocDB.  pggate receives
+	 * base-table ybctids, not the wider secondary-index entries, so the
+	 * byte pagination of the index responses goes by the base-table ybctid
+	 * width.
 	 */
 	Cost		ybctid_transfer_cost;
 	Cardinality	ybctid_num_pages;
+	int32		base_table_ybctid_width =
+		yb_get_base_table_ybctid_width(baserel_oid);
 
 	if (path->path.parallel_workers > 0)
 	{
 		/*
 		 * Parallel: per-executor RPC count tracks the swept on-disk index
-		 * volume.  Storage filters can only shrink that stream, so it is
-		 * also a safe upper bound for the post-filter RPC count.
+		 * volume, each range answering in the responses its share of the
+		 * matched ybctids takes.
 		 */
 		ybctid_num_pages =
 			yb_parallel_partition_pages(num_index_tuples_in_range_total,
 										disk_index_tuple_width,
+										num_index_tuples_matched_total,
+										base_table_ybctid_width,
 										num_executors, saop_pages_per_worker);
 	}
 	else
-	{
-		/*
-		 * Serial: pggate receives base-table ybctids, not the wider
-		 * secondary-index entries.  Size byte-pagination by the
-		 * base-table ybctid width.
-		 */
-		int32		tmp_ybctid_width =
-			yb_get_base_table_ybctid_width(baserel_oid);
-
 		yb_get_pagination_metrics(num_index_tuples_matched,
-								  tmp_ybctid_width,
+								  base_table_ybctid_width,
 								  &ybctid_num_pages, NULL);
-	}
 
 	ybctid_transfer_cost = yb_data_transfer_cost(ybctid_num_pages,
 												 num_index_tuples_matched *
@@ -10329,6 +10340,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			index_result_num_pages =
 				yb_parallel_partition_pages(num_index_tuples_in_range_total,
 											disk_index_tuple_width,
+											num_index_tuples_matched_total,
+											docdb_result_width,
 											num_executors,
 											saop_pages_per_worker);
 		else
@@ -10355,36 +10368,42 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!is_primary_index && !index_only)
 	{
 		Cardinality	precomputed_result_pages = 0;
-		Cardinality	max_baserel_result_pages = 0;
 
-		if (path->path.parallel_workers > 0)
+		if (path->path.parallel_workers > 0 && baserel_is_colocated)
 		{
 			/*
-			 * Parallel base-table partition pages.  Used as a precomputed
-			 * page count for colocated (DocDB bundles the index walk and
-			 * base-table fetch into a single RPC per parallel index range),
-			 * and as a per-worker cap for non-colocated (filters can only
-			 * shrink the ybctid stream).
+			 * DocDB bundles the index walk and the base-table fetch into a
+			 * single RPC per parallel index range, answered in the responses
+			 * the range's result rows take.
 			 */
-			Cardinality	parallel_pages =
+			precomputed_result_pages =
 				yb_parallel_partition_pages(num_index_tuples_in_range_total,
 											disk_index_tuple_width,
+											num_baserel_result_rows_total,
+											docdb_result_width,
 											num_executors,
 											saop_pages_per_worker);
+		}
+		else if (path->path.parallel_workers > 0)
+		{
+			/*
+			 * pggate fetches the ybctids of each index response as one
+			 * base-table batch.  ybctid_num_pages is per executor, so the
+			 * rows per batch come from the totals.
+			 */
+			Cardinality	num_batches_total = ybctid_num_pages * num_executors;
 
-			if (baserel_is_colocated)
-				precomputed_result_pages = parallel_pages;
-			else
-				max_baserel_result_pages = parallel_pages;
+			precomputed_result_pages = ybctid_num_pages *
+				yb_parallel_response_pages(num_baserel_result_rows_total /
+										   num_batches_total,
+										   docdb_result_width);
 		}
 
 		num_baserel_result_pages =
-			yb_base_table_result_pages(&path->path,
-									   num_index_tuples_matched,
+			yb_base_table_result_pages(num_index_tuples_matched,
 									   num_baserel_result_rows,
 									   docdb_result_width,
 									   precomputed_result_pages,
-									   max_baserel_result_pages,
 									   baserel_is_colocated
 									   ? 0 : ybctid_num_pages, /* ybctid_batches_floor */
 									   !baserel_is_colocated); /* fetch_via_ybctid_batches */
@@ -11024,12 +11043,10 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cardinality	num_seeks = 0;
 	Cardinality	num_nexts = 0;
 	Cardinality	result_pages =
-		yb_base_table_result_pages(path,
-								   tuples_fetched,
+		yb_base_table_result_pages(tuples_fetched,
 								   result_tuples,
 								   docdb_result_width,
 								   0,	/* precomputed_result_pages */
-								   0,	/* max_result_pages */
 								   0.0,	/* ybctid_batches_floor */
 								   true);	/* fetch_via_ybctid_batches */
 

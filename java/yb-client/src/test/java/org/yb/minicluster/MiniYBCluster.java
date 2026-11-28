@@ -1009,9 +1009,12 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   private MiniYBDaemon restart(MiniYBDaemon daemon) throws Exception {
-    String[] command = daemon.getCommandLine();
+    return restart(daemon, daemon.getCommandLine());
+  }
+
+  private MiniYBDaemon restart(MiniYBDaemon daemon, String[] command) throws Exception {
     LOG.info("Restarting process: {}", Joiner.on(" ").join(command));
-    daemon = daemon.restart();
+    daemon = daemon.restart(command);
     logPrinters.add(daemon.getLogPrinter());
 
     Process proc = daemon.getProcess();
@@ -1038,6 +1041,16 @@ public class MiniYBCluster implements AutoCloseable {
    * @param waitForMasterLeader should sync client wait for master leader.
    */
   public void restart(boolean waitForMasterLeader) throws Exception {
+    restart(waitForMasterLeader, Collections.emptyMap());
+  }
+
+  /**
+   * Restart the cluster and add flags to the tablet servers.  The daemons keep their data.
+   * @param waitForMasterLeader should sync client wait for master leader.
+   * @param additionalTserverFlags flags appended to the command line of every tablet server.
+   */
+  public void restart(boolean waitForMasterLeader,
+                      Map<String, String> additionalTserverFlags) throws Exception {
     List<MiniYBDaemon> masters = new ArrayList<>(masterProcesses.values());
     List<MiniYBDaemon> tservers = new ArrayList<>(tserverProcesses.values());
     List<MiniYBDaemon> ybControllers = new ArrayList<>(ybControllerProcesses.values());
@@ -1059,7 +1072,9 @@ public class MiniYBCluster implements AutoCloseable {
     startSyncClient(waitForMasterLeader);
 
     for (MiniYBDaemon tserver : tservers) {
-      tserver = restart(tserver);
+      List<String> command = Lists.newArrayList(tserver.getCommandLine());
+      command.addAll(CommandUtil.flagsToArgs(additionalTserverFlags));
+      tserver = restart(tserver, command.toArray(new String[command.size()]));
       tserverProcesses.put(tserver.getHostAndPort(), tserver);
     }
 

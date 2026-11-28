@@ -288,6 +288,14 @@ public class MiniYBDaemon {
    * @return the restarted daemon
    */
   MiniYBDaemon restart() throws Exception {
+    return restart(commandLine);
+  }
+
+  /**
+   * Restart the daemon with another command line.
+   * @return the restarted daemon
+   */
+  MiniYBDaemon restart(String[] commandLine) throws Exception {
     return new MiniYBDaemon(type, indexForLog, commandLine,
                             new ProcessBuilder(commandLine).redirectErrorStream(true).start(),
                             bindIp, rpcPort, webPort, cqlWebPort, pgsqlWebPort, redisWebPort,
