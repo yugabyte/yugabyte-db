@@ -4542,6 +4542,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
   auto metrics =
       ASSERT_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
+  // Until the first GetChanges the lag is measured from cdc_state's last_replication_time, which is
+  // read back at millisecond precision, so it can fall below this stream's own MVCC-tracked
+  // retention barrier op by less than 1ms.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return metrics->cdcsdk_sent_lag_micros->value() < MonoTime::kMicrosecondsPerMillisecond;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag < 1ms"));
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return metrics->cdcsdk_sent_lag_micros->value() == 0; },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
