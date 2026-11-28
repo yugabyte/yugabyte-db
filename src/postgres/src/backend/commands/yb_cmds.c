@@ -2025,6 +2025,7 @@ YBCRename(Oid relationId, ObjectType renameType, const char *relname,
 
 	}
 
+	YbTrackAlteredTableId(relationId);
 	YBCExecAlterTable(handle, relationId);
 }
 
@@ -2054,6 +2055,7 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 					 errmsg("schema altering for this object is not yet supported")));
 	}
 
+	YbTrackAlteredTableId(relationId);
 	YBCExecAlterTable(handle, relationId);
 }
 
@@ -2628,6 +2630,7 @@ YBCDropColumn(Relation rel, AttrNumber attnum)
 										  YbGetRelfileNodeId(rel),
 										  &handle));
 		HandleYBStatus(YBCPgAlterTableDropColumn(handle, attr->attname.data));
+		YbTrackAlteredTableId(RelationGetRelid(rel));
 		HandleYBStatus(YBCPgExecAlterTable(handle));
 	}
 }
