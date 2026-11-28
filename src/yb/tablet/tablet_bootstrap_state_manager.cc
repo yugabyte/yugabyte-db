@@ -28,6 +28,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/logging.h"
+#include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 
 namespace yb::tablet {
@@ -64,6 +65,7 @@ TabletBootstrapStateManager::TabletBootstrapStateManager(
 
 Status TabletBootstrapStateManager::Init() {
   CHECK(!dir_.empty());
+  std::lock_guard lock(file_mutex_);
   if (!fs_manager_->Exists(dir_)) {
     LOG_WITH_PREFIX(INFO)
         << "Wal dir is not created, skip initializing TabletBootstrapStateManager";
@@ -116,13 +118,17 @@ Status TabletBootstrapStateManager::SaveToDisk(
                             env, path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
                             "Failed to write bootstrap state to disk");
-  // Delete the current file and rename new file to current file.
-  if (has_file_on_disk_) {
-    RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
+  {
+    std::lock_guard lock(file_mutex_);
+    // Delete the current file and rename new file to current file.
+    if (has_file_on_disk_) {
+      RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
+    }
+    LOG_WITH_PREFIX(DETAIL) << "Renaming " << NewFileName() << " to " << FileName();
+    RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
+    has_file_on_disk_ = true;
+    file_op_id_ = max_replicated_op_id;
   }
-  LOG_WITH_PREFIX(DETAIL) << "Renaming " << NewFileName() << " to " << FileName();
-  RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
-  has_file_on_disk_ = true;
   RETURN_NOT_OK(env->SyncDir(dir_));
 
   RETURN_NOT_OK(raft_consensus.SetLastFlushedOpIdInRetryableRequests(max_replicated_op_id));
@@ -138,6 +144,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
 }
 
 Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::LoadFromDisk() {
+  std::lock_guard lock(file_mutex_);
   if (!has_file_on_disk_) {
     return STATUS(NotFound, "Bootstrap state has not been flushed");
   }
@@ -147,13 +154,15 @@ Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::LoadFromD
       pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
       Format("Could not load bootstrap state from $0", path));
   bootstrap_state_.FromPB(pb);
+  file_op_id_ = OpId::FromPB(pb.last_op_id());
   LOG_WITH_PREFIX(INFO) << Format("Loaded tablet ($0) bootstrap state "
                       "(max_replicated_op_id_=$1) from $2",
                       tablet_id_, pb.last_op_id(), path);
   return pb;
 }
 
-Status TabletBootstrapStateManager::CopyTo(const std::string& dest_path) {
+Result<OpId> TabletBootstrapStateManager::CopyTo(const std::string& dest_path) {
+  std::lock_guard lock(file_mutex_);
   if (!has_file_on_disk_) {
     return STATUS_FORMAT(NotFound, "Bootstrap state has not been flushed");
   }
@@ -168,7 +177,8 @@ Status TabletBootstrapStateManager::CopyTo(const std::string& dest_path) {
   RETURN_NOT_OK(env_util::CopyFile(
       fs_manager()->env(), path, dest_path_tmp, options));
   RETURN_NOT_OK(env->RenameFile(dest_path_tmp, dest_path));
-  return env->SyncDir(dir_);
+  RETURN_NOT_OK(env->SyncDir(DirName(dest_path)));
+  return file_op_id_;
 }
 
 Status TabletBootstrapStateManager::DoInit() {

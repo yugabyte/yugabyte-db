@@ -51,7 +51,9 @@ class RetryableRequests {
   RetryableRequests(RetryableRequests&& rhs);
   void operator=(RetryableRequests&& rhs);
 
-  void CopyFrom(const RetryableRequests& rhs);
+  // Copies the requests of rhs. This instance's bootstrap state file holds them up to
+  // last_flushed_op_id.
+  void CopyFrom(const RetryableRequests& rhs, const OpId& last_flushed_op_id);
 
   OpId GetMaxReplicatedOpId() const;
   void SetLastFlushedOpId(const OpId& op_id);

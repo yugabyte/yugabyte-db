@@ -1087,7 +1087,7 @@ Status TSTabletManager::Init() {
       TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
       RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
           [this, meta, deleter, mark_startup_tablet_finished] {
-            OpenTablet(meta, deleter, CopyRetryableRequestsFromParent::kFalse);
+            OpenTablet(meta, deleter, std::nullopt);
             mark_startup_tablet_finished();
           }));
     }
@@ -1511,8 +1511,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 
   // We can run this synchronously since there is nothing to bootstrap.
   RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
-      &TSTabletManager::OpenTablet, this, meta, deleter,
-      CopyRetryableRequestsFromParent::kFalse)));
+      &TSTabletManager::OpenTablet, this, meta, deleter, std::nullopt)));
 
   return new_peer;
 }
@@ -1523,6 +1522,7 @@ struct TabletCreationMetadata {
   dockv::Partition partition;
   docdb::KeyBounds key_bounds;
   RaftGroupMetadataPtr raft_group_metadata;
+  OpId retryable_requests_flushed_op_id;
 };
 
 namespace {
@@ -1624,7 +1624,7 @@ Status TSTabletManager::StartSubtabletsSplit(
 void TSTabletManager::CreatePeerAndOpenTablet(
     const tablet::RaftGroupMetadataPtr& meta,
     const scoped_refptr<TransitionInProgressDeleter>& deleter,
-    CopyRetryableRequestsFromParent copy_retryable_requests_from_parent) {
+    std::optional<OpId> split_child_flushed_op_id) {
   Status s = ResultToStatus(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   if (!s.ok()) {
     s = s.CloneAndPrepend("Failed to create and register tablet peer");
@@ -1638,7 +1638,7 @@ void TSTabletManager::CreatePeerAndOpenTablet(
     return;
   }
   s = open_tablet_pool_->SubmitFunc(std::bind(
-      &TSTabletManager::OpenTablet, this, meta, deleter, copy_retryable_requests_from_parent));
+      &TSTabletManager::OpenTablet, this, meta, deleter, split_child_flushed_op_id));
   if (!s.ok()) {
     s = s.CloneAndPrepend(Format("Failed to schedule opening tablet $0", meta->raft_group_id()));
     if (s.IsShutdownInProgress()) {
@@ -1784,10 +1784,16 @@ Status TSTabletManager::ApplyTabletSplit(
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
 
-    // This can happen if e.g., enable_flush_retryable_requests is off, or the parent does not
-    // have a flushed bootstrap state.
-    WARN_NOT_OK(tablet_peer->CopyBootstrapStateForTabletSplit(dest_wal_dir),
-                "Failed to copy bootstrap state for tablet split");
+    auto flushed_op_id = tablet_peer->CopyBootstrapStateForTabletSplit(dest_wal_dir);
+    if (flushed_op_id.ok()) {
+      tcmeta.retryable_requests_flushed_op_id = *flushed_op_id;
+    } else {
+      // This can happen if e.g., enable_flush_retryable_requests is off, or the parent does not
+      // have a flushed bootstrap state.
+      LOG(WARNING) << TabletLogPrefix(new_tablet_id)
+                   << "Failed to copy bootstrap state for tablet split: "
+                   << flushed_op_id.status();
+    }
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_source_tablet_mark_split_done)) {
@@ -1810,7 +1816,7 @@ Status TSTabletManager::ApplyTabletSplit(
     // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
     RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
         &TSTabletManager::CreatePeerAndOpenTablet, this, tcmeta.raft_group_metadata,
-        tcmeta.transition_deleter, CopyRetryableRequestsFromParent::kTrue)));
+        tcmeta.transition_deleter, tcmeta.retryable_requests_flushed_op_id)));
   }
 
   unregister_wal_se.Cancel();
@@ -1996,7 +2002,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
   RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
       &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result,
-      CopyRetryableRequestsFromParent::kFalse)));
+      std::nullopt)));
   unregister_wal_se.Cancel();
 
   return Status::OK();
@@ -2260,7 +2266,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_rb_finish_before_open);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
-  OpenTablet(meta, nullptr, CopyRetryableRequestsFromParent::kFalse);
+  OpenTablet(meta, nullptr, std::nullopt);
   // If OpenTablet fails, tablet_peer->error() will be set.
   RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
@@ -2647,7 +2653,7 @@ Status MaybeAssignPerDbCgroups(
 void TSTabletManager::OpenTablet(
     const RaftGroupMetadataPtr& meta,
     const scoped_refptr<TransitionInProgressDeleter>& deleter,
-    CopyRetryableRequestsFromParent copy_retryable_requests_from_parent) {
+    std::optional<OpId> split_child_flushed_op_id) {
   string tablet_id = meta->raft_group_id();
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
                "tablet_id", tablet_id);
@@ -2717,11 +2723,12 @@ void TSTabletManager::OpenTablet(
   // Copying is only valid before the child has replicated writes of its own. Every other open
   // rebuilds retryable requests from the child's bootstrap state and WAL, which includes the
   // parent's WAL up to the split op.
-  if (copy_retryable_requests_from_parent && FLAGS_enable_copy_retryable_requests_from_parent &&
+  if (split_child_flushed_op_id && FLAGS_enable_copy_retryable_requests_from_parent &&
       cmeta->has_split_parent_tablet_id()) {
+    TEST_SYNC_POINT("TSTabletManager::OpenTablet:CopyRetryableRequestsFromParent");
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
-      retryable_requests.CopyFrom(*parent_tablet_requests);
+      retryable_requests.CopyFrom(*parent_tablet_requests, *split_child_flushed_op_id);
       bootstrap_retryable_requests = false;
     } else {
       LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
