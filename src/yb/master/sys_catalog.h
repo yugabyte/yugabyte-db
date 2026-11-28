@@ -51,6 +51,7 @@
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/tablet_memory_manager.h"
 
 #include "yb/util/mem_tracker.h"
@@ -200,6 +201,11 @@ class SysCatalogTable {
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
+  ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
+
+  tserver::FullCompactionManager* full_compaction_manager() const {
+    return full_compaction_manager_.get();
+  }
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
     return std::atomic_load(&tablet_peer_);
@@ -497,6 +503,9 @@ class SysCatalogTable {
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 
+  // Thread pool for scheduled and statistics-based full compactions of the sys catalog tablet.
+  std::unique_ptr<ThreadPool> full_compaction_pool_;
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
   Master* master_;
@@ -518,6 +527,8 @@ class SysCatalogTable {
   std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
 
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
+
+  std::unique_ptr<tserver::FullCompactionManager> full_compaction_manager_;
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 
