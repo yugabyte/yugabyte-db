@@ -14,6 +14,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -230,5 +231,32 @@ public class EditBackupScheduleTest extends CommissionerBaseTest {
     tInfo = submitTask(scheduleParams, scheduleUUID);
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
     assertEquals(State.Stopped, schedule.getStatus());
+  }
+
+  @Test
+  public void testFrequencyEditKeepsStoredRetentionForBackups() {
+    Schedule schedule =
+        createSchedule(100000000L, 0L, null /* cron */, false /* enablePITRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    // 30 days overflows an int.
+    long retentionMs = 30 * 86400L * 1000L;
+    schedule.updateBackupRetentionPeriod(retentionMs);
+    Backup backup =
+        ModelFactory.createCompletedScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            storageConfig.getConfigUUID(),
+            scheduleUUID);
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    BackupScheduleEditParams editParams = new BackupScheduleEditParams(scheduleParams);
+    editParams.schedulingFrequency = 150000000L;
+    // The UI sends no retention on edit.
+    editParams.timeBeforeDelete = 0L;
+    scheduleParams.applyScheduleEditParams(editParams);
+    TaskInfo tInfo = submitTask(scheduleParams, scheduleUUID);
+    assertEquals(TaskInfo.State.Success, tInfo.getTaskState());
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(backup.getCompletionTime().getTime() + retentionMs, backup.getExpiry().getTime());
   }
 }

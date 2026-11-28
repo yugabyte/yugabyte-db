@@ -608,6 +608,17 @@ public class ModelFactory {
     return Backup.create(customerUUID, params);
   }
 
+  // Completes an hour after it is created, so tests can tell the two times apart.
+  public static Backup createCompletedScheduleBackup(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, UUID scheduleUUID) {
+    Backup backup = createBackup(customerUUID, universeUUID, configUUID);
+    backup.setScheduleUUID(scheduleUUID);
+    backup.setCompletionTime(new Date(backup.getCreateTime().getTime() + 3_600_000L));
+    backup.setState(Backup.BackupState.Completed);
+    backup.save();
+    return backup;
+  }
+
   public static Backup createBackupWithExpiry(
       UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();

@@ -394,6 +394,32 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
+  public void testScheduleRetentionEditKeepsBackups() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
+    for (int i = 0; i < 5; i++) {
+      ModelFactory.createCompletedScheduleBackup(
+          defaultCustomer.getUuid(),
+          defaultUniverse.getUniverseUUID(),
+          s3StorageConfig.getConfigUUID(),
+          schedule.getScheduleUUID());
+    }
+    // 30 days overflows an int.
+    Backup.recomputeExpiryForSchedule(
+        defaultCustomer.getUuid(), schedule.getScheduleUUID(), 30 * 86400L * 1000L);
+    backupGC.scheduleRunner();
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertEquals(
+        5,
+        Backup.fetchAllCompletedBackupsByScheduleUUID(
+                defaultCustomer.getUuid(), schedule.getScheduleUUID())
+            .size());
+  }
+
+  @Test
   public void testDeleteExpiredBackups() {
     UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteBackup);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);

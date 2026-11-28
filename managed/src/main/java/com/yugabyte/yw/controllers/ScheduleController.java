@@ -52,7 +52,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
-import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -264,17 +263,7 @@ public class ScheduleController extends AuthenticatedController {
       // Update retention period if provided.
       if (params.timeBeforeDelete > 0L) {
         schedule.updateBackupRetentionPeriod(params.timeBeforeDelete);
-        // Update expiry time of backups related to this schedule.
-        Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
-            .forEach(
-                backup -> {
-                  Date newExpiry =
-                      new DateTime(backup.getCreateTime())
-                          .plusMillis((int) params.timeBeforeDelete)
-                          .toDate();
-                  backup.setExpiry(newExpiry);
-                  backup.save();
-                });
+        Backup.recomputeExpiryForSchedule(customerUUID, scheduleUUID, params.timeBeforeDelete);
       }
 
       // Update incremental backup schedule frequency, if provided after validation.

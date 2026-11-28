@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -854,5 +855,151 @@ public class BackupTest extends FakeDBApplication {
         Backup.fetchAllBackupsByBaseBackupUUID(
             defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, null /* state */);
     assertEquals(3, backupListAll.size());
+  }
+
+  private static final long DAY_MS = 86_400_000L;
+
+  // Completes an hour after createTimeMs.
+  private Backup createScheduleBackup(
+      Universe universe,
+      UUID scheduleUUID,
+      UUID baseBackupUUID,
+      long timeBeforeDelete,
+      long createTimeMs,
+      BackupState state) {
+    BackupTableParams params = createParentParams(universe);
+    params.scheduleUUID = scheduleUUID;
+    params.baseBackupUUID = baseBackupUUID;
+    params.timeBeforeDelete = timeBeforeDelete;
+    Backup backup = Backup.create(defaultCustomer.getUuid(), params);
+    backup.setCreateTime(new Date(createTimeMs));
+    backup.setCompletionTime(new Date(createTimeMs + 3_600_000L));
+    backup.setState(state);
+    backup.save();
+    return Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+  }
+
+  @Test
+  @Parameters({"7", "24", "25", "30", "60", "365"})
+  public void testRecomputeExpiryForSchedule(long retentionDays) {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    UUID scheduleUUID =
+        ModelFactory.createScheduleBackup(
+                defaultCustomer.getUuid(),
+                universe.getUniverseUUID(),
+                s3StorageConfig.getConfigUUID())
+            .getScheduleUUID();
+    Backup backup =
+        createScheduleBackup(
+            universe,
+            scheduleUUID,
+            null /* baseBackupUUID */,
+            DAY_MS,
+            System.currentTimeMillis() - 2 * 3_600_000L,
+            BackupState.Completed);
+    long expiryMs = backup.getExpiry().getTime();
+
+    Backup.recomputeExpiryForSchedule(defaultCustomer.getUuid(), scheduleUUID, 0L);
+    assertEquals(
+        expiryMs,
+        Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID())
+            .getExpiry()
+            .getTime());
+
+    // 25 days and more overflow an int.
+    long retentionMs = retentionDays * DAY_MS;
+    Backup.recomputeExpiryForSchedule(defaultCustomer.getUuid(), scheduleUUID, retentionMs);
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(backup.getCompletionTime().getTime() + retentionMs, backup.getExpiry().getTime());
+    assertEquals(retentionMs, backup.getBackupInfo().timeBeforeDelete);
+    assertFalse(Backup.getCompletedExpiredBackups().containsKey(defaultCustomer.getUuid()));
+  }
+
+  @Test
+  public void testRecomputeExpiryForScheduleKeepsChainUntilLastIncrement() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    UUID scheduleUUID =
+        ModelFactory.createScheduleBackup(
+                defaultCustomer.getUuid(),
+                universe.getUniverseUUID(),
+                s3StorageConfig.getConfigUUID())
+            .getScheduleUUID();
+    long now = System.currentTimeMillis();
+    long oldRetentionMs = 30 * DAY_MS;
+    long newRetentionMs = 7 * DAY_MS;
+    UUID baseUUID =
+        createScheduleBackup(
+                universe,
+                scheduleUUID,
+                null /* baseBackupUUID */,
+                oldRetentionMs,
+                now - 8 * DAY_MS,
+                BackupState.Completed)
+            .getBackupUUID();
+    createScheduleBackup(
+        universe, scheduleUUID, baseUUID, oldRetentionMs, now - 5 * DAY_MS, BackupState.Completed);
+    long lastIncrementMs = now - 2 * DAY_MS;
+    createScheduleBackup(
+        universe, scheduleUUID, baseUUID, oldRetentionMs, lastIncrementMs, BackupState.Completed);
+    // Not completed, so it doesn't extend the chain.
+    Backup inProgress =
+        createScheduleBackup(
+            universe, scheduleUUID, baseUUID, oldRetentionMs, now - DAY_MS, BackupState.InProgress);
+
+    Backup.recomputeExpiryForSchedule(defaultCustomer.getUuid(), scheduleUUID, newRetentionMs);
+
+    Backup base = Backup.getOrBadRequest(defaultCustomer.getUuid(), baseUUID);
+    assertEquals(lastIncrementMs + newRetentionMs, base.getExpiry().getTime());
+    assertEquals(
+        inProgress.getExpiry().getTime(),
+        Backup.getOrBadRequest(defaultCustomer.getUuid(), inProgress.getBackupUUID())
+            .getExpiry()
+            .getTime());
+
+    // The next increment extends the chain by the new retention, not the old one.
+    long nextIncrementMs = now;
+    base.onIncrementCompletion(new Date(nextIncrementMs));
+    assertEquals(
+        nextIncrementMs + newRetentionMs,
+        Backup.getOrBadRequest(defaultCustomer.getUuid(), baseUUID).getExpiry().getTime());
+  }
+
+  @Test
+  public void testRecomputeExpiryForScheduleCountsManualIncrement() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    UUID scheduleUUID =
+        ModelFactory.createScheduleBackup(
+                defaultCustomer.getUuid(),
+                universe.getUniverseUUID(),
+                s3StorageConfig.getConfigUUID())
+            .getScheduleUUID();
+    long now = System.currentTimeMillis();
+    long retentionMs = 30 * DAY_MS;
+    UUID baseUUID =
+        createScheduleBackup(
+                universe,
+                scheduleUUID,
+                null /* baseBackupUUID */,
+                retentionMs,
+                now - 3 * DAY_MS,
+                BackupState.Completed)
+            .getBackupUUID();
+    createScheduleBackup(
+        universe, scheduleUUID, baseUUID, retentionMs, now - 2 * DAY_MS, BackupState.Completed);
+    // Added by hand, so it has no schedule UUID.
+    long manualIncrementMs = now - DAY_MS;
+    createScheduleBackup(
+        universe,
+        null /* scheduleUUID */,
+        baseUUID,
+        retentionMs,
+        manualIncrementMs,
+        BackupState.Completed);
+
+    Backup.recomputeExpiryForSchedule(defaultCustomer.getUuid(), scheduleUUID, retentionMs);
+
+    assertEquals(
+        manualIncrementMs + retentionMs,
+        Backup.getOrBadRequest(defaultCustomer.getUuid(), baseUUID).getExpiry().getTime());
   }
 }
