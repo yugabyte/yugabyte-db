@@ -3839,8 +3839,15 @@ void TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart(
   for (const auto& child_peer : child_peers) {
     if (flush_child_bootstrap_state) {
       ASSERT_OK(child_peer->log()->AllocateSegmentAndRollOver());
-      ASSERT_OK(WaitFor([&] { return child_peer->TEST_HasBootstrapStateOnDisk(); },
-                        10s * kTimeMultiplier, "child retryable requests flushed to disk"));
+      // A file copied from the parent at split does not count; wait for the child's own flush,
+      // which is the only thing that sets its last flushed op id.
+      auto consensus = ASSERT_RESULT(child_peer->GetRaftConsensus());
+      ASSERT_OK(WaitFor(
+          [&] {
+            return child_peer->TEST_HasBootstrapStateOnDisk() &&
+                   consensus->GetLastFlushedOpIdInRetryableRequests() != OpId::Min();
+          },
+          10s * kTimeMultiplier, "child retryable requests flushed to disk"));
     } else {
       ASSERT_FALSE(child_peer->TEST_HasBootstrapStateOnDisk());
     }

@@ -56,6 +56,8 @@ class RetryableRequests {
   OpId GetMaxReplicatedOpId() const;
   void SetLastFlushedOpId(const OpId& op_id);
   OpId GetLastFlushedOpId() const;
+  // Marks all replicated requests as not flushed, so the next flush writes them.
+  void ResetLastFlushedOpId();
   void ToPB(TabletBootstrapStatePB* pb) const;
   void FromPB(const TabletBootstrapStatePB& pb);
   bool HasUnflushedData() const;
