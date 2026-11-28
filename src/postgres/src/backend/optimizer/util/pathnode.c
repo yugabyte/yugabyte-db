@@ -75,6 +75,11 @@ static ParamPathInfo *yb_get_partitioned_parampathinfo(PlannerInfo *root,
 													   RelOptInfo *rel,
 													   List *subpaths,
 													   Relids required_outer);
+static void yb_adjust_limit_costs_for_startup_rows(Path *subpath,
+												   int64 offset_est,
+												   int64 count_est,
+												   Cost *startup_cost,
+												   Cost *total_cost);
 
 
 /*****************************************************************************
@@ -4756,6 +4761,17 @@ create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 							&pathnode->path.total_cost,
 							offset_est, count_est);
 
+	/*
+	 * YB: the startup cost of the input may pay for a number of its rows, as
+	 * the startup cost of a YB scan pays for the rows of the scan's first
+	 * response.  The Limit is then charged only for the rows it reads after
+	 * those.
+	 */
+	if (IsYugaByteEnabled())
+		yb_adjust_limit_costs_for_startup_rows(subpath, offset_est, count_est,
+											   &pathnode->path.startup_cost,
+											   &pathnode->path.total_cost);
+
 	return pathnode;
 }
 
@@ -5871,4 +5887,64 @@ yb_get_partitioned_parampathinfo(PlannerInfo *root, RelOptInfo *rel,
 	root->yb_cur_batched_groups = NIL;
 
 	return ppi;
+}
+
+/*
+ * yb_adjust_limit_costs_for_startup_rows
+ *	  Redo the costs of adjust_limit_rows_costs() for an input whose startup
+ *	  cost pays for some of its rows (yb_path_startup_rows).  The costs stay
+ *	  as they are for an input whose startup cost pays for none of its rows,
+ *	  or for all of them.
+ *
+ * As in adjust_limit_rows_costs(), the Limit is charged the share of the
+ * input's run cost that corresponds to the rows it reads.  Unlike
+ * adjust_limit_rows_costs(), the share is taken of the rows after the ones
+ * the startup cost pays for (yb_run_cost_for_rows), because the input's run
+ * cost is the cost of those later rows only.  A Limit whose offset and count
+ * the startup cost's rows cover reads none of the later rows and costs the
+ * input's startup cost.
+ */
+static void
+yb_adjust_limit_costs_for_startup_rows(Path *subpath,
+									   int64 offset_est, int64 count_est,
+									   Cost *startup_cost, Cost *total_cost)
+{
+	double		input_rows = subpath->rows;
+	Cost		input_run_cost = subpath->total_cost - subpath->startup_cost;
+	Cardinality startup_rows = yb_path_startup_rows(subpath);
+	double		offset_rows = 0;
+	double		count_rows;
+
+	if (startup_rows <= 0 || startup_rows >= input_rows)
+		return;
+
+	if (offset_est != 0)
+	{
+		if (offset_est > 0)
+			offset_rows = (double) offset_est;
+		else
+			offset_rows = clamp_row_est(input_rows * 0.10);
+		if (offset_rows > input_rows)
+			offset_rows = input_rows;
+	}
+
+	count_rows = input_rows - offset_rows;
+	if (count_est != 0)
+	{
+		double		limit_rows;
+
+		if (count_est > 0)
+			limit_rows = (double) count_est;
+		else
+			limit_rows = clamp_row_est(input_rows * 0.10);
+		if (limit_rows < count_rows)
+			count_rows = limit_rows;
+	}
+
+	*startup_cost = subpath->startup_cost +
+		yb_run_cost_for_rows(input_run_cost, input_rows, startup_rows,
+							 offset_rows);
+	*total_cost = subpath->startup_cost +
+		yb_run_cost_for_rows(input_run_cost, input_rows, startup_rows,
+							 offset_rows + count_rows);
 }

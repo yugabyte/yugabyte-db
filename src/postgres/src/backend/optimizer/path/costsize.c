@@ -282,6 +282,10 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 											Cost *transfer_cost);
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
+static Cardinality yb_plan_limit_bound(PlannerInfo *root, Path *path);
+static double yb_worker_rows_before_leader_reads(PlannerInfo *root,
+												 Path *gather_path,
+												 Path *subpath);
 
 
 /*
@@ -517,6 +521,36 @@ cost_gather(GatherPath *path, PlannerInfo *root,
 	startup_cost += parallel_setup_cost;
 	run_cost += parallel_tuple_cost * path->path.rows;
 
+	/*
+	 * YB: as in cost_gather_merge, what a worker does before the leader can
+	 * read any of the worker's rows is charged as startup cost, but only with
+	 * parallel_leader_participation off.  A leader that scans returns its own
+	 * rows first, and the Gather's first row then costs what upstream charges
+	 * for it.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Path	   *subpath = path->subpath;
+		Cardinality startup_rows = yb_path_startup_rows(subpath);
+
+		if (!parallel_leader_participation)
+		{
+			double		unread_rows;
+			Cost		unread_cost;
+
+			unread_rows = yb_worker_rows_before_leader_reads(root, &path->path,
+															 subpath);
+			unread_cost = yb_run_cost_for_rows(subpath->total_cost -
+											   subpath->startup_cost,
+											   subpath->rows, startup_rows,
+											   unread_rows);
+			startup_cost += unread_cost;
+			run_cost -= unread_cost;
+			startup_rows = fmax(startup_rows, unread_rows);
+		}
+		path->path.yb_startup_rows = startup_rows;
+	}
+
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = (startup_cost + run_cost);
 }
@@ -583,6 +617,46 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	 */
 	startup_cost += parallel_setup_cost;
 	run_cost += parallel_tuple_cost * path->path.rows * 1.05;
+
+	/*
+	 * YB: upstream leaves in run cost everything a worker does after its
+	 * first row, and a Limit above pays a share of the run cost.  But a
+	 * Gather Merge returns its first row only once it has a row from every
+	 * worker, and the leader can read none of a worker's rows until the
+	 * worker has produced yb_worker_rows_before_leader_reads() of them.  A
+	 * worker scanning a YB relation gets its rows one storage request at a
+	 * time, each for a whole parallel range whatever the LIMIT
+	 * (yb_scan_apply_next_parallel_range), so with a selective filter the
+	 * worker makes several requests to produce that many rows.  The Gather
+	 * Merge has no row to return until that work is done, so that work is
+	 * startup cost, which a Limit pays in full.
+	 *
+	 * When the subpath has to be sorted, the input costs are the Sort's.  A
+	 * Sort's run cost is spread over all of its rows, so its startup cost
+	 * pays for none of them.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Path	   *subpath = path->subpath;
+		double		unread_rows;
+		Cardinality startup_rows = 0;
+		Cost		unread_cost;
+
+		unread_rows = yb_worker_rows_before_leader_reads(root, &path->path,
+														 subpath);
+		if (pathkeys_contained_in(path->path.pathkeys, subpath->pathkeys))
+			startup_rows = yb_path_startup_rows(subpath);
+		unread_cost = yb_run_cost_for_rows(input_total_cost -
+										   input_startup_cost,
+										   subpath->rows, startup_rows,
+										   unread_rows);
+		startup_cost += unread_cost;
+		run_cost -= unread_cost;
+		if (subpath->rows > 0)
+			path->path.yb_startup_rows =
+				fmax(startup_rows, unread_rows) * path->path.rows /
+				subpath->rows;
+	}
 
 	path->path.startup_cost = startup_cost + input_startup_cost;
 	path->path.total_cost = (startup_cost + run_cost + input_total_cost);
@@ -7776,6 +7850,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	path->yb_plan_info.estimated_num_bmscan_seeks = 0;
 	path->yb_plan_info.estimated_num_bmscan_result_pages = 0;
 	path->yb_plan_info.first_fetch_limit = first_fetch_limit;
+	path->yb_startup_rows = first_batch_frac * path->rows;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -10665,6 +10740,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	path->yb_plan_info.estimated_num_bmscan_prevs = bmscan_num_prevs;
 	path->yb_plan_info.estimated_num_bmscan_result_pages = ybctid_num_pages;
 	path->yb_plan_info.first_fetch_limit = first_fetch_limit;
+	path->path.yb_startup_rows = table_first_batch_frac * path->path.rows;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -11296,15 +11372,19 @@ yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
  * cancellation rules applies.  Each rule clears plan_limit, and each check
  * below mirrors one:
  *
- * - a Limit with a known bound (root->yb_limit_tuples) and no grouping,
- *   aggregation, window function or set-returning function above the scan
- *   (nodeAgg.c clears the bound; the others consume the whole input before
- *   producing).  DISTINCT passes: a Unique over the path's own ordering
- *   keeps the bound, but only the first request is trimmed, so the trim
- *   counts only when the input's duplication (rows per distinct group over
- *   the path's rows; duplicates are adjacent in sorted input) leaves the
- *   bound's rows all distinct.  Otherwise the Unique pulls a default-sized
- *   second page and the untrimmed costing is the closer estimate.
+ * - a Limit with a known bound (root->yb_limit_tuples).
+ * - no grouping, aggregation, window function or set-returning function
+ *   above the scan: nodeAgg.c clears the bound, and the others consume the
+ *   whole input before producing.
+ * - DISTINCT: a Unique over the path's own ordering keeps the bound, but
+ *   only the first request is trimmed.  The trim is modeled when that
+ *   request is expected to give the Unique all the rows it needs, that
+ *   is, when the rows up to the bound are all distinct at the path's rows
+ *   per group (duplicates are adjacent in sorted input).  Otherwise the
+ *   Unique pulls a default-sized second page and the untrimmed costing is
+ *   the closer estimate.  A group estimate within 1% of the path's rows
+ *   is taken as one row per group: where every row is distinct, the
+ *   estimate still falls a little short of the rows.
  * - serial only: a parallel range is fetched whole, with the row and size
  *   limits lifted, regardless of any LIMIT
  *   (yb_scan_apply_next_parallel_range).
@@ -11332,12 +11412,27 @@ yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
 static Cardinality
 yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 {
-	Query	   *parse = root->parse;
-
-	if (root->yb_limit_tuples <= 0 ||
-		path->parallel_workers > 0 ||
+	if (path->parallel_workers > 0 ||
 		has_local_quals ||
 		path->param_info != NULL)
+		return 0.0;
+
+	return yb_plan_limit_bound(root, path);
+}
+
+/*
+ * yb_plan_limit_bound
+ *	  The row bound the LIMIT clause puts on a path with the given path's
+ *	  ordering (LIMIT count + OFFSET), or 0 when the plan above the path
+ *	  clears the bound.  These are the rules of yb_first_fetch_limit that do
+ *	  not depend on the scan itself.
+ */
+static Cardinality
+yb_plan_limit_bound(PlannerInfo *root, Path *path)
+{
+	Query	   *parse = root->parse;
+
+	if (root->yb_limit_tuples <= 0)
 		return 0.0;
 
 	if (!pathkeys_contained_in(root->query_pathkeys, path->pathkeys) &&
@@ -11363,7 +11458,8 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 		Cardinality	needed_rows = root->yb_limit_tuples * path->rows /
 			fmax(ngroups, 1.0);
 
-		if (clamp_row_est(needed_rows) > root->yb_limit_tuples)
+		if (clamp_row_est(needed_rows) > root->yb_limit_tuples &&
+			ngroups < 0.99 * path->rows)
 			return 0.0;
 	}
 
@@ -11567,4 +11663,99 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
 	pfree(rows_scale);
 
 	return result;
+}
+
+/*
+ * yb_worker_rows_before_leader_reads
+ *	  The number of rows a worker under the given Gather or Gather Merge
+ *	  produces before the leader can read any of them.
+ *
+ * A worker puts its rows in a tuple queue, and the leader sees the rows in
+ * the queue only once they fill a quarter of it or the worker finishes
+ * (tqueue.c sends without force_flush, see shm_mq_sendv).  A worker therefore
+ * produces enough rows to fill a quarter of the queue, or all of its rows,
+ * before the leader can read the first of them.
+ *
+ * A worker finishes before filling a quarter of the queue, after LIMIT count
+ * + OFFSET rows, only when the executor gives the Gather or Gather Merge the
+ * LIMIT's bound (ExecSetTupleBound).  The bound passes through no node that
+ * can discard or combine rows, and a LIMIT WITH TIES sets none.  The Gather
+ * or Gather Merge must therefore be above the whole scan/join tree, either at
+ * the topmost scan/join rel or at an upper rel, with no DISTINCT above it.
+ * A Sort, grouping, aggregates, window functions or set-returning functions
+ * above the path stop the bound as well, and yb_plan_limit_bound returns 0
+ * for those.
+ */
+static double
+yb_worker_rows_before_leader_reads(PlannerInfo *root, Path *gather_path,
+								   Path *subpath)
+{
+	/* a quarter of PARALLEL_TUPLE_QUEUE_SIZE (execParallel.c) */
+	const double queue_bytes = 65536 / 4;
+
+	/* a minimal tuple's header and the queue's length word */
+	double		tuple_bytes = subpath->pathtarget->width + 24;
+	double		rows = ceil(queue_bytes / tuple_bytes);
+	RelOptInfo *rel = gather_path->parent;
+
+	if (root->parse->distinctClause == NIL &&
+		root->parse->limitOption != LIMIT_OPTION_WITH_TIES &&
+		(IS_UPPER_REL(rel) || bms_equal(rel->relids, root->all_baserels)))
+	{
+		Cardinality limit_bound = yb_plan_limit_bound(root, gather_path);
+
+		if (limit_bound > 0 && limit_bound < rows)
+			rows = limit_bound;
+	}
+
+	return fmin(rows, subpath->rows);
+}
+
+/*
+ * yb_path_startup_rows
+ *	  The number of the path's rows that the path's startup_cost pays for
+ *	  (yb_startup_rows), looking through the path types that pass the number
+ *	  of their subpath on without storing it.
+ */
+Cardinality
+yb_path_startup_rows(Path *path)
+{
+	switch (nodeTag(path))
+	{
+		case T_ProjectionPath:
+			return yb_path_startup_rows(((ProjectionPath *) path)->subpath);
+		case T_UpperUniquePath:
+			{
+				/* The subpath's rows less their share of the duplicates. */
+				Path	   *subpath = ((UpperUniquePath *) path)->subpath;
+
+				if (subpath->rows <= 0)
+					return 0.0;
+				return yb_path_startup_rows(subpath) *
+					path->rows / subpath->rows;
+			}
+		default:
+			return path->yb_startup_rows;
+	}
+}
+
+/*
+ * yb_run_cost_for_rows
+ *	  The part of a path's run cost that producing its first 'rows' rows
+ *	  takes, for a path of path_rows rows whose startup cost pays for
+ *	  startup_rows of them.
+ *
+ * The run cost is the cost of the rows after those only, so it is spread
+ * over the later rows, and the first startup_rows rows take none of it.
+ */
+Cost
+yb_run_cost_for_rows(Cost run_cost, double path_rows, double startup_rows,
+					 double rows)
+{
+	double		later_rows = path_rows - startup_rows;
+
+	if (rows <= startup_rows || later_rows <= 0)
+		return 0.0;
+
+	return run_cost * fmin(rows - startup_rows, later_rows) / later_rows;
 }

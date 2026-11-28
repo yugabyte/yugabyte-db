@@ -292,3 +292,163 @@ order by qid, nid;
 reset parallel_leader_participation;
 
 drop table baseline_scan_nodes;
+
+-- Block 4: LIMIT over a Gather Merge or a Gather.  A worker's rows reach the
+-- leader only when the worker has filled a quarter of its tuple queue or
+-- finishes.  The queries below keep one row in a hundred, so a worker's narrow
+-- rows fill far less than a quarter of the queue and take several parallel
+-- ranges to find, and every request a worker makes before it stops comes
+-- before the leader's first row.  The startup cost of the Gather Merge or
+-- Gather has to pay for those requests (#36851).
+-- A worker stops after LIMIT count + OFFSET rows under a plain LIMIT, with
+-- ORDER BY (700xx, and 73020 with an OFFSET) and without (74020, a Gather).
+-- With WITH TIES (71020), under a Unique (72020) and below a join (75020) it
+-- does not get the bound and reads all of its ranges.
+-- Two queries have workers that do not all run to that point, so their
+-- requests are not compared and their estimates are compared with another
+-- query's.  Under the Gather of 74020 the leader has its rows when the first
+-- worker finishes and stops the other one; 74020 is compared with 70020, the
+-- same LIMIT under a Gather Merge.  76040 returns wide rows, which fill a
+-- quarter of the queue before the LIMIT's 40 rows, and its workers go on
+-- scanning after their first rows reach the leader; 76040 is compared with
+-- 70040, the same LIMIT with narrow rows.
+-- "Requests" compares the requests of a worker before the first row as the
+-- startup cost of the Gather Merge or Gather prices them, at the scan's cost
+-- per request and rounded up to whole requests, with the requests each worker
+-- made.  The leader does not scan, so that the workers make all of the
+-- requests.  How the workers share the ranges differs from run to run by a
+-- request or two, so the comparison allows 15%.
+create view check_gather_limit_estimates as
+with recursive plans as (
+    select
+        q.qid,
+        js.explain_line::jsonb #> '{0,Plan}' lim
+    from
+        queries q,
+        explain_query_options opt,
+        lateral explain_query_json(q.query, opt.with_analyze) js
+),
+chain as (
+    select qid, 1 lvl, lim node from plans
+    union all
+    select qid, lvl + 1, node #> '{Plans,0}' from chain where node ? 'Plans'
+),
+nodes as (
+    select
+        p.qid, p.lim,
+        (select string_agg(c.node->>'Node Type', ' / ' order by c.lvl)
+         from chain c where c.qid = p.qid) shape,
+        (select c.node from chain c
+         where c.qid = p.qid and c.node->>'Node Type' like 'Gather%'
+         order by c.lvl limit 1) gm,
+        (select c.node from chain c
+         where c.qid = p.qid and c.node ? 'Relation Name'
+         order by c.lvl limit 1) scan
+    from plans p
+),
+estimates as (
+    select
+        qid,
+        shape,
+        (lim->>'Total Cost')::numeric - (lim->>'Startup Cost')::numeric
+            limit_run_cost,
+        est.scan_requests est_scan_requests,
+        ceil(1 + ((gm->>'Startup Cost')::numeric -
+                  (scan->>'Startup Cost')::numeric -
+                  current_setting('parallel_setup_cost')::numeric) /
+                 ((scan->>'Total Cost')::numeric -
+                  (scan->>'Startup Cost')::numeric) *
+                 (est.scan_requests - 1)) est_requests,
+        -- EXPLAIN reports the requests of a parallel scan for each loop
+        coalesce((scan->>'Storage Table Read Requests')::numeric, 0) +
+        coalesce((scan->>'Storage Index Read Requests')::numeric, 0)
+            act_requests
+    from nodes,
+         lateral (select coalesce((scan->>'Estimated Table Roundtrips')::numeric, 0) +
+                         coalesce((scan->>'Estimated Index Roundtrips')::numeric, 0))
+             est(scan_requests)
+)
+select
+    qid, shape,
+    est_scan_requests "Estimated Scan Requests",
+    est_requests "Estimated Requests Before First Row",
+    act_requests "Actual Requests",
+    case when abs(est_requests - act_requests) <=
+              greatest(1.0, 0.15 * act_requests) then 'passed'
+         else 'failed' end "Requests",
+    limit_run_cost "Limit Run Cost"
+from estimates;
+
+delete from queries;
+insert into queries (qid, query)
+select 70000 + k,
+       'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
+       || ' order by pk limit ' || k
+from (values (10), (20), (40)) limits(k);
+insert into queries (qid, query) values
+    (71020, 'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' order by pk fetch first 20 rows with ties'),
+    (72020, 'select distinct pk from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' order by pk limit 20'),
+    (73020, 'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' order by pk limit 10 offset 10'),
+    (74020, 'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' limit 20'),
+    (75020, 'select r.pk, r.a from ce.r r, one_row_parallel_restricted() f'
+            ' where r.pk between 1 and 12345 and r.b % 100 = 0'
+            ' order by r.pk limit 20'),
+    (76040, 'select pk, vv from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' order by pk limit 40');
+
+-- A parallel restricted function in FROM cannot run in a worker, so the Gather
+-- Merge of 75020 is below the join.
+create function one_row_parallel_restricted() returns setof int
+rows 1 parallel restricted language sql as
+$$
+select 1
+$$;
+
+select * from queries order by qid;
+
+set yb_test_force_parallel = force;
+set max_parallel_workers_per_gather = 2;
+set parallel_leader_participation = off;
+set yb_parallel_range_size = 524288;
+
+update explain_query_options set with_analyze = true;
+
+-- The plan's side: under a plain LIMIT each worker is priced to make more
+-- requests before the first row as LIMIT count + OFFSET grows, and the Limit
+-- charges no run cost; with WITH TIES, under a Unique or below a join each
+-- worker is priced to make all of its requests before the first row.
+select qid, shape, "Estimated Scan Requests",
+       "Estimated Requests Before First Row", "Limit Run Cost"
+from check_gather_limit_estimates
+order by qid;
+
+-- should not return any row.
+select qid, shape, "Estimated Scan Requests",
+       "Estimated Requests Before First Row", "Actual Requests", "Requests"
+from check_gather_limit_estimates
+where "Requests" <> 'passed' and qid not in (74020, 76040)
+order by qid;
+
+-- should not return any row: the workers of 74020 are priced to make as many
+-- requests before the first row as those of 70020, and the workers of 76040
+-- fewer than those of 70040.
+select q.qid, q."Estimated Requests Before First Row" requests,
+       r.qid compared_with, r."Estimated Requests Before First Row" its_requests
+from check_gather_limit_estimates q, check_gather_limit_estimates r
+where ((q.qid, r.qid) = (74020, 70020)
+       and q."Estimated Requests Before First Row" <>
+           r."Estimated Requests Before First Row")
+   or ((q.qid, r.qid) = (76040, 70040)
+       and q."Estimated Requests Before First Row" >=
+           r."Estimated Requests Before First Row");
+
+reset yb_test_force_parallel;
+reset max_parallel_workers_per_gather;
+reset parallel_leader_participation;
+reset yb_parallel_range_size;
+drop view check_gather_limit_estimates;
+drop function one_row_parallel_restricted;
