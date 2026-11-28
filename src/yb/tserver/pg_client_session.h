@@ -133,6 +133,9 @@ struct PgClientSessionContext {
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
   const TransactionManagerProvider transaction_manager_provider;
+  // Expires the session with the given id: its next request fails with an unknown session error,
+  // which terminates the pg backend, and the session's locks and transactions are cleaned up.
+  std::function<void(uint64_t)> expire_session;
 #ifdef __linux__
   TServerCgroupManager* cgroup_manager;
 #endif

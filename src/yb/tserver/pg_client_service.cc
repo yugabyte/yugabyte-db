@@ -350,14 +350,7 @@ class LockablePgClientSession {
   }
 
   void Touch() {
-    auto new_expiration = NewExpiration();
-    auto old_expiration = expiration_.load(std::memory_order_acquire);
-    while (new_expiration > old_expiration) {
-      if (expiration_.compare_exchange_weak(
-          old_expiration, new_expiration, std::memory_order_acq_rel)) {
-        break;
-      }
-    }
+    PostponeSessionExpiration(expiration_, NewExpiration());
   }
 
   void Heartbeat() {
@@ -812,6 +805,7 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
                                        ? &tablet_server_.ObjectLockSharedStateManager()->registry()
                                        : nullptr,
             .transaction_manager_provider = transaction_manager_provider_,
+            .expire_session = [this](uint64_t session_id) { session_registry_.Expire(session_id); },
 #ifdef __linux__
             .cgroup_manager = tablet_server_.cgroup_manager(),
 #endif
