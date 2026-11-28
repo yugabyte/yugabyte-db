@@ -1,0 +1,7 @@
+# src/test/regress/yb_planner_estimates_preload_schedule
+#
+####################################################################################################
+# Testsuite for the planner/optimizer estimates that depend on catalog preloading.  It runs with
+# the tserver gflag ysql_catalog_preload_additional_tables on.
+####################################################################################################
+test: yb.orig.parallel_launch_preload_estimate

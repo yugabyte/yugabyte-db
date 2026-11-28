@@ -36,6 +36,28 @@
 /* YB */
 #define YB_DEFAULT_PARALLEL_TUPLE_COST  0.22
 #define YB_DEFAULT_PARALLEL_SETUP_COST  4080.0
+/*
+ * A parallel worker starts with empty catalog caches and builds a relcache
+ * entry for every table and index its plan opens, three catalog reads apiece
+ * at the local round-trip cost (yb_local_roundtrip_cost).  Charged per
+ * relation in Gather and Gather Merge startup_cost.
+ */
+#define YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION  60.0
+/*
+ * Where a new backend preloads its catalog caches, a parallel worker preloads
+ * them before its first fetch, and the delay follows what is preloaded and
+ * not the worker's plan.  These are the terms of that delay at the default
+ * yb_parallel_setup_cost_per_relation, charged in Gather and Gather Merge
+ * startup_cost: a fixed part, a part for each relation, attribute and
+ * statistics row in the database, and a part for each pair of function names,
+ * because the preload of pg_proc compares each row's name with the names
+ * before it.
+ */
+#define YB_PARALLEL_PRELOAD_COST_BASE  4200.0
+#define YB_PARALLEL_PRELOAD_COST_PER_RELATION  0.77
+#define YB_PARALLEL_PRELOAD_COST_PER_ATTRIBUTE  0.22
+#define YB_PARALLEL_PRELOAD_COST_PER_STATISTIC  0.18
+#define YB_PARALLEL_PRELOAD_COST_PER_PROC_NAME_PAIR  0.002
 #define YB_DEFAULT_INTERCLOUD_COST 10.0
 #define	YB_DEFAULT_INTERREGION_COST 10.0
 #define	YB_DEFAULT_INTERZONE_COST 9.5
@@ -322,5 +344,6 @@ extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
 extern List *yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel,
 								List *clauses, Relids batchedrelids,
 								List *groups);
+extern PGDLLIMPORT double yb_parallel_setup_cost_per_relation;
 
 #endif							/* COST_H */

@@ -16,6 +16,7 @@ set yb_enable_base_scans_cost_model to true;
 set enable_parallel_append to false;
 set parallel_setup_cost to 0;
 set parallel_tuple_cost to 0;
+set yb_parallel_setup_cost_per_relation to 0;
 
 -- simple union
 explain (costs off)
@@ -63,6 +64,35 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 -- partitioned table
 explain (costs off)
 select * from lp;
+
+-- A Gather's startup cost has yb_parallel_setup_cost_per_relation once for
+-- each relation scanned under the Gather, because every worker builds a
+-- relcache entry for each of them before its first fetch.  The partitions are
+-- counted after plan-time pruning, and both inputs of a join are counted.
+-- The function returns the count as the difference between the Gather's
+-- startup cost with the setting at 1 and at 0.  Without the count, a Parallel
+-- Append is charged the same setup whatever its number of partitions (#36424).
+create function relations_under_gather(query text) returns numeric
+language plpgsql as $$
+declare
+  gather_cost constant jsonpath :=
+    '$.**?(@."Node Type" == "Gather")."Startup Cost"';
+  plan jsonb;
+  cost_without numeric;
+begin
+  set local yb_parallel_setup_cost_per_relation to 0;
+  execute 'explain (format json) ' || query into plan;
+  cost_without := jsonb_path_query_first(plan, gather_cost);
+  set local yb_parallel_setup_cost_per_relation to 1;
+  execute 'explain (format json) ' || query into plan;
+  return round(jsonb_path_query_first(plan, gather_cost)::numeric -
+               cost_without);
+end $$;
+select relations_under_gather('select * from lp');
+select relations_under_gather($$select * from lp where a in ('a', 'e')$$);
+select relations_under_gather('select * from t1 union all select * from t2');
+select relations_under_gather('select * from lp, t1 where lp.a = t1.v');
+drop function relations_under_gather;
 
 -- union of non-YB relations (#21733)
 explain (costs off)
