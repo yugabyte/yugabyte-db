@@ -135,6 +135,9 @@ DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
 
 DEFINE_test_flag(bool, skip_file_close, false, "If true, file will not be closed.");
 
+DEFINE_test_flag(bool, fail_direct_io_reopen_append, false,
+    "If true, reopening an O_DIRECT file fails when it appends the partial last block.");
+
 using namespace std::placeholders;
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
@@ -316,6 +319,12 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     if (fd_ >= 0) {
       WARN_NOT_OK(Close(), "Failed to close " + filename_);
     }
+  }
+
+  // For a writer whose setup failed: Close() would truncate the file to real_size_.
+  void CloseWithoutTruncate() {
+    close(fd_);
+    fd_ = -1;
   }
 
   Status Append(const Slice &const_data_slice) override {
@@ -1523,28 +1532,47 @@ class PosixFileFactory : public FileFactory {
 #if defined(__linux__)
     if (opts.o_direct) {
       const size_t last_block_used_bytes = file_size % FLAGS_o_direct_block_size_bytes;
-      // We always initialize at the end of last aligned full block.
-      *result = std::make_unique<PosixDirectIOWritableFile>(fname, fd,
-                                                            file_size - last_block_used_bytes,
-                                                            opts.sync_on_close);
+      // The o_direct option is turned on and file size is not a multiple of
+      // FLAGS_o_direct_block_size_bytes. In order to successfully reopen file
+      // for durable write, we read the last incomplete block data from disk,
+      // then append it to buffer. A failed reopen must not destroy a writable file that has not
+      // taken the partial block yet: its destructor truncates the file to the aligned size.
+      Slice last_block_slice;
+      std::unique_ptr<uint8_t[]> last_block_scratch;
       if (last_block_used_bytes != 0) {
-        // The o_direct option is turned on and file size is not a multiple of
-        // FLAGS_o_direct_block_size_bytes. In order to successfully reopen file
-        // for durable write, we read the last incomplete block data from disk,
-        // then append it to buffer.
-        Slice last_block_slice;
-        std::unique_ptr<uint8_t[]> last_block_scratch(new uint8_t[last_block_used_bytes]);
+        last_block_scratch.reset(new uint8_t[last_block_used_bytes]);
         std::unique_ptr<RandomAccessFile> readable_file;
-        RETURN_NOT_OK(NewRandomAccessFile(fname, &readable_file));
-        RETURN_NOT_OK(env_util::ReadFully(readable_file.get(),
-                                          file_size - last_block_used_bytes,
-                                          last_block_used_bytes,
-                                          &last_block_slice, last_block_scratch.get()));
-        RETURN_NOT_OK((*result)->Append(last_block_slice));
-        RETURN_NOT_OK((*result)->Sync());
+        auto status = NewRandomAccessFile(fname, &readable_file);
+        if (status.ok()) {
+          status = env_util::ReadFully(readable_file.get(),
+                                       file_size - last_block_used_bytes,
+                                       last_block_used_bytes,
+                                       &last_block_slice, last_block_scratch.get());
+        }
+        if (!status.ok()) {
+          close(fd);
+          return status;
+        }
+      }
+      // We always initialize at the end of last aligned full block.
+      auto file = std::make_unique<PosixDirectIOWritableFile>(fname, fd,
+                                                              file_size - last_block_used_bytes,
+                                                              opts.sync_on_close);
+      if (last_block_used_bytes != 0) {
+        auto status = FLAGS_TEST_fail_direct_io_reopen_append
+            ? STATUS(IOError, "Simulated append failure on O_DIRECT reopen")
+            : file->Append(last_block_slice);
+        if (status.ok()) {
+          status = file->Sync();
+        }
+        if (!status.ok()) {
+          file->CloseWithoutTruncate();
+          return status;
+        }
         // Even after the Sync, this last_block_slice will still be in memory buffer until
         // we have a full block flushed from memory to disk.
       }
+      *result = std::move(file);
       return Status::OK();
     }
 #endif

@@ -1282,9 +1282,16 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
   auto status = env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
                                            &next_segment_file_);
   if (!status.ok()) {
-      VLOG_WITH_PREFIX(2)
-          << "Cannot reuse last WAL segment " << next_segment_path_
-          << " as active_segment due to file could not be reopened: " << status.ToString();
+      const auto msg = Format(
+          "Cannot reuse last WAL segment $0 as active_segment due to file could not be "
+          "reopened: $1",
+          next_segment_path_, status);
+      // NotSupported is expected after a change in encryption at rest.
+      if (status.IsNotSupported()) {
+        VLOG_WITH_PREFIX(2) << msg;
+      } else {
+        LOG_WITH_PREFIX(WARNING) << msg;
+      }
       RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
       return false;
   }
