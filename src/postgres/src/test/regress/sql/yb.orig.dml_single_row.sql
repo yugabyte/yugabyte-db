@@ -1085,8 +1085,8 @@ SELECT * FROM t_temp ORDER BY k;
 
 --
 -- Test that a failing AFTER STATEMENT trigger rolls back a single-row UPDATE
--- (GH#35828).  Such an UPDATE gets no single-row plan, so it doesn't take the
--- fast path.
+-- (GH#35828).  The trigger keeps the single-row plan, but the update must not
+-- use the fast path.
 --
 CREATE TABLE sr_stmt_trig (k int PRIMARY KEY, v int);
 INSERT INTO sr_stmt_trig VALUES (1, 1), (2, 2);
@@ -1127,8 +1127,25 @@ CREATE TRIGGER sr_stmt_trig_before BEFORE UPDATE ON sr_stmt_trig
 CREATE TRIGGER sr_stmt_trig_insert AFTER INSERT ON sr_stmt_trig
   FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_noop();
 CALL check_fast_path_txn('UPDATE sr_stmt_trig SET v = 4 WHERE k = 1', true);
-DROP TABLE sr_stmt_trig, sr_stmt_trig_part;
-DROP FUNCTION sr_stmt_trig_fail, sr_stmt_trig_noop;
+-- A write by a BEFORE STATEMENT trigger starts a distributed transaction, and
+-- the update's write then runs in it instead of on the fast path, so both
+-- commit or roll back together, also when the update fails after its write.
+CREATE TABLE sr_stmt_trig_log (op text);
+CREATE FUNCTION sr_stmt_trig_insert_log() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN INSERT INTO sr_stmt_trig_log VALUES (TG_OP); RETURN NULL; END $$;
+CREATE TABLE sr_stmt_trig_notnull (k int PRIMARY KEY, v int NOT NULL);
+INSERT INTO sr_stmt_trig_notnull VALUES (1, 1);
+CREATE TRIGGER sr_stmt_trig_notnull_before BEFORE UPDATE ON sr_stmt_trig_notnull
+  FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_insert_log();
+EXPLAIN (COSTS OFF) UPDATE sr_stmt_trig_notnull SET v = 2 WHERE k = 1;
+CALL check_fast_path_txn('UPDATE sr_stmt_trig_notnull SET v = 2 WHERE k = 1', false);
+UPDATE sr_stmt_trig_notnull SET v = NULL WHERE k = 1;
+UPDATE sr_stmt_trig_notnull SET v = 3 WHERE k = 1 RETURNING 1 / (v - 3);
+SELECT * FROM sr_stmt_trig_notnull;
+SELECT * FROM sr_stmt_trig_log;
+DROP TABLE sr_stmt_trig, sr_stmt_trig_part, sr_stmt_trig_notnull,
+  sr_stmt_trig_log;
+DROP FUNCTION sr_stmt_trig_fail, sr_stmt_trig_noop, sr_stmt_trig_insert_log;
 
 -- Test to validate that NOT NULL constraints are enforced for partitioned tables.
 CREATE TABLE single_row_not_null_constraints_partitioned (k int PRIMARY KEY, v1 int NOT NULL, v2 int NOT NULL) PARTITION BY RANGE (k);
