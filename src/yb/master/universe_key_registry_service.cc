@@ -30,6 +30,27 @@ using std::string;
 namespace yb {
 namespace master {
 
+namespace {
+
+// A universe key shorter than the data keys still works, but caps the strength of every data key it
+// wraps at its own size. Warn rather than reject, so a KMS or tool that still sends 32-byte keys
+// keeps working.
+void WarnIfUniverseKeyShorterThanDataKeys(
+    uint32_t universe_key_size, encryption::EncryptionAlgorithmPB algorithm) {
+  auto data_key_size = encryption::DataKeySize(algorithm);
+  auto recommended_universe_key_size = encryption::UniverseKeySize(algorithm);
+  if (data_key_size.ok() && recommended_universe_key_size.ok() &&
+      universe_key_size < *data_key_size) {
+    LOG(WARNING) << Format(
+        "The latest universe key is $0-bit, shorter than the $1-bit data keys of $2, so it limits "
+        "their protection to $0 bits. Rotate to a $3-byte universe key.",
+        universe_key_size * 8, *data_key_size * 8, encryption::EncryptionAlgorithmName(algorithm),
+        *recommended_universe_key_size);
+  }
+}
+
+} // namespace
+
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key) {
   string output;
   output.resize(s.size());
@@ -88,6 +109,8 @@ Status RotateUniverseKey(const Slice& old_universe_key,
           VERIFY_RESULT(encryption::NewUniverseEncryptionAlgorithm()));
     }
     auto params = VERIFY_RESULT(encryption::EncryptionParams::FromSlice(new_universe_key));
+    WarnIfUniverseKeyShorterThanDataKeys(
+        params->key_size, universe_key_registry.encryption_algorithm());
     encryption::EncryptionParamsPB params_pb;
     params->ToEncryptionParamsPB(&params_pb);
     (*universe_key_registry.mutable_universe_keys())[new_key_version_id] = params_pb;
@@ -118,6 +141,8 @@ Status SetEncryptionAlgorithm(
                       encryption::EncryptionAlgorithmName(registry.encryption_algorithm()),
                       encryption::EncryptionAlgorithmName(algorithm));
   registry.set_encryption_algorithm(algorithm);
+  WarnIfUniverseKeyShorterThanDataKeys(
+      VERIFY_RESULT(encryption::EncryptionParams::FromSlice(universe_key))->key_size, algorithm);
 
   faststring encoded;
   RETURN_NOT_OK(pb_util::SerializeToString(registry, &encoded));

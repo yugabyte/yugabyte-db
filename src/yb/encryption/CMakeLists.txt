@@ -51,3 +51,4 @@ set(YB_TEST_LINK_LIBS encryption encryption_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(ctr_cipher_stream-test)
 ADD_YB_TEST(encrypted_env-test)
+ADD_YB_TEST(encryption_util-test)
