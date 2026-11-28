@@ -162,7 +162,7 @@ od_rule_t *od_rules_add(od_rules_t *rules)
 #endif
 
 	/* YB: This is used by auth passthrough, the "true" is needed for that */
-	kiwi_vars_init(&rule->vars, true);
+	kiwi_vars_init(&rule->vars);
 
 	rule->enable_password_passthrough = 0;
 

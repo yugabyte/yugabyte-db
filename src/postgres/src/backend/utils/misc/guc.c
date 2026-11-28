@@ -919,6 +919,8 @@ static char *yb_origination_time_override_string;
 static char *yb_neg_catcache_ids_string;
 static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
+static bool yb_conn_mgr_replaying = false;
+static const char *yb_conn_mgr_skip_check_name = NULL;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
@@ -7473,13 +7475,6 @@ static struct config_string ConfigureNamesString[] =
 		{"default_table_access_method", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default table access method for new tables."),
 			NULL,
-			/*
-			 * YB: ConnMgr can't replay this safely since the check hook looks
-			 * up the name again. The access method might have been dropped
-			 * between the SET and the replay, making the replay fail. So,
-			 * setting this GUC makes the connection sticky.
-			 */
-			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_table_access_method,
@@ -7491,13 +7486,6 @@ static struct config_string ConfigureNamesString[] =
 		{"default_tablespace", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default tablespace to create tables and indexes in."),
 			gettext_noop("An empty string selects the database's default tablespace."),
-			/*
-			 * YB: ConnMgr can't replay this safely since the check hook looks
-			 * up the name again. The tablespace might have been dropped
-			 * between the SET and the replay, making the replay fail. So,
-			 * setting this GUC makes the connection sticky.
-			 */
-			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_tablespace,
@@ -7621,12 +7609,6 @@ static struct config_string ConfigureNamesString[] =
 		"C",
 		check_locale_time, assign_locale_time, NULL
 	},
-
-	/*
-	 * YB: Check var.h (odyssey) file to confirm if guc var need to be added in
-	 * avoid_enquote_guc_list list. Basic requirements are if GUC_LIST_INPUT, GUC_LIST_QUOTE flags
-	 * are enabled on a var and can be set in a session without making connection sticky.
-	 */
 
 	{
 		{"session_preload_libraries", PGC_SUSET, CLIENT_CONN_PRELOAD,
@@ -8011,10 +7993,8 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Sets default text search configuration."),
 			NULL,
 			/*
-			 * YB: ConnMgr can't replay this safely since the check hook looks
-			 * up the name again. The config might have been dropped between
-			 * the SET and the replay, making the replay fail. So, setting this
-			 * GUC makes the connection sticky.
+			 * YB: TODO: unstick. ConnMgr replay skips this check hook, so a
+			 * dropped config no longer fails the replay.
 			 */
 			GUC_YB_CONN_MGR_STICKY
 		},
@@ -8797,9 +8777,8 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " guarantee is maintained."
 			),
 			/*
-			 * ConnMgr can't replay this since the check hook rejects it
-			 * inside a transaction block, so setting it makes the connection
-			 * sticky.
+			 * YB: TODO: unstick. ConnMgr replay no longer runs in a
+			 * transaction block, and skips this check hook.
 			 */
 			GUC_YB_CONN_MGR_STICKY
 		},
@@ -8998,6 +8977,11 @@ static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **
 static const char *YbFormatConfigValue(struct config_generic *record,
 									   const union config_var_val *val,
 									   char *buffer, size_t bufsize);
+static bool yb_conn_mgr_skip_check_hook(struct config_generic *gconf);
+static bool YbDbAdminCanSetVariable(const char *name);
+static bool yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
+									   const char **name, const char **value,
+									   bool *skip_check);
 
 
 /*
@@ -10428,28 +10412,12 @@ YbSetYsqlConnMgrGucDefaults(const char *data, int len)
 {
 	const char *ptr = data;
 	const char *end = data + len;
+	const char *name;
+	const char *value;
+	bool		skip_check;
 
-	while (ptr < end)
+	while (yb_conn_mgr_next_guc_entry(&ptr, end, &name, &value, &skip_check))
 	{
-		const char *name;
-		const char *value;
-
-		/* Get the key (GUC name) */
-		name = ptr;
-		while (ptr < end && *ptr != '\0')
-			ptr++;
-		if (ptr >= end)
-			break;
-		ptr++;					/* skip null terminator */
-
-		/* Get the value */
-		value = ptr;
-		while (ptr < end && *ptr != '\0')
-			ptr++;
-		if (ptr >= end)
-			break;
-		ptr++;					/* skip null terminator */
-
 		GucContext	gucctx = superuser() ? PGC_SU_BACKEND : PGC_BACKEND;
 
 		/*
@@ -10459,11 +10427,13 @@ YbSetYsqlConnMgrGucDefaults(const char *data, int len)
 		PG_TRY();
 		{
 			yb_conn_mgr_modifying_defaults = true;
+			yb_conn_mgr_skip_check_name = skip_check ? name : NULL;
 			SetConfigOption(name, value, gucctx, PGC_S_CLIENT);
 		}
 		PG_FINALLY();
 		{
 			yb_conn_mgr_modifying_defaults = false;
+			yb_conn_mgr_skip_check_name = NULL;
 		}
 		PG_END_TRY();
 	}
@@ -10489,6 +10459,39 @@ YbResetYsqlConnMgrGucDefaults(void)
 	PG_FINALLY();
 	{
 		yb_conn_mgr_modifying_defaults = false;
+	}
+	PG_END_TRY();
+}
+
+void
+YbSetYsqlConnMgrSessionState(const char *data, int len)
+{
+	const char *ptr = data;
+	const char *end = data + len;
+
+	PG_TRY();
+	{
+		const char *name;
+		const char *value;
+		bool		skip_check;
+
+		yb_conn_mgr_replaying = true;
+		while (yb_conn_mgr_next_guc_entry(&ptr, end, &name, &value,
+										  &skip_check))
+		{
+			yb_conn_mgr_skip_check_name = skip_check ? name : NULL;
+			(void) set_config_option(name, value,
+									 (superuser() ||
+									  YbDbAdminCanSetVariable(name) ?
+									  PGC_SUSET : PGC_USERSET),
+									 PGC_S_SESSION, GUC_ACTION_SET, true, 0,
+									 false);
+		}
+	}
+	PG_FINALLY();
+	{
+		yb_conn_mgr_replaying = false;
+		yb_conn_mgr_skip_check_name = NULL;
 	}
 	PG_END_TRY();
 }
@@ -11056,6 +11059,16 @@ ReportGUCOption(struct config_generic *record)
 
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			/*
+			 * YB: Placeholder GUCs don't have check hooks but replaying them
+			 * on a backend with a loaded extension will have a check hook, so
+			 * their check hook should never be skipped
+			 */
+			if (record->extra == NULL &&
+				!(record->flags & (GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK |
+								   GUC_CUSTOM_PLACEHOLDER)))
+				flags |= YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY;
 
 			if (record->status & YB_GUC_VALUE_RESET)
 				flags |= YB_PARAM_STATUS_SESSION_VAL_RESET;
@@ -13044,6 +13057,7 @@ set_config_option_ext(const char *name, const char *value,
 	if (changeVal &&			/* Add only if the parameter value is changed */
 		source != YSQL_CONN_MGR &&	/* Don't add the parameter to the changed
 									 * list, if it is set from YSQL CONN MGR */
+		!yb_conn_mgr_replaying &&
 		(context == PGC_SUSET || context == PGC_USERSET ||	/* SET statement */
 		 value == NULL))		/* RESET statement */
 	{
@@ -13760,21 +13774,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool		YbDbAdminCanSet = false;
-
-	if (IsYbDbAdminUser(GetUserId()))
-	{
-		for (size_t i = 0;
-			 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
-			 i++)
-		{
-			if (stmt->name && strcmp(YbDbAdminVariables[i], stmt->name) == 0)
-			{
-				YbDbAdminCanSet = true;
-				break;
-			}
-		}
-	}
+	bool		YbDbAdminCanSet = YbDbAdminCanSetVariable(stmt->name);
 
 	/*
 	 * Workers synchronize these parameters at the start of the parallel
@@ -16731,6 +16731,10 @@ call_bool_check_hook(struct config_bool *conf, bool *newval, void **extra,
 	if (!conf->check_hook)
 		return true;
 
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
+		return true;
+
 	/* Reset variables that might be set by hook */
 	GUC_check_errcode_value = ERRCODE_INVALID_PARAMETER_VALUE;
 	GUC_check_errmsg_string = NULL;
@@ -16763,6 +16767,10 @@ call_int_check_hook(struct config_int *conf, int *newval, void **extra,
 {
 	/* Quick success if no hook */
 	if (!conf->check_hook)
+		return true;
+
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -16833,6 +16841,10 @@ call_real_check_hook(struct config_real *conf, double *newval, void **extra,
 	if (!conf->check_hook)
 		return true;
 
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
+		return true;
+
 	/* Reset variables that might be set by hook */
 	GUC_check_errcode_value = ERRCODE_INVALID_PARAMETER_VALUE;
 	GUC_check_errmsg_string = NULL;
@@ -16867,6 +16879,10 @@ call_string_check_hook(struct config_string *conf, char **newval, void **extra,
 
 	/* Quick success if no hook */
 	if (!conf->check_hook)
+		return true;
+
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/*
@@ -16915,6 +16931,10 @@ call_enum_check_hook(struct config_enum *conf, int *newval, void **extra,
 {
 	/* Quick success if no hook */
 	if (!conf->check_hook)
+		return true;
+
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -18453,10 +18473,6 @@ check_yb_password_reuse(int *newVal, void **extra, GucSource source)
  *
  * Do not allow users to set yb_read_after_commit_visibility
  * from within a txn block.
- *
- * ConnMgr can't replay a GUC that uses this hook, since the replay runs
- * inside a transaction block. Such a GUC must also be marked
- * GUC_YB_CONN_MGR_STICKY.
  */
 static bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
@@ -18828,13 +18844,11 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * optimization takes a snapshot first, so SET to a value (PGC_S_SESSION) is
  * refused once the transaction has taken one, so that it does not appear to
  * take effect when it does not.  A SET before then is accepted, inside a
- * transaction block too, and takes effect for the transaction.  Connection
- * Manager relies on this: it replays a client's SETs as one multi-statement
- * query, which runs in an implicit transaction block.  A function's SET clause
- * is applied with PGC_S_SESSION too, inside the calling statement, so
- * YbValidateFunctionSetItem refuses such a clause up front.  RESET and SET ...
- * TO DEFAULT assign the reset value without calling this hook, so they are
- * accepted at any time.
+ * transaction block too, and takes effect for the transaction.  A function's
+ * SET clause is applied with PGC_S_SESSION too, inside the calling statement,
+ * so YbValidateFunctionSetItem refuses such a clause up front.  RESET and
+ * SET ... TO DEFAULT assign the reset value without calling this hook, so they
+ * are accepted at any time.
  *
  * Other sources are accepted.  None of them is a statement that could appear
  * to take effect, and refusing one would lose the value rather than delay it:
@@ -19046,6 +19060,70 @@ YbIsValidConfigFileName(const char *name)
 {
 	return find_option(name, false, true, LOG) != NULL ||
 		valid_custom_variable_name(name);
+}
+
+/*
+ * Match by name so that a GUC set from inside the replayed GUC's hooks still
+ * runs its own check hook; its assign hook may need the extra.
+ */
+static bool
+yb_conn_mgr_skip_check_hook(struct config_generic *gconf)
+{
+	return yb_conn_mgr_skip_check_name != NULL &&
+		guc_name_compare(gconf->name, yb_conn_mgr_skip_check_name) == 0;
+}
+
+/*
+ * Read the next name\0value\0<skip> entry of a ConnMgr 'G' packet. Returns
+ * false at the end of the data. A truncated entry is a protocol violation, so
+ * that a partly applied state is never acknowledged.
+ */
+static bool
+yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
+						   const char **name, const char **value,
+						   bool *skip_check)
+{
+	const char *p = *ptr;
+	const char *nul;
+
+	if (p >= end)
+		return false;
+	nul = memchr(p, '\0', end - p);
+	if (nul == NULL)
+		goto truncated;
+	*name = p;
+
+	p = nul + 1;
+	nul = memchr(p, '\0', end - p);
+	if (nul == NULL || nul + 1 >= end)
+		goto truncated;
+	*value = p;
+
+	*skip_check = nul[1] != 0;
+	*ptr = nul + 2;
+	return true;
+
+truncated:
+	ereport(FATAL,
+			(errcode(ERRCODE_PROTOCOL_VIOLATION),
+			 errmsg("truncated ConnMgr GUC state entry")));
+	pg_unreachable();
+}
+
+static bool
+YbDbAdminCanSetVariable(const char *name)
+{
+	if (name == NULL || !IsYbDbAdminUser(GetUserId()))
+		return false;
+
+	for (size_t i = 0;
+		 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
+		 i++)
+	{
+		if (strcmp(YbDbAdminVariables[i], name) == 0)
+			return true;
+	}
+	return false;
 }
 
 #include "guc-file.c"

@@ -175,8 +175,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
 	/* YB: The second param of init is same as corresponding lists in client */
-	kiwi_vars_init(&server->yb_vars_default, false);
-	kiwi_vars_init(&server->yb_vars_session, true);
+	kiwi_vars_init(&server->yb_vars_default);
+	kiwi_vars_init(&server->yb_vars_session);
 
 	od_io_init(&server->io);
 	od_relay_init(&server->relay, &server->io);

@@ -527,12 +527,13 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-		case 'G':				/* YB: RESET ALL & RESET defaults from ConnMgr */
+		case 'G':				/* YB: GUC state from ConnMgr */
 			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
+			doing_extended_query_message = false;
 			break;
 
 		case 'g':				/* YB: RESET GUC DEFAULTS from ConnMgr */
@@ -541,6 +542,7 @@ SocketBackend(StringInfo inBuf)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
+			doing_extended_query_message = false;
 			break;
 
 			/* YB: YbThrowError packet */
@@ -8378,12 +8380,23 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'G':			/* YB: RESET ALL & RESET defaults from ConnMgr */
+			case 'G':			/* YB: GUC state from ConnMgr */
 				if (YbIsClientYsqlConnMgr())
 				{
+					int			subtype = pq_getmsgbyte(&input_message);
+					const char *data = input_message.data + input_message.cursor;
+					int			len = input_message.len - input_message.cursor;
+
 					start_xact_command();
-					YbSetYsqlConnMgrGucDefaults(input_message.data,
-												input_message.len);
+					if (subtype == 'D')
+						YbSetYsqlConnMgrGucDefaults(data, len);
+					else if (subtype == 'S')
+						YbSetYsqlConnMgrSessionState(data, len);
+					else
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								 errmsg("invalid ConnMgr session state message subtype %d",
+										subtype)));
 					finish_xact_command();
 					send_ready_for_query = true;
 				}

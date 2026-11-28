@@ -177,6 +177,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] {}),
     new SessionParameter("transaction_read_only", "off", "off", "on",
       new ExceptionType[] { ExceptionType.TRANSACTION_ONLY }),
+    new SessionParameter("default_tablespace", "", "pg_default",
+      new ExceptionType[] {}),
 
     // Sticky GUC variables make the primary connection sticky, test at the end.
 
@@ -186,8 +188,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("role", "none", "test2",
       new ExceptionType[] { ExceptionType.AUTH_PARAM, ExceptionType.INVALID_STARTUP,
         ExceptionType.STICKY_PARAM }),
-    new SessionParameter("default_tablespace", "", "pg_default",
-      new ExceptionType[] { ExceptionType.STICKY_PARAM }),
     new SessionParameter("temp_tablespaces", "", "pg_default",
       new ExceptionType[] { ExceptionType.STICKY_PARAM }),
   };
@@ -1364,21 +1364,227 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // The client sets default_table_access_method by SET or in the startup packet, then another
+  // session drops the access method. The client doesn't hold the only backend, so a second client
+  // takes it. The client's next query replays the value on that backend, and only CREATE TABLE
+  // fails, as in Postgres.
   @Test
-  public void testTableAccessMethodMakesConnectionSticky() throws Exception {
+  public void testTableAccessMethodReplaysAfterDrop() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
-    checkStickyAfterObjectChange("default_table_access_method", "cm_am_set",
-        false /* startupPacket */,
-        "CREATE ACCESS METHOD cm_am_set TYPE TABLE HANDLER heap_tableam_handler",
-        "DROP ACCESS METHOD cm_am_set",
-        "DROP ACCESS METHOD IF EXISTS cm_am_set");
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      for (boolean startupPacket : new boolean[] {false, true}) {
+        String am = "cm_am_" + (startupPacket ? "startup" : "set");
+        pgStmt.execute("CREATE ACCESS METHOD " + am + " TYPE TABLE HANDLER heap_tableam_handler");
+        try {
+          ConnectionBuilder builder = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+          if (startupPacket) {
+            builder = builder.withOptions("-c default_table_access_method=" + am);
+          }
+          try (Connection conn = builder.connect();
+               Statement stmt = conn.createStatement()) {
+            if (!startupPacket) {
+              stmt.execute("SET default_table_access_method = '" + am + "'");
+            }
+            pgStmt.execute("DROP ACCESS METHOD " + am);
+
+            startQueuedClient().assertServed();
+            assertSettingValues(stmt, new String[] {"default_table_access_method", am});
+            try {
+              stmt.execute("CREATE TABLE cm_am_tbl (a int)");
+              fail("CREATE TABLE should have failed");
+            } catch (Exception e) {
+              assertTrue(e.getMessage(),
+                  e.getMessage().contains("access method \"" + am + "\" does not exist"));
+            }
+          }
+        } finally {
+          pgStmt.execute("DROP ACCESS METHOD IF EXISTS " + am);
+        }
+      }
+    }
+  }
+
+  // The client sets default_tablespace by SET or in the startup packet, then another session
+  // drops the tablespace. A second client takes the only backend, then the client's next query
+  // replays the value on it. As in Postgres, CREATE TABLE then uses the database's tablespace.
+  @Test
+  public void testDefaultTablespaceReplaysAfterDrop() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      for (boolean startupPacket : new boolean[] {false, true}) {
+        String ts = "cm_ts_" + (startupPacket ? "startup" : "set");
+        String table = ts + "_tbl";
+        pgStmt.execute("CREATE TABLESPACE " + ts + " LOCATION '/invalid'");
+        try {
+          ConnectionBuilder builder = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+          if (startupPacket) {
+            builder = builder.withOptions("-c default_tablespace=" + ts);
+          }
+          try (Connection conn = builder.connect();
+               Statement stmt = conn.createStatement()) {
+            if (!startupPacket) {
+              stmt.execute("SET default_tablespace = '" + ts + "'");
+            }
+            pgStmt.execute("DROP TABLESPACE " + ts);
+
+            startQueuedClient().assertServed();
+            assertSettingValues(stmt, new String[] {"default_tablespace", ts});
+            stmt.execute("CREATE TABLE " + table + " (a int)");
+            ResultSet rs = stmt.executeQuery(
+                "SELECT reltablespace FROM pg_class WHERE relname = '" + table + "'");
+            assertTrue(rs.next());
+            assertEquals(0L, rs.getLong(1));
+          }
+        } finally {
+          pgStmt.execute("DROP TABLE IF EXISTS " + table);
+          pgStmt.execute("DROP TABLESPACE IF EXISTS " + ts);
+        }
+      }
+    }
+  }
+
+  // The client sets yb_read_time and another setting, so its next deploy carries more than one
+  // value. A second client takes the only backend, then the client's next query replays both on
+  // it, and both must come back. yb_read_time's check hook, which rejects a transaction block, is
+  // skipped on replay, so this doesn't show that the replay runs outside one.
+  @Test
+  public void testReadTimeReplaysWithOtherSettings() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      ResultSet rs = stmt.executeQuery(
+          "SELECT (extract(epoch from now()) * 1000000)::bigint::text");
+      assertTrue(rs.next());
+      String readTime = rs.getString(1);
+      stmt.execute("SET TimeZone = 'Asia/Kolkata'");
+      stmt.execute("SET yb_read_time = '" + readTime + "'");
+
+      startQueuedClient().assertServed();
+      assertSettingValues(stmt,
+          new String[] {"TimeZone", "Asia/Kolkata"},
+          new String[] {"yb_read_time", readTime});
+    }
+  }
+
+  // Client B sets temp_buffers. Client A then writes to a temp table on the only backend and rolls
+  // back, so the backend keeps its local buffers but A isn't sticky. B's next query replays
+  // temp_buffers on that backend and must still succeed.
+  @Test
+  public void testTempBuffersReplayAfterRolledBackTempTable() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection connB = builder.connect();
+         Statement stmtB = connB.createStatement();
+         Connection connA = builder.connect();
+         Statement stmtA = connA.createStatement()) {
+      stmtB.execute("SET temp_buffers = 2000");
+
+      stmtA.execute("BEGIN");
+      stmtA.execute("CREATE TEMP TABLE cm_temp_buffers_tbl (a int)");
+      stmtA.execute("INSERT INTO cm_temp_buffers_tbl VALUES (1)");
+      stmtA.execute("ROLLBACK");
+
+      assertSettingValues(stmtB, new String[] {"temp_buffers", "16000kB"});
+    }
+  }
+
+  // Client B sets plpgsql GUCs before the only backend has loaded plpgsql. Client A then runs a
+  // DO block, which loads plpgsql there. B's next query replays the values on that backend and
+  // must get them back.
+  @Test
+  public void testPlaceholderReplayAfterExtensionLoad() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection connB = builder.connect();
+         Statement stmtB = connB.createStatement();
+         Connection connA = builder.connect();
+         Statement stmtA = connA.createStatement()) {
+      stmtB.execute("SET plpgsql.extra_warnings = 'all'");
+      stmtB.execute("SET plpgsql.extra_errors = 'shadowed_variables'");
+
+      stmtA.execute("DO $$ BEGIN END $$");
+
+      assertSettingValues(stmtB,
+          new String[] {"plpgsql.extra_warnings", "all"},
+          new String[] {"plpgsql.extra_errors", "shadowed_variables"});
+    }
+  }
+
+  // The client sets values that SQL would need to quote or escape. A second client takes the only
+  // backend, then the client's next query replays them on it. They must come back unchanged.
+  @Test
+  public void testSessionValuesNeedingQuotesReplay() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String[][] settings = {
+        {"application_name", "it's a \\ test; SET work_mem = 1"},
+        {"search_path", "\"a,b\", \"it's\", \"x;y\", public"},
+        {"cm_test.value", "quote ' backslash \\ semicolon ; E'x'"},
+        {"DateStyle", "ISO, DMY"},
+    };
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      for (String[] setting : settings) {
+        ResultSet rs = stmt.executeQuery(
+            "SELECT set_config('" + setting[0] + "', " +
+            "'" + setting[1].replace("'", "''") + "', false)");
+        assertTrue(rs.next());
+      }
+      assertSettingValues(stmt, settings);
+
+      startQueuedClient().assertServed();
+      assertSettingValues(stmt, settings);
+    }
+  }
+
+  // The client sets custom settings whose names SQL would need to quote: a reserved word as the
+  // second part. A second client takes the only backend, then the client's next query replays
+  // them on it. The client must stay connected and get them back.
+  @Test
+  public void testCustomSettingNamesNeedingQuotesReplay() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String[][] settings = {
+        {"app.user", "alice"},
+        {"app.select", "s"},
+        {"app.table", "t"},
+        {"app.from", "f"}
+    };
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      for (String[] setting : settings) {
+        stmt.execute("SET \"" + setting[0] + "\" = '" + setting[1] + "'");
+      }
+      assertCustomSettingValues(stmt, settings);
+
+      startQueuedClient().assertServed();
+      assertCustomSettingValues(stmt, settings);
+    }
+  }
+
+  private static void assertCustomSettingValues(Statement stmt, String[]... settings)
+      throws Exception {
+    for (String[] setting : settings) {
+      ResultSet rs = stmt.executeQuery("SELECT current_setting('" + setting[0] + "')");
+      assertTrue(rs.next());
+      assertEquals(setting[0], setting[1], rs.getString(1));
+    }
   }
 
   // A SET of these GUCs makes the connection sticky. A value from ALTER ROLE/DATABASE ... SET or
   // from the config file (ysql_pg_conf_csv), at startup or on SIGHUP, is applied by every backend
   // of the pool, so it must not.
   private static final String[][] STICKY_ON_SET_SETTINGS = {
-      {"default_tablespace", "pg_default"},
       {"temp_tablespaces", "pg_default"},
       {"yb_read_after_commit_visibility", "relaxed"},
   };
