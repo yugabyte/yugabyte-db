@@ -10,7 +10,11 @@ import {
 } from '../EditUniverseUtils';
 import { ClusterType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { CloudType } from '@app/redesign/helpers/dtos';
-import { buildPrimaryPlacementEditPayload, useGetEditPlacementContext } from './EditPlacementUtils';
+import {
+  buildPrimaryPlacementEditPayload,
+  useGetEditPlacementContext
+} from './EditPlacementUtils';
+import { getAzRankGetter, getClusterAzs } from '../leaderPreference';
 import {
   getEffectiveReplicationFactorForResilience,
   getNodeCount
@@ -147,6 +151,16 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
     .flat()
     .sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? ''));
 
+  const clusterAzs = primaryCluster ? getClusterAzs(primaryCluster) : [];
+  const currentRankOf = getAzRankGetter(clusterAzs);
+  // Rank each AZ as it will be stored, using the same rule as the placement table after saving.
+  const newPayloadAzs = (targetPayload.placementSpec.cloud_list ?? [])
+    .flatMap((cloud) => cloud.region_list ?? [])
+    .flatMap((region) => region.az_list ?? []);
+  const newPayloadRankOf = getAzRankGetter(newPayloadAzs);
+  const newRankByAzUuid = new Map(newPayloadAzs.map((az) => [az.uuid, newPayloadRankOf(az)]));
+  const getNewRank = (az: { uuid: string }) => newRankByAzUuid.get(az.uuid) ?? AZ_NOT_PREFERRED;
+
   const sortedNewRegionKeys = keys(nodesAndAvailability!.availabilityZones!).sort((a, b) => {
     const regionA = resilience?.regions.find((r) => r.code === a)?.name ?? '';
     const regionB = resilience?.regions.find((r) => r.code === b)?.name ?? '';
@@ -209,9 +223,9 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                         {az?.num_nodes_in_az}&nbsp;
                         {pluralize(t(isK8s ? 'pod' : 'node'), az?.num_nodes_in_az)}
                       </YBTag>
-                      {(az?.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED ? (
+                      {currentRankOf(az) > AZ_NOT_PREFERRED ? (
                         <YBTag size="medium" customSx={placementValueTagSx}>
-                          {t('rank', { rank: az.leader_preference })}
+                          {t('rank', { rank: currentRankOf(az) })}
                         </YBTag>
                       ) : (
                         <YBTag size="medium" variant="dark">
@@ -269,9 +283,9 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                           {az?.nodeCount}&nbsp;{pluralize(t(isK8s ? 'pod' : 'node'), az?.nodeCount)}
                         </YBTag>
                       </div>
-                      {az?.preffered > AZ_NOT_PREFERRED ? (
+                      {getNewRank(az) > AZ_NOT_PREFERRED ? (
                         <YBTag size="medium" customSx={placementValueTagSx}>
-                          {t('rank', { rank: az.preffered })}
+                          {t('rank', { rank: getNewRank(az) })}
                         </YBTag>
                       ) : (
                         <YBTag size="medium" variant="dark">

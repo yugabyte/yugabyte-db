@@ -633,10 +633,26 @@ export function distributeReplicationFactorAcrossAzs(
   return replicationFactors;
 }
 
+export type ExistingAz = {
+  /** Stored values, sent back untouched when the user changes no Preferred value. */
+  leader_affinity: boolean;
+  leader_preference: number;
+  /** Rank the edit form was seeded with. */
+  rank: number;
+};
+
 export const getPlacementRegions = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
   availabilityZones?: NodeAvailabilityProps['availabilityZones'],
-  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>
+  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>,
+  /**
+   * Edit flows pass the universe's AZs. If the user changed no Preferred value (and added no
+   * ranked AZ), every AZ is sent with its stored leader_affinity / leader_preference so the
+   * edit doesn't alter leader placement. Otherwise the layout is written the way create does:
+   * leader_affinity true, leader_preference = the Preferred rank (omitted when 0).
+   * Omitted in create flows, which keep their existing behavior.
+   */
+  existingAzs?: Map<string, ExistingAz>
 ) => {
   const { resilienceType, resilienceFormMode } = resilienceAndRegionsSettings;
 
@@ -712,6 +728,15 @@ export const getPlacementRegions = (
     replicationFactorTotal
   );
 
+  const keepStoredLeaderFields =
+    !!existingAzs &&
+    !values(azsWithNodes)
+      .flat()
+      .some((az) => {
+        const existing = existingAzs.get(az.uuid);
+        return existing ? existing.rank !== az.preffered : az.preffered > AZ_NOT_PREFERRED;
+      });
+
   let flatIndex = 0;
   const regionList: PlacementRegion[] = keys(azsWithNodes).map((regionuuid) => {
     const region = find(resilienceAndRegionsSettings.regions, { code: regionuuid });
@@ -729,14 +754,21 @@ export const getPlacementRegions = (
         const azReplicationFactor = replicationFactors[flatIndex];
         flatIndex += 1;
 
+        const stored = existingAzs?.get(az.uuid);
+        const leaderPreference = keepStoredLeaderFields
+          ? stored?.leader_preference
+          : az.preffered;
         return {
           uuid: az.uuid,
           name: azFromRegion!.name,
           num_nodes_in_az: az.nodeCount,
           subnet: azFromRegion!.subnet,
-          leader_affinity: true,
+          leader_affinity: keepStoredLeaderFields ? stored?.leader_affinity ?? true : true,
           replication_factor: azReplicationFactor,
-          ...(az.preffered !== undefined ? { leader_preference: az.preffered } : {})
+          // Edit flows leave rank 0 unsent; create keeps sending it.
+          ...(leaderPreference !== undefined && (!existingAzs || leaderPreference > AZ_NOT_PREFERRED)
+            ? { leader_preference: leaderPreference }
+            : {})
         };
       })
     };

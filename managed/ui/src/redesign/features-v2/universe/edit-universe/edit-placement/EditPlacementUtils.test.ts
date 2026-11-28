@@ -187,6 +187,142 @@ describe('EditPlacementUtils payload builders', () => {
   });
 });
 
+describe('leader affinity and default region on edit', () => {
+  const twoAzResilience = {
+    ...resilience,
+    regions: [
+      {
+        ...region,
+        zones: [
+          { uuid: 'az-1', name: 'us-west-2a', code: 'us-west-2a', subnet: 's1' },
+          { uuid: 'az-2', name: 'us-west-2b', code: 'us-west-2b', subnet: 's2' },
+          { uuid: 'az-3', name: 'us-west-2c', code: 'us-west-2c', subnet: 's3' }
+        ]
+      }
+    ]
+  } as unknown as ResilienceAndRegionsProps;
+  const zones = (p1: number, p2: number) => ({
+    availabilityZones: {
+      [region.code]: [
+        { uuid: 'az-1', name: 'us-west-2a', nodeCount: 1, preffered: p1 },
+        { uuid: 'az-2', name: 'us-west-2b', nodeCount: 1, preffered: p2 },
+        { uuid: 'az-3', name: 'us-west-2c', nodeCount: 1, preffered: 0 }
+      ]
+    },
+    useDedicatedNodes: false,
+    replicationFactor: 3
+  });
+  const universe = (defaultRegion?: string) =>
+    ({
+      spec: {
+        clusters: [
+          {
+            uuid: 'primary-1',
+            cluster_type: PRIMARY,
+            placement_spec: {
+              cloud_list: [
+                {
+                  uuid: 'cloud-1',
+                  code: 'aws',
+                  default_region: defaultRegion,
+                  region_list: [
+                    {
+                      uuid: 'region-1',
+                      code: 'us-west-2',
+                      name: 'US West',
+                      az_list: [
+                        { uuid: 'az-1', name: 'us-west-2a', num_nodes_in_az: 1, leader_affinity: true },
+                        { uuid: 'az-2', name: 'us-west-2b', num_nodes_in_az: 1, leader_affinity: false }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    } as unknown as Universe);
+
+  it('keeps excluded AZs non-affinitized and affinitizes newly added AZs', () => {
+    const payload = buildPrimaryPlacementEditPayload(universe(), twoAzResilience, zones(1, 0) as any);
+    const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
+    expect(azs.map((a) => a.leader_affinity)).toEqual([true, false, true]);
+    // Nothing was changed, so stored leader_preference (none) is not rewritten.
+    expect(azs.some((az) => 'leader_preference' in az)).toBe(false);
+  });
+
+  it('keeps the ranks of a ranked universe and does not promote the rank-0 AZ', () => {
+    const ranked = universe();
+    const azList =
+      ranked.spec!.clusters![0].placement_spec!.cloud_list[0].region_list![0].az_list!;
+    azList[0].leader_preference = 1;
+    azList[1].leader_affinity = true;
+    azList[1].leader_preference = 0;
+    const payload = buildPrimaryPlacementEditPayload(ranked, twoAzResilience, {
+      ...zones(1, 0),
+      availabilityZones: {
+        [region.code]: [
+          { uuid: 'az-1', name: 'us-west-2a', nodeCount: 1, preffered: 1 },
+          { uuid: 'az-2', name: 'us-west-2b', nodeCount: 2, preffered: 0 }
+        ]
+      }
+    } as any);
+    const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
+    expect(azs[0]).toMatchObject({ leader_affinity: true, leader_preference: 1 });
+    expect(azs[1].leader_preference).toBeUndefined();
+  });
+
+  it('writes create-style values when the user changes a Preferred value', () => {
+    const ranked = universe();
+    const azList =
+      ranked.spec!.clusters![0].placement_spec!.cloud_list[0].region_list![0].az_list!;
+    azList[0].leader_preference = 1;
+    azList[1].leader_affinity = true;
+    azList[1].leader_preference = 0;
+    // User sets the only ranked AZ (az-1) to No.
+    const payload = buildPrimaryPlacementEditPayload(ranked, twoAzResilience, {
+      ...zones(0, 0),
+      availabilityZones: {
+        [region.code]: [
+          { uuid: 'az-1', name: 'us-west-2a', nodeCount: 1, preffered: 0 },
+          { uuid: 'az-2', name: 'us-west-2b', nodeCount: 2, preffered: 0 }
+        ]
+      }
+    } as any);
+    const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
+    expect(azs.map((a) => a.leader_affinity)).toEqual([true, true]);
+    expect(azs.some((a) => 'leader_preference' in a)).toBe(false);
+  });
+
+  it('preserves stored affinity when the universe has no preference configured', () => {
+    const plain = universe();
+    plain.spec!.clusters![0].placement_spec!.cloud_list[0].region_list![0].az_list![1].leader_affinity = true;
+    const payload = buildPrimaryPlacementEditPayload(plain, twoAzResilience, {
+      ...zones(0, 0),
+      availabilityZones: {
+        [region.code]: [
+          { uuid: 'az-1', name: 'us-west-2a', nodeCount: 1, preffered: 0 },
+          { uuid: 'az-2', name: 'us-west-2b', nodeCount: 2, preffered: 0 }
+        ]
+      }
+    } as any);
+    const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
+    expect(azs.map((a) => a.leader_affinity)).toEqual([true, true]);
+  });
+
+  it('does not add a default region the universe lacks, and keeps an existing one', () => {
+    const none = buildPrimaryPlacementEditPayload(universe(), twoAzResilience, zones(1, 0) as any);
+    expect(none.placementSpec.cloud_list[0].default_region).toBeUndefined();
+    const kept = buildPrimaryPlacementEditPayload(
+      universe('region-1'),
+      twoAzResilience,
+      zones(1, 0) as any
+    );
+    expect(kept.placementSpec.cloud_list[0].default_region).toBe('region-1');
+  });
+});
+
 describe('getNodesAvailabilityDefaultsForEditPlacement', () => {
   it('uses primary placement and dedicated flag for non geo-partition universes', () => {
     const universe = {

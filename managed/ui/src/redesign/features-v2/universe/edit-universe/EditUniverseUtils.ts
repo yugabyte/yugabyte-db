@@ -12,6 +12,7 @@ import {
   ClusterSpecClusterType,
   NodeDetailsDedicatedTo,
   NodeProxyConfig,
+  PlacementAZ,
   PlacementRegion,
   Universe
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -36,7 +37,7 @@ import { ProxyAdvancedProps } from '../create-universe/steps/advanced-settings/d
 import { getInferredOutageCount, inferResilience } from '../create-universe/CreateUniverseUtils';
 import { NodeAvailabilityProps } from '../create-universe/steps/nodes-availability/dtos';
 import { REPLICATION_FACTOR } from '../create-universe/fields/FieldNames';
-import { AZ_NOT_PREFERRED } from '../create-universe/helpers/constants';
+import { getAzRankGetter, getClusterAzs } from './leaderPreference';
 
 export const getClusterByType = (universeData: Universe, type: ClusterSpecClusterType) => {
   return universeData.spec?.clusters.find((cluster) => cluster.cluster_type === type);
@@ -139,9 +140,15 @@ export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec | un
 
 /** Maps API placement to nodes-availability form `availabilityZones` (by region code). */
 export const placementSpecToAvailabilityZones = (
-  placement: ClusterPlacementSpec
+  placement: ClusterPlacementSpec,
+  /** All AZs of the cluster (geo partitions included); defaults to this placement's own. */
+  clusterAzs?: PlacementAZ[]
 ): NodeAvailabilityProps['availabilityZones'] =>
   placement.cloud_list.reduce<NodeAvailabilityProps['availabilityZones']>((acc, cloud) => {
+    const rankOf = getAzRankGetter(
+      clusterAzs ??
+        placement.cloud_list.flatMap((c) => c.region_list ?? []).flatMap((r) => r.az_list ?? [])
+    );
     cloud.region_list?.forEach((region) => {
       const regionKey = region.code ?? region.uuid ?? '';
       if (!regionKey) return;
@@ -149,7 +156,7 @@ export const placementSpecToAvailabilityZones = (
         name: az.name ?? '',
         uuid: az.uuid ?? `${regionKey}-${index}`,
         nodeCount: az.num_nodes_in_az ?? 0,
-        preffered: az.leader_preference ?? AZ_NOT_PREFERRED
+        preffered: rankOf(az)
       }));
     });
     return acc;
@@ -161,7 +168,7 @@ export const getNodeAvailabilityDefaultsFromClusterPlacement = (
   placement: ClusterPlacementSpec,
   replicationFactorOverride?: number
 ): NodeAvailabilityProps => ({
-  availabilityZones: placementSpecToAvailabilityZones(placement),
+  availabilityZones: placementSpecToAvailabilityZones(placement, getClusterAzs(cluster)),
   useDedicatedNodes: !!cluster.node_spec?.dedicated_nodes,
   [REPLICATION_FACTOR]: replicationFactorOverride ?? cluster.replication_factor ?? 1
 });

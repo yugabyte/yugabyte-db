@@ -203,6 +203,7 @@ describe('placementSpecToAvailabilityZones', () => {
     const spec = makePrimaryPlacementSpec();
     const firstRegion = spec.cloud_list[0].region_list![0];
     firstRegion.az_list![0].leader_preference = 2;
+    firstRegion.az_list![1].leader_affinity = false;
 
     const zones = placementSpecToAvailabilityZones(spec);
     expect(Object.keys(zones)).toEqual([FIXTURE_REGION_CODE]);
@@ -217,5 +218,48 @@ describe('placementSpecToAvailabilityZones', () => {
       nodeCount: 1,
       preffered: 0
     });
+  });
+
+  it('seeds affinitized AZs as preferred only when another AZ was excluded and no ranks exist', () => {
+    const spec = makePrimaryPlacementSpec();
+    const [az1, az2] = spec.cloud_list[0].region_list![0].az_list!;
+    az1.leader_affinity = true;
+    az1.leader_preference = 0;
+    az2.leader_affinity = true;
+    az2.leader_preference = 0;
+    const seed = () =>
+      placementSpecToAvailabilityZones(spec)[FIXTURE_REGION_CODE].map((z) => z.preffered);
+
+    expect(seed()).toEqual([0, 0]);
+    az2.leader_affinity = false;
+    expect(seed()).toEqual([1, 0]);
+  });
+
+  it('uses cluster-wide AZs (other geo partitions) to decide ranked vs affinity mode', () => {
+    const spec = makePrimaryPlacementSpec();
+    const [az1, az2] = spec.cloud_list[0].region_list![0].az_list!;
+    az1.leader_affinity = true;
+    az2.leader_affinity = false;
+    const otherPartitionRanked = [{ uuid: 'x', name: 'x', num_nodes_in_az: 1, leader_preference: 1 }];
+
+    const zones = placementSpecToAvailabilityZones(spec, [
+      az1,
+      az2,
+      ...(otherPartitionRanked as any)
+    ])[FIXTURE_REGION_CODE];
+    expect(zones.map((z) => z.preffered)).toEqual([0, 0]);
+  });
+
+  it('ignores leader_affinity when ranks exist (the backend does)', () => {
+    const spec = makePrimaryPlacementSpec();
+    const [az1, az2] = spec.cloud_list[0].region_list![0].az_list!;
+    az1.leader_affinity = true;
+    az1.leader_preference = 2;
+    az2.leader_affinity = true;
+    az2.leader_preference = 0;
+
+    expect(
+      placementSpecToAvailabilityZones(spec)[FIXTURE_REGION_CODE].map((z) => z.preffered)
+    ).toEqual([2, 0]);
   });
 });
