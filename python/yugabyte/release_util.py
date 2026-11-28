@@ -34,6 +34,37 @@ RELEASE_VERSION_FILE = "version.txt"
 VERSION_METADATA_FILE = "version_metadata.json"
 YBC_VERSION_FILE = "ybc_version.conf"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
+DEFAULT_PACKAGE_NAME = 'yugabyte'
+
+BUILD_ROOT_PREFIX = '$BUILD_ROOT/'
+BUILD_ROOT_BIN_RE = re.compile(r'^[$]BUILD_ROOT/bin/([^/]+)$')
+
+# Build targets producing each non-bin/ $BUILD_ROOT path in the release manifest. None means the
+# path needs no explicit target: gflag_allowlist.txt is copied at CMake configure time, and
+# yugabyted-ui is built by yb_build.sh outside CMake when --with-yugabyted-ui is given. A
+# $BUILD_ROOT path missing from this map fails get_packaged_targets, so that a manifest addition
+# can't silently ship a stale or missing file.
+BUILD_ROOT_PATH_TO_TARGET: Dict[str, Optional[str]] = {
+    'auto_flags.json': 'gen_auto_flags_json',
+    'gflag_allowlist.txt': None,
+    'gobin/yugabyted-ui': None,
+    'master_flags.xml': 'yb-master',
+    'tserver_flags.xml': 'yb-tserver',
+    'version_metadata.json': 'gen_version_info',
+    'share/initial_sys_catalog_snapshot': 'initial_sys_catalog_snapshot',
+    'share/ysql_conn_mgr.template.conf': 'update_ysql_conn_mgr_template',
+    'share/ysql_migrations': 'update_ysql_migrations',
+}
+
+
+def _read_full_release_manifest() -> Dict[str, Any]:
+    with open(os.path.join(YB_SRC_ROOT, RELEASE_MANIFEST_NAME)) as release_manifest_file:
+        return cast(Dict[str, Any], json.load(release_manifest_file))
+
+
+def get_release_package_names() -> List[str]:
+    """Returns the package names (top-level sections) defined in the release manifest."""
+    return list(_read_full_release_manifest().keys())
 
 
 def read_release_manifest(package_name: str) -> Dict[str, Any]:
@@ -42,11 +73,11 @@ def read_release_manifest(package_name: str) -> Dict[str, Any]:
     package name, such as "yugabyte" or "yugabyte-client". If the given top-level section is not
     present, throws an exception.
     """
-    with open(os.path.join(YB_SRC_ROOT, RELEASE_MANIFEST_NAME)) as release_manifest_file:
-        release_manifest = json.load(release_manifest_file)[package_name]
-    assert release_manifest is not None, \
-        'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
-    return release_manifest
+    full_manifest = _read_full_release_manifest()
+    if package_name not in full_manifest:
+        raise ValueError("Package '{}' is not defined in {}. Known packages: {}".format(
+            package_name, RELEASE_MANIFEST_NAME, ', '.join(full_manifest.keys())))
+    return cast(Dict[str, Any], full_manifest[package_name])
 
 
 def filter_bin_items(
@@ -68,6 +99,48 @@ def filter_bin_items(
         item for item in bin_items
         if os.path.basename(item) not in bin_items_to_remove
     ]
+
+
+def get_build_target_for_manifest_item(item: str) -> Optional[str]:
+    """
+    Returns the build target that produces the given (unexpanded) release manifest item, or None if
+    the item is not produced by the build.
+    """
+    if not item.startswith(BUILD_ROOT_PREFIX):
+        return None
+    bin_match = BUILD_ROOT_BIN_RE.match(item)
+    if bin_match:
+        return bin_match.group(1)
+    rel_path = item[len(BUILD_ROOT_PREFIX):]
+    if rel_path.startswith('postgres/'):
+        return 'postgres'
+    if rel_path not in BUILD_ROOT_PATH_TO_TARGET:
+        raise ValueError(
+            "Release manifest item '{}' is under $BUILD_ROOT but no build target is known to "
+            "produce it. Add it to BUILD_ROOT_PATH_TO_TARGET in {}.".format(item, __file__))
+    return BUILD_ROOT_PATH_TO_TARGET[rel_path]
+
+
+def get_packaged_targets(
+        package_names: List[str],
+        optional_components: OptionalComponents) -> List[str]:
+    """
+    Returns the build targets needed to produce the given release packages, in order of first
+    appearance in the manifest, without duplicates.
+    """
+    targets: List[str] = []
+    for package_name in package_names:
+        release_manifest = read_release_manifest(package_name)
+        for dir_name, items in release_manifest.items():
+            if dir_name == '%symlinks%':
+                continue
+            if dir_name == 'bin':
+                items = filter_bin_items(items, optional_components)
+            for item in items:
+                target = get_build_target_for_manifest_item(item)
+                if target is not None and target not in targets:
+                    targets.append(target)
+    return targets
 
 
 def get_ybc_version() -> str:

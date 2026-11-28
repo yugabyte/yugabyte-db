@@ -25,7 +25,13 @@ import ruamel.yaml
 
 from yugabyte.library_packager import LibraryPackager, add_common_arguments
 from yugabyte.mac_library_packager import MacLibraryPackager, add_common_arguments
-from yugabyte.release_util import ReleaseUtil, check_for_local_changes
+from yugabyte.release_util import (
+    DEFAULT_PACKAGE_NAME,
+    ReleaseUtil,
+    check_for_local_changes,
+    get_packaged_targets,
+    get_release_package_names,
+)
 from yugabyte.common_util import (
     init_logging,
     get_build_type_from_build_root,
@@ -63,21 +69,29 @@ def parse_args() -> argparse.Namespace:
                         help='Target directory to put the YugabyteDB distribution into. This can '
                              'be used for debugging this script without having to build the '
                              'tarball. If specified, this directory must either not exist or be '
-                             'empty.')
+                             'empty. With multiple packages, each one goes into a subdirectory '
+                             'named after the package.')
     parser.add_argument('--keep_tmp_dir',
                         action='store_true',
                         help='Keep the temporary directory (for debugging).')
     parser.add_argument('--save_release_path_to_file',
                         help='Save the newly built release path to a file with this name. '
                              'This allows to post-process / upload the newly generated release '
-                             'in an enclosing script.')
+                             'in an enclosing script. With multiple packages, the file has one '
+                             'path per line, in --package_name order.')
     parser.add_argument('--yw', action='store_true', help='Package YugaWare too.')
     parser.add_argument('--no_reinitdb', action='store_true',
                         help='Do not re-create the initial sys catalog snapshot. Useful when '
                              'debugging the release process.')
+    package_names = get_release_package_names()
     parser.add_argument('--package_name',
-                        default='yugabyte',
-                        help='Name of package to release ("yugabyte" or "yugabyte-client").')
+                        nargs='+',
+                        choices=package_names,
+                        default=[DEFAULT_PACKAGE_NAME],
+                        dest='package_names',
+                        help='Packages to release, from %s (default: %s). Only the targets the '
+                             'given packages need are built.' % (
+                                 ', '.join(package_names), DEFAULT_PACKAGE_NAME))
     add_common_arguments(parser)
     add_optional_component_arguments(parser)
     args = parser.parse_args()
@@ -94,6 +108,13 @@ def parse_args() -> argparse.Namespace:
     if not args.build_archive and args.save_release_path_to_file:
         raise ValueError('--save_release_path_to_file does not make sense without '
                          '--build_archive')
+
+    # Drop duplicates, keeping order.
+    args.package_names = list(dict.fromkeys(args.package_names))
+
+    if args.yw and DEFAULT_PACKAGE_NAME not in args.package_names:
+        raise ValueError('--yw packages YugaWare into the {} package, which is not being built'
+                         .format(DEFAULT_PACKAGE_NAME))
 
     return args
 
@@ -137,10 +158,10 @@ def prepare_yb_build_args(
         yb_build_args.append("--skip-build")
 
     if is_final_build:
-        yb_build_args.append(
-            # This will build the exact set of targets that are needed for the release.
-            "packaged_targets"
-        )
+        # This will build the exact set of targets that are needed for the release.
+        yb_build_args.append("packaged_targets")
+        for package_name in args.package_names:
+            yb_build_args.extend(["--package-name", package_name])
         # Keep optional_components as is.
     else:
         # If we are building individual targets one by one, we disable all the optional components.
@@ -160,7 +181,8 @@ def perform_build_and_return_descriptor(
         build_root: Optional[str],
         build_type: str,
         tmp_dir: str,
-        optional_components: OptionalComponents) -> str:
+        optional_components: OptionalComponents,
+        reinitdb: bool) -> str:
     """
     Performs YugabyteDB build and returns the build descriptor file path. This works by first
     building certain specific targets individually to work around potential dependency issues
@@ -173,6 +195,7 @@ def perform_build_and_return_descriptor(
     :param tmp_dir: The temporary directory to use for the build. The build descriptor file will be
                     created in this directory.
     :param optional_components: The optional components to be built.
+    :param reinitdb: whether to re-create the initial sys catalog snapshot.
     """
 
     logging.info("Building YugabyteDB {} build".format(build_type))
@@ -215,7 +238,7 @@ def perform_build_and_return_descriptor(
 
     # We still need to call this even when --skip-build is specified to generate the "build
     # descriptor" YAML file.
-    final_build_cmd_list = yb_build_args_full + ([] if args.no_reinitdb else ['reinitdb'])
+    final_build_cmd_list = yb_build_args_full + (['reinitdb'] if reinitdb else [])
     logging.info("Running final yb_build.sh step: %s", shlex_join(final_build_cmd_list))
     subprocess.check_call(final_build_cmd_list)
 
@@ -320,20 +343,84 @@ def create_library_packager(
 
 
 def build_archive(release_util: ReleaseUtil,
-                  args: argparse.Namespace) -> None:
+                  args: argparse.Namespace) -> str:
     release_file = os.path.realpath(release_util.generate_release())
     if args.destination:
         if not os.path.exists(args.destination):
             raise RuntimeError("Destination {} not a directory.".format(args.destination))
         shutil.copy(release_file, args.destination)
     logging.info("Generated a package at '{}'".format(release_file))
+    return release_file
 
-    if args.save_release_path_to_file:
-        with open(args.save_release_path_to_file, 'w') as release_path_file:
-            release_path_file.write(release_file)
 
-        logging.info("Saved package path to '{}'".format(
-            args.save_release_path_to_file))
+def package_yugaware(build_target_dir: str) -> None:
+    managed_dir = os.path.join(YB_SRC_ROOT, "managed")
+    yw_dir = os.path.join(build_target_dir, "ui")
+    if not os.path.exists(yw_dir):
+        os.makedirs(yw_dir)
+    package_yw_cmd = [
+        os.path.join(managed_dir, "yb_release"),
+        "--destination", yw_dir, "--unarchived"
+    ]
+    logging.info(
+        "Creating YugaWare package with command '{}'".format(" ".join(package_yw_cmd)))
+    try:
+        subprocess.check_output(package_yw_cmd, cwd=managed_dir)
+    except subprocess.CalledProcessError as e:
+        logging.error("Failed to build YugaWare package:\n%s", traceback.format_exc())
+        logging.error("Output from YugaWare build:\n%s", e.output.decode('utf-8'))
+        raise
+    except OSError as e:
+        logging.error("Failed to build YugaWare package: {}".format(e))
+        raise
+
+
+def create_package(
+        args: argparse.Namespace,
+        package_name: str,
+        build_type: str,
+        build_root: str,
+        build_target_dir: str,
+        tmp_dir: str,
+        optional_components: OptionalComponents) -> Optional[str]:
+    """
+    Creates the distribution directory for one package and, with --build_archive, its archive.
+    Returns the archive path, if one was created.
+    """
+    logging.info("Generating release distribution for package %s", package_name)
+
+    release_util = ReleaseUtil(
+        build_type=build_type,
+        distribution_path=build_target_dir,
+        force=args.force,
+        commit=args.commit,
+        build_root=build_root,
+        package_name=package_name,
+        optional_components=optional_components)
+
+    library_packager_dest_dir = os.path.join(tmp_dir, 'library_packager_output', package_name)
+    library_packager = create_library_packager(
+        build_root=build_root,
+        seed_executable_patterns=release_util.get_seed_executable_patterns(),
+        dest_dir=library_packager_dest_dir,
+        verbose_mode=args.verbose)
+
+    library_packager.package_binaries()
+
+    release_util.update_manifest(library_packager_dest_dir)
+
+    if os.path.exists(build_target_dir) and os.listdir(build_target_dir):
+        raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target_dir))
+    release_util.create_distribution(build_target_dir)
+
+    library_packager.postprocess_distribution(build_target_dir)
+
+    if args.yw and package_name == DEFAULT_PACKAGE_NAME:
+        package_yugaware(build_target_dir)
+
+    if args.build_archive:
+        return build_archive(release_util=release_util, args=args)
+    return None
 
 
 def main() -> None:
@@ -343,8 +430,6 @@ def main() -> None:
     build_type: Optional[str] = args.build_type
 
     tmp_dir = create_temp_dir(keep_tmp_dir=args.keep_tmp_dir)
-
-    library_packager_dest_dir = os.path.join(tmp_dir, 'library_packager_output')
 
     os.chdir(YB_SRC_ROOT)
 
@@ -365,14 +450,24 @@ def main() -> None:
         build_type = 'release'
 
     optional_components = optional_components_from_args(args)
+    if DEFAULT_PACKAGE_NAME not in args.package_names:
+        # The optional components only ship in the yugabyte package, and yugabyted-ui is built
+        # whenever it is enabled regardless of the requested targets.
+        optional_components = OptionalComponents.all_disabled()
+    logging.info("Packages: {}".format(', '.join(args.package_names)))
     logging.info("Optional components: {}".format(optional_components))
+
+    packaged_targets = get_packaged_targets(args.package_names, optional_components)
+    reinitdb = (not args.no_reinitdb and
+                'initial_sys_catalog_snapshot' in packaged_targets)
 
     build_descriptor_path = perform_build_and_return_descriptor(
         args=args,
         build_root=build_root,
         build_type=build_type,
         tmp_dir=tmp_dir,
-        optional_components=optional_components
+        optional_components=optional_components,
+        reinitdb=reinitdb,
     )
 
     build_desc = read_build_descriptor(build_descriptor_path, build_root)
@@ -385,69 +480,32 @@ def main() -> None:
     find_llvm_toolchain_dir(build_root)
 
     # This is not a "target" in terms of Make / CMake, but a target directory.
-    build_target_dir = args.build_target
-    if build_target_dir is None:
+    build_target_root = args.build_target
+    if build_target_root is None:
         # Use a temporary directory.
-        build_target_dir = os.path.join(tmp_dir, 'final_yb_distribution')
+        build_target_root = os.path.join(tmp_dir, 'final_yb_distribution')
 
-    release_util = ReleaseUtil(
-        build_type=build_type,
-        distribution_path=build_target_dir,
-        force=args.force,
-        commit=args.commit,
-        build_root=build_root,
-        package_name=args.package_name,
-        optional_components=optional_components)
+    release_files: List[str] = []
+    for package_name in args.package_names:
+        if len(args.package_names) == 1 and args.build_target:
+            build_target_dir = build_target_root
+        else:
+            build_target_dir = os.path.join(build_target_root, package_name)
+        release_file = create_package(
+            args=args,
+            package_name=package_name,
+            build_type=build_type,
+            build_root=build_root,
+            build_target_dir=build_target_dir,
+            tmp_dir=tmp_dir,
+            optional_components=optional_components)
+        if release_file:
+            release_files.append(release_file)
 
-    library_packager = create_library_packager(
-        build_root=build_root,
-        seed_executable_patterns=release_util.get_seed_executable_patterns(),
-        dest_dir=library_packager_dest_dir,
-        verbose_mode=args.verbose)
-
-    library_packager.package_binaries()
-
-    release_util.update_manifest(library_packager_dest_dir)
-
-    logging.info("Generating release distribution")
-
-    if os.path.exists(build_target_dir) and os.listdir(build_target_dir):
-        raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target_dir))
-    release_util.create_distribution(build_target_dir)
-
-    library_packager.postprocess_distribution(build_target_dir)
-
-    # ---------------------------------------------------------------------------------------------
-    # Invoke YugaWare (YugabyteDB Anywhere) packaging
-    # ---------------------------------------------------------------------------------------------
-
-    if args.yw:
-        managed_dir = os.path.join(YB_SRC_ROOT, "managed")
-        yw_dir = os.path.join(build_target_dir, "ui")
-        if not os.path.exists(yw_dir):
-            os.makedirs(yw_dir)
-        package_yw_cmd = [
-            os.path.join(managed_dir, "yb_release"),
-            "--destination", yw_dir, "--unarchived"
-        ]
-        logging.info(
-            "Creating YugaWare package with command '{}'".format(" ".join(package_yw_cmd)))
-        try:
-            subprocess.check_output(package_yw_cmd, cwd=managed_dir)
-        except subprocess.CalledProcessError as e:
-            logging.error("Failed to build YugaWare package:\n%s", traceback.format_exc())
-            logging.error("Output from YugaWare build:\n%s", e.output.decode('utf-8'))
-            raise
-        except OSError as e:
-            logging.error("Failed to build YugaWare package: {}".format(e))
-            raise
-
-    # ---------------------------------------------------------------------------------------------
-    # Create a tar.gz (we almost always do this, can be skipped in debug mode)
-    # ---------------------------------------------------------------------------------------------
-
-    if args.build_archive:
-        build_archive(release_util=release_util, args=args)
+    if args.save_release_path_to_file:
+        with open(args.save_release_path_to_file, 'w') as release_path_file:
+            release_path_file.write('\n'.join(release_files))
+        logging.info("Saved package path(s) to '{}'".format(args.save_release_path_to_file))
 
 
 if __name__ == '__main__':

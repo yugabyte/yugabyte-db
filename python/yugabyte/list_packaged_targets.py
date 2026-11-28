@@ -2,36 +2,38 @@
 
 # Copyright (c) YugabyteDB, Inc.
 
-# Lists the targets that need to be built for a YB release.
+# Lists the targets that need to be built for one or more YB release packages.
 
-import re
 import argparse
 
-from yugabyte.release_util import read_release_manifest, filter_bin_items
+from yugabyte.release_util import (
+    DEFAULT_PACKAGE_NAME,
+    get_packaged_targets,
+    get_release_package_names,
+)
 from yugabyte.optional_components import (
     add_optional_component_arguments,
     optional_components_from_args,
 )
 
-LATEST_BINARY_RE = re.compile(r'^[$]BUILD_ROOT/bin/([^/]+)$')
-
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     add_optional_component_arguments(parser)
+    parser.add_argument('--package_name',
+                        action='append',
+                        choices=get_release_package_names(),
+                        help='Release package to list the build targets of. May be repeated. '
+                             'Defaults to %s.' % DEFAULT_PACKAGE_NAME)
     args = parser.parse_args()
     optional_components = optional_components_from_args(args)
 
-    release_manifest = read_release_manifest('yugabyte')
-    found_matches = False
-    for bin_path in filter_bin_items(release_manifest['bin'], optional_components):
-        match = LATEST_BINARY_RE.match(bin_path)
-        if match:
-            print(match.group(1))
-            found_matches = True
-
-    if not found_matches:
+    targets = get_packaged_targets(
+        args.package_name or [DEFAULT_PACKAGE_NAME], optional_components)
+    if not targets:
         raise RuntimeError("Could not find any targets to be packaged in the release archive")
+    for target in targets:
+        print(target)
 
 
 if __name__ == '__main__':

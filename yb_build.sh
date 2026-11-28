@@ -630,22 +630,23 @@ use_packaged_targets() {
   else
     optional_components_args+=( "--no_yugabyted_ui" )
   fi
+  local package_name_args=()
+  local package_name
+  for package_name in "${packaged_target_package_names[@]}"; do
+    package_name_args+=( "--package_name" "$package_name" )
+  done
   while IFS='' read -r line; do
     packaged_targets+=( "$line" )
   done < <(
     activate_virtualenv &>/dev/null
     set_pythonpath
-    "$YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS" "${optional_components_args[@]}"
+    "$YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS" "${optional_components_args[@]}" \
+      "${package_name_args[@]}"
   )
   if [[ ${#packaged_targets[@]} -eq 0 ]]; then
     fatal "Failed to identify the set of targets to build for the release package"
   fi
-  make_targets+=(
-    "${packaged_targets[@]}"
-    initial_sys_catalog_snapshot
-    update_ysql_conn_mgr_template
-    update_ysql_migrations
-  )
+  make_targets+=( "${packaged_targets[@]}" )
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -870,6 +871,8 @@ fi
 
 if [[ "${should_use_packaged_targets}" == "true" ]]; then
   use_packaged_targets
+elif [[ ${#packaged_target_package_names[@]} -gt 0 ]]; then
+  fatal "--package-name requires the packaged_targets target keyword"
 fi
 
 if should_run_java_test_methods_separately && [[ -n $java_test_name && $java_test_name != *\#* ]]
