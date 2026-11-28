@@ -276,6 +276,11 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
     current_txn_id_.reset();
   }
 
+  // YSQL command id that SetPrimitive records in the written intents.
+  void SetCurrentCommandId(std::optional<uint32_t> command_id) {
+    current_command_id_ = command_id;
+  }
+
   Status DisableCompactions() {
     regular_db_options_.compaction_style = rocksdb::kCompactionStyleNone;
     intents_db_options_.compaction_style = rocksdb::kCompactionStyleNone;
@@ -320,6 +325,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   rocksdb::WriteOptions write_options_;
   std::optional<TransactionId> current_txn_id_;
+  std::optional<uint32_t> current_command_id_;
   mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   dockv::SkipPrefixLocks skip_prefix_locks_ = dockv::SkipPrefixLocks::kFalse;

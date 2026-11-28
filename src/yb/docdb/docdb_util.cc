@@ -375,6 +375,7 @@ Status DocDBRocksDBUtil::SetPrimitive(
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
+  dwb.SetCommandId(current_command_id_);
   RETURN_NOT_OK(dwb.SetPrimitive(
       doc_path, control_fields, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);

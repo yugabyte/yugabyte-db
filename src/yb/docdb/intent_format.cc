@@ -47,9 +47,9 @@ using dockv::SubDocKey;
 std::string DecodeStrongWriteIntentResult::ToString() const {
   return Format(
       "{ intent_prefix: $0 intent_value: $1 intent_time: $2 value_time: $3 "
-      "same_transaction: $4 intent_types: $5 }",
+      "same_transaction: $4 visible_by_command_id: $5 intent_types: $6 }",
       intent_prefix.ToDebugHexString(), intent_value.ToDebugHexString(), intent_time, value_time,
-      same_transaction, intent_types);
+      same_transaction, visible_by_command_id, intent_types);
 }
 
 const EncodedDocHybridTime& DecodeStrongWriteIntentResult::MaxAllowedValueTime(
@@ -93,14 +93,23 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
       result.value_time.Assign(EncodedDocHybridTime::kMin);
     } else if (result.same_transaction) {
       const auto aborted = txn_op_context.subtransaction.aborted.Test(decoded_subtxn_id);
-      if (!aborted) {
+      const auto& read_command_id = txn_op_context.read_command_id;
+      const auto& intent_command_id = decoded_intent_value.command_id;
+      if (!aborted && read_command_id && intent_command_id &&
+          *intent_command_id >= *read_command_id) {
+        // Written by the reading command or a later one, like a PG tuple with cmin >= curcid.
+        result.value_time.Assign(EncodedDocHybridTime::kMin);
+      } else if (!aborted) {
         result.value_time = decoded_intent_key.doc_ht;
+        result.visible_by_command_id = read_command_id && intent_command_id;
       } else {
         // If this intent is from the same transaction, we can check the aborted set from this
         // txn_op_context to see whether the intent is still live. If not, mask it from the caller.
         result.value_time.Assign(EncodedDocHybridTime::kMin);
       }
       VLOG(4) << "Same transaction: " << decoded_txn_id << ", aborted: " << aborted
+              << ", intent command id: " << AsString(intent_command_id)
+              << ", read command id: " << AsString(read_command_id)
               << ", original doc_ht: " << decoded_intent_key.doc_ht.ToString();
     } else {
       auto commit_data =
@@ -130,7 +139,8 @@ Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    dockv::SkipPrefixLocks skip_prefix_locks) {
+    dockv::SkipPrefixLocks skip_prefix_locks,
+    const EnumerateIntentsPairCallback& pair_callback) {
   if (kv_pairs.empty()) {
     return Status::OK();
   }
@@ -142,6 +152,9 @@ Status EnumerateIntents(
     dockv::LastKey last_key(++it == kv_pairs.end());
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
+    if (pair_callback) {
+      pair_callback(kv_pair);
+    }
     boost::tribool pk_is_known = kv_pair.has_pk_is_known() ?
         boost::tribool(kv_pair.pk_is_known()) : boost::indeterminate;
     dockv::EnumerateIntentsCallback new_functor = [&functor, &pk_is_known] (

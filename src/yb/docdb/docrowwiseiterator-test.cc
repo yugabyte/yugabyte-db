@@ -208,6 +208,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestIntentAwareIteratorSeek();
   void TestSeekTwiceWithinTheSameTxn();
   void TestScanWithinTheSameTxn();
+  void TestScanWithinTheSameTxnByCommandId();
   void TestLargeKeys();
   void TestPackedRow();
   void TestDeleteMarkerWithPackedRow();
@@ -1818,6 +1819,81 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
   ASSERT_EQ(intents_db_options_.statistics->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK), 3);
 }
 
+void DocRowwiseIteratorTest::TestScanWithinTheSameTxnByCommandId() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  TransactionStatusManagerMock txn_status_manager;
+  auto txn = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+
+  // Command 0 writes row1, command 1 updates row1 and writes row2, command 2 deletes nothing and
+  // writes an intent without a command id for row1.
+  SetCurrentTransactionId(txn);
+  SetCurrentCommandId(0);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+      QLValue::Primitive("row1_c_cmd0"), HybridTime::FromMicros(500)));
+  SetCurrentCommandId(1);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+      QLValue::Primitive("row1_c_cmd1"), HybridTime::FromMicros(600)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(30_ColId)),
+      QLValue::Primitive("row2_c_cmd1"), HybridTime::FromMicros(700)));
+  SetCurrentCommandId(std::nullopt);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
+      QLValue::PrimitiveInt64(40), HybridTime::FromMicros(800)));
+  ResetCurrentTransactionId();
+
+  auto dump = DocDBDebugDumpToStr();
+  LOG(INFO) << "Dump:\n" << dump;
+  ASSERT_STR_CONTAINS(dump, "CommandId(1)");
+
+  Schema projection = this->projection();
+  auto scan = [&](std::optional<uint32_t> read_command_id, HybridTime in_txn_limit) {
+    auto txn_context = TransactionOperationContext(txn, &txn_status_manager);
+    txn_context.read_command_id = read_command_id;
+    auto read_time = ReadHybridTime::FromMicros(1000);
+    read_time.in_txn_limit = in_txn_limit;
+    auto pending_op = ScopedRWOperation::TEST_Create();
+    auto iter = CHECK_RESULT(CreateIterator(
+        projection, doc_read_context(), txn_context, doc_db(),
+        ReadOperationData::FromReadTime(read_time), pending_op));
+    return CHECK_RESULT(ConvertIteratorRowsToString(
+        iter.get(), IteratorMode::kGeneric, doc_read_context().schema()));
+  };
+
+  // Without a read command id the in_txn_limit decides, as before.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(scan(std::nullopt, HybridTime::kMax), R"#(
+        {string:"row1",int64:11111,string:"row1_c_cmd1",int64:40,null}
+        {string:"row2",int64:22222,string:"row2_c_cmd1",null,null}
+      )#");
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(scan(std::nullopt, HybridTime::FromMicros(550)), R"#(
+        {string:"row1",int64:11111,string:"row1_c_cmd0",null,null}
+      )#");
+
+  // Command 0 sees none of its own writes. The intent without a command id is past the
+  // in_txn_limit.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(scan(0, HybridTime::FromMicros(550)), "");
+
+  // Command 1 sees command 0's version of row1 although the in_txn_limit is below it, but none of
+  // its own writes.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(scan(1, HybridTime::FromMicros(100)), R"#(
+        {string:"row1",int64:11111,string:"row1_c_cmd0",null,null}
+      )#");
+
+  // Command 2 sees the writes of commands 0 and 1; the in_txn_limit still decides for the intent
+  // without a command id.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(scan(2, HybridTime::FromMicros(750)), R"#(
+        {string:"row1",int64:11111,string:"row1_c_cmd1",null,null}
+        {string:"row2",int64:22222,string:"row2_c_cmd1",null,null}
+      )#");
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(scan(2, HybridTime::kMax), R"#(
+        {string:"row1",int64:11111,string:"row1_c_cmd1",int64:40,null}
+        {string:"row2",int64:22222,string:"row2_c_cmd1",null,null}
+      )#");
+}
+
 void DocRowwiseIteratorTest::TestLargeKeys() {
   constexpr size_t str_key_size = 0x100;
   std::string str_key(str_key_size, 't');
@@ -2617,6 +2693,10 @@ TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
 
 TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   TestScanWithinTheSameTxn();
+}
+
+TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxnByCommandId) {
+  TestScanWithinTheSameTxnByCommandId();
 }
 
 TEST_F(DocRowwiseIteratorTest, LargeKeysTest) {
