@@ -429,7 +429,6 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
 
   // Every empty result must say why; see HandleStackTraceSignal. A thread that misses the
   // ThreadStacks deadline is reported by the caller, not the handler, and is allowed.
-  int num_in_alloc_dealloc = 0;
   int num_collecting = 0;
   int num_timed_out = 0;
 
@@ -450,9 +449,7 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
           }
         } else {
           const auto status_str = stack.status().ToString();
-          if (status_str.find(kThreadStackInAllocDeallocMsg) != std::string::npos) {
-            ++num_in_alloc_dealloc;
-          } else if (status_str.find(kThreadStackCollectingMsg) != std::string::npos) {
+          if (status_str.find(kThreadStackCollectingMsg) != std::string::npos) {
             ++num_collecting;
           } else if (status_str.find(kThreadStackTimedOutMsg) != std::string::npos) {
             ++num_timed_out;
@@ -473,12 +470,8 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   thread_holder.Stop();
   thread_holder.JoinAll();
 
-  LOG(INFO) << "Empty stacks inside tcmalloc alloc/dealloc: " << num_in_alloc_dealloc
-            << ", during another stack collection: " << num_collecting
+  LOG(INFO) << "Empty stacks during another stack collection: " << num_collecting
             << ", timed out: " << num_timed_out;
-#if YB_GOOGLE_TCMALLOC
-  ASSERT_GT(num_in_alloc_dealloc, 0);
-#endif
 
   for (size_t i = 0; i < kNumThreads; ++i) {
     auto& queue = queues[i];
