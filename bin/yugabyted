@@ -7006,7 +7006,9 @@ class ControlScript(object):
         ui_port_available = self.configs.temp_data.get("ui_port_available")
         if self.configs.saved_data.get("ui") and ui_port_available:
             try:
-                response = urlopen(Request(yugabyted_ui_status))
+                # Bounded so a UI process that accepts connections but never
+                # responds (e.g. SIGSTOP'd) cannot hang `yugabyted status`.
+                response = urlopen(Request(yugabyted_ui_status), timeout=5)
                 if response.code == 200:
                     console_desc = "YugabyteDB UI"
                     status_info += [ (Output.make_yellow(console_desc), yugabyted_ui_status), ]
