@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -368,6 +369,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertNull(getNodeAgentGaugeValue("NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE", nodeAgent));
     assertNull(getNodeAgentGaugeValue("NODE_AGENT_CONNECTION_GAUGE", nodeAgent));
     assertNull(getNodeAgentGaugeValue("NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE", nodeAgent));
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE", nodeAgent));
     verify(mockSwamperHelper).removeNodeAgentTargetJson(eq(nodeAgentUuid));
   }
 
@@ -440,6 +442,47 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     verify(mockNodeAgentClient, times(2)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
+  }
+
+  // A second node agent server on the node would undo the upgrade (PLAT-24106).
+  @Test
+  public void testUpgradeBlockedByDuplicateServerUnit() throws Exception {
+    mockUpgradeClientResponses();
+    when(mockNodeAgentClient.waitForServerReady(any(), any()))
+        .thenReturn(
+            PingResponse.newBuilder()
+                .setServerInfo(ServerInfo.newBuilder().setDuplicateServerUnit(true).build())
+                .build());
+    nodeAgentPoller.setUpgradeExecutor(Executors.newSingleThreadExecutor());
+    NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
+    PollerTaskParam param =
+        PollerTaskParam.builder()
+            .nodeAgentUuid(nodeAgent.getUuid())
+            .lifetime(Duration.ofMinutes(5))
+            .build();
+    PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
+    pollerTask.run();
+    pollerTask.waitForUpgrade();
+    // Tasks and health checks upgrade through this path.
+    assertFalse(nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid()));
+    // The node agent upgrade task and API fail instead.
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deadNodeAgentRetention)))
+        .thenReturn(Duration.ofDays(7));
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            nodeAgentPoller.upgradeNodeAgent(
+                nodeAgentUuid,
+                false /* waitForInFlightUpgrade */,
+                n -> DeployContext.builder().deployType(DeployType.FULL).build()));
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
+    assertEquals(State.READY, nodeAgent.getState());
+    verify(mockNodeAgentClient, never()).uploadFile(any(), any(), any(), any(), anyInt(), any());
+    verify(mockNodeAgentClient, never()).startUpgrade(any(), any());
+    assertEquals(
+        1.0, getNodeAgentGaugeValue("NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE", nodeAgent), 0.0);
   }
 
   @Test

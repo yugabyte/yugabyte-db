@@ -10,8 +10,12 @@ import (
 	"node-agent/backoff"
 	"node-agent/util"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -42,6 +46,126 @@ var (
 		"controller": {"yb-controller.service", UserSystemdUnitPath + "/yb-controller.service"},
 	}
 )
+
+// SystemUnitState is what system-level systemd reports for a unit.
+type SystemUnitState struct {
+	LoadState     string
+	UnitFileState string
+	ActiveState   string
+	FragmentPath  string
+}
+
+// Runs a unit with this state, now or on the next boot.
+func (s SystemUnitState) runs() bool {
+	if s.LoadState != "loaded" {
+		// not-found or masked.
+		return false
+	}
+	return strings.HasPrefix(s.UnitFileState, "enabled") ||
+		(s.ActiveState != "" && s.ActiveState != "inactive" && s.ActiveState != "failed")
+}
+
+// ShowSystemUnitState asks system-level systemd for the state of a unit. It runs without sudo as
+// node agent may not have it; "show" needs no privileges. A var for tests.
+var ShowSystemUnitState = func(ctx context.Context, serviceName string) (SystemUnitState, error) {
+	out, err := exec.CommandContext(ctx, "systemctl", "show", serviceName,
+		"-p", "LoadState", "-p", "UnitFileState", "-p", "ActiveState", "-p", "FragmentPath").
+		Output()
+	if err != nil {
+		return SystemUnitState{}, err
+	}
+	values := parseSystemdProperties(string(out))
+	return SystemUnitState{
+		LoadState:     values["LoadState"],
+		UnitFileState: values["UnitFileState"],
+		ActiveState:   values["ActiveState"],
+		FragmentPath:  values["FragmentPath"],
+	}, nil
+}
+
+// SelfCgroupPath tells which systemd manager started this process. A var for tests.
+var SelfCgroupPath = "/proc/self/cgroup"
+
+// UserSystemdUnitDir returns the user-level unit directory of the user that owns this install. A
+// system-level unit can run as another user, e.g. root, so this is not the home of this process.
+// A var for tests.
+var UserSystemdUnitDir = func() (string, error) {
+	home, err := ownerHomeDir(util.MustGetHomeDirectory())
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, UserSystemdUnitPath), nil
+}
+
+// ownerHomeDir returns the home directory of the user that owns path.
+func ownerHomeDir(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", fmt.Errorf("unable to get the owner of %s", path)
+	}
+	owner, err := user.LookupId(strconv.FormatUint(uint64(stat.Uid), 10))
+	if err != nil {
+		return "", err
+	}
+	return owner.HomeDir, nil
+}
+
+// Whether serviceName is enabled in the user-level manager of the install owner, which links it
+// into a .wants directory.
+func userUnitEnabled(serviceName string) (bool, error) {
+	dir, err := UserSystemdUnitDir()
+	if err != nil {
+		return false, err
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "*.wants", serviceName))
+	return len(matches) > 0, err
+}
+
+// DuplicateSystemdUnit returns the path of the system-level serviceName unit when both it and the
+// user-level one start a server for the same install, whichever of them this process runs under:
+// - Under the user-level unit, when the system-level one is enabled or running.
+// - Under the system-level unit, when the user-level one of the install owner is enabled.
+// It returns "" otherwise. A user-level unit file that is not enabled starts nothing.
+func DuplicateSystemdUnit(ctx context.Context, serviceName string) (string, error) {
+	cgroup, err := os.ReadFile(SelfCgroupPath)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case strings.Contains(string(cgroup), "/user@"):
+	case strings.Contains(string(cgroup), "/system.slice/"+serviceName):
+		enabled, err := userUnitEnabled(serviceName)
+		if err != nil || !enabled {
+			return "", err
+		}
+	default:
+		return "", nil
+	}
+	state, err := ShowSystemUnitState(ctx, serviceName)
+	if err != nil {
+		return "", err
+	}
+	if !state.runs() {
+		return "", nil
+	}
+	return state.FragmentPath, nil
+}
+
+// parseSystemdProperties maps the key=value lines of "systemctl show -p ..." output.
+func parseSystemdProperties(out string) map[string]string {
+	values := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
+		if found {
+			values[key] = value
+		}
+	}
+	return values
+}
 
 // IsUserSystemd checks if the systemd service file exists in the user's systemd directory.
 // It returns true along with the path if it exists, false otherwise.
@@ -284,14 +408,7 @@ func systemdUnitProperties(
 	if err != nil {
 		return nil, err
 	}
-	values := map[string]string{}
-	for _, line := range strings.Split(cmdInfo.StdOut.String(), "\n") {
-		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
-		if found {
-			values[key] = value
-		}
-	}
-	return values, nil
+	return parseSystemdProperties(cmdInfo.StdOut.String()), nil
 }
 
 // KillSystemdServiceLeftovers SIGKILLs processes left in the cgroup of a unit that has no main

@@ -106,6 +106,19 @@ public class NodeAgentPoller {
               KnownAlertLabels.NODE_NAME.labelName())
           .register(PrometheusRegistry.defaultRegistry);
 
+  private static final String NODE_AGENT_DUPLICATE_SERVER_UNIT_NAME =
+      "ybp_nodeagent_duplicate_server_unit";
+  private static final Gauge NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE =
+      Gauge.builder()
+          .name(NODE_AGENT_DUPLICATE_SERVER_UNIT_NAME)
+          .help("Does a system-level yb-node-agent unit run next to the user-level one")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName(),
+              KnownAlertLabels.NODE_NAME.labelName())
+          .register(PrometheusRegistry.defaultRegistry);
+
   private static final String NODE_AGENT_CONNECTION_NAME = "ybp_nodeagent_connection";
   private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
       Gauge.builder()
@@ -348,10 +361,23 @@ public class NodeAgentPoller {
               String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()),
               nodeAgent.getName())
           .set(response.getServerInfo().getRootNodeExporterUnit() ? 1 : 0);
+      NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE
+          .labelValues(
+              nodeAgent.getCustomerUuid().toString(),
+              nodeAgent.getUuid().toString(),
+              String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()),
+              nodeAgent.getName())
+          .set(response.getServerInfo().getDuplicateServerUnit() ? 1 : 0);
       boolean wasDead = !isNodeAgentAlive();
       lastFailedCount = 0;
       if (wasDead) {
         // Return to schedule on the live executor.
+        return;
+      }
+      if (response.getServerInfo().getDuplicateServerUnit()
+          && (nodeAgent.getState() == State.UPGRADE
+              || (nodeAgent.getState() == State.READY && maybeGetDeployType(nodeAgent) != null))) {
+        log.error(upgradeBlockedMessage(nodeAgent));
         return;
       }
       switch (nodeAgent.getState()) {
@@ -521,6 +547,19 @@ public class NodeAgentPoller {
     NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
     NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
     NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE.removeIf(matches);
+    NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE.removeIf(matches);
+  }
+
+  /**
+   * Says why an upgrade does not start on a node where a second node agent server runs. It would
+   * undo the upgrade (PLAT-24106), so every upgrade path checks this before it saves the UPGRADE
+   * state or generates new certs. An UPGRADED agent is past that point and must still be finalized.
+   */
+  private static String upgradeBlockedMessage(NodeAgent nodeAgent) {
+    return String.format(
+        "Cannot upgrade node agent %s because a system-level yb-node-agent unit also runs on the"
+            + " node. Disable and remove that unit to allow the upgrade.",
+        nodeAgent);
   }
 
   @VisibleForTesting
@@ -719,9 +758,16 @@ public class NodeAgentPoller {
       return false;
     }
     log.info("Node agent {} needs an upgrade", nodeAgent);
+    PingResponse response;
     try {
-      nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
+      response = nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
     } catch (RuntimeException e) {
+      return false;
+    }
+    if (response.getServerInfo().getDuplicateServerUnit()
+        && nodeAgent.getState() != State.UPGRADED) {
+      log.error(upgradeBlockedMessage(nodeAgent));
+      // Go on with the current version, as when the node agent is not ready.
       return false;
     }
     return upgradeNodeAgent(
@@ -770,6 +816,13 @@ public class NodeAgentPoller {
         if (deployContext == null) {
           log.info("Node agent {} does not need an upgrade", nodeAgent);
           return false;
+        }
+        if (nodeAgent.getState() != State.UPGRADED
+            && nodeAgentClient
+                .waitForServerReady(nodeAgent, Duration.ofSeconds(2))
+                .getServerInfo()
+                .getDuplicateServerUnit()) {
+          throw new IllegalStateException(upgradeBlockedMessage(nodeAgent));
         }
         log.info("Starting explicit upgrade on node agent {}", nodeAgent);
         pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContext);
