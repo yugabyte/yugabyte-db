@@ -201,7 +201,6 @@
 #include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/cross_thread_mutex.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/lock_debug.h"

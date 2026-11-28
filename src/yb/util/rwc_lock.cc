@@ -32,10 +32,13 @@
 
 #include "yb/util/rwc_lock.h"
 
+#include <absl/time/time.h>
+
 #include <algorithm>
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
+#include "yb/util/rw_semaphore.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tsan_util.h"
@@ -73,6 +76,8 @@ thread_local StackTrace rwc_read_lock_first_stack_trace;
 
 } // namespace
 
+RWCLock::RWCLock() : use_absl_(UseAbslRwSpinlock()) {}
+
 RWCLock::~RWCLock() {
   CHECK_EQ(reader_counter_.load(), 0);
 }
@@ -94,15 +99,45 @@ bool RWCLock::DoReadLock(CoarseTimePoint deadline) {
     if (!(reader_counter_.fetch_sub(1) & kCommitActive)) {
       continue;
     }
-    std::unique_lock lock(commit_mutex_);
-    if (!(reader_counter_.load() & kCommitActive)) {
+    if (!use_absl_) {
+      std::unique_lock lock(commit_mutex_);
+      if (!(reader_counter_.load() & kCommitActive)) {
+        continue;
+      }
+
+      // wait for lock until it is time to log slow lock or until deadline
+      const auto slow_log_deadline = CoarseMonoClock::now() + FLAGS_slow_rwc_lock_log_ms * 1ms;
+      const auto first_deadline = std::min(deadline, slow_log_deadline);
+      if (no_committer_.wait_until(lock, first_deadline) == std::cv_status::timeout) {
+        if (deadline <= first_deadline) {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+          --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
+#endif
+          return false;
+        }
+        LOG(WARNING) << "Long time waiting for read lock due to committers holding lock";
+        // Is the blocking lock eventually released?  If so, log so the reader knows that lock was
+        // not held forever.
+        auto start = CoarseMonoClock::now();
+        // wait until actual deadline
+        if (no_committer_.wait_until(lock, deadline) == std::cv_status::timeout) {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+          --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
+#endif
+          return false;
+        }
+        LOG(INFO) << "Committers no longer holding lock after " << (CoarseMonoClock::now() - start);
+      }
       continue;
     }
+
+    absl::MutexLock lock(&mutex_);
+    const absl::Condition no_committer(this, &RWCLock::NoCommitter);
 
     // wait for lock until it is time to log slow lock or until deadline
     const auto slow_log_deadline = CoarseMonoClock::now() + FLAGS_slow_rwc_lock_log_ms * 1ms;
     const auto first_deadline = std::min(deadline, slow_log_deadline);
-    if (no_committer_.wait_until(lock, first_deadline) == std::cv_status::timeout) {
+    if (!AwaitUntil(no_committer, first_deadline)) {
       if (deadline <= first_deadline) {
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
         --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
@@ -114,7 +149,7 @@ bool RWCLock::DoReadLock(CoarseTimePoint deadline) {
       // held forever.
       auto start = CoarseMonoClock::now();
       // wait until actual deadline
-      if (no_committer_.wait_until(lock, deadline) == std::cv_status::timeout) {
+      if (!AwaitUntil(no_committer, deadline)) {
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
         --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
 #endif
@@ -155,9 +190,61 @@ void RWCLock::ReadUnlock() {
   --rwc_read_lock_counter;
 #endif
   if (reader_counter_.fetch_sub(1) - 1 == kCommitPending) {
-    std::unique_lock lock(commit_mutex_);
-    no_readers_.notify_one();
+    if (!use_absl_) {
+      std::unique_lock lock(commit_mutex_);
+      no_readers_.notify_one();
+      return;
+    }
+    // The committer waits for ReadersDrained(), which reads reader_counter_ outside of mutex_.
+    // Releasing mutex_ makes absl re-evaluate that condition.
+    absl::MutexLock lock(&mutex_);
   }
+}
+
+bool RWCLock::NoCommitter() const {
+  return !(reader_counter_.load() & kCommitActive);
+}
+
+bool RWCLock::ReadersDrained() const {
+  return reader_counter_.load() == kCommitPending;
+}
+
+bool RWCLock::AwaitUntil(const absl::Condition& cond, CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint::max()) {
+    mutex_.Await(cond);
+    return true;
+  }
+  return mutex_.AwaitWithTimeout(cond, absl::FromChrono(deadline - CoarseMonoClock::now()));
+}
+
+bool RWCLock::AcquireWriteModeUntil(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
+  if (!use_absl_) {
+#if defined(THREAD_SANITIZER)
+    write_mutex_.lock();
+    return true;
+#else
+    if (deadline == CoarseTimePoint::max()) {
+      write_mutex_.lock();
+      return true;
+    }
+    return write_mutex_.try_lock_until(deadline);
+#endif
+  }
+  absl::MutexLock lock(&mutex_);
+  if (!AwaitUntil(absl::Condition(this, &RWCLock::WriteUnlocked), deadline)) {
+    return false;
+  }
+  write_locked_ = true;
+  return true;
+}
+
+void RWCLock::ReleaseWriteMode() NO_THREAD_SAFETY_ANALYSIS {
+  if (!use_absl_) {
+    write_mutex_.unlock();
+    return;
+  }
+  absl::MutexLock lock(&mutex_);
+  write_locked_ = false;
 }
 
 bool RWCLock::HasReaders() const {
@@ -174,13 +261,10 @@ bool RWCLock::DEBUG_HasWriteLock() const {
 
 bool RWCLock::DoWriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
   ThreadRestrictions::AssertWaitAllowed();
-#if defined(THREAD_SANITIZER)
-  write_mutex_.lock();
-#else
   const auto slow_log_deadline = CoarseMonoClock::now() + 1ms * FLAGS_slow_rwc_lock_log_ms;
   const auto first_deadline = std::min(deadline, slow_log_deadline);
   // wait until it is time to log slow lock or until actual deadline
-  if (!write_mutex_.try_lock_until(first_deadline)) {
+  if (!AcquireWriteModeUntil(first_deadline)) {
     if (deadline <= first_deadline) {
       return false;
     }
@@ -200,13 +284,12 @@ bool RWCLock::DoWriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
       LOG(WARNING) << message;
     }
     auto start = CoarseMonoClock::now();
-    if (!write_mutex_.try_lock_until(deadline)) {
+    if (!AcquireWriteModeUntil(deadline)) {
       return false;
     }
     // Do we eventually get the lock?  If so, log so the reader knows lock was not held forever.
     LOG(INFO) << "Finally got write lock after additional " << (CoarseMonoClock::now() - start);
   }
-#endif
 
   // Save information about us as we are now the last holder of the write lock.
   write_acquire_time_ = CoarseMonoClock::now();
@@ -238,7 +321,7 @@ bool RWCLock::WriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
 
 void RWCLock::WriteUnlock() NO_THREAD_SAFETY_ANALYSIS {
   auto write_acquire_time = write_acquire_time_;
-  write_mutex_.unlock();
+  ReleaseWriteMode();
   MonoDelta passed = CoarseMonoClock::now() - write_acquire_time;
   if (passed > FLAGS_slow_rwc_lock_log_ms * 1ms) {
     LOG(WARNING) << "Long time holding write lock: " << passed
@@ -248,19 +331,42 @@ void RWCLock::WriteUnlock() NO_THREAD_SAFETY_ANALYSIS {
 }
 
 void RWCLock::UpgradeToCommitLock() {
-  std::unique_lock lock(commit_mutex_);
+  if (!use_absl_) {
+    std::unique_lock lock(commit_mutex_);
+    reader_counter_ += kCommitPending;
+    for (;;) {
+      size_t expected = kCommitPending;
+      if (reader_counter_.compare_exchange_strong(expected, kCommitActive)) {
+        break;
+      }
+      if (no_readers_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
+        LOG(WARNING) << "Long time waiting to acquire commit lock due to readers";
+        // Is the blocking lock eventually released?  If so, log so the reader knows that lock was
+        // not held forever.
+        auto start = CoarseMonoClock::now();
+        no_readers_.wait(lock);
+        MonoDelta passed = CoarseMonoClock::now() - start;
+        LOG(INFO) << "Readers no longer holding lock after " << passed;
+      }
+    }
+    return;
+  }
+
+  absl::MutexLock lock(&mutex_);
+  const absl::Condition readers_drained(this, &RWCLock::ReadersDrained);
   reader_counter_ += kCommitPending;
   for (;;) {
     size_t expected = kCommitPending;
     if (reader_counter_.compare_exchange_strong(expected, kCommitActive)) {
       break;
     }
-    if (no_readers_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
+    if (!mutex_.AwaitWithTimeout(
+            readers_drained, absl::Milliseconds(FLAGS_slow_rwc_lock_log_ms))) {
       LOG(WARNING) << "Long time waiting to acquire commit lock due to readers";
       // Is the blocking lock eventually released?  If so, log so the reader knows that lock was not
       // held forever.
       auto start = CoarseMonoClock::now();
-      no_readers_.wait(lock);
+      mutex_.Await(readers_drained);
       MonoDelta passed = CoarseMonoClock::now() - start;
       LOG(INFO) << "Readers no longer holding lock after " << passed;
     }
@@ -269,12 +375,18 @@ void RWCLock::UpgradeToCommitLock() {
 
 void RWCLock::CommitUnlock() {
   auto write_acquire_time = write_acquire_time_;
-  {
-    std::unique_lock lock(commit_mutex_);
+  if (!use_absl_) {
+    {
+      std::unique_lock lock(commit_mutex_);
+      reader_counter_ -= kCommitActive;
+      no_committer_.notify_all();
+    }
+    write_mutex_.unlock();
+  } else {
+    absl::MutexLock lock(&mutex_);
     reader_counter_ -= kCommitActive;
-    no_committer_.notify_all();
+    write_locked_ = false;
   }
-  write_mutex_.unlock();
   MonoDelta passed = CoarseMonoClock::now() - write_acquire_time;
   if (passed > FLAGS_slow_rwc_lock_log_ms * 1ms) {
     LOG(WARNING) << "Long time holding write then commit lock: " << passed
