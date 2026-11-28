@@ -1131,8 +1131,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	/*
 	 * YB: Set client_addr and client_host in ASH metadata which will remain
-	 * constant throughout the session. We don't want to do this during
-	 * bootstrap because it won't have client address anyway.
+	 * constant throughout the session, except with Ysql Connection Manager
+	 * (see YbAshSetMetadata). We don't want to do this during bootstrap
+	 * because it won't have client address anyway.
 	 */
 	if (YbAshIsClientAddrSet())
 		YbAshSetOneTimeMetadata();

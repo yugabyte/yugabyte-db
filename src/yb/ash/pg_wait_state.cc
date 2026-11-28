@@ -12,15 +12,22 @@
 //
 #include "yb/ash/pg_wait_state.h"
 
+#include <arpa/inet.h>
+
+#include <cstring>
+
 #include "yb/util/status_format.h"
 
 namespace yb::ash {
 
 namespace {
 
-HostPort GetHostPort(const YbcPgAshConfig& config) {
-  if (config.metadata->addr_family == AF_INET || config.metadata->addr_family == AF_INET6) {
-    return HostPort(config.host, config.metadata->client_port);
+HostPort GetHostPort(const YbcAshMetadata& metadata) {
+  if (metadata.addr_family == AF_INET || metadata.addr_family == AF_INET6) {
+    char host[INET6_ADDRSTRLEN];
+    if (inet_ntop(metadata.addr_family, metadata.client_addr, host, sizeof(host))) {
+      return HostPort(host, metadata.client_port);
+    }
   }
   return HostPort();
 }
@@ -47,7 +54,8 @@ Status VerifyMetadata(const AshMetadata& metadata, const YbcPgAshConfig& config)
   RETURN_NOT_OK(VerifyField(metadata.pid, config.metadata->pid, "PID"));
   RETURN_NOT_OK(VerifyField(metadata.database_id, config.metadata->database_id, "Database ID"));
   RETURN_NOT_OK(VerifyField(metadata.user_id, config.metadata->user_id, "User ID"));
-  RETURN_NOT_OK(VerifyField(metadata.client_host_port, GetHostPort(config), "Client host port"));
+  RETURN_NOT_OK(VerifyField(
+      metadata.client_host_port, GetHostPort(*config.metadata), "Client host port"));
   RETURN_NOT_OK(VerifyField(metadata.addr_family, config.metadata->addr_family, "Address family"));
 
   return Status::OK();
@@ -67,9 +75,8 @@ PgWaitStateInfo::PgWaitStateInfo(std::reference_wrapper<const YbcPgAshConfig> co
         .pid = config.get().metadata->pid,
         .database_id = config.get().metadata->database_id,
         .user_id = config.get().metadata->user_id,
-        .client_host_port = GetHostPort(config),
-        .addr_family = config.get().metadata->addr_family,
       }) {
+  UpdateClientAddress();
 }
 
 AshMetadata PgWaitStateInfo::metadata() {
@@ -79,12 +86,27 @@ AshMetadata PgWaitStateInfo::metadata() {
       Slice(config_.metadata->root_request_id, sizeof(config_.metadata->root_request_id)));
   cached_metadata_.database_id = config_.metadata->database_id;
   cached_metadata_.user_id = config_.metadata->user_id;
+  // With Ysql Connection Manager, the backend serves a different logical client from one request
+  // to the next, so the client address can change.
+  if (config_.metadata->addr_family != cached_metadata_.addr_family ||
+      config_.metadata->client_port != client_port_ ||
+      std::memcmp(config_.metadata->client_addr, client_addr_, sizeof(client_addr_)) != 0) {
+    UpdateClientAddress();
+  }
 #ifndef NDEBUG
   const auto s = VerifyMetadata(cached_metadata_, config_);
   LOG_IF(DFATAL, !s.ok()) << "ASH metadata verification failed: " << s;
 #endif
 
   return cached_metadata_;
+}
+
+void PgWaitStateInfo::UpdateClientAddress() {
+  const auto& metadata = *config_.metadata;
+  client_port_ = metadata.client_port;
+  std::memcpy(client_addr_, metadata.client_addr, sizeof(client_addr_));
+  cached_metadata_.client_host_port = GetHostPort(metadata);
+  cached_metadata_.addr_family = metadata.addr_family;
 }
 
 } // namespace yb::ash
