@@ -578,7 +578,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int timeout = kRpcTimeout,
       const std::vector<uint32_t>& publication_oids = {},
       bool pub_all_tables = false,
-      RetryInit retry = RetryInit::kTrue);
+      RetryInit retry = RetryInit::kTrue,
+      uint64_t active_pid = 0);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 

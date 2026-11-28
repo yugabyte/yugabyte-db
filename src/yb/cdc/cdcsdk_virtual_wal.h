@@ -73,7 +73,10 @@ class CDCSDKVirtualWAL {
       const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline);
 
-  xrepl::StreamId GetStreamId();
+  xrepl::StreamId GetStreamId() const;
+
+  // Identifies this instance among all the VirtualWALs ever created for the stream, on any tserver.
+  const std::string& GetInstanceId() const;
 
   std::vector<TabletId> GetTabletIdsFromVirtualWAL();
 
@@ -273,6 +276,8 @@ class CDCSDKVirtualWAL {
   xrepl::StreamId stream_id_;
 
   uint64_t vwal_session_id_;
+
+  const std::string instance_id_;
 
   std::string log_prefix_;
 

@@ -640,7 +640,12 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<StreamIdHybridTimeMap> GetStreamIdToRestartTimeMap(
       const CDCStateTableRange& table_range, Status* iteration_status);
 
-  Status PersistActivePidInSlotEntry(const xrepl::StreamId& stream_id, uint64_t active_pid);
+  // Sets the active_pid of the slot entry of the VirtualWAL's stream, along with the VirtualWAL's
+  // instance id.
+  Status PersistActivePidInSlotEntry(const CDCSDKVirtualWAL& virtual_wal, uint64_t active_pid);
+
+  // Resets active_pid only if the slot's cdc_state entry still holds this VirtualWAL's instance id.
+  Status ResetActivePidInSlotEntry(const CDCSDKVirtualWAL& virtual_wal);
 
   void set_cdc_master_bg_task_ran_once() {
     if (!cdc_master_bg_task_ran_once_.load(std::memory_order_relaxed)) {

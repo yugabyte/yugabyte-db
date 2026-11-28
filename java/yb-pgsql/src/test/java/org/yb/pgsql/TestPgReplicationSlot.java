@@ -7086,6 +7086,66 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }, 120000 * kMultiplier);
   }
 
+  private void waitForActivePid(String slotName, int pid) throws Exception {
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet res = stmt.executeQuery(String.format(
+            "SELECT active_pid FROM pg_replication_slots WHERE slot_name = '%s'", slotName));
+        return res.next() && res.getInt("active_pid") == pid;
+      }
+    }, 10000 * kMultiplier);
+  }
+
+  @Test
+  public void testActivePidKeptWhenPreviousConsumerSessionExpires() throws Exception {
+    // Holds back the TServer's cleanup of an exited backend's session until the next consumer is
+    // streaming.
+    final int sessionCleanupDelayMs = 3000 * kMultiplier;
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("TEST_delay_before_complete_expired_pg_sessions_shutdown_ms",
+        Integer.toString(sessionCleanupDelayMs));
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "active_pid_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection oldConsumer = getConnectionBuilder().withTServer(0).replicationConnect();
+    createSlot(oldConsumer.unwrap(PGConnection.class).getReplicationAPI(), slotName,
+        YB_OUTPUT_PLUGIN_NAME);
+    openStream(oldConsumer, slotName, "pub", 0);
+    int oldPid = oldConsumer.unwrap(PGConnection.class).getBackendPID();
+    waitForActivePid(slotName, oldPid);
+
+    // The consumer drops its connection mid-stream, as a crashed client would.
+    oldConsumer.close();
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      TestUtils.waitFor(() -> {
+        ResultSet res = stmt.executeQuery(
+            "SELECT count(*) FROM pg_stat_activity WHERE pid = " + oldPid);
+        return res.next() && res.getInt(1) == 0;
+      }, 10000 * kMultiplier);
+    }
+
+    Connection newConsumer = getConnectionBuilder().withTServer(0).replicationConnect();
+    openStream(newConsumer, slotName, "pub", 0);
+    int newPid = newConsumer.unwrap(PGConnection.class).getBackendPID();
+    waitForActivePid(slotName, newPid);
+
+    // Outlive the cleanup of the old consumer's session.
+    Thread.sleep(2 * sessionCleanupDelayMs);
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format(
+          "SELECT active_pid FROM pg_replication_slots WHERE slot_name = '%s'", slotName));
+      assertTrue(res.next());
+      assertEquals(Integer.valueOf(newPid), res.getObject("active_pid", Integer.class));
+    }
+    newConsumer.close();
+  }
+
   @Test
   public void testSlotLockReleasedOnTserverCrash() throws Exception {
     restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
