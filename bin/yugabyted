@@ -1298,7 +1298,7 @@ class ControlScript(object):
         VERSION_METADATA_PATH = find_version_metadata_location("version_metadata.json")
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
-            title = "Version".format(SCRIPT_NAME)
+            title = "{} Version".format(SCRIPT_NAME)
             output = "\n" + "-" * 70 + "\n"
             output += ("| {:^66} |\n").format(title)
             output += "-" * 70 + "\n"
@@ -8137,8 +8137,8 @@ class ControlScript(object):
             tserver_ip_port = self.configs.saved_data.get("tserver_rpc_port")
             if not YBTableServerCLIProxy.update_gflag_in_tserver(tserver_ip_addr,
                 tserver_ip_port, "tserver_master_addrs", masters_csv, True):
-                Output.log("Failed to update the master list {} " +
-                            "on the tserver node.".format(masters_csv))
+                Output.log("Failed to update the master list {} ".format(masters_csv) +
+                            "on the tserver node.")
 
             # Persist the config if masters have changed
             self.configs.save_configs()
