@@ -683,8 +683,9 @@ class NodeChecker():
                  ssl_protocol, enable_connection_pooling, enable_ysql, enable_ysql_auth,
                  master_http_port, tserver_http_port, ysql_server_http_port, node_version,
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
-                 otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
-                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
+                 otel_enabled, temp_output_file, maintenance_state_file, ddl_atomicity_check,
+                 master_leader_url, master_rpc_port, tserver_rpc_port, verbose,
+                 clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
                  ybdb_inbuilt_ybc, yba_ynp_version):
         self.node = node
@@ -721,6 +722,7 @@ class NodeChecker():
         self.additional_info = {}
         self.otel_enabled = otel_enabled
         self.temp_output_file = temp_output_file
+        self.maintenance_state_file = maintenance_state_file
         self.ddl_atomicity_check = ddl_atomicity_check
         self.master_leader_url = master_leader_url
         self.enable_earlyoom = enable_earlyoom
@@ -2776,6 +2778,7 @@ class NodeChecker():
               0 = last run failed or never executed
           - yb_node_maintenance_service_last_run_seconds{service=...}
               Unix timestamp (seconds) of the last completed run, 0 if never.
+        While a run is in progress, both come from the last completed run this check saw.
         """
         logging.info("Checking YB node maintenance services on node {}".format(self.node))
         e = self._new_metric_entry("YB node maintenance services")
@@ -2783,6 +2786,10 @@ class NodeChecker():
         status_metric = Metric.from_definition(YB_NODE_MAINTENANCE_SERVICE_STATUS)
         last_run_metric = Metric.from_definition(YB_NODE_MAINTENANCE_SERVICE_LAST_RUN_SECONDS)
         msgs = []
+        # systemd resets Result and clears ExecMainExitTimestamp when a run starts, so a run in
+        # progress says nothing about the previous one. Keep the last completed run on disk.
+        state = load_json_file(self.maintenance_state_file)
+        new_state = dict(state)
         for unit in services:
             service_label = Label("service", unit)
             user_scope = self._discover_systemd_unit_scope(unit)
@@ -2803,7 +2810,8 @@ class NodeChecker():
             # parser drops that token, so it is only belt and braces.
             cmd = ("TZ=UTC LC_ALL=C systemctl {scope}show {unit} --no-pager "
                    "--property=LoadState,Result,ExecMainExitTimestamp,"
-                   "ActiveState,SubState 2>&1").format(scope=scope_flag, unit=unit)
+                   "InactiveExitTimestamp,ActiveState,SubState 2>&1").format(
+                       scope=scope_flag, unit=unit)
             output = self._check_output(cmd)
             props = {}
             for line in output.splitlines():
@@ -2820,6 +2828,27 @@ class NodeChecker():
                     unit, scope_label, load_state))
                 continue
 
+            active_state = props.get("ActiveState", "")
+            if active_state in ("activating", "active", "deactivating", "reloading"):
+                # The timers fire in the same second as this check, so this is common.
+                last = state.get(unit)
+                if isinstance(last, dict) and {"status", "last_run"} <= set(last):
+                    status_metric.add_value(last["status"], [service_label])
+                    last_run_metric.add_value(last["last_run"], [service_label])
+                    msgs.append("{}: running in {} scope; last completed run at {} {}".format(
+                        unit, scope_label, last["last_run"],
+                        "succeeded" if last["status"] == 1 else "failed"))
+                else:
+                    # No completed run seen yet: report when this one started, not "never ran".
+                    start_ts_raw = props.get("InactiveExitTimestamp", "")
+                    start_epoch = (parse_systemctl_timestamp(start_ts_raw) if start_ts_raw
+                                   else int(time.time()))
+                    status_metric.add_value(0, [service_label])
+                    last_run_metric.add_value(start_epoch, [service_label])
+                    msgs.append("{}: running in {} scope, no completed run recorded".format(
+                        unit, scope_label))
+                continue
+
             exit_ts_raw = props.get("ExecMainExitTimestamp", "")
             last_run_epoch = parse_systemctl_timestamp(exit_ts_raw)
             last_run_metric.add_value(last_run_epoch, [service_label])
@@ -2830,15 +2859,19 @@ class NodeChecker():
                 status_metric.add_value(0, [service_label])
                 msgs.append("{}: never executed in {} scope (Result={})".format(
                     unit, scope_label, result))
-            elif result == "success":
-                status_metric.add_value(1, [service_label])
+                continue
+            status = 1 if result == "success" else 0
+            status_metric.add_value(status, [service_label])
+            new_state[unit] = {"status": status, "last_run": last_run_epoch}
+            if status == 1:
                 msgs.append("{}: ok in {} scope (last run at {})".format(
                     unit, scope_label, exit_ts_raw))
             else:
-                status_metric.add_value(0, [service_label])
                 msgs.append("{}: failed in {} scope (Result={}, last run at {})".format(
                     unit, scope_label, result, exit_ts_raw))
 
+        if new_state != state:
+            write_json_file(self.maintenance_state_file, new_state)
         return e.fill_and_return_entry(msgs, has_error=False,
                                        metrics=[status_metric, last_run_metric])
 
@@ -2887,6 +2920,30 @@ def parse_rfc3339_utc(value):
     else:
         fmt = "%Y-%m-%dT%H:%M:%S"
     return int(datetime.strptime(text, fmt).replace(tzinfo=timezone.utc).timestamp())
+
+
+def load_json_file(path):
+    """Returns the dict stored at path, or an empty one if it is missing or unreadable."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError) as ex:
+        if not isinstance(ex, FileNotFoundError):
+            logging.warning("Ignoring unreadable %s: %s", path, ex)
+        return {}
+
+
+def write_json_file(path, data):
+    # Two health checks can overlap: write a private file, then swap it in.
+    tmp_path = "{}.{}.tmp".format(path, os.getpid())
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp_path, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp_path, path)
+    except OSError as ex:
+        logging.warning("Could not write %s: %s", path, ex)
 
 
 def parse_systemctl_timestamp(value):
@@ -3410,6 +3467,10 @@ def main():
     parser.add_argument('--temp_output_file', type=str, default="{{TMP_DIR}}/process_stats.json",
                         required=False, help='Temporary output file to which the process '
                                              'stats will be written to.')
+    parser.add_argument('--maintenance_state_file', type=str,
+                        default="{{TMP_DIR}}/maintenance_services_state.json", required=False,
+                        help='File that keeps the last completed run of each node maintenance '
+                             'service.')
     parser.add_argument('--ddl_atomicity_check', type=bool, default=False, required=False,
                         help='In case we want to get only metrics as an output.')
     parser.add_argument('--master_leader_url', type=str, default="", required=False,
@@ -3443,7 +3504,8 @@ def main():
         n.ssl_protocol, n.enable_connection_pooling, n.enable_ysql, n.enable_ysql_auth,
         n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
-        n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.otel_enabled, args.temp_output_file, args.maintenance_state_file,
+        args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
         n.ybdb_inbuilt_ybc, args.yba_ynp_version)
