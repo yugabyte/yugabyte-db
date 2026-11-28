@@ -349,6 +349,8 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
 
         Status status;
         if (opid.ok()) {
+          // Intents are applied, so we can release these locks now.
+          query->Release();
           query->context_->RegisterAsyncWrite(*opid);
           opid->ToPB(query->response_->mutable_async_write_op_id());
         } else {
