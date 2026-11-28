@@ -1400,6 +1400,9 @@ class Tablet : public AbstractTablet,
 
   const std::string* NextReadPartitionKey(const PgsqlReadRequestMsg& pgsql_read_request) const;
 
+  bool SwitchToNextTablet(
+    const PgsqlReadRequestMsg& pgsql_read_request, const PgsqlResponseMsg& response) const;
+
   Status TriggerManualCompactionSyncUnsafe(
       rocksdb::CompactionReason reason,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);

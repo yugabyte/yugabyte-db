@@ -2815,6 +2815,16 @@ const std::string* Tablet::NextReadPartitionKey(
   return &partition_key;
 }
 
+bool Tablet::SwitchToNextTablet(
+    const PgsqlReadRequestMsg& pgsql_read_request, const PgsqlResponseMsg& response) const {
+  if (response.has_paging_state()) {
+    const auto& paging_state = response.paging_state();
+    VLOG_WITH_FUNC(3) << "Paging state: " << paging_state.ShortDebugString();
+    return !paging_state.has_next_partition_key();
+  }
+  return true;
+}
+
 namespace {
 
 void SetBackfillSpecForYsqlBackfill(
@@ -2859,12 +2869,19 @@ Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_re
   if (MayTargetMultipleTablets(pgsql_read_request, row_count)) {
     const auto* next_partition_key = NextReadPartitionKey(pgsql_read_request);
     if (next_partition_key) {
-      if (!response->has_paging_state()) {
-        // DocDB has done with the current tablet, time to switch to the next one
+      if (SwitchToNextTablet(pgsql_read_request, *response)) {
         response->mutable_paging_state()->dup_next_partition_key(*next_partition_key);
       }
       response->mutable_paging_state()->dup_next_tablet_bound(*next_partition_key);
     }
+  }
+
+  // Next partition/row key hasn't been added, neither by the DocDB nor by the above logic, remove
+  // the paging state to prevent further pagination.
+  if (response->has_paging_state() &&
+      !response->paging_state().has_next_partition_key() &&
+      !response->paging_state().has_next_row_key()) {
+    response->clear_paging_state();
   }
 
   // If there is a paging state, update the total number of rows read so far.
