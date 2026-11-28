@@ -778,6 +778,12 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot access temporary tables of other sessions")));
 
+	/*
+	 * YB: Only code that assumes heap or index pages (such as some contrib
+	 * extensions) gets here with a YB relation, and it would read garbage.
+	 */
+	YbRejectPageAccess(reln);
+
 	/* YB: Special handling for sequences */
 	if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
 	{
