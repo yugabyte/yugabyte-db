@@ -18,12 +18,17 @@
 
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_uuid.h"
 
 namespace yb::vector_index {
 
 struct SearchOptions;
 class VectorPayloadMap;
+
+// Whether vectors were normalized to unit length before they were stored, see
+// VectorLSMChunkPB::vectors_normalized.
+YB_STRONGLY_TYPED_BOOL(VectorsNormalized);
 
 // See VectorLSMInsertContext::chunk_holds.
 using VectorLSMChunkHold = CancelableScopeExit<std::function<void()>>;

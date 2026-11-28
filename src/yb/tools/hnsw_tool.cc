@@ -1202,12 +1202,8 @@ class BenchmarkTool {
       if (args_.hnsw_options.distance_kind != DistanceKind::kInnerProduct) {
         return;
       }
-      double sum_sq = 0;
-      for (auto x : v) {
-        sum_sq += static_cast<double>(x) * x;
-      }
       constexpr double kTolerance = 1e-3;
-      const auto norm = std::sqrt(sum_sq);
+      const auto norm = std::sqrt(SquaredLength(v));
       if (std::abs(norm - 1) > kTolerance &&
           num_unnormalized_vectors_.fetch_add(1, std::memory_order_relaxed) == 0) {
         LOG(WARNING) << "Inner product distance with base vectors that are not L2-normalized: "

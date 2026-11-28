@@ -125,6 +125,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   static constexpr int64_t kUnappliedInsertRowId = 100;
 
   void TestFastPathVectorDeletion(const std::string& statement);
+
+  void TestIndexCheck();
   void TestUnappliedVectorUpdates();
   void TestCompactionDropsDeletedPayloadVectors(Split split);
   void TestReverseMappingPostSplitCompactionUnappliedInsert(
@@ -958,7 +960,7 @@ TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
 
 // Every kind of inconsistency the check reports, injected through the test flags which skip or
 // corrupt the vector index and reverse mapping writes.
-TEST_F(PgVectorIndexUtilTest, IndexCheck) {
+void PgVectorIndexUtilTest::TestIndexCheck() {
   constexpr size_t kNumRows = 5;
   auto conn = ASSERT_RESULT(MakeIndex());
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
@@ -1020,6 +1022,16 @@ TEST_F(PgVectorIndexUtilTest, IndexCheck) {
   ASSERT_FALSE(peers.empty());
   output = ASSERT_RESULT(run_tool({peers.front()->tablet_id(), "unknown_index"}));
   ASSERT_STR_CONTAINS(output, "not checked: Not found");
+}
+
+TEST_F(PgVectorIndexUtilTest, IndexCheck) {
+  TestIndexCheck();
+}
+
+// A cosine index stores the vectors normalized, which still match the row vectors.
+TEST_F(PgVectorIndexUtilTest, IndexCheckCosine) {
+  distance_kind_ = vector_index::DistanceKind::kCosine;
+  TestIndexCheck();
 }
 
 // A table created with vector_index_store_payload writes no reverse mapping, so deleted and

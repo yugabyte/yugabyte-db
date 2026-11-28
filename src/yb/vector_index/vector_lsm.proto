@@ -36,6 +36,11 @@ message VectorLSMChunkPB {
 
   VectorLSMBoundaryPB smallest = 4;
   VectorLSMBoundaryPB largest = 5;
+
+  // The chunk was built from vectors normalized to unit length, and is opened with
+  // VectorLSMOptions::normalized_vector_index_traits, e.g. inner product in place of cosine.
+  // Versions that ignore the field still get the right distances from cosine.
+  bool vectors_normalized = 6;
 }
 
 message VectorLSMUpdatePB {

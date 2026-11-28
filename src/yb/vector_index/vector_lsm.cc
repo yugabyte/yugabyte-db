@@ -930,7 +930,8 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   }
 
   // Must be triggered under VectorLSM::mutex_.
-  ImmutableChunkPtr Immutate(size_t order_no, std::promise<Status>* flush_promise) {
+  ImmutableChunkPtr Immutate(
+      size_t order_no, VectorsNormalized vectors_normalized, std::promise<Status>* flush_promise) {
     // Move should not be used for index as the mutable chunk could still be used by other
     // entities, for example by VectorLSMInsertTask.
     // Clone so later successful Insert()s can still ApplyFrontiers on this MutableChunk;
@@ -938,7 +939,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     // No insert registers on this chunk any more, so registered_frontiers are moved.
     // The index also keeps the deletions, so a chunk without vectors hands it over too.
     return std::make_shared<ImmutableChunk>(
-        order_no, HasNewData() ? index : VectorIndexPtr{},
+        order_no, vectors_normalized, HasNewData() ? index : VectorIndexPtr{},
         applied_frontiers ? applied_frontiers->Clone() : storage::UserFrontiersPtr{},
         std::move(registered_frontiers), flush_promise);
   }
@@ -957,6 +958,8 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   // Sort key in immutable_chunks_. Not required to be unique.
   // Flush assigns latest order_no + 1; compaction assigns per-output latest input order_no.
   const size_t order_no = 0;
+
+  const VectorsNormalized vectors_normalized = VectorsNormalized::kFalse;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   ImmutableChunkState state = ImmutableChunkState::kInMemory;
@@ -978,12 +981,14 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
  public:
   ImmutableChunk(
       size_t order_no_,
+      VectorsNormalized vectors_normalized_,
       VectorLSMFileMetaDataPtr&& file_,
       VectorIndexPtr&& index_,
       storage::UserFrontiersPtr&& applied_frontiers_,
       ImmutableChunkState state_)
       : file(std::move(file_)),
         order_no(order_no_),
+        vectors_normalized(vectors_normalized_),
         state(state_),
         index(std::move(index_)),
         applied_frontiers(std::move(applied_frontiers_))
@@ -991,11 +996,13 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
 
   ImmutableChunk(
       size_t order_no_,
+      VectorsNormalized vectors_normalized_,
       VectorIndexPtr&& index_,
       storage::UserFrontiersPtr&& applied_frontiers_,
       storage::UserFrontiersPtr&& registered_frontiers_,
       std::promise<Status>* flush_promise_)
       : order_no(order_no_),
+        vectors_normalized(vectors_normalized_),
         state(ImmutableChunkState::kInMemory),
         index(std::move(index_)),
         applied_frontiers(std::move(applied_frontiers_)),
@@ -1033,6 +1040,9 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     auto& added_chunk = *update.mutable_add_chunks()->Add();
     added_chunk.set_serial_no(serial_no());
     added_chunk.set_order_no(order_no);
+    if (vectors_normalized) {
+      added_chunk.set_vectors_normalized(true);
+    }
     if (applied_frontiers) {
       applied_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
       applied_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
@@ -1524,6 +1534,10 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 
   // A VectorLSM object is opened only once, see CreateDocVectorIndex().
   RSTATUS_DCHECK(!insert_registry_, IllegalState, "Vector LSM is already opened");
+  SCHECK(
+      (!options.normalized_vector_index_traits ||
+       std::is_same_v<typename Vector::value_type, float>),
+      InvalidArgument, "Only float vectors could be normalized");
 
   options_ = std::move(options);
   if (options_.metric_entity) {
@@ -1545,12 +1559,23 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   }
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   next_manifest_file_no_ = load_result.next_free_file_no;
+  // Every chunk of an LSM that normalizes vectors is marked, frontier only chunks included, so a
+  // marked chunk stays in the manifest once the LSM has stored normalized vectors.
+  if (options_.normalized_vector_index_traits) {
+    normalizes_vectors_ = VectorsNormalized(
+        options_.normalize_vectors ||
+        std::ranges::any_of(load_result.chunks, [](const auto& chunk_pb) {
+          return chunk_pb.vectors_normalized();
+        }));
+  }
   for (const auto& chunk_pb : load_result.chunks) {
     VectorLSMFileMetaDataPtr file;
     VectorIndexPtr index;
     if (chunk_pb.serial_no()) {
-      index = options_.vector_index_traits->Create(
-          FactoryMode::kLoad, options_.store_vector_payload);
+      const auto& traits =
+          chunk_pb.vectors_normalized() && options_.normalized_vector_index_traits
+              ? options_.normalized_vector_index_traits : options_.vector_index_traits;
+      index = traits->Create(FactoryMode::kLoad, options_.store_vector_payload);
 
       const auto file_sizes = VERIFY_RESULT(GetChunkFileSize(chunk_pb.serial_no()));
       file = CreateVectorLSMFileMetaData(*index, chunk_pb.serial_no(), file_sizes);
@@ -1565,7 +1590,8 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       immutable_chunks_.pop_back();
     }
     immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(
-        chunk_pb.order_no(), std::move(file), std::move(index),
+        chunk_pb.order_no(), VectorsNormalized(chunk_pb.vectors_normalized()), std::move(file),
+        std::move(index),
         std::move(user_frontiers), ImmutableChunkState::kInManifest
     ));
 
@@ -1683,6 +1709,12 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     std::vector<InsertEntry> entries, const VectorLSMInsertContext& context) {
   VLOG_WITH_PREFIX_AND_FUNC(5)
       << "entries: " << entries.size() << ", frontier: " << AsString(context.frontiers);
+
+  if (NormalizesVectors()) {
+    for (auto& entry : entries) {
+      Normalize(entry.vector);
+    }
+  }
 
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
 
@@ -1884,15 +1916,15 @@ auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::ManifestIndexes() const
-    -> Result<std::vector<VectorIndexPtr>> {
-  std::vector<VectorIndexPtr> result;
+    -> Result<std::vector<ManifestIndex>> {
+  std::vector<ManifestIndex> result;
   SharedLock lock(mutex_);
   RETURN_NOT_OK(failed_status_);
   result.reserve(immutable_chunks_.size());
   for (const auto& chunk : immutable_chunks_) {
     // A chunk rolled but not yet in the manifest could still have inserts running.
     if (chunk->index && chunk->IsInManifest()) {
-      result.push_back(chunk->index);
+      result.push_back({chunk->index, chunk->vectors_normalized});
     }
   }
   return result;
@@ -1912,19 +1944,22 @@ auto VectorLSM<Vector, DistanceResult>::Search(
 
   SCOPED_WAIT_STATUS(VectorIndex_Search);
 
+  Vector query_vector_buffer;
+  const auto& prepared_query_vector = PreparedVector(query_vector, query_vector_buffer);
+
   auto indexes = VERIFY_RESULT(AllIndexes());
   bool dump_stats = FLAGS_vector_index_dump_stats;
 
   auto start_registry_search = MonoTime::Now();
   auto intermediate_results = VERIFY_RESULT(insert_registry_->Search(
-      query_vector, options, tenant_extractor));
+      prepared_query_vector, options, tenant_extractor));
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Results from registry: " << AsString(intermediate_results);
   size_t num_results_from_insert_registry = intermediate_results.size();
 
   size_t sum_num_found_entries = 0;
   auto start_chunks_search = MonoTime::Now();
   for (const auto& index : indexes) {
-    auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
+    auto chunk_results = VERIFY_RESULT(index->Search(prepared_query_vector, options));
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Chunk " << index->IndexStatsStr() << " results: " << AsString(chunk_results);
     sum_num_found_entries += chunk_results.size();
@@ -2299,7 +2334,8 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise) {
   size_t order_no = immutable_chunks_.empty() ? 0 : immutable_chunks_.back()->order_no + 1;
-  immutable_chunks_.push_back(mutable_chunk_->Immutate(order_no, promise));
+  immutable_chunks_.push_back(
+      mutable_chunk_->Immutate(order_no, NormalizesVectors(), promise));
   auto chunk = immutable_chunks_.back();
   updates_queue_.emplace(chunk->order_no, chunk);
 
@@ -2382,7 +2418,7 @@ size_t VectorLSM<Vector, DistanceResult>::EstimateNumVectorsForBytes(size_t byte
   if (bytes_limit == 0) {
     return 0;
   }
-  return options_.vector_index_traits->EstimateNumVectorsForBytes(bytes_limit);
+  return NewChunkTraits()->EstimateNumVectorsForBytes(bytes_limit);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2401,8 +2437,7 @@ VectorLSM<Vector, DistanceResult>::CreateVectorIndex(
     size_t capacity, rocksdb::Cache::ReservationMode reservation_mode) const {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
-  auto index = options_.vector_index_traits->Create(
-      FactoryMode::kCreate, options_.store_vector_payload);
+  auto index = NewChunkTraits()->Create(FactoryMode::kCreate, options_.store_vector_payload);
   RETURN_NOT_OK(index->Reserve(
       capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads(),
       reservation_mode));
@@ -2574,7 +2609,7 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
     }
 
     chunk = std::make_shared<ImmutableChunk>(
-        order_no, VectorIndexPtr{}, std::move(user_frontiers),
+        order_no, NormalizesVectors(), VectorIndexPtr{}, std::move(user_frontiers),
         /* registered_frontiers= */ storage::UserFrontiersPtr{}, /* flush_promise= */ nullptr);
     immutable_chunks_.push_back(chunk);
     updates_queue_.emplace(order_no, chunk);
@@ -2763,7 +2798,47 @@ VectorLSMChunkFileSizes VectorLSM<Vector, DistanceResult>::TEST_LatestChunkFileS
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
-  return options_.vector_index_traits->Distance(lhs, rhs);
+  if (!NormalizesVectors()) {
+    return options_.vector_index_traits->Distance(lhs, rhs);
+  }
+  // The vectors are not normalized, e.g. the query and an uncommitted row. Cosine kernels would
+  // return NaN for extreme ones, so normalize them for the inner product traits.
+  auto normalized_lhs = lhs;
+  Normalize(normalized_lhs);
+  auto normalized_rhs = rhs;
+  Normalize(normalized_rhs);
+  return options_.normalized_vector_index_traits->Distance(normalized_lhs, normalized_rhs);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::NewChunkTraits() const -> const VectorIndexTraits& {
+  return NormalizesVectors() ? options_.normalized_vector_index_traits
+                             : options_.vector_index_traits;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+const Vector& VectorLSM<Vector, DistanceResult>::PreparedVector(
+    const Vector& vector, Vector& buffer) const {
+  if (!NormalizesVectors()) {
+    return vector;
+  }
+  buffer = vector;
+  Normalize(buffer);
+  return buffer;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::PrepareVector(Vector& vector) const {
+  if (NormalizesVectors()) {
+    Normalize(vector);
+  }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::Normalize(Vector& vector) {
+  if constexpr (std::is_same_v<typename Vector::value_type, float>) {
+    NormalizeVector(vector);
+  }
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -3071,8 +3146,8 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   using Iterator = typename ImmutableChunkPtrs::const_iterator;
   using ValueType = typename VectorIndex::IteratorValue;
 
-  MergingIterator(const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter)
-      : chunks_(chunks), filter_(filter), outer_it_(chunks_.begin()) {
+  MergingIterator(const LSM& lsm, const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter)
+      : lsm_(lsm), chunks_(chunks), filter_(filter), outer_it_(chunks_.begin()) {
     // Seed frontiers from the first chunk so the first Merger::ResetFrontiers() call
     // returns them as part of the first output chunk's frontiers.
     ResetFrontiers();
@@ -3177,6 +3252,9 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
       auto decision = filter_.Filter(current_value.vector_id, current_value.payload);
       if (decision == storage::FilterDecision::kKeep) {
         value_ = std::move(current_value);
+        if (!(*outer_it_)->vectors_normalized) {
+          lsm_.PrepareVector(value_->vector);
+        }
         return true;
       }
       inner_it_->Next();
@@ -3203,6 +3281,7 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     frontiers_updated_ = true;
   }
 
+  const LSM& lsm_;
   const ImmutableChunkPtrs& chunks_;
   VectorLSMMergeFilter& filter_;
   Iterator outer_it_;
@@ -3296,7 +3375,8 @@ class VectorLSM<Vector, DistanceResult>::Merger {
 
         // Create new immutable chunk and add it to the list of new chunks.
         merged_chunks.push_back(std::make_shared<ImmutableChunk>(
-            input_it.GetOrderNo(), std::move(merged_index_file), std::move(merged_index),
+            input_it.GetOrderNo(), lsm_.NormalizesVectors(), std::move(merged_index_file),
+            std::move(merged_index),
             std::move(merged_frontiers), ImmutableChunkState::kOnDisk));
       }
     }
@@ -3464,7 +3544,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
       IllegalState, "Vector merge filter factory must be specified");
   auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
-  MergingIterator merge_iterator(input_chunks, *merge_filter);
+  MergingIterator merge_iterator(*this, input_chunks, *merge_filter);
 
   Merger merger(*this, *this->merge_registry_, suspender);
   auto merge_result = merger.Merge(merge_iterator, max_vectors_per_output_chunk);
