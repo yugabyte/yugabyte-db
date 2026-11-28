@@ -87,46 +87,17 @@ Status TabletBootstrapStateManager::SaveToDisk(
   }
 
   auto max_replicated_op_id = retryable_requests->GetMaxReplicatedOpId();
+  auto pb = VERIFY_RESULT(
+      BuildPB(tablet_ptr, *retryable_requests, WaitForTransactionsLoaded::kTrue));
 
-  TabletBootstrapState bootstrap_state(bootstrap_state_);
-
-  // Set min replay txn start time to what it will be after this flush succeeds - this is safe
-  // because if the flush succeeds, replay start op id will be calculated from the new value.
-  auto tablet = tablet_ptr.lock();
-  TransactionParticipant* participant = nullptr;
-  if (tablet) {
-    participant = tablet->transaction_participant();
-    if (participant) {
-      auto first_write_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
-          max_replicated_op_id));
-      VLOG_WITH_PREFIX(1) << "Using min_replay_txn_first_write_ht = " << first_write_ht;
-      bootstrap_state.SetMinReplayTxnFirstWriteTime(first_write_ht);
-    }
-  }
-
-  consensus::TabletBootstrapStatePB pb;
-  retryable_requests->ToPB(&pb);
-  bootstrap_state.ToPB(&pb);
-
-  auto path = NewFilePath();
-  LOG_WITH_PREFIX(DETAIL) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
-  auto* env = fs_manager()->env();
   SCOPED_WAIT_STATUS(RetryableRequests_SaveToDisk);
-  RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-                            env, path, pb,
-                            pb_util::OVERWRITE, pb_util::SYNC),
-                            "Failed to write bootstrap state to disk");
-  // Delete the current file and rename new file to current file.
-  if (has_file_on_disk_) {
-    RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
-  }
-  LOG_WITH_PREFIX(DETAIL) << "Renaming " << NewFileName() << " to " << FileName();
-  RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
+  RETURN_NOT_OK(WritePBToDir(fs_manager()->env(), dir_, pb, LogPrefix()));
   has_file_on_disk_ = true;
-  RETURN_NOT_OK(env->SyncDir(dir_));
 
   RETURN_NOT_OK(raft_consensus.SetLastFlushedOpIdInRetryableRequests(max_replicated_op_id));
 
+  auto tablet = tablet_ptr.lock();
+  auto* participant = tablet ? tablet->transaction_participant() : nullptr;
   if (participant) {
     VLOG_WITH_PREFIX(1)
         << "Bootstrap state saved to disk, triggering cleanup of recently applied transactions";
@@ -135,6 +106,55 @@ Status TabletBootstrapStateManager::SaveToDisk(
   }
 
   return Status::OK();
+}
+
+Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::BuildPB(
+    const TabletWeakPtr& tablet_ptr, const consensus::RetryableRequests& retryable_requests,
+    WaitForTransactionsLoaded wait_for_load, HybridTime bound_if_no_live_transactions) const {
+  TabletBootstrapState bootstrap_state(bootstrap_state_);
+
+  // Set min replay txn start time to what it will be after a flush of this snapshot succeeds -
+  // this is safe because if the flush succeeds, replay start op id will be calculated from the new
+  // value.
+  auto tablet = tablet_ptr.lock();
+  auto* participant = tablet ? tablet->transaction_participant() : nullptr;
+  if (participant) {
+    auto first_write_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
+        retryable_requests.GetMaxReplicatedOpId(), wait_for_load));
+    if (first_write_ht == HybridTime::kMax) {
+      // No live transaction: nothing a bootstrap from this state could need to load, and kMax is
+      // not a bound the loader can use (it would filter transactions started later). The last
+      // persisted bound stays valid, and the caller may know a tighter one.
+      first_write_ht = bound_if_no_live_transactions.is_valid()
+          ? bound_if_no_live_transactions : bootstrap_state.GetMinReplayTxnFirstWriteTime();
+    }
+    VLOG_WITH_PREFIX(1) << "Using min_replay_txn_first_write_ht = " << first_write_ht;
+    bootstrap_state.SetMinReplayTxnFirstWriteTime(first_write_ht);
+  }
+
+  consensus::TabletBootstrapStatePB pb;
+  retryable_requests.ToPB(&pb);
+  bootstrap_state.ToPB(&pb);
+  return pb;
+}
+
+Status TabletBootstrapStateManager::WritePBToDir(
+    Env* env, const std::string& dir, const consensus::TabletBootstrapStatePB& pb,
+    const std::string& log_prefix) {
+  const auto new_path = JoinPathSegments(dir, NewFileName());
+  const auto path = FilePath(dir);
+  LOG(DETAIL) << log_prefix << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
+  RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
+                            env, new_path, pb,
+                            pb_util::OVERWRITE, pb_util::SYNC),
+                            "Failed to write bootstrap state to disk");
+  // Delete the current file and rename new file to current file.
+  if (env->FileExists(path)) {
+    RETURN_NOT_OK(env->DeleteFile(path));
+  }
+  LOG(DETAIL) << log_prefix << "Renaming " << NewFileName() << " to " << FileName();
+  RETURN_NOT_OK(env->RenameFile(new_path, path));
+  return env->SyncDir(dir);
 }
 
 Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::LoadFromDisk() {
