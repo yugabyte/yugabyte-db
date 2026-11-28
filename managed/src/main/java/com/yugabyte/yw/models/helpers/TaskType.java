@@ -881,6 +881,8 @@ public enum TaskType {
 
   ModifyBlackList(com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList.class),
 
+  RemoveTabletServers(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveTabletServers.class),
+
   CheckUnderReplicatedTablets(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
 

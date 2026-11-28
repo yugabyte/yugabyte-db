@@ -359,8 +359,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               null /* addNodes */, nodeSet /*removeNodes */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for the master leader to hear from all tservers.
-      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Wait for the master leader to hear from the added tserver.
+      createWaitForTServerHeartBeatsTask(addTserver ? nodeSet : Collections.emptySet())
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)) {
         // Wait for load to balance.

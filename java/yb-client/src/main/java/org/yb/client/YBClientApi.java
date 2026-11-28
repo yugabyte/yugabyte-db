@@ -99,6 +99,8 @@ public interface YBClientApi extends AutoCloseable {
 
   ListLiveTabletServersResponse listLiveTabletServers() throws Exception;
 
+  RemoveTabletServerResponse removeTabletServer(String permanentUuid) throws Exception;
+
   ListMastersResponse listMasters() throws Exception;
 
   ListMasterRaftPeersResponse listMasterRaftPeers() throws Exception;

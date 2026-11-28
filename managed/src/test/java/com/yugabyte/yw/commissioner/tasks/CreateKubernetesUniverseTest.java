@@ -72,7 +72,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClientApi;
 import org.yb.client.YBTable;
 import play.libs.Json;
@@ -353,9 +352,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupCommon() {
     // Table RPCs.
     mockClient = mock(YBClientApi.class);
-    // WaitForTServerHeartBeats mock.
-    ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
-    when(mockResponse.getTabletServersCount()).thenReturn(3);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -365,7 +361,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-      when(mockClient.listTabletServers()).thenReturn(mockResponse);
+      mockLiveTabletServersFromUniverses(mockClient);
       when(mockClient.createRedisTable(any(), anyBoolean())).thenReturn(mockTable);
       IsServerReadyResponse mockServerReadyResponse = mock(IsServerReadyResponse.class);
       when(mockServerReadyResponse.getNumNotRunningTablets()).thenReturn(0);

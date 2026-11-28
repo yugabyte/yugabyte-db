@@ -10,6 +10,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,16 +25,20 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,8 +51,11 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.RemoveTabletServerResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.util.ServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -224,6 +232,37 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(RELEASE_INSTANCE_TASK_SEQUENCE.size(), subTasksByPosition.size());
     assertReleaseInstanceSequence(subTasksByPosition);
+  }
+
+  @Test
+  public void testReleaseInstanceRemovesTserverFromMaster() throws Exception {
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.ybEditRemoveDeadTservers.getKey(), "true");
+    NodeDetails node = defaultUniverse.getNode(DEFAULT_NODE_NAME);
+    ListTabletServersResponse listResponse = mock(ListTabletServersResponse.class);
+    when(listResponse.getTabletServersList())
+        .thenReturn(List.of(new ServerInfo("ts-uuid", node.cloudInfo.private_ip, 9100, false, "")));
+    when(mockClient.listTabletServers()).thenReturn(listResponse);
+    when(mockClient.removeTabletServer("ts-uuid"))
+        .thenReturn(new RemoveTabletServerResponse(0, "", null));
+    setDumpEntitiesMock(defaultUniverse, DEFAULT_NODE_NAME, false);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+
+    TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 3);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> expected = new ArrayList<>(RELEASE_INSTANCE_TASK_SEQUENCE);
+    expected.add(expected.indexOf(TaskType.ModifyBlackList), TaskType.RemoveTabletServers);
+    List<TaskType> actual =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    assertEquals(expected, actual);
+    verify(mockClient).removeTabletServer("ts-uuid");
   }
 
   /** The node may come back on another machine, so its recorded cloud goes with its IPs. */
