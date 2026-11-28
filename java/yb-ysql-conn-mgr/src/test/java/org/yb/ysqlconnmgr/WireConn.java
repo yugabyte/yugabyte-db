@@ -157,7 +157,12 @@ public class WireConn implements AutoCloseable {
         if (msg.type != PgWireProtocol.BE_ERROR_RESPONSE) {
           fail("Expected startup to be rejected with an ErrorResponse, got " + msg);
         }
-        return ErrorResponse.parse(msg.body);
+        ErrorResponse error = ErrorResponse.parse(msg.body);
+        // Wait for the server to close the socket. The connection manager sends the error before
+        // releasing the control backend and closes the socket only after, so returning earlier
+        // lets the next connection find no idle control backend and open a new one.
+        while (conn.in.read() != -1) {}
+        return error;
       } finally {
         conn.closeAbruptly();
       }
