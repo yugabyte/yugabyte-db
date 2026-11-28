@@ -2982,7 +2982,9 @@ void CDCSDKYsqlTest::CompareExpirationTime(
               return true;
             }
           } else {
-            if (current_expiry_time >= prev_leader_expiry_time) {
+            // The old and the new leader each compute the expiry from their own clock read, so
+            // the values differ slightly.
+            if (current_expiry_time + 1s >= prev_leader_expiry_time) {
               LOG(INFO) << "The expiration time for the current LEADER is: "
                         << current_expiry_time.time_since_epoch().count()
                         << ", and the previous LEADER expiration time should be: "
