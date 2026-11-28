@@ -44,56 +44,15 @@ inline const rapidjson::Value* AsValue(const JsonValueImpl* impl) {
   return impl;
 }
 
-inline Result<const rapidjson::Value*> AsCheckedValue(const JsonValueImpl* impl,
-                                                      const std::string& path) {
-  if (impl) {
-    return AsValue(impl);
-  }
-  return STATUS_FORMAT(NotFound, "missing node at path: $0", path);
+inline Result<const rapidjson::Value*> AsCheckedValue(
+    const JsonValueImpl* impl, const std::string& path) {
+  SCHECK_FORMAT(impl, NotFound, "missing node at path: $0", path);
+  return AsValue(impl);
 }
 
 inline const JsonValueImpl* AsValueImpl(const rapidjson::Value* value) {
   return static_cast<const JsonValueImpl*>(value);
 }
-
-} // namespace
-
-// ---------------- JsonDocument implementation ----------------
-
-struct JsonDocument::Impl {
-  rapidjson::Document doc;
-  bool parsed = false;
-};
-
-JsonDocument::JsonDocument() : impl_(std::make_unique<Impl>()) {}
-JsonDocument::~JsonDocument() = default;
-
-JsonDocument::JsonDocument(JsonDocument&&) noexcept = default;
-JsonDocument& JsonDocument::operator=(JsonDocument&&) noexcept = default;
-
-Result<JsonValue> JsonDocument::Parse(const char* json) {
-  impl_->doc.Parse(json);
-  impl_->parsed = !impl_->doc.HasParseError();
-  SCHECK_FORMAT(impl_->parsed, InvalidArgument,
-                "JSON parse error: $0", rapidjson::GetParseError_En(impl_->doc.GetParseError()));
-  return Root();
-}
-
-Result<JsonValue> JsonDocument::Parse(std::string_view json) {
-  // Expect null-terminated buffer.  This works for string literals and std::string::c_str().
-  DCHECK_EQ(json.data()[json.size()], '\0');
-  return Parse(json.data());
-}
-
-// Root accessor
-JsonValue JsonDocument::Root() {
-  if (!impl_->parsed) {
-    return JsonValue();
-  }
-  return JsonValue(AsValueImpl(static_cast<const rapidjson::Value*>(&impl_->doc)), "");
-}
-
-namespace {
 
 // Path helpers
 std::string MakeElemPath(const std::string& base, size_t idx) {
@@ -117,10 +76,33 @@ Status MakeTypeErrorStatus(const std::string& expected_type, const std::string& 
 
 } // namespace
 
-// ---------------- JsonValue implementation ----------------
+// ---------------- JsonDocument implementation ----------------
 
-JsonValue::JsonValue() : impl_(nullptr), path_("") {}
-JsonValue::~JsonValue() = default;
+struct JsonDocument::Impl {
+  rapidjson::Document doc;
+  bool parsed{false};
+};
+
+JsonDocument::JsonDocument() : impl_(std::make_unique<Impl>()) {}
+JsonDocument::~JsonDocument() = default;
+
+JsonDocument::JsonDocument(JsonDocument&&) noexcept = default;
+JsonDocument& JsonDocument::operator=(JsonDocument&&) noexcept = default;
+
+Result<JsonValue> JsonDocument::Parse(std::string_view json) {
+  impl_->doc.Parse(json.data(), json.size());
+  impl_->parsed = !impl_->doc.HasParseError();
+  SCHECK_FORMAT(
+      impl_->parsed, InvalidArgument,
+      "JSON parse error: $0", rapidjson::GetParseError_En(impl_->doc.GetParseError()));
+  return Root();
+}
+
+JsonValue JsonDocument::Root() const {
+  return impl_->parsed ? JsonValue(AsValueImpl(&impl_->doc), {}) : JsonValue();
+}
+
+// ---------------- JsonValue implementation ----------------
 
 JsonValue::JsonValue(const JsonValueImpl* impl, std::string path)
   : impl_(impl), path_(std::move(path)) {}

@@ -273,6 +273,11 @@ Status PgDocOp::ExecuteInit(const YbcPgExecParameters *exec_params) {
   if (exec_params) {
     exec_params_ = *exec_params;
   }
+  if (exec_params_.plan_limit) {
+    remain_plan_limit_ = exec_params_.plan_limit;
+  } else {
+    remain_plan_limit_.reset();
+  }
   return Status::OK();
 }
 
@@ -296,7 +301,6 @@ Result<RequestSent> PgDocOp::Execute(ForceNonBufferable force_non_bufferable) {
 }
 
 Status PgDocOp::FetchMoreResults() {
-  // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
 
   if (end_of_data_) {
@@ -309,21 +313,16 @@ Status PgDocOp::FetchMoreResults() {
     RETURN_NOT_OK(SendRequest());
   }
 
-  // This may block until results are available
-  const auto result_data = VERIFY_RESULT(response_.Get(*pg_session_));
-  RETURN_NOT_OK(ProcessResponse(result_data));
-
-  // In case ProcessResponse doesn't fail with an error
-  // it should return non empty rows, copy paging info from the responses into requests
-  // and set end_of_data_.
-  if (end_of_data_ || suppress_next_result_prefetching_) {
-    suppress_next_result_prefetching_ = false;
-    return Status::OK();
-  }
+  const auto had_plan_limit = remain_plan_limit_.has_value();
+  RETURN_NOT_OK(ProcessResponse(VERIFY_RESULT(response_.Get(*pg_session_))));
+  const auto is_plan_limit_just_completed = (had_plan_limit && !remain_plan_limit_);
 
   // Prefetch next portion of data if needed.
-  AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
-  return SendRequest();
+  if (!end_of_data_ && !is_plan_limit_just_completed) {
+    AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
+    return SendRequest();
+  }
+  return Status::OK();
 }
 
 PgDocOpFetchStream& PgDocOp::ResultStream() {
@@ -374,46 +373,56 @@ Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
 }
 
 auto PgDocOp::ActiveOps() const {
-  return pgsql_ops_ | std::views::take_while(&IsActiveOp);
+  return std::span{pgsql_ops_.begin(), std::ranges::find_if_not(pgsql_ops_, &IsActiveOp)};
 }
 
 bool PgDocOp::HasActiveOps() const {
-  return !pgsql_ops_.empty() && pgsql_ops_.front()->is_active();
+  return !pgsql_ops_.empty() && IsActiveOp(pgsql_ops_.front());
 }
 
 Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
-  size_t active_op_count;
-  do {
-    active_op_count = VERIFY_RESULT(CreateRequests());
-  } while (!active_op_count && !request_population_completed_);
-  if (!active_op_count) {
-    return Status::OK();
+  decltype(ActiveOps()) active_ops;
+  for (;;) {
+    RETURN_NOT_OK(CreateRequests());
+    active_ops = ActiveOps();
+    if (!active_ops.empty()) {
+      break;
+    }
+    if (request_population_completed_) {
+      return Status::OK();
+    }
   }
 
   // Send at most "parallelism_level_" number of requests at one time.
-  const auto send_count = std::min(parallelism_level_, active_op_count);
+  const auto send_count = std::min(parallelism_level_, active_ops.size());
+  DCHECK_GT(send_count, 0);
 
-  uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio
-                      / send_count;
+  const uint64_t max_size =
+      FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio / send_count;
 
-  for (auto& read_req : ActiveOps() |
+  const auto fetch_size_limit = exec_params_.yb_fetch_size_limit;
+  const auto fetch_row_limit = exec_params_.yb_fetch_row_limit;
+  const auto req_size_limit =
+      (!fetch_size_limit || max_size < fetch_size_limit) ? max_size : fetch_size_limit;
+  const auto req_row_limit =
+      (remain_plan_limit_ && (!fetch_row_limit || *remain_plan_limit_ < fetch_row_limit))
+      ? *remain_plan_limit_ : fetch_row_limit;
+
+  for (auto& read_req : active_ops |
                         std::views::filter(&IsReadOp) |
-                        std::views::transform(&AsReadReq)) {
-    const auto req_size_limit = read_req.size_limit();
-    if (req_size_limit > 0) {
-      VLOG(2) << "Capping read op at size limit: " << max_size
-              << " (from " << req_size_limit << ")";
-    }
-
-    // Cap the size limit if the size limit is unset or exceeds the maximum size.
-    if (req_size_limit > max_size || req_size_limit == 0) {
-        read_req.set_size_limit(max_size);
+                        std::views::transform(&AsReadReq) |
+                        std::views::take(send_count)) {
+    read_req.set_size_limit(req_size_limit);
+    if (req_row_limit) {
+      read_req.set_limit(req_row_limit);
+    } else {
+      read_req.clear_limit();
     }
   }
 
   auto is_write = IsForWritePgDoc(IsWrite());
-  auto table_type = ResolveRelationType(**pgsql_ops_.data(), *table_);
+  auto table_type = ResolveRelationType(*active_ops.front(), *table_);
 
   // Count read ops.  Write ops should be the same as write requests, so no need to track them.
   if (!is_write) {
@@ -422,7 +431,7 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
 
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
   response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,
+      pg_session_.get(), {active_ops.begin(), send_count}, *table_,
       {HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable}, is_write));
   if (!result_stream_) {
     // Default PgDocOpFetchStream
@@ -495,6 +504,8 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
 
   rows_affected_count_ = 0;
   on_conflict_outcome_ = PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
+  uint64_t rows_received_total = 0;
+  auto& metrics = DCHECK_NOTNULL(pg_session_)->metrics();
 
   for (const auto& op : ActiveOps()) {
     auto* op_response = op->response();
@@ -541,13 +552,20 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
     // rows_data contains the row count, as well as the row data received from the docdb in Slice
     // format. Since EmplaceOpDocResult already takes the slice and extracts the number of rows
     // received, we are using that get the row count and increment the metric with the row count.
-    auto rows_received = VERIFY_RESULT(
+    const auto rows_received = VERIFY_RESULT(
         ResultStream().EmplaceOpDocResult(op, std::move(rows_data), *op_response));
 
-    DCHECK_NOTNULL(pg_session_)->metrics().RecordStorageRowsReceived(
-        ResolveRelationType(*op, *table_), rows_received);
+    metrics.RecordStorageRowsReceived(ResolveRelationType(*op, *table_), rows_received);
+    rows_received_total += rows_received;
   }
 
+  if (remain_plan_limit_) {
+    if (*remain_plan_limit_ > rows_received_total) {
+      *remain_plan_limit_ = *remain_plan_limit_ - rows_received_total;
+    } else {
+      remain_plan_limit_.reset();
+    }
+  }
   return Status::OK();
 }
 
@@ -557,7 +575,7 @@ uint64_t& PgDocOp::GetInTxnLimitHt() {
       : in_txn_limit_ht_;
 }
 
-Result<size_t> PgDocOp::CreateRequests() {
+Status PgDocOp::CreateRequests() {
   if (!request_population_completed_) {
     if (VERIFY_RESULT(DoCreateRequests())) {
       request_population_completed_ = true;
@@ -587,13 +605,11 @@ Result<bool> PgDocOp::PopulateMergeStreamRequests(
   return false;
 }
 
-Result<size_t> PgDocOp::CompleteRequests() {
-  size_t count = 0;
+Status PgDocOp::CompleteRequests() {
   for (const auto& op : ActiveOps()) {
     RETURN_NOT_OK(op->InitPartitionKey(*table_));
-    ++count;
   }
-  return count;
+  return Status::OK();
 }
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
@@ -787,7 +803,6 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   }
 
   read_op_->read_request().set_return_paging_state(true);
-  RETURN_NOT_OK(SetRequestPrefetchLimit());
   SetBackfillSpec();
   SetRowMark();
   SetReadTimeForBackfill();
@@ -1357,7 +1372,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
     // Save the backfill_spec if tablet server wants to return it.
     if (res.is_backfill_batch_done()) {
       out_param_backfill_spec_ = res.backfill_spec().ToBuffer();
-    } else if (read_op.PrepareNextRequest(exec_params_.yb_fetch_row_limit)) {
+    } else if (read_op.PrepareNextRequest()) {
       has_more_arg = true;
     }
 
@@ -1380,7 +1395,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
   }
 
   MoveInactiveOpsOutside();
-  end_of_data_ =  !HasActiveOps() && request_population_completed_;
+  end_of_data_ = !HasActiveOps() && request_population_completed_;
 
   if (exec_params_.out_param && has_out_param_backfill_spec()) {
     YbcPgExecOutParamValue value;
@@ -1388,38 +1403,6 @@ Status PgDocReadOp::CompleteProcessResponse() {
     YBCGetPgCallbacks()->WriteExecOutParam(exec_params_.out_param, &value);
   }
 
-  return Status::OK();
-}
-
-Status PgDocReadOp::SetRequestPrefetchLimit() {
-  auto& req = read_op_->read_request();
-
-  // Limits: 0 means 'unlimited'.
-  uint64_t default_row_limit = exec_params_.yb_fetch_row_limit;
-  uint64_t size_limit = exec_params_.yb_fetch_size_limit;
-  uint64_t row_limit = default_row_limit;
-  suppress_next_result_prefetching_ = false;
-
-  // If plan limit is defined and lower than the default optimistically attempt to fetch exact
-  // amount of data that the plan needs. Hence we apply the plan limit to the request and disable
-  // prefetching to avoid sending second request.
-  if (exec_params_.plan_limit > 0 &&
-      (default_row_limit == 0 || exec_params_.plan_limit < default_row_limit)) {
-    row_limit = exec_params_.plan_limit;
-    suppress_next_result_prefetching_ = true;
-  }
-
-  req.set_limit(row_limit);
-  req.set_size_limit(size_limit);
-
-  VLOG(3) << __func__
-          << " exec_params_.plan_limit=" << exec_params_.plan_limit
-          << " exec_params_.yb_fetch_row_limit=" << exec_params_.yb_fetch_row_limit
-          << " exec_params_.yb_fetch_size_limit=" << exec_params_.yb_fetch_size_limit
-          << " row_limit=" << row_limit
-          << " size_limit=" << size_limit
-          << " suppress_next_result_prefetching_="
-          << (suppress_next_result_prefetching_ ? "true" : "false");
   return Status::OK();
 }
 

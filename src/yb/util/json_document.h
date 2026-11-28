@@ -46,16 +46,13 @@ class JsonDocument {
 
   JsonDocument(JsonDocument&&) noexcept;
   JsonDocument& operator=(JsonDocument&&) noexcept;
-  JsonDocument(const JsonDocument&) = delete;
-  JsonDocument& operator=(const JsonDocument&) = delete;
 
   // Parse JSON text.  On failure, returns...
   // - InvalidArgument on parse error.
-  Result<JsonValue> Parse(const char* json);
-  Result<JsonValue> Parse(std::string_view sv);
+  Result<JsonValue> Parse(std::string_view json);
 
   // Root accessor for chainable reads. Always returns a JsonValue (may be invalid).
-  JsonValue Root();
+  JsonValue Root() const;
 
  private:
   struct Impl;
@@ -154,8 +151,7 @@ class JsonArray {
 // Getters return Result<T>. operator[] preserves chaining; errors are returned by getters.
 class JsonValue {
  public:
-  JsonValue();
-  ~JsonValue();
+  JsonValue() = default;
 
   // Chainable indexed/member access. Always safe: returns an invalid JsonValue if access fails.
   JsonValue operator[](size_t index) const;
@@ -215,8 +211,8 @@ class JsonValue {
   static JsonValue LookupMember(const JsonValueImpl* impl, std::string_view key,
                                 const std::string& path);
 
-  const JsonValueImpl* impl_;     // opaque pointer to const rapidjson::Value
-  std::string path_;              // human-readable path, efficient for typical short paths
+  const JsonValueImpl* impl_{nullptr};   // opaque pointer to const rapidjson::Value
+  std::string path_;                     // human-readable path, efficient for typical short paths
 };
 
 } // namespace yb

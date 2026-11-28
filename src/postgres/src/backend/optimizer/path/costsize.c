@@ -11288,13 +11288,10 @@ yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
  * non-constant LIMIT or OFFSET leaves root->yb_limit_tuples at -1, and no
  * bound is modeled at all.
  *
- * A scan running under a Limit node has its first read request trimmed to
- * LIMIT count + OFFSET (nodeLimit.c stores the sum in
- * yb_exec_params.plan_limit and pg_doc_op.cc SetRequestPrefetchLimit sizes
- * the first request from it; any later page reverts to the default fetch
- * size, see PgsqlReadOp::PrepareNextRequest), unless one of the executor's
- * cancellation rules applies.  Each rule clears plan_limit, and each check
- * below mirrors one:
+ * A scan running under a Limit node tries to read no more than
+ * LIMIT count + OFFSET rows, unless one of the executor's cancellation
+ * rules applies.  Each rule clears plan_limit, and each check below mirrors
+ * one:
  *
  * - a Limit with a known bound (root->yb_limit_tuples) and no grouping,
  *   aggregation, window function or set-returning function above the scan

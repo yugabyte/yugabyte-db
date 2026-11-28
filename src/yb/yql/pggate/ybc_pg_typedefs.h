@@ -336,8 +336,8 @@ typedef struct YbcPgExecParameters {
   struct YbPgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
   int work_mem = 4096; // Default work_mem in guc.c
-  int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
-  int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
+  uint64_t yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
+  uint64_t yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
 #else
   uint64_t plan_limit;
   uint64_t vector_limit;
@@ -354,8 +354,8 @@ typedef struct YbcPgExecParameters {
   struct YbPgExecOutParam *out_param;
   bool is_index_backfill;
   int work_mem;
-  int yb_fetch_row_limit;
-  int yb_fetch_size_limit;
+  uint64_t yb_fetch_row_limit;
+  uint64_t yb_fetch_size_limit;
   int yb_index_check;
 #endif
 } YbcPgExecParameters;

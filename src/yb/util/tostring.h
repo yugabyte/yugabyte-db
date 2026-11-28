@@ -18,6 +18,7 @@
 #include <float.h>
 
 #include <chrono>
+#include <compare>
 #include <concepts>
 #include <functional>
 #include <sstream>
@@ -310,6 +311,23 @@ template <typename T1, typename T2>
 std::string AsDebugHexString(const std::pair<T1, T2>& value) {
   return AsDebugHexString(value.first) + " - " + AsDebugHexString(value.second);
 }
+
+// Derive T from EnableStreamOutViaToString<T> to give it an operator<< implemented via
+// T::ToString() instead of defining it manually.
+// Useful for local classes, which can't define operator<< themselves.
+template <class T>
+struct EnableStreamOutViaToString {
+  auto operator<=>(const EnableStreamOutViaToString&) const = default;
+
+  friend std::ostream& operator<<(std::ostream& str, const T& t) {
+    if constexpr (requires { t.ToString(); }) {
+      str << t.ToString();
+    } else {
+      static_assert(false, "Required method T::ToString() not found");
+    }
+    return str;
+  }
+};
 
 } // namespace yb
 
