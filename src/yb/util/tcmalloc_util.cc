@@ -26,6 +26,10 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
+#if YB_GOOGLE_TCMALLOC
+#include <tcmalloc/internal/parameter_accessors.h>
+#endif
+
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
 #endif
@@ -179,14 +183,27 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes) {
 void TCMallocReleaseMemoryToSystemWithLookbacks(
     int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms) {
 #if YB_GOOGLE_TCMALLOC
+  // The sampled/cold heap has its own intervals, which MallocExtension does not expose. TCMalloc
+  // releases from that heap first on every call, so leaving them at their defaults makes it compute
+  // recent demand even when the caller asked for 0/0.
   const auto short_interval = tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval();
   const auto long_interval = tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval();
+  absl::Duration cold_short_interval;
+  absl::Duration cold_long_interval;
+  TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdShortInterval(&cold_short_interval);
+  TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdLongInterval(&cold_long_interval);
   tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(
       absl::Milliseconds(short_interval_ms));
   tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Milliseconds(long_interval_ms));
+  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval(
+      absl::Milliseconds(short_interval_ms));
+  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval(
+      absl::Milliseconds(long_interval_ms));
   TCMallocReleaseMemoryToSystem(bytes);
   tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
   tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
+  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval(cold_short_interval);
+  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval(cold_long_interval);
 #else
   TCMallocReleaseMemoryToSystem(bytes);
 #endif
@@ -290,7 +307,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
 
 int64_t GetTCMallocSamplingPeriod() {
 #if YB_GOOGLE_TCMALLOC
-  return tcmalloc::MallocExtension::GetProfileSamplingRate();
+  return tcmalloc::MallocExtension::GetProfileSamplingInterval();
 #elif YB_GPERFTOOLS_TCMALLOC
   return MallocExtension::instance()->GetProfileSamplingRate();
 #endif
@@ -302,7 +319,7 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   LOG(INFO) << Format("Setting TCMalloc profiler sampling period to $0 bytes", sample_period_bytes)
             << (disabled ? " (disabled)" : "");
 #if YB_GOOGLE_TCMALLOC
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(sample_period_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
 #endif
