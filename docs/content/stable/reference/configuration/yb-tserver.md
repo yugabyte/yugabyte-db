@@ -704,6 +704,23 @@ Enables querying of [cluster-wide database views](../../../explore/observability
 
 The `gv$` views always exist in `pg_catalog`; querying one while this parameter is off fails. Querying a cluster-wide database view also requires membership in `pg_read_all_stats`. See [Enable cluster-wide database views](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#enable-cluster-wide-database-views).
 
+##### yb_db_history_retention_pin_mode
+
+{{% tags/wrap %}}
+
+Default: `ddl_only`
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+Controls which statements and transactions pin their snapshot to hold back [history retention](../../../explore/transactions/history-retention/) for their database. Valid values are:
+
+- `ddl_only`: pin only while a DDL statement runs.
+- `all`: DML and DDL both pin. A REPEATABLE READ transaction pins its snapshot for the life of the transaction. A READ COMMITTED transaction pins each statement's snapshot while the statement runs.
+- `none`: don't pin.
+
+Pins have no effect when [--enable_db_history_retention_pins](#enable-db-history-retention-pins) is `false`.
+
 #### Faster writes to new tables
 
 To try the optimization, see [Faster writes to new tables](../../../explore/transactions/new-table-writes/). For write-path details, see [Skip intents optimization](../../../architecture/transactions/skip-intents/).
@@ -2106,6 +2123,63 @@ Default: `900` (15 minutes)
 {{% /tags/wrap %}}
 
 The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
+
+In v2026.2.0 and later, a long-running YSQL statement or transaction can instead pin its snapshot, which holds back history retention for its database beyond this interval. By default, only DDL statements pin. See [History retention for long-running transactions](../../../explore/transactions/history-retention/).
+
+##### --enable_db_history_retention_pins
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+Enables [history retention pins](../../../explore/transactions/history-retention/). When `false`, YB-TServers stop reporting pins and stop applying them, and history retention uses only [--timestamp_history_retention_interval_sec](#timestamp-history-retention-interval-sec). Set this flag to the same value on all YB-Masters and YB-TServers.
+
+##### --db_history_retention_pin_max_txn_age_sec
+
+{{% tags/wrap %}}
+
+Default: `86400` (24 hours)
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+The hard cap on history retention pins. History older than this is removed by compaction even if a pin covers it, and a transaction that reads at that history fails with `Snapshot too old`. YB-TServers apply the cap to the fixed retention interval too, so don't set this below `--timestamp_history_retention_interval_sec`. Set this flag to the same value on all YB-Masters and YB-TServers.
+
+##### --db_history_retention_pin_min_txn_age_sec
+
+{{% tags/wrap %}}
+
+Default: `300` (5 minutes)
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+How long, in seconds, a transaction must be alive before the YB-TServer reports its [history retention pin](../../../explore/transactions/history-retention/) to the YB-Master. Younger transactions are already protected by `--timestamp_history_retention_interval_sec`, so this value must be less than that flag.
+
+##### --db_history_retention_pin_log_interval_sec
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+How often, in seconds, the YB-TServer logs the oldest [history retention pin](../../../explore/transactions/history-retention/#find-and-end-a-session-that-holds-a-pin) of each database held by its own YSQL backends. `0` turns this logging off.
+
+##### --history_retention_pins_persist_interval_sec
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+How often, in seconds, the YB-TServer saves the universe-wide [history retention pins](../../../explore/transactions/history-retention/) to local disk, so that it can apply them at startup before its first heartbeat to the YB-Master.
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 

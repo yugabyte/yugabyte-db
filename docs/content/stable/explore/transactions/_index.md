@@ -60,6 +60,12 @@ The following table summarizes the support for transactions across the YSQL and 
     href="new-table-writes/"
     icon="fa-thin fa-bolt">}}
 
+  {{<index/item
+    title="History retention"
+    body="Keep the snapshot of a long-running transaction readable."
+    href="history-retention/"
+    icon="fa-thin fa-clock-rotate-left">}}
+
 {{</index/block>}}
 
 <!-- ADD THIS ONCE READY:
